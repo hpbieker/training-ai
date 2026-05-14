@@ -9,7 +9,7 @@ Create an Intervals.icu API key in your account settings, then run:
 ```python
 import os
 
-from intervals_icu import cache_latest_activity_streams, download_intervals_icu_data
+from scripts.intervals_icu import cache_latest_activity_streams, download_intervals_icu_data
 
 artifacts = download_intervals_icu_data(
     api_key=os.environ["INTERVALS_ICU_API_KEY"],
@@ -33,6 +33,22 @@ artifacts = cache_latest_activity_streams(
 )
 ```
 
+Or use the CLI wrapper:
+
+```bash
+python3 -B scripts/cache_intervals_icu.py latest
+python3 -B scripts/cache_intervals_icu.py activity i147489723
+python3 -B scripts/cache_intervals_icu.py named VT2 --since 2026-01-01
+python3 -B scripts/cache_intervals_icu.py named VT1 --since 2026-01-01
+python3 -B scripts/cache_intervals_icu.py wellness --since 2026-01-01
+```
+
+For recurring local use, whitelist the narrow command prefix:
+
+```text
+["python3", "-B", "scripts/cache_intervals_icu.py"]
+```
+
 Activity-specific files are stored under:
 
 ```text
@@ -44,6 +60,9 @@ data/
   activity_summaries/
     2026-01-01_2026-01-31.csv
     2026-01-01_2026-01-31.json
+  wellness/
+    2026-01-01_2026-05-14.csv
+    2026-01-01_2026-05-14.json
 ```
 
 By default `athlete_id=0`, which means Intervals.icu uses the athlete connected

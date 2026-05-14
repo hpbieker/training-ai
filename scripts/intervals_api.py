@@ -151,24 +151,17 @@ def cache_latest_activity_streams(
     ``data/activities/<date>_<activity_id>/`` by default.
     """
 
-    credentials = IntervalsIcuCredentials(
-        api_key=api_key,
-        bearer_token=bearer_token,
-    )
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
     today = date.today()
-    activities = _request_json(
-        f"/athlete/{athlete_id}/activities",
-        credentials,
-        params={
-            "oldest": (today - timedelta(days=lookback_days)).isoformat(),
-            "newest": today.isoformat(),
-        },
+    activities = list_activities(
+        api_key=api_key,
+        bearer_token=bearer_token,
+        athlete_id=athlete_id,
+        oldest=today - timedelta(days=lookback_days),
+        newest=today,
     )
-    if not isinstance(activities, list):
-        raise TypeError("Expected Intervals.icu activities endpoint to return a list")
     if not activities:
         raise RuntimeError(f"No Intervals.icu activities found in last {lookback_days} days")
 
@@ -239,6 +232,74 @@ def download_latest_activity_streams(**kwargs: Any) -> dict[str, Path]:
     """Backward-compatible alias for ``cache_latest_activity_streams``."""
 
     return cache_latest_activity_streams(**kwargs)
+
+
+def cache_wellness(
+    *,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+    oldest: str | date,
+    newest: str | date,
+    output_dir: str | Path = DEFAULT_DATA_DIR,
+) -> dict[str, Path]:
+    """Cache Intervals.icu wellness data for a date range.
+
+    Wellness includes daily values such as HRV, resting HR, sleep, weight,
+    fatigue, stress and related readiness fields when available.
+    """
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    oldest_value = _date_to_string(oldest)
+    newest_value = _date_to_string(newest)
+    wellness = _request_json(
+        f"/athlete/{athlete_id}/wellness",
+        credentials,
+        params={"oldest": oldest_value, "newest": newest_value},
+    )
+    if not isinstance(wellness, list):
+        raise TypeError("Expected Intervals.icu wellness endpoint to return a list")
+
+    wellness_dir = Path(output_dir) / "wellness"
+    wellness_dir.mkdir(parents=True, exist_ok=True)
+    json_path = wellness_dir / f"{oldest_value}_{newest_value}.json"
+    csv_path = wellness_dir / f"{oldest_value}_{newest_value}.csv"
+    _write_json(json_path, wellness)
+    _write_csv(csv_path, wellness)
+    return {
+        "wellness_json": json_path,
+        "wellness_csv": csv_path,
+    }
+
+
+def list_activities(
+    *,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+    oldest: str | date,
+    newest: str | date,
+) -> list[dict[str, Any]]:
+    """List Intervals.icu activities for a date range."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    activities = _request_json(
+        f"/athlete/{athlete_id}/activities",
+        credentials,
+        params={
+            "oldest": _date_to_string(oldest),
+            "newest": _date_to_string(newest),
+        },
+    )
+    if not isinstance(activities, list):
+        raise TypeError("Expected Intervals.icu activities endpoint to return a list")
+    return activities
 
 
 def load_intervals_icu_api_key(env_path: str | Path = ".env") -> str:
