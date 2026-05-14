@@ -84,3 +84,78 @@ download_intervals_icu_data(
     newest="2026-01-31",
 )
 ```
+
+## Download data from Xert
+
+Xert can add activity-level strain and difficulty context such as XSS, low/high/
+peak XSS, XEP, focus, specificity, difficulty rating and the fitness signature
+used for the activity.
+
+Add credentials to `.env`:
+
+```text
+XERT_USERNAME=your-email@example.com
+XERT_PASSWORD=your-password
+```
+
+Then cache activity summaries:
+
+```bash
+python3 -B scripts/cache_xert.py activities --since 2026-01-01
+python3 -B scripts/cache_xert.py training-info
+```
+
+Use `--session-data` only when you need per-second Xert fields such as MPA,
+XDS and TWS:
+
+```bash
+python3 -B scripts/cache_xert.py activities --since 2026-05-01 --session-data
+```
+
+Xert files are stored under:
+
+```text
+data/
+  xert/
+    activity_summaries/
+      2026-01-01_2026-05-14.csv
+      2026-01-01_2026-05-14.json
+    activities/
+      2026-05-14_<xert-path>/
+        activity.json
+    training_info_2026-05-14.json
+```
+
+For recurring local use, whitelist the narrow command prefix:
+
+```text
+["python3", "-B", "scripts/cache_xert.py"]
+```
+
+## Download weather from Yr / MET Norway
+
+Use MET Norway's public Locationforecast API, the same forecast source used by
+Yr, for training-weather decisions.
+
+```bash
+python3 -B scripts/cache_yr_weather.py oslo
+python3 -B scripts/cache_yr_weather.py lier
+python3 -B scripts/cache_yr_weather.py --lat 59.91 --lon 10.75 --label custom-oslo
+```
+
+Forecasts are stored under:
+
+```text
+data/
+  weather/
+    oslo/
+      yr_locationforecast_2026-05-14_163000.json
+      yr_locationforecast_2026-05-14_163000.csv
+```
+
+The API requires a non-generic User-Agent. The local client sets one by default.
+
+Source documentation:
+
+- https://api.met.no/weatherapi/locationforecast/2.0/documentation
+- https://api.met.no/doc/GettingStarted

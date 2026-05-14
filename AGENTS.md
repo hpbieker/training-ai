@@ -12,4 +12,6 @@
   - Thermal/body: `core_temperature`, `skin_temperature`, `heat_strain_index`.
   - Environment: `temp`, `RuuviTemperature`, `Humidity`, `RuuviHumidity`.
   - Wellness/recovery: `hrv` (rMSSD), `restingHR`, `sleepSecs`, `sleepScore`, plus `weight`, `bodyFat`, `vo2max`, `spO2`, `steps` when populated.
+- Xert data, when cached, should be used as additional activity-load context rather than replacing the sensor analysis. Prefer activity-level summary fields such as XSS, low/high/peak XSS, XEP, focus, specificity, difficulty, difficulty rating, freshness/status and the Xert fitness signature. This helps distinguish high aerobic volume from genuinely costly high-intensity sessions.
+- For weather forecasts, use Yr/MET Norway's official Locationforecast API (`api.met.no`) as the default source. Prefer cached data under `data/weather/` when available, and avoid ad hoc weather websites unless the MET/Yr API is unavailable or the user explicitly asks for another source.
 - For readiness recommendations, prefer a transparent combination of recent training load plus wellness fields actually present: HRV, resting HR, sleep duration and sleep score. Do not assume Garmin Training Readiness or Body Battery are available through Intervals.icu unless those fields appear in the downloaded wellness data.
