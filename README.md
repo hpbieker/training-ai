@@ -49,6 +49,13 @@ For recurring local use, whitelist the narrow command prefix:
 ["python3", "-B", "scripts/cache_intervals_icu.py"]
 ```
 
+Metadata updates, such as renaming activities in Intervals.icu, use a separate
+script so the cache script stays download-only:
+
+```bash
+python3 -B scripts/update_intervals_icu.py rename i148170330 "VT1 180 min"
+```
+
 Activity-specific files are stored under:
 
 ```text
@@ -159,3 +166,38 @@ Source documentation:
 
 - https://api.met.no/weatherapi/locationforecast/2.0/documentation
 - https://api.met.no/doc/GettingStarted
+
+## Download health data from Garmin Connect
+
+Garmin Connect does not provide a simple public personal API. For local personal
+use, this project uses `gccli`, with credentials managed by `gccli auth login`
+outside the repository.
+
+Install and authenticate:
+
+```bash
+/opt/homebrew/bin/brew install bpauli/tap/gccli
+/opt/homebrew/bin/gccli auth login
+```
+
+Cache Garmin readiness/health data:
+
+```bash
+python3 -B scripts/cache_garmin.py status
+python3 -B scripts/cache_garmin.py day 2026-05-14
+python3 -B scripts/cache_garmin.py recent --days 7 --until 2026-05-14
+```
+
+Files are stored under:
+
+```text
+data/
+  garmin/
+    training_readiness/2026-05-14.json
+    body_battery/2026-05-08_2026-05-14.json
+    stress/2026-05-14.json
+    hrv/2026-05-14.json
+    sleep/2026-05-14.json
+    summary/2026-05-14.json
+    training_status/2026-05-14.json
+```

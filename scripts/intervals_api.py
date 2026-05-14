@@ -302,6 +302,30 @@ def list_activities(
     return activities
 
 
+def update_activity(
+    *,
+    activity_id: str,
+    updates: dict[str, Any],
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+) -> dict[str, Any]:
+    """Update one Intervals.icu activity and return the updated document."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    updated = _request_json(
+        f"/activity/{activity_id}",
+        credentials,
+        method="PUT",
+        json_body=updates,
+    )
+    if not isinstance(updated, dict):
+        raise TypeError("Expected Intervals.icu update activity endpoint to return an object")
+    return updated
+
+
 def load_intervals_icu_api_key(env_path: str | Path = ".env") -> str:
     """Load ``INTERVALS_ICU_API_KEY`` from a local dotenv-style file."""
 
@@ -318,8 +342,16 @@ def _request_json(
     credentials: IntervalsIcuCredentials,
     *,
     params: dict[str, Any] | None = None,
+    method: str = "GET",
+    json_body: dict[str, Any] | None = None,
 ) -> Any:
-    body = _request_bytes(path, credentials, params=params)
+    body = _request_bytes(
+        path,
+        credentials,
+        params=params,
+        method=method,
+        json_body=json_body,
+    )
     return json.loads(body.decode("utf-8"))
 
 
@@ -328,15 +360,23 @@ def _request_bytes(
     credentials: IntervalsIcuCredentials,
     *,
     params: dict[str, Any] | None = None,
+    method: str = "GET",
+    json_body: dict[str, Any] | None = None,
 ) -> bytes:
     query = f"?{urlencode(params)}" if params else ""
+    body = json.dumps(json_body).encode("utf-8") if json_body is not None else None
+    headers = {
+        "Authorization": credentials.auth_header(),
+        "Accept": "application/json, text/csv, */*",
+        "User-Agent": "training-ai/0.1 (+https://intervals.icu API client)",
+    }
+    if json_body is not None:
+        headers["Content-Type"] = "application/json"
     request = Request(
         f"{INTERVALS_API_BASE_URL}{path}{query}",
-        headers={
-            "Authorization": credentials.auth_header(),
-            "Accept": "application/json, text/csv, */*",
-            "User-Agent": "training-ai/0.1 (+https://intervals.icu API client)",
-        },
+        data=body,
+        headers=headers,
+        method=method,
     )
     try:
         with urlopen(request, timeout=60) as response:
