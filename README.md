@@ -9,7 +9,7 @@ Create an Intervals.icu API key in your account settings, then run:
 ```python
 import os
 
-from scripts.intervals_icu import cache_latest_activity_streams, download_intervals_icu_data
+from scripts.intervals_api import cache_latest_activity_streams, download_intervals_icu_data
 
 artifacts = download_intervals_icu_data(
     api_key=os.environ["INTERVALS_ICU_API_KEY"],
