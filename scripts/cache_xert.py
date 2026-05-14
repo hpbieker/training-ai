@@ -9,6 +9,7 @@ from typing import Any
 
 from xert_api import (
     cache_activity_summaries,
+    cache_training_advice,
     cache_training_info,
     load_xert_credentials,
 )
@@ -30,6 +31,10 @@ def main() -> None:
     )
 
     subparsers.add_parser("training-info", help="Cache current Xert training info")
+    subparsers.add_parser(
+        "training-advice",
+        help="Cache Xert training advice including recovery load/days",
+    )
 
     args = parser.parse_args()
     credentials = load_xert_credentials()
@@ -49,6 +54,14 @@ def main() -> None:
     if args.command == "training-info":
         artifacts = cache_training_info(
             access_token=credentials.access_token,
+            username=credentials.username,
+            password=credentials.password,
+        )
+        _print_artifacts(artifacts)
+        return
+
+    if args.command == "training-advice":
+        artifacts = cache_training_advice(
             username=credentials.username,
             password=credentials.password,
         )

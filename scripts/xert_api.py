@@ -8,6 +8,7 @@ training/activity metadata under ``data/xert``.
 from __future__ import annotations
 
 import csv
+import base64
 import json
 from dataclasses import dataclass
 from datetime import date
@@ -19,6 +20,10 @@ from urllib.request import Request, urlopen
 
 
 XERT_API_BASE_URL = "https://www.xertonline.com"
+XERT_ADVICE_URL = (
+    "https://mystic-treat-429407-f2.uc.r.appspot.com/"
+    "training-advice-with-forecast-activities"
+)
 DEFAULT_DATA_DIR = Path("data")
 
 
@@ -96,6 +101,52 @@ def cache_training_info(
     path = xert_dir / f"training_info_{date.today().isoformat()}.json"
     _write_json(path, training_info)
     return {"training_info_json": path}
+
+
+def cache_training_advice(
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    output_dir: str | Path = DEFAULT_DATA_DIR,
+) -> dict[str, Path]:
+    """Cache Xert training advice including recovery load/days.
+
+    This endpoint uses HTTP Basic Auth with the user's Xert credentials.
+    """
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for training advice")
+    advice = fetch_training_advice(username=username, password=password)
+    xert_dir = Path(output_dir) / "xert"
+    xert_dir.mkdir(parents=True, exist_ok=True)
+    path = xert_dir / f"training_advice_{date.today().isoformat()}.json"
+    _write_json(path, advice)
+    return {"training_advice_json": path}
+
+
+def fetch_training_advice(*, username: str, password: str) -> dict[str, Any]:
+    """Fetch Xert training advice and forecast data."""
+
+    auth = base64.b64encode(f"{username}:{password}".encode()).decode()
+    request = Request(
+        XERT_ADVICE_URL,
+        headers={
+            "Authorization": f"Basic {auth}",
+            "Accept": "application/json",
+            "User-Agent": "training-ai/0.1 (+Xert advice cache)",
+        },
+    )
+    try:
+        with urlopen(request, timeout=60) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        message = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Xert advice request failed: HTTP {exc.code} {exc.reason}: {message}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise TypeError("Expected Xert advice endpoint to return an object")
+    return payload
 
 
 def list_activities(

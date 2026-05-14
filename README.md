@@ -110,7 +110,15 @@ Then cache activity summaries:
 ```bash
 python3 -B scripts/cache_xert.py activities --since 2026-01-01
 python3 -B scripts/cache_xert.py training-info
+python3 -B scripts/cache_xert.py training-advice
+python3 -B scripts/xert_advice.py
 ```
+
+`training-info` caches Xert's current status, signature, training load and
+target XSS. `training-advice` uses Xert Basic Auth and caches current Recovery
+Load, recovery days and workout capacity. Use the advice fields directly rather
+than reimplementing Xert's recovery-days formula locally. Negative recovery
+hours mean the athlete is on the fresh side of the relevant Xert threshold.
 
 Use `--session-data` only when you need per-second Xert fields such as MPA,
 XDS and TWS:
@@ -131,6 +139,7 @@ data/
       2026-05-14_<xert-path>/
         activity.json
     training_info_2026-05-14.json
+    training_advice_2026-05-14.json
 ```
 
 For recurring local use, whitelist the narrow command prefix:
