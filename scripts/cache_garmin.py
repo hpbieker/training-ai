@@ -13,11 +13,20 @@ import shutil
 import subprocess
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 DEFAULT_GCCLI = "/opt/homebrew/bin/gccli"
 DEFAULT_OUTPUT_DIR = Path("data/garmin")
+DAILY_SPEC_CHOICES = [
+    "heart-rate",
+    "hrv",
+    "sleep",
+    "stress",
+    "summary",
+    "training-readiness",
+    "training-status",
+]
 
 
 def main() -> None:
@@ -28,6 +37,12 @@ def main() -> None:
 
     day = subparsers.add_parser("day", help="Cache Garmin health data for one day")
     day.add_argument("date", nargs="?", default=date.today().isoformat())
+    day.add_argument(
+        "--only",
+        action="append",
+        choices=DAILY_SPEC_CHOICES,
+        help="Cache only one daily source. Can be repeated.",
+    )
 
     recent = subparsers.add_parser("recent", help="Cache Garmin health data for recent days")
     recent.add_argument("--days", type=int, default=7)
@@ -43,7 +58,7 @@ def main() -> None:
         return
 
     if args.command == "day":
-        artifacts = cache_day(args.date, gccli=gccli)
+        artifacts = cache_day(args.date, gccli=gccli, only=args.only)
         _print_artifacts(artifacts)
         return
 
@@ -68,19 +83,16 @@ def cache_day(
     day: str,
     *,
     gccli: str,
+    only: Iterable[str] | None = None,
     output_dir: str | Path = DEFAULT_OUTPUT_DIR,
 ) -> dict[str, Path]:
     """Cache useful Garmin daily health endpoints for one date."""
 
     output_path = Path(output_dir)
-    specs = {
-        "training_readiness": ["health", "training-readiness", day],
-        "stress": ["health", "stress", "view", day],
-        "hrv": ["health", "hrv", day],
-        "sleep": ["health", "sleep", day],
-        "summary": ["health", "summary", day],
-        "training_status": ["health", "training-status", day],
-    }
+    specs = _daily_specs(day)
+    if only:
+        wanted = {_daily_spec_key(name) for name in only}
+        specs = {name: command for name, command in specs.items() if name in wanted}
     artifacts = {}
     for name, command in specs.items():
         target = output_path / name / f"{day}.json"
@@ -89,6 +101,22 @@ def cache_day(
         _write_json(target, payload)
         artifacts[name] = target
     return artifacts
+
+
+def _daily_specs(day: str) -> dict[str, list[str]]:
+    return {
+        "training_readiness": ["health", "training-readiness", day],
+        "stress": ["health", "stress", "view", day],
+        "heart_rate": ["health", "hr", day],
+        "hrv": ["health", "hrv", day],
+        "sleep": ["health", "sleep", day],
+        "summary": ["health", "summary", day],
+        "training_status": ["health", "training-status", day],
+    }
+
+
+def _daily_spec_key(name: str) -> str:
+    return name.replace("-", "_")
 
 
 def cache_body_battery_range(

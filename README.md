@@ -192,10 +192,26 @@ Install and authenticate:
 Cache Garmin readiness/health data:
 
 ```bash
-python3 -B scripts/cache_garmin.py status
 python3 -B scripts/cache_garmin.py day 2026-05-14
 python3 -B scripts/cache_garmin.py recent --days 7 --until 2026-05-14
 ```
+
+`day` refreshes all daily Garmin health sources used for readiness checks,
+including heart rate, stress, HRV, sleep, summary, training readiness and
+training status. `--only` is available for targeted debugging, but normal
+readiness work should refresh the whole day so the sources stay in sync.
+
+Use `python3 -B scripts/cache_garmin.py status` only for troubleshooting
+`gccli` authentication. It does not refresh readiness data.
+
+Build a compact readiness context for chat after refreshing caches:
+
+```bash
+python3 -B scripts/readiness_snapshot.py --date 2026-05-14
+```
+
+This summarizes cached Garmin, Xert and latest Intervals.icu activity data,
+including post-workout heart rate and stress when a prior activity is found.
 
 Files are stored under:
 
@@ -205,6 +221,7 @@ data/
     training_readiness/2026-05-14.json
     body_battery/2026-05-08_2026-05-14.json
     stress/2026-05-14.json
+    heart_rate/2026-05-14.json
     hrv/2026-05-14.json
     sleep/2026-05-14.json
     summary/2026-05-14.json
