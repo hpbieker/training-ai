@@ -18,6 +18,7 @@ from typing import Any, Iterable
 
 DEFAULT_GCCLI = "/opt/homebrew/bin/gccli"
 DEFAULT_OUTPUT_DIR = Path("data/garmin")
+GARMIN_ACTIVITY_DETAILS_MAX_POINTS = 2000
 DAILY_SPEC_CHOICES = [
     "heart-rate",
     "hrv",
@@ -48,6 +49,14 @@ def main() -> None:
     recent.add_argument("--days", type=int, default=7)
     recent.add_argument("--until", default=date.today().isoformat())
 
+    activity = subparsers.add_parser(
+        "activity",
+        help="Cache one Garmin activity file and summary metadata",
+    )
+    activity.add_argument(
+        "activity",
+        help="Garmin activity id, Intervals activity id, or cached Intervals activity dir",
+    )
     subparsers.add_parser("status", help="Show gccli auth status")
 
     args = parser.parse_args()
@@ -76,6 +85,14 @@ def main() -> None:
         artifacts.append(body_battery)
         for path in artifacts:
             print(path)
+        return
+
+    if args.command == "activity":
+        artifacts = cache_activity(
+            args.activity,
+            gccli=gccli,
+        )
+        _print_artifacts(artifacts)
         return
 
 
@@ -136,6 +153,156 @@ def cache_body_battery_range(
     )
     _write_json(target, payload)
     return target
+
+
+def cache_activity(
+    activity: str,
+    *,
+    gccli: str,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+) -> dict[str, Path]:
+    """Cache one Garmin activity's summary/details metadata.
+
+    ``activity`` may be a Garmin activity id, an Intervals.icu activity id, or a
+    cached Intervals.icu activity directory. Intervals caches from Garmin expose
+    the Garmin activity id as ``external_id``.
+    """
+
+    resolved = resolve_garmin_activity(activity)
+    target_dir = Path(output_dir) / "activities" / f"{resolved['date']}_{resolved['garmin_id']}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    artifacts: dict[str, Path] = {}
+
+    summary = _run_gccli_json(gccli, ["activity", "summary", resolved["garmin_id"]])
+    summary_json = target_dir / "summary.json"
+    _write_json(summary_json, summary)
+    artifacts["summary_json"] = summary_json
+
+    details = _run_gccli_json(
+        gccli,
+        [
+            "activity",
+            "details",
+            resolved["garmin_id"],
+            "--max-chart",
+            str(GARMIN_ACTIVITY_DETAILS_MAX_POINTS),
+        ],
+    )
+    details_json = target_dir / "details.json"
+    _write_json(details_json, details)
+    artifacts["details_json"] = details_json
+
+    metrics_json = target_dir / "metrics_summary.json"
+    _write_json(metrics_json, garmin_activity_metrics(summary, details))
+    artifacts["metrics_summary_json"] = metrics_json
+
+    manifest = {
+        "garmin_id": resolved["garmin_id"],
+        "source": resolved["source"],
+        "intervals_activity": resolved.get("intervals_activity"),
+        "date": resolved["date"],
+        "summary_json": str(summary_json),
+        "details_json": str(details_json),
+        "metrics_summary_json": str(metrics_json),
+    }
+    manifest_json = target_dir / "manifest.json"
+    _write_json(manifest_json, manifest)
+    artifacts["manifest_json"] = manifest_json
+
+    return artifacts
+
+
+def garmin_activity_metrics(summary: dict[str, Any], details: dict[str, Any]) -> dict[str, Any]:
+    """Extract compact Garmin training-effect/performance metadata."""
+
+    summary_dto = summary.get("summaryDTO") or {}
+    performance = detail_metric_stats(details, "directPerformanceCondition")
+    return {
+        "activityId": summary.get("activityId"),
+        "activityName": summary.get("activityName"),
+        "startTimeLocal": summary_dto.get("startTimeLocal"),
+        "training_effect": {
+            "aerobic": summary_dto.get("trainingEffect"),
+            "anaerobic": summary_dto.get("anaerobicTrainingEffect"),
+            "label": summary_dto.get("trainingEffectLabel"),
+            "aerobic_message": summary_dto.get("aerobicTrainingEffectMessage"),
+            "anaerobic_message": summary_dto.get("anaerobicTrainingEffectMessage"),
+        },
+        "load": {
+            "meaning": "Secondary Garmin/Firstbeat load context; prefer Xert XSS for primary load language.",
+            "activityTrainingLoad": summary_dto.get("activityTrainingLoad"),
+            "trainingStressScore": summary_dto.get("trainingStressScore"),
+            "intensityFactor": summary_dto.get("intensityFactor"),
+        },
+        "stamina": {
+            "beginPotentialStamina": summary_dto.get("beginPotentialStamina"),
+            "endPotentialStamina": summary_dto.get("endPotentialStamina"),
+            "minAvailableStamina": summary_dto.get("minAvailableStamina"),
+        },
+        "performance_condition": performance,
+    }
+
+
+def detail_metric_stats(details: dict[str, Any], metric_key: str) -> dict[str, Any] | None:
+    index = None
+    for descriptor in details.get("metricDescriptors") or []:
+        if descriptor.get("key") == metric_key:
+            index = descriptor.get("metricsIndex")
+            break
+    if index is None:
+        return None
+
+    values = []
+    for row in details.get("activityDetailMetrics") or []:
+        metrics = row.get("metrics") or []
+        if len(metrics) <= index:
+            continue
+        parsed = metrics[index]
+        if parsed is not None:
+            values.append(float(parsed))
+    if not values:
+        return None
+    return {
+        "count": len(values),
+        "min": min(values),
+        "max": max(values),
+        "avg": sum(values) / len(values),
+        "start": values[0],
+        "end": values[-1],
+    }
+
+
+def resolve_garmin_activity(activity: str) -> dict[str, str]:
+    """Resolve Garmin activity id from a Garmin id or cached Intervals activity."""
+
+    candidate_path = Path(activity)
+    if candidate_path.exists():
+        metadata_path = candidate_path / "activity.json"
+    elif activity.startswith("i"):
+        matches = sorted((Path("data") / "activities").glob(f"*_{activity}"))
+        metadata_path = matches[-1] / "activity.json" if matches else Path()
+    else:
+        metadata_path = Path()
+
+    if metadata_path.exists():
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        garmin_id = metadata.get("external_id")
+        if not garmin_id:
+            raise SystemExit(f"No Garmin external_id found in {metadata_path}")
+        start_date = str(metadata.get("start_date_local") or date.today().isoformat())[:10]
+        return {
+            "garmin_id": str(garmin_id),
+            "source": "intervals_external_id",
+            "intervals_activity": str(metadata.get("id") or activity),
+            "date": start_date,
+        }
+
+    return {
+        "garmin_id": activity,
+        "source": "garmin_activity_id",
+        "date": date.today().isoformat(),
+    }
 
 
 def _run_gccli_json(gccli: str, args: list[str]) -> Any:

@@ -204,6 +204,18 @@ readiness work should refresh the whole day so the sources stay in sync.
 Use `python3 -B scripts/cache_garmin.py status` only for troubleshooting
 `gccli` authentication. It does not refresh readiness data.
 
+Cache Garmin metadata for a specific activity when Garmin's activity-level
+assessment is useful:
+
+```bash
+python3 -B scripts/cache_garmin.py activity i148448596
+```
+
+`activity` caches Garmin activity metadata such as Training Effect, stamina,
+performance condition and secondary Garmin load context. It accepts either a
+Garmin activity id or a cached Intervals.icu activity id; for Intervals
+activities from Garmin Connect it uses `external_id` as the Garmin activity id.
+
 Build a compact readiness context for chat after refreshing caches:
 
 ```bash
@@ -226,4 +238,9 @@ data/
     sleep/2026-05-14.json
     summary/2026-05-14.json
     training_status/2026-05-14.json
+    activities/2026-05-15_22888238753/
+      summary.json
+      details.json
+      metrics_summary.json
+      manifest.json
 ```
