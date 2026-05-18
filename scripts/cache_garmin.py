@@ -57,6 +57,19 @@ def main() -> None:
         "activity",
         help="Garmin activity id, Intervals activity id, or cached Intervals activity dir",
     )
+    activity_summary = subparsers.add_parser(
+        "activity-summary",
+        help="Cache one Garmin activity summary without full chart details",
+    )
+    activity_summary.add_argument(
+        "activity",
+        help="Garmin activity id, Intervals activity id, or cached Intervals activity dir",
+    )
+    vt1_summaries = subparsers.add_parser(
+        "vt1-summaries",
+        help="Cache Garmin summaries for cached pure indoor VT1 activities",
+    )
+    vt1_summaries.add_argument("--since", default=f"{date.today().year}-01-01")
     subparsers.add_parser("status", help="Show gccli auth status")
 
     args = parser.parse_args()
@@ -93,6 +106,20 @@ def main() -> None:
             gccli=gccli,
         )
         _print_artifacts(artifacts)
+        return
+
+    if args.command == "activity-summary":
+        artifacts = cache_activity_summary(
+            args.activity,
+            gccli=gccli,
+        )
+        _print_artifacts(artifacts)
+        return
+
+    if args.command == "vt1-summaries":
+        artifacts = cache_pure_indoor_vt1_summaries(args.since, gccli=gccli)
+        for path in artifacts:
+            print(path)
         return
 
 
@@ -210,6 +237,76 @@ def cache_activity(
     _write_json(manifest_json, manifest)
     artifacts["manifest_json"] = manifest_json
 
+    return artifacts
+
+
+def cache_activity_summary(
+    activity: str,
+    *,
+    gccli: str,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+) -> dict[str, Path]:
+    """Cache one Garmin activity's summary and summary-only metrics."""
+
+    resolved = resolve_garmin_activity(activity)
+    target_dir = Path(output_dir) / "activities" / f"{resolved['date']}_{resolved['garmin_id']}"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    summary = _run_gccli_json(gccli, ["activity", "summary", resolved["garmin_id"]])
+    summary_json = target_dir / "summary.json"
+    _write_json(summary_json, summary)
+
+    metrics_json = target_dir / "metrics_summary.json"
+    _write_json(metrics_json, garmin_activity_metrics(summary, {}))
+
+    manifest = {
+        "garmin_id": resolved["garmin_id"],
+        "source": resolved["source"],
+        "intervals_activity": resolved.get("intervals_activity"),
+        "date": resolved["date"],
+        "summary_json": str(summary_json),
+        "metrics_summary_json": str(metrics_json),
+        "details_json": None,
+    }
+    manifest_json = target_dir / "manifest.json"
+    _write_json(manifest_json, manifest)
+
+    return {
+        "summary_json": summary_json,
+        "metrics_summary_json": metrics_json,
+        "manifest_json": manifest_json,
+    }
+
+
+def cache_pure_indoor_vt1_summaries(
+    since: str,
+    *,
+    gccli: str,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+) -> list[Path]:
+    """Cache Garmin summary metrics for cached pure indoor VT1 activities."""
+
+    artifacts: list[Path] = []
+    activities_dir = Path("data") / "activities"
+    if not activities_dir.exists():
+        return artifacts
+
+    for activity_json in sorted(activities_dir.glob("*/activity.json")):
+        metadata = json.loads(activity_json.read_text(encoding="utf-8"))
+        start = str(metadata.get("start_date_local") or "")
+        name = str(metadata.get("name") or "")
+        if not start or start[:10] < since:
+            continue
+        if metadata.get("type") != "VirtualRide":
+            continue
+        if not name.lower().startswith("vt1"):
+            continue
+        cached = cache_activity_summary(
+            str(metadata.get("id") or activity_json.parent),
+            gccli=gccli,
+            output_dir=output_dir,
+        )
+        artifacts.extend(cached.values())
     return artifacts
 
 

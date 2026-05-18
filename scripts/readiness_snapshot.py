@@ -178,7 +178,12 @@ def garmin_snapshot(
         "training_status": compact_training_status(training_status),
         "stress": compact_stress(stress, post_start_ms=post_start_ms),
         "heart_rate": compact_heart_rate(heart_rate, post_start_ms=post_start_ms),
-        "body_battery": compact_body_battery(day, data_dir=data_dir),
+        "body_battery": compact_body_battery(
+            day,
+            data_dir=data_dir,
+            summary=summary,
+            stress=stress,
+        ),
     }
 
 
@@ -360,10 +365,21 @@ def compact_heart_rate(
         post_30 = [point for point in values if point[0] >= post_start_ms + 30 * 60 * 1000]
         result["post_activity"] = series_stats(post)
         result["post_activity_after_30min"] = series_stats(post_30)
+        result["post_activity_readiness_signal"] = post_activity_hr_signal(post_30 or post)
     return result
 
 
-def compact_body_battery(day: str, *, data_dir: Path) -> dict[str, Any] | None:
+def compact_body_battery(
+    day: str,
+    *,
+    data_dir: Path,
+    summary: dict[str, Any] | None,
+    stress: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    result = compact_body_battery_from_daily_cache(summary=summary, stress=stress)
+    if result:
+        return result
+
     body_battery_dir = data_dir / "garmin" / "body_battery"
     if not body_battery_dir.exists():
         return None
@@ -382,6 +398,48 @@ def compact_body_battery(day: str, *, data_dir: Path) -> dict[str, Any] | None:
         "events": day_payload.get("bodyBatteryActivityEvent"),
         "dynamic_feedback": day_payload.get("bodyBatteryDynamicFeedbackEvent"),
     }
+
+
+def compact_body_battery_from_daily_cache(
+    *,
+    summary: dict[str, Any] | None,
+    stress: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    values = body_battery_series_values(
+        (stress or {}).get("bodyBatteryValuesArray") if stress else None,
+    )
+    latest = latest_point(values)
+    most_recent = (summary or {}).get("bodyBatteryMostRecentValue") if summary else None
+    if not latest and most_recent is None:
+        return None
+
+    return {
+        "source_file": "daily Garmin summary/stress cache",
+        "at_wake": (summary or {}).get("bodyBatteryAtWakeTime") if summary else None,
+        "charged": (summary or {}).get("bodyBatteryChargedValue") if summary else None,
+        "drained": (summary or {}).get("bodyBatteryDrainedValue") if summary else None,
+        "most_recent": most_recent,
+        "latest": latest or {"timestamp_ms": None, "value": number(most_recent)},
+        "events": (summary or {}).get("bodyBatteryActivityEventList") if summary else None,
+        "dynamic_feedback": (
+            (summary or {}).get("bodyBatteryDynamicFeedbackEvent") if summary else None
+        ),
+    }
+
+
+def body_battery_series_values(raw_values: Any) -> list[tuple[int, float]]:
+    if not isinstance(raw_values, list):
+        return []
+    values = []
+    for row in raw_values:
+        if not isinstance(row, list) or len(row) < 3:
+            continue
+        timestamp = int(row[0])
+        value = number(row[2])
+        if value is None or value < 0:
+            continue
+        values.append((timestamp, value))
+    return values
 
 
 def latest_body_battery_payload(paths: list[Path]) -> tuple[Path, Any, dict[str, Any] | None]:
@@ -590,12 +648,86 @@ def series_stats(values: list[tuple[int, float]]) -> dict[str, Any] | None:
     if not values:
         return None
     series = [value for _, value in values]
+    lowest_rolling = rolling_window_extremes(values, mode="min")
+    highest_rolling = rolling_window_extremes(values, mode="max")
     return {
         "count": len(series),
         "min": min(series),
         "max": max(series),
         "avg": round(sum(series) / len(series), 1),
+        "lowest_rolling_avg": lowest_rolling,
+        "highest_rolling_avg": highest_rolling,
+        "lowest_5min_avg": lowest_rolling.get("5min"),
+        "highest_5min_avg": highest_rolling.get("5min"),
         "latest": latest_point(values),
+    }
+
+
+def post_activity_hr_signal(values: list[tuple[int, float]]) -> dict[str, Any] | None:
+    stats = series_stats(values)
+    if not stats:
+        return None
+    return {
+        "interpretation": (
+            "Use these rolling lows for readiness instead of latest HR or average post-workout HR. "
+            "Longer windows are only meaningful if the user was actually resting."
+        ),
+        "lowest_value": stats["min"],
+        "lowest_rolling_avg": stats["lowest_rolling_avg"],
+        "lowest_5min_avg": stats["lowest_5min_avg"],
+    }
+
+
+def rolling_window_extremes(
+    values: list[tuple[int, float]],
+    *,
+    mode: str,
+) -> dict[str, Any]:
+    return {
+        f"{minutes}min": rolling_window_extreme(values, minutes=minutes, mode=mode)
+        for minutes in [5, 10, 15, 20, 30]
+    }
+
+
+def rolling_window_extreme(
+    values: list[tuple[int, float]],
+    *,
+    minutes: int,
+    mode: str,
+) -> dict[str, Any] | None:
+    if not values:
+        return None
+    window_ms = minutes * 60 * 1000
+    minimum_span_ms = window_ms * 0.8
+    best: tuple[float, int, int, int] | None = None
+    start = 0
+    total = 0.0
+    for end, (timestamp, value) in enumerate(values):
+        total += value
+        while start <= end and timestamp - values[start][0] > window_ms:
+            total -= values[start][1]
+            start += 1
+        count = end - start + 1
+        if count <= 1:
+            continue
+        span_ms = timestamp - values[start][0]
+        if span_ms < minimum_span_ms:
+            continue
+        avg = total / count
+        if best is None:
+            best = (avg, values[start][0], timestamp, count)
+        elif mode == "min" and avg < best[0]:
+            best = (avg, values[start][0], timestamp, count)
+        elif mode == "max" and avg > best[0]:
+            best = (avg, values[start][0], timestamp, count)
+    if best is None:
+        return None
+    avg, start_ms, end_ms, count = best
+    return {
+        "avg": round(avg, 1),
+        "start_timestamp_ms": start_ms,
+        "end_timestamp_ms": end_ms,
+        "count": count,
     }
 
 
