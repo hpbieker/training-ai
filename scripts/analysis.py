@@ -59,6 +59,16 @@ class CachedActivity:
         return intervals if isinstance(intervals, list) else []
 
 
+@dataclass(frozen=True)
+class PowerBlock:
+    """A detected contiguous power block."""
+
+    label: str
+    start_index: int
+    end_index: int
+    detection: dict[str, Any]
+
+
 def load_activity(activity_dir: str | Path) -> CachedActivity:
     """Load one cached activity directory."""
 
@@ -67,6 +77,36 @@ def load_activity(activity_dir: str | Path) -> CachedActivity:
     with (path / "streams.csv").open(newline="", encoding="utf-8-sig") as file:
         streams = list(csv.DictReader(file))
     return CachedActivity(activity_dir=path, metadata=metadata, streams=streams)
+
+
+def resolve_activity_ref(ref: str, *, data_dir: str | Path = DATA_DIR) -> CachedActivity:
+    """Resolve ``latest``, an Intervals activity id, dir name or path."""
+
+    data_path = Path(data_dir)
+    if ref == "latest":
+        candidates = sorted(
+            iter_cached_activities(data_path),
+            key=lambda activity: activity.start_date_local,
+        )
+        if not candidates:
+            raise FileNotFoundError(f"No cached activities under {data_path / 'activities'}")
+        return candidates[-1]
+
+    candidate_path = Path(ref)
+    if candidate_path.exists():
+        return load_activity(candidate_path)
+
+    data_candidate = data_path / "activities" / ref
+    if data_candidate.exists():
+        return load_activity(data_candidate)
+
+    matches = sorted((data_path / "activities").glob(f"*_{ref}"))
+    if not matches and ref.startswith("i"):
+        matches = sorted((data_path / "activities").glob(f"*_{ref[1:]}"))
+    if matches:
+        return load_activity(matches[-1])
+
+    raise FileNotFoundError(f"Could not resolve cached activity: {ref}")
 
 
 def iter_cached_activities(data_dir: str | Path = DATA_DIR) -> Iterable[CachedActivity]:
@@ -119,6 +159,39 @@ def summarize_rows(
     return summary
 
 
+def data_quality_summary(
+    rows: list[dict[str, str]],
+    fields: Iterable[str] = CORE_STREAMS,
+) -> dict[str, dict[str, float | int | bool]]:
+    """Summarize missing values and longer gaps for each stream field."""
+
+    result: dict[str, dict[str, float | int | bool]] = {}
+    total = len(rows)
+    for field in fields:
+        missing = 0
+        longest_gap = 0
+        current_gap = 0
+        present = 0
+        for row in rows:
+            if value(row, field) is None:
+                missing += 1
+                current_gap += 1
+                longest_gap = max(longest_gap, current_gap)
+            else:
+                present += 1
+                current_gap = 0
+        result[field] = {
+            "total": total,
+            "present": present,
+            "missing": missing,
+            "missing_fraction": missing / total if total else 0.0,
+            "longest_gap": longest_gap,
+            "has_values": present > 0,
+            "meaningful_gap": longest_gap >= 30 or missing / total >= 0.05 if total else False,
+        }
+    return result
+
+
 def half_drift(
     rows: list[dict[str, str]],
     fields: Iterable[str] = CORE_STREAMS,
@@ -140,6 +213,41 @@ def half_drift(
             else None
         )
     return drift
+
+
+def summarize_block(
+    rows: list[dict[str, str]],
+    *,
+    start_index: int,
+    end_index: int,
+    label: str,
+    fields: Iterable[str] = CORE_STREAMS,
+    detection: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return a standard block summary for chat-oriented analysis."""
+
+    block_rows = rows[start_index:end_index]
+    start_time = value(rows[start_index], "time") if rows and start_index < len(rows) else None
+    end_row_index = max(start_index, end_index - 1)
+    end_time = value(rows[end_row_index], "time") if rows and end_row_index < len(rows) else None
+    duration_seconds = (
+        end_time - start_time + 1
+        if start_time is not None and end_time is not None and end_time >= start_time
+        else len(block_rows)
+    )
+    return {
+        "label": label,
+        "start_index": start_index,
+        "end_index": end_index,
+        "start_time": start_time,
+        "end_time": end_time,
+        "duration_seconds": duration_seconds,
+        "duration_minutes": duration_seconds / 60 if duration_seconds is not None else None,
+        "detection": detection or {},
+        "summary": summarize_rows(block_rows, fields),
+        "drift": half_drift(block_rows, fields),
+        "data_quality": data_quality_summary(block_rows, fields),
+    }
 
 
 def interval_rows(activity: CachedActivity, interval: dict[str, Any]) -> list[dict[str, str]]:
@@ -319,6 +427,115 @@ def detect_steady_power_segment(
     if end <= start:
         end = len(rows)
     return rows[start:end], start, end, target
+
+
+def detect_power_blocks(
+    rows: list[dict[str, str]],
+    *,
+    target: float | None = None,
+    threshold: float | None = None,
+    tolerance: float = 10,
+    min_seconds: int = 180,
+    max_gap_seconds: int = 20,
+    smoothing_seconds: int = 15,
+    field: str = "watts",
+) -> list[PowerBlock]:
+    """Detect contiguous power blocks by target range or lower threshold.
+
+    ``target`` detects blocks within ``target +/- tolerance``. ``threshold``
+    detects blocks at or above the threshold. Short gaps are tolerated so a
+    brief dropout does not split an otherwise coherent interval.
+    """
+
+    if target is None and threshold is None:
+        raise ValueError("Use either target or threshold")
+    if target is not None and threshold is not None:
+        raise ValueError("Use only one of target or threshold")
+
+    raw_values = [value(row, field) or 0.0 for row in rows]
+    values = rolling_mean(raw_values, smoothing_seconds)
+    blocks: list[PowerBlock] = []
+    start: int | None = None
+    last_match: int | None = None
+    gap = 0
+
+    def matches(sample: float) -> bool:
+        if target is not None:
+            return abs(sample - target) <= tolerance
+        return sample >= float(threshold)
+
+    for index, sample in enumerate(values):
+        if matches(sample):
+            if start is None:
+                start = index
+            last_match = index
+            gap = 0
+            continue
+        if start is None:
+            continue
+        gap += 1
+        if gap > max_gap_seconds:
+            assert last_match is not None
+            _append_power_block(
+                blocks,
+                start=start,
+                end=last_match + 1,
+                min_seconds=min_seconds,
+                target=target,
+                threshold=threshold,
+                tolerance=tolerance,
+                max_gap_seconds=max_gap_seconds,
+                smoothing_seconds=smoothing_seconds,
+            )
+            start = None
+            last_match = None
+            gap = 0
+
+    if start is not None and last_match is not None:
+        _append_power_block(
+            blocks,
+            start=start,
+            end=last_match + 1,
+            min_seconds=min_seconds,
+            target=target,
+            threshold=threshold,
+            tolerance=tolerance,
+            max_gap_seconds=max_gap_seconds,
+            smoothing_seconds=smoothing_seconds,
+        )
+
+    return blocks
+
+
+def _append_power_block(
+    blocks: list[PowerBlock],
+    *,
+    start: int,
+    end: int,
+    min_seconds: int,
+    target: float | None,
+    threshold: float | None,
+    tolerance: float,
+    max_gap_seconds: int,
+    smoothing_seconds: int,
+) -> None:
+    if end - start < min_seconds:
+        return
+    label = f"target_{target:g}" if target is not None else f"threshold_{threshold:g}"
+    blocks.append(
+        PowerBlock(
+            label=f"{label}_{len(blocks) + 1}",
+            start_index=start,
+            end_index=end,
+            detection={
+                "target": target,
+                "threshold": threshold,
+                "tolerance": tolerance,
+                "max_gap_seconds": max_gap_seconds,
+                "smoothing_seconds": smoothing_seconds,
+            },
+        )
+    )
 
 
 def rolling_mean(values: list[float], window: int) -> list[float]:
