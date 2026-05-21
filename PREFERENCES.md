@@ -13,6 +13,18 @@
 - For structured indoor ERG workouts, keep interval prescriptions simple and flat by default.
 - Use the same watt target for every work interval unless the user explicitly asks for progressive stepping or lifting the final interval.
 
+## Activity Naming
+
+- Prefer concise training-purpose names in Intervals.icu.
+- For steady VT1/base rides, use the detected work-segment duration rather than total elapsed time, for example `VT1 150 min`.
+- For structured intervals, use the interval structure, for example `VT2 3x22 min` or `VO2Max 2x8x60 sec`.
+- For mixed sessions, combine the main blocks, for example `VT2 3x16 min + VT1 45 min`.
+- Use route/place names for outdoor route-specific rides when that is the meaningful identity, for example `Sørkedalen x 2`.
+
+## Xert Workout Selection
+
+- When choosing a Xert workout to perform, prefer workout names that start with `XMB: ` when suitable for the training goal and load target.
+
 ## Observed Workout Responses
 
 - In VT2 workouts, the user can come down to about 106 bpm during the recovery after the first interval. Treat this as a contextual recovery-response benchmark, not as a fixed requirement.

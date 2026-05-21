@@ -634,33 +634,36 @@ def latest_xert_advice(
     xert_dir = data_dir / "xert"
     if not xert_dir.exists():
         return None
-    candidates = sorted(xert_dir.glob("training_advice_*.json"))
+    candidates = sorted(xert_dir.glob("recovery_model_*.json"))
     if not candidates:
         return None
-    advice = load_json(candidates[-1])
+    model = load_json(candidates[-1])
     source_time = cache_file_time(candidates[-1])
     hours_until_planned = (
         round((planned_at - now).total_seconds() / 3600, 1)
         if planned_at is not None
         else None
     )
+    recovery_days = model.get("recovery_days") or {}
+    at_state = model.get("at_state") or {}
+    training_load = at_state.get("tl") if isinstance(at_state, dict) else {}
+    recovery_load = at_state.get("rl") if isinstance(at_state, dict) else {}
     recovery_hours = {
-        "low": hours(advice.get("recovery_days_lo")),
-        "high": hours(advice.get("recovery_days_hi")),
-        "peak": hours(advice.get("recovery_days_pk")),
+        "low": hours(recovery_days.get("lo")),
+        "high": hours(recovery_days.get("hi")),
+        "peak": hours(recovery_days.get("pk")),
     }
     return {
         "source_file": str(candidates[-1]),
         "source_mtime_local": format_local(source_time),
-        "training_status": advice.get("training_status"),
-        "focus": advice.get("x_focusName"),
-        "targetXSS": advice.get("targetXSS"),
-        "completed_xss": advice.get("x_completed_xss"),
-        "placeholder_xss": advice.get("x_placeholder_xss"),
+        "training_status": model.get("training_status"),
+        "targetXSS": model.get("targetXSS"),
+        "recovery_offset": model.get("recovery_offset"),
+        "next_workout_days": model.get("next_workout_days"),
         "recovery_days": {
-            "low": advice.get("recovery_days_lo"),
-            "high": advice.get("recovery_days_hi"),
-            "peak": advice.get("recovery_days_pk"),
+            "low": recovery_days.get("lo"),
+            "high": recovery_days.get("hi"),
+            "peak": recovery_days.get("pk"),
         },
         "recovery_hours": {
             "meaning": (
@@ -683,19 +686,19 @@ def latest_xert_advice(
                 "Training that can be done now while still being just fresh before "
                 "the next planned Xert workout."
             ),
-            "low": advice.get("workout_capacity_xlss"),
-            "high": advice.get("workout_capacity_xhss"),
-            "peak": advice.get("workout_capacity_xpss"),
+            "low": (model.get("workout_capacity") or {}).get("lo"),
+            "high": (model.get("workout_capacity") or {}).get("hi"),
+            "peak": (model.get("workout_capacity") or {}).get("pk"),
         },
         "training_load": {
-            "low": advice.get("trainingload_xlss"),
-            "high": advice.get("trainingload_xhss"),
-            "peak": advice.get("trainingload_xpss"),
+            "low": training_load.get("ftp") if isinstance(training_load, dict) else None,
+            "high": training_load.get("hie") if isinstance(training_load, dict) else None,
+            "peak": training_load.get("pp") if isinstance(training_load, dict) else None,
         },
         "recovery_load": {
-            "low": advice.get("recoveryload_xlss"),
-            "high": advice.get("recoveryload_xhss"),
-            "peak": advice.get("recoveryload_xpss"),
+            "low": recovery_load.get("ftp") if isinstance(recovery_load, dict) else None,
+            "high": recovery_load.get("hie") if isinstance(recovery_load, dict) else None,
+            "peak": recovery_load.get("pp") if isinstance(recovery_load, dict) else None,
         },
     }
 
@@ -882,7 +885,7 @@ def cache_freshness(
             latest_nested(garmin, "body_battery", "latest"),
             now=now,
         ),
-        "xert_training_advice_file": freshness_from_local_time(
+        "xert_recovery_model_file": freshness_from_local_time(
             xert.get("source_mtime_local") if xert else None,
             now=now,
         ),

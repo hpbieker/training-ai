@@ -1,4 +1,4 @@
-"""Read cached Xert training advice."""
+"""Read cached Xert recovery/advice inputs."""
 
 from __future__ import annotations
 
@@ -10,41 +10,63 @@ from typing import Any
 DATA_DIR = Path("data")
 
 
-def latest_training_advice(data_dir: str | Path = DATA_DIR) -> dict[str, Any]:
-    """Load the newest cached Xert training advice document."""
+def latest_recovery_model(data_dir: str | Path = DATA_DIR) -> dict[str, Any]:
+    """Load the newest cached direct Xert recovery model document."""
 
-    advice_paths = sorted((Path(data_dir) / "xert").glob("training_advice_*.json"))
+    model_paths = sorted((Path(data_dir) / "xert").glob("recovery_model_*.json"))
+    if not model_paths:
+        raise FileNotFoundError("No Xert recovery_model cache found")
+    return json.loads(model_paths[-1].read_text(encoding="utf-8"))
+
+
+def latest_legacy_training_advice(data_dir: str | Path = DATA_DIR) -> dict[str, Any]:
+    """Load the newest legacy proxy advice document when available."""
+
+    xert_dir = Path(data_dir) / "xert"
+    advice_paths = sorted(xert_dir.glob("legacy_training_advice_*.json"))
+    advice_paths.extend(sorted(xert_dir.glob("training_advice_*.json")))
     if not advice_paths:
-        raise FileNotFoundError("No Xert training_advice cache found")
+        return {}
     return json.loads(advice_paths[-1].read_text(encoding="utf-8"))
 
 
 def main() -> None:
-    advice = latest_training_advice()
+    model = latest_recovery_model()
+    at_state = model.get("at_state") or {}
+    training_load = at_state.get("tl") if isinstance(at_state, dict) else {}
+    recovery_load = at_state.get("rl") if isinstance(at_state, dict) else {}
+    recovery_days = model.get("recovery_days") or {}
+    workout_capacity = model.get("workout_capacity") or {}
     summary = {
-        "training_status": advice.get("training_status"),
-        "targetXSS": advice.get("targetXSS"),
-        "completed_xss": advice.get("x_completed_xss"),
-        "placeholder_xss": advice.get("x_placeholder_xss"),
+        "source": model.get("source"),
+        "training_status": model.get("training_status"),
+        "targetXSS": model.get("targetXSS"),
+        "recovery_offset": model.get("recovery_offset"),
+        "next_workout_days": model.get("next_workout_days"),
         "training_load": {
-            "low": advice.get("trainingload_xlss"),
-            "high": advice.get("trainingload_xhss"),
-            "peak": advice.get("trainingload_xpss"),
+            "low": training_load.get("ftp") if isinstance(training_load, dict) else None,
+            "high": training_load.get("hie") if isinstance(training_load, dict) else None,
+            "peak": training_load.get("pp") if isinstance(training_load, dict) else None,
         },
         "recovery_load": {
-            "low": advice.get("recoveryload_xlss"),
-            "high": advice.get("recoveryload_xhss"),
-            "peak": advice.get("recoveryload_xpss"),
+            "low": recovery_load.get("ftp") if isinstance(recovery_load, dict) else None,
+            "high": recovery_load.get("hie") if isinstance(recovery_load, dict) else None,
+            "peak": recovery_load.get("pp") if isinstance(recovery_load, dict) else None,
         },
         "recovery_days": {
-            "low": advice.get("recovery_days_lo"),
-            "high": advice.get("recovery_days_hi"),
-            "peak": advice.get("recovery_days_pk"),
+            "low": recovery_days.get("lo"),
+            "high": recovery_days.get("hi"),
+            "peak": recovery_days.get("pk"),
+        },
+        "recovery_hours": {
+            "low": model.get("recovery_hours", {}).get("lo"),
+            "high": model.get("recovery_hours", {}).get("hi"),
+            "peak": model.get("recovery_hours", {}).get("pk"),
         },
         "workout_capacity": {
-            "low": advice.get("workout_capacity_xlss"),
-            "high": advice.get("workout_capacity_xhss"),
-            "peak": advice.get("workout_capacity_xpss"),
+            "low": workout_capacity.get("lo"),
+            "high": workout_capacity.get("hi"),
+            "peak": workout_capacity.get("pk"),
         },
     }
     print(json.dumps(summary, indent=2, sort_keys=True))

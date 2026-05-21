@@ -103,6 +103,8 @@ Add credentials to `.env`:
 ```text
 XERT_USERNAME=your-email@example.com
 XERT_PASSWORD=your-password
+# Optional for Xert web calendar endpoints that require browser session auth:
+XERT_COOKIE='cookie-name=value; another-cookie=value'
 ```
 
 Then cache activity summaries:
@@ -110,15 +112,95 @@ Then cache activity summaries:
 ```bash
 python3 -B scripts/cache_xert.py activities --since 2026-01-01
 python3 -B scripts/cache_xert.py training-info
-python3 -B scripts/cache_xert.py training-advice
+python3 -B scripts/cache_xert.py recovery-model
+python3 -B scripts/cache_xert.py workouts
+python3 -B scripts/cache_xert.py training-forecast
 python3 -B scripts/xert_advice.py
 ```
 
 `training-info` caches Xert's current status, signature, training load and
-target XSS. `training-advice` uses Xert Basic Auth and caches current Recovery
-Load, recovery days and workout capacity. Use the advice fields directly rather
-than reimplementing Xert's recovery-days formula locally. Negative recovery
-hours mean the athlete is on the fresh side of the relevant Xert threshold.
+target XSS. `recovery-model` is the default readiness source: it logs in to Xert
+web, reads `trainingAdvice`/`trainingPlan` from `/my-fitness`, reads `ir_params`
+from `/profile/settings`, and calculates recovery days and workout capacity
+locally. Negative recovery hours mean the athlete is on the fresh side of the
+relevant Xert threshold.
+
+The old Appspot proxy is kept only as a legacy fallback:
+
+```bash
+python3 -B scripts/cache_xert.py legacy-training-advice
+```
+
+Use it only for explicit comparisons against the previous proxy behaviour.
+
+### Xert web calendar endpoints
+
+Some Xert calendar functionality is available only through an authenticated web
+session. The local helper can log in through `/auth`, extract the Laravel CSRF
+token, post credentials to `/auth/login`, and reuse the resulting cookie jar.
+`XERT_COOKIE` can still be supplied manually, but username/password web login is
+preferred when it works.
+
+Known OAuth endpoints:
+
+- `GET /oauth/workouts` lists the user's own Xert workout library.
+- `GET /oauth/workout/<path>` retrieves one resolved workout using the user's
+  current fitness signature, returning target power in watts and interval
+  durations. Use the `path` from the workouts list. The OAuth workout endpoints
+  are useful for reading/listing, but they do not provide the designer rows
+  needed to edit a workout.
+
+Known web endpoints:
+
+- `GET /calendar/training-forecast?duration=-1&includePlaceholders=true`
+  returns the current Forecast AI calendar days.
+- `GET /calendar/forecast-activities-close/<YYYY-MM-DD>` returns nearby
+  forecast/calendar activities, training status array and target-event context.
+- `GET /recommended-training?recent=true&date=<UTC-ISO>&additional=false&sport=Cycling`
+  returns Xert workout/activity recommendations for a date. The `exercises`
+  array contains recommended workouts and activities, not only a small
+  recommendation list. Filter by `exerciseType == "Workout"` when selecting a
+  workout from recommendations, and then rank by XSS split, duration, focus,
+  suitability, difficulty and naming preference. For the user's own workout
+  library, prefer the OAuth `workouts`/`workout` endpoints above.
+- `GET /workout/<path>` returns the web Workout Designer page when using an
+  authenticated web-login cookie jar. The form action is `POST /workout/<path>`
+  and contains the CSRF token, workout title, description and signature fields.
+- `GET /workout/<path>/intervals` returns the editable Workout Designer rows as
+  JSON. These rows preserve designer concepts such as interval groups, rest
+  between intervals, relative power (`relative_ftp`, `ramp_ltp`, etc.) and
+  `DT_RowId`; this is the correct source to modify a workout, not the resolved
+  OAuth workout payload.
+- To update an existing workout, log in via the web flow, read
+  `/workout/<path>/intervals`, modify the relevant row values, then `POST` an
+  `application/x-www-form-urlencoded` form to `/workout/<path>` with `_token`,
+  `name`, `description`, `pp`, `atc` in joules, `ftp`, `submit=save`, and
+  `rows=<JSON encoded designer rows>`. Use `submit=calculate` first when
+  validating the edited rows without saving. A successful save returns JSON
+  with `info: "Workout saved"`. Re-fetch both `workout <path>` and `workouts`
+  after saving to verify the name, duration, XSS, difficulty and interval
+  durations.
+- `DELETE /workout/<path>` deletes a workout when using an authenticated web
+  session. Send `X-Requested-With: XMLHttpRequest`. This is destructive: only
+  use it after explicit confirmation, then re-fetch `workouts` to verify the
+  workout disappeared from the library.
+- `GET /profile/settings` returns the profile settings page. Use the web-login
+  cookie jar, parse the returned HTML, and extract embedded JSON from `<script>`
+  blocks. The user/IR settings are exposed in script text containing
+  `window.user_params =`; parse the JSON object following keys such as
+  `ir_params` when time constants or recovery-model settings are needed. The
+  profile username can also be read from the first `span.username` text.
+- `POST /createCalendarEvent` creates a planned calendar event/workout.
+- `POST /pinCalendarEvent` toggles pinning for a calendar item.
+- `POST /deleteCalendarEvent` deletes a calendar item.
+
+Adapt Forecast is not just a simple server-side `POST`. Xert's UI loads
+`/calendar/training-forecast` data, runs the adaptation in the browser via
+`/js/libxert-worker.js`, then shows a confirmation step. Saving the adapted
+forecast posts to `/account/settings/training-program` with a payload including
+`fromDate`, `toDate`, `duration`, `program_type: "targetEvent"` and the computed
+`result`. Do not automate the save step without explicit confirmation, because
+Xert warns that unpinned planned activities may be removed.
 
 Use `--session-data` only when you need per-second Xert fields such as MPA,
 XDS and TWS:
@@ -139,7 +221,8 @@ data/
       2026-05-14_<xert-path>/
         activity.json
     training_info_2026-05-14.json
-    training_advice_2026-05-14.json
+    recovery_model_2026-05-14.json
+    legacy_training_advice_2026-05-14.json
 ```
 
 For recurring local use, whitelist the narrow command prefix:
