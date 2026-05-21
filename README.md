@@ -114,6 +114,7 @@ python3 -B scripts/cache_xert.py activities --since 2026-01-01
 python3 -B scripts/cache_xert.py training-info
 python3 -B scripts/cache_xert.py recovery-model
 python3 -B scripts/cache_xert.py workouts
+python3 -B scripts/cache_xert.py workouts --filter "XMB: VT1" --summary
 python3 -B scripts/cache_xert.py training-forecast
 python3 -B scripts/xert_advice.py
 ```
@@ -181,6 +182,13 @@ Known web endpoints:
   after saving to verify the name, duration, XSS, difficulty and interval
   durations. Prefer the reusable CLI for this instead of ad hoc scripts:
   `python3 -B scripts/cache_xert.py update-workout <path> --match-name Intervals --match-power 300 --set-duration 26:00 --name "XMB: VT2 3x26 min (300W)"`.
+- Use `workouts --filter ... --summary` for chat-friendly workout library
+  listings. It prints name, duration, parsed work watts from names like
+  `(205W)`, XSS split, difficulty and path.
+- To create a workout variant, prefer
+  `python3 -B scripts/cache_xert.py copy-workout <path> --name "..."`.
+  Xert may append `(Copy)` during copy; the CLI re-fetches the new workout page
+  and saves the requested name again when needed.
 - `DELETE /workout/<path>` deletes a workout when using an authenticated web
   session. Send `X-Requested-With: XMLHttpRequest`. This is destructive: only
   use it after explicit confirmation, then re-fetch `workouts` to verify the

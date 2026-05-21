@@ -1035,6 +1035,35 @@ def cache_workouts(
     return {"workouts_json": list_json, "workouts_csv": list_csv}
 
 
+def summarize_workout_library(
+    workouts: Iterable[dict[str, Any]],
+    *,
+    name_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return compact workout-library rows for chat/table output."""
+
+    rows = []
+    for workout in workouts:
+        name = str(workout.get("name") or "")
+        if name_filter and name_filter.lower() not in name.lower():
+            continue
+        rows.append(
+            {
+                "name": name,
+                "path": workout.get("path"),
+                "duration_min": _round_optional(_numeric_or_none(workout.get("duration")), 1, scale=60),
+                "work_watts": parse_work_watts_from_name(name),
+                "xss": _round_optional(_numeric_or_none(workout.get("xss")), 1),
+                "xlss": _round_optional(_numeric_or_none(workout.get("xlss")), 1),
+                "xhss": _round_optional(_numeric_or_none(workout.get("xhss")), 1),
+                "xpss": _round_optional(_numeric_or_none(workout.get("xpss")), 1),
+                "difficulty": _round_optional(_numeric_or_none(workout.get("difficulty")), 1),
+                "rating": workout.get("rating"),
+            }
+        )
+    return rows
+
+
 def fetch_workout(
     path: str,
     *,
@@ -1139,11 +1168,89 @@ def update_workout(
         submit=submit,
     )
     result = post_workout_designer_form(opener, path, form)
+    verification = None
+    if submit == "save":
+        verification = verify_workout_page(opener, path)
     return {
         "path": path,
         "submit": submit,
         "changed_rows": changed_rows,
         "result": summarize_workout_update_result(result),
+        "verification": verification,
+    }
+
+
+def copy_workout(
+    path: str,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    name: str,
+    description: str | None = None,
+    match_name: str | None = None,
+    match_power: float | None = None,
+    set_power: float | None = None,
+    set_interval_count: int | None = None,
+    keep_matching_rows: int | None = None,
+) -> dict[str, Any]:
+    """Copy a Xert workout through the authenticated Workout Designer flow."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    opener = xert_web_login(username=username, password=password)
+    page = fetch_workout_designer_page(opener, path)
+    rows = fetch_workout_designer_rows(opener, path)
+    removed_rows = trim_matching_workout_rows(
+        rows,
+        match_name=match_name,
+        match_power=match_power,
+        keep_matching_rows=keep_matching_rows,
+    )
+    changed_rows = update_workout_rows(
+        rows,
+        match_name=match_name,
+        match_power=match_power,
+        set_duration=None,
+        set_power=set_power,
+        set_interval_count=set_interval_count,
+    )
+    form = workout_designer_form_payload(
+        page,
+        rows=rows,
+        name=name,
+        description=description,
+        submit="copy",
+    )
+    result = post_workout_designer_form(opener, path, form)
+    summary = summarize_workout_update_result(result)
+    new_path = workout_path_from_redirect(summary.get("redirect"))
+    rename_result = None
+    if new_path:
+        copied_page = fetch_workout_designer_page(opener, new_path)
+        if copied_page.get("name") != name or (
+            description is not None and copied_page.get("description") != description
+        ):
+            copied_rows = fetch_workout_designer_rows(opener, new_path)
+            rename_form = workout_designer_form_payload(
+                copied_page,
+                rows=copied_rows,
+                name=name,
+                description=description,
+                submit="save",
+            )
+            rename_result = summarize_workout_update_result(
+                post_workout_designer_form(opener, new_path, rename_form)
+            )
+    verification = verify_workout_page(opener, new_path) if new_path else None
+    return {
+        "source_path": path,
+        "path": new_path,
+        "submit": "copy",
+        "changed_rows": changed_rows,
+        "removed_rows": removed_rows,
+        "result": summary,
+        "rename_result": rename_result,
+        "verification": verification,
     }
 
 
@@ -1199,6 +1306,19 @@ def fetch_workout_designer_page(opener, path: str) -> dict[str, Any]:
     }
 
 
+def verify_workout_page(opener, path: str | None) -> dict[str, Any] | None:
+    """Read back the saved Workout Designer page for compact verification."""
+
+    if not path:
+        return None
+    page = fetch_workout_designer_page(opener, path)
+    return {
+        "path": path,
+        "name": page.get("name"),
+        "description": page.get("description"),
+    }
+
+
 def update_workout_rows(
     rows: list[dict[str, Any]],
     *,
@@ -1206,10 +1326,11 @@ def update_workout_rows(
     match_power: float | None = None,
     set_duration: str | None = None,
     set_power: float | None = None,
+    set_interval_count: int | None = None,
 ) -> int:
     """Modify editable Workout Designer rows in place."""
 
-    if not set_duration and set_power is None:
+    if not set_duration and set_power is None and set_interval_count is None:
         return 0
     changed = 0
     for row in rows:
@@ -1231,8 +1352,41 @@ def update_workout_rows(
                 raise TypeError(f"Workout row has invalid power object: {row}")
             power["value"] = set_power
             power.setdefault("type", "absolute")
+        if set_interval_count is not None:
+            row["interval_count"] = str(set_interval_count)
         changed += 1
     return changed
+
+
+def trim_matching_workout_rows(
+    rows: list[dict[str, Any]],
+    *,
+    match_name: str | None,
+    match_power: float | None,
+    keep_matching_rows: int | None,
+) -> int:
+    """Remove matching rows beyond a requested count, preserving order."""
+
+    if keep_matching_rows is None:
+        return 0
+    if keep_matching_rows < 0:
+        raise ValueError("keep_matching_rows must be non-negative")
+    matching_indexes = []
+    for index, row in enumerate(rows):
+        if match_name and str(row.get("name", "")).lower() != match_name.lower():
+            continue
+        if match_power is not None:
+            power = row.get("power")
+            if not isinstance(power, dict) or not _numbers_equal(power.get("value"), match_power):
+                continue
+        matching_indexes.append(index)
+    remove_indexes = set(matching_indexes[keep_matching_rows:])
+    if not remove_indexes:
+        return 0
+    rows[:] = [row for index, row in enumerate(rows) if index not in remove_indexes]
+    for sequence, row in enumerate(rows):
+        row["sequence"] = sequence
+    return len(remove_indexes)
 
 
 def workout_designer_form_payload(
@@ -1317,6 +1471,26 @@ def summarize_workout_update_result(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(payload.get("data"), list):
         compact["data_points"] = len(payload["data"])
     return compact
+
+
+def workout_path_from_redirect(redirect: Any) -> str | None:
+    """Extract the workout path from Xert's post-copy redirect URL."""
+
+    if not isinstance(redirect, str) or not redirect:
+        return None
+    match = re.search(r"/workout/([^/?#]+)", redirect)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def parse_work_watts_from_name(name: str) -> float | None:
+    """Extract a trailing work target such as '(205W)' from a workout name."""
+
+    match = re.search(r"\((\d+(?:\.\d+)?)\s*W\)", name, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return float(match.group(1))
 
 
 def load_xert_credentials(env_path: str | Path = ".env") -> XertCredentials:
@@ -1404,6 +1578,20 @@ def _parse_float(value: str | None) -> float | None:
     if value is None or value == "":
         return None
     return float(value)
+
+
+def _numeric_or_none(value: Any) -> float | None:
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _round_optional(value: float | None, digits: int, *, scale: float | None = None) -> float | None:
+    if value is None:
+        return None
+    if scale:
+        value = value / scale
+    return round(value, digits)
 
 
 def _numbers_equal(value: Any, expected: float) -> bool:
