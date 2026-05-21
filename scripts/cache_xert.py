@@ -9,7 +9,6 @@ from typing import Any
 
 from xert_api import (
     cache_activity_summaries,
-    cache_legacy_training_advice,
     cache_recommended_training,
     cache_recovery_model,
     cache_training_forecast,
@@ -133,10 +132,6 @@ def main() -> None:
         "recovery-model",
         help="Calculate Xert recovery days from direct web model inputs",
     )
-    subparsers.add_parser(
-        "legacy-training-advice",
-        help="Cache legacy Xert training advice from the old Appspot proxy",
-    )
     recommended = subparsers.add_parser(
         "recommended-training",
         help="Cache Xert recommended workouts for a date",
@@ -252,14 +247,6 @@ def main() -> None:
 
     if args.command == "recovery-model":
         artifacts = cache_recovery_model(
-            username=credentials.username,
-            password=credentials.password,
-        )
-        _print_artifacts(artifacts)
-        return
-
-    if args.command == "legacy-training-advice":
-        artifacts = cache_legacy_training_advice(
             username=credentials.username,
             password=credentials.password,
         )

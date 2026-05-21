@@ -19,17 +19,6 @@ def latest_recovery_model(data_dir: str | Path = DATA_DIR) -> dict[str, Any]:
     return json.loads(model_paths[-1].read_text(encoding="utf-8"))
 
 
-def latest_legacy_training_advice(data_dir: str | Path = DATA_DIR) -> dict[str, Any]:
-    """Load the newest legacy proxy advice document when available."""
-
-    xert_dir = Path(data_dir) / "xert"
-    advice_paths = sorted(xert_dir.glob("legacy_training_advice_*.json"))
-    advice_paths.extend(sorted(xert_dir.glob("training_advice_*.json")))
-    if not advice_paths:
-        return {}
-    return json.loads(advice_paths[-1].read_text(encoding="utf-8"))
-
-
 def main() -> None:
     model = latest_recovery_model()
     at_state = model.get("at_state") or {}

@@ -126,14 +126,6 @@ from `/profile/settings`, and calculates recovery days and workout capacity
 locally. Negative recovery hours mean the athlete is on the fresh side of the
 relevant Xert threshold.
 
-The old Appspot proxy is kept only as a legacy fallback:
-
-```bash
-python3 -B scripts/cache_xert.py legacy-training-advice
-```
-
-Use it only for explicit comparisons against the previous proxy behaviour.
-
 ### Xert web calendar endpoints
 
 Some Xert calendar functionality is available only through an authenticated web
@@ -232,7 +224,6 @@ data/
         activity.json
     training_info_2026-05-14.json
     recovery_model_2026-05-14.json
-    legacy_training_advice_2026-05-14.json
 ```
 
 For recurring local use, whitelist the narrow command prefix:

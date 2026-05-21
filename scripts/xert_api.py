@@ -26,10 +26,6 @@ from zoneinfo import ZoneInfo
 
 
 XERT_API_BASE_URL = "https://www.xertonline.com"
-XERT_LEGACY_ADVICE_URL = (
-    "https://mystic-treat-429407-f2.uc.r.appspot.com/"
-    "training-advice-with-forecast-activities"
-)
 XERT_FORECAST_PATH = "/calendar/training-forecast"
 DEFAULT_DATA_DIR = Path("data")
 LOCAL_TIMEZONE = ZoneInfo("Europe/Oslo")
@@ -203,27 +199,6 @@ def cache_training_info(
     return {"training_info_json": path}
 
 
-def cache_legacy_training_advice(
-    *,
-    username: str | None = None,
-    password: str | None = None,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
-) -> dict[str, Path]:
-    """Cache legacy Xert training advice from the old Appspot proxy.
-
-    This endpoint uses HTTP Basic Auth with the user's Xert credentials.
-    """
-
-    if not username or not password:
-        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for legacy training advice")
-    advice = fetch_legacy_training_advice(username=username, password=password)
-    xert_dir = Path(output_dir) / "xert"
-    xert_dir.mkdir(parents=True, exist_ok=True)
-    path = xert_dir / f"legacy_training_advice_{date.today().isoformat()}.json"
-    _write_json(path, advice)
-    return {"legacy_training_advice_json": path}
-
-
 def cache_recovery_model(
     *,
     username: str | None = None,
@@ -286,31 +261,6 @@ def fetch_recovery_model_with_login(*, username: str, password: str) -> dict[str
         },
         "workout_capacity": workout_capacity,
     }
-
-
-def fetch_legacy_training_advice(*, username: str, password: str) -> dict[str, Any]:
-    """Fetch Xert training advice from the legacy Appspot proxy."""
-
-    auth = base64.b64encode(f"{username}:{password}".encode()).decode()
-    request = Request(
-        XERT_LEGACY_ADVICE_URL,
-        headers={
-            "Authorization": f"Basic {auth}",
-            "Accept": "application/json",
-            "User-Agent": "training-ai/0.1 (+Xert legacy advice cache)",
-        },
-    )
-    try:
-        with urlopen(request, timeout=60) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except HTTPError as exc:
-        message = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"Xert advice request failed: HTTP {exc.code} {exc.reason}: {message}"
-        ) from exc
-    if not isinstance(payload, dict):
-        raise TypeError("Expected Xert advice endpoint to return an object")
-    return payload
 
 
 def cache_training_forecast(
