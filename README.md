@@ -179,11 +179,13 @@ Known web endpoints:
   validating the edited rows without saving. A successful save returns JSON
   with `info: "Workout saved"`. Re-fetch both `workout <path>` and `workouts`
   after saving to verify the name, duration, XSS, difficulty and interval
-  durations.
+  durations. Prefer the reusable CLI for this instead of ad hoc scripts:
+  `python3 -B scripts/cache_xert.py update-workout <path> --match-name Intervals --match-power 300 --set-duration 26:00 --name "XMB: VT2 3x26 min (300W)"`.
 - `DELETE /workout/<path>` deletes a workout when using an authenticated web
   session. Send `X-Requested-With: XMLHttpRequest`. This is destructive: only
   use it after explicit confirmation, then re-fetch `workouts` to verify the
-  workout disappeared from the library.
+  workout disappeared from the library. Prefer
+  `python3 -B scripts/cache_xert.py delete-workout <path> --yes`.
 - `GET /profile/settings` returns the profile settings page. Use the web-login
   cookie jar, parse the returned HTML, and extract embedded JSON from `<script>`
   blocks. The user/IR settings are exposed in script text containing

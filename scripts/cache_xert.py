@@ -16,7 +16,9 @@ from xert_api import (
     cache_training_info,
     cache_workout,
     cache_workouts,
+    delete_workout,
     load_xert_credentials,
+    update_workout,
 )
 
 
@@ -39,6 +41,50 @@ def main() -> None:
     subparsers.add_parser("workouts", help="Cache the user's Xert workout library")
     workout = subparsers.add_parser("workout", help="Cache one resolved Xert workout")
     workout.add_argument("path", help="Xert workout path from the workouts list")
+    update_workout_parser = subparsers.add_parser(
+        "update-workout",
+        help="Update a Xert workout through Workout Designer rows",
+    )
+    update_workout_parser.add_argument("path", help="Xert workout path")
+    update_workout_parser.add_argument("--name", help="Replacement workout name")
+    update_workout_parser.add_argument(
+        "--description",
+        help="Replacement workout description",
+    )
+    update_workout_parser.add_argument(
+        "--match-name",
+        help="Only update rows with this exact designer row name",
+    )
+    update_workout_parser.add_argument(
+        "--match-power",
+        type=float,
+        help="Only update rows with this exact power value",
+    )
+    update_workout_parser.add_argument(
+        "--set-duration",
+        help="Set matching row duration, e.g. 26:00",
+    )
+    update_workout_parser.add_argument(
+        "--set-power",
+        type=float,
+        help="Set matching row power value",
+    )
+    update_workout_parser.add_argument(
+        "--submit",
+        choices=("calculate", "save"),
+        default="save",
+        help="Use calculate to validate without saving, or save to persist",
+    )
+    delete_workout_parser = subparsers.add_parser(
+        "delete-workout",
+        help="Delete a Xert workout from the web workout library",
+    )
+    delete_workout_parser.add_argument("path", help="Xert workout path")
+    delete_workout_parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Confirm destructive deletion",
+    )
     subparsers.add_parser(
         "training-forecast",
         help="Cache Xert calendar training forecast using XERT_COOKIE",
@@ -101,6 +147,33 @@ def main() -> None:
             password=credentials.password,
         )
         _print_artifacts(artifacts)
+        return
+
+    if args.command == "update-workout":
+        result = update_workout(
+            args.path,
+            username=credentials.username,
+            password=credentials.password,
+            name=args.name,
+            description=args.description,
+            match_name=args.match_name,
+            match_power=args.match_power,
+            set_duration=args.set_duration,
+            set_power=args.set_power,
+            submit=args.submit,
+        )
+        _print_artifacts(result)
+        return
+
+    if args.command == "delete-workout":
+        if not args.yes:
+            raise SystemExit("Refusing to delete workout without --yes")
+        result = delete_workout(
+            args.path,
+            username=credentials.username,
+            password=credentials.password,
+        )
+        _print_artifacts(result)
         return
 
     if args.command == "training-forecast":

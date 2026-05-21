@@ -1143,7 +1143,7 @@ def update_workout(
         "path": path,
         "submit": submit,
         "changed_rows": changed_rows,
-        "result": result,
+        "result": summarize_workout_update_result(result),
     }
 
 
@@ -1285,6 +1285,40 @@ def post_workout_designer_form(opener, path: str, form: dict[str, str]) -> dict[
     return payload
 
 
+def summarize_workout_update_result(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return a compact summary of Xert's verbose workout update response."""
+
+    stats = payload.get("stats")
+    compact: dict[str, Any] = {
+        "result": payload.get("result"),
+        "redirect": payload.get("redirect"),
+        "error": payload.get("error"),
+        "info": payload.get("info"),
+    }
+    if isinstance(stats, dict):
+        compact["stats"] = {
+            key: stats.get(key)
+            for key in (
+                "duration",
+                "xss",
+                "xlss",
+                "xhss",
+                "xpss",
+                "difficulty",
+                "rating",
+                "focus",
+                "specRating",
+                "specificity",
+                "xep",
+                "avg_power",
+                "max_power",
+            )
+        }
+    if isinstance(payload.get("data"), list):
+        compact["data_points"] = len(payload["data"])
+    return compact
+
+
 def load_xert_credentials(env_path: str | Path = ".env") -> XertCredentials:
     """Load Xert credentials from a local dotenv-style file."""
 
@@ -1345,6 +1379,37 @@ def _activity_date(activity: dict[str, Any]) -> str:
 
 def _safe_path_part(value: str) -> str:
     return "".join(char if char.isalnum() or char in ("-", "_") else "_" for char in value)
+
+
+def _extract_html_input_value(html_text: str, name: str) -> str | None:
+    pattern = rf'<input\b[^>]*\bname="{re.escape(name)}"[^>]*>'
+    match = re.search(pattern, html_text)
+    if not match:
+        return None
+    value_match = re.search(r'\bvalue="([^"]*)"', match.group(0))
+    if not value_match:
+        return None
+    return html.unescape(value_match.group(1))
+
+
+def _extract_html_textarea_value(html_text: str, name: str) -> str | None:
+    pattern = rf'<textarea\b[^>]*\bname="{re.escape(name)}"[^>]*>(.*?)</textarea>'
+    match = re.search(pattern, html_text, flags=re.DOTALL)
+    if not match:
+        return None
+    return html.unescape(match.group(1))
+
+
+def _parse_float(value: str | None) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _numbers_equal(value: Any, expected: float) -> bool:
+    if not isinstance(value, int | float):
+        return False
+    return abs(float(value) - expected) < 1e-9
 
 
 def _date_to_unix(value: str | date, *, end_of_day: bool = False) -> int:
