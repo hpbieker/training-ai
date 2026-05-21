@@ -33,6 +33,8 @@ XERT_LEGACY_ADVICE_URL = (
 XERT_FORECAST_PATH = "/calendar/training-forecast"
 DEFAULT_DATA_DIR = Path("data")
 LOCAL_TIMEZONE = ZoneInfo("Europe/Oslo")
+DEFAULT_XERT_OAUTH_CLIENT_ID = "xert_public"
+DEFAULT_XERT_OAUTH_CLIENT_SECRET = "xert_public"
 
 RECOVERY_COMPONENTS = {
     "lo": {
@@ -116,19 +118,35 @@ class XertCredentials:
     username: str | None = None
     password: str | None = None
     cookie: str | None = None
+    oauth_client_id: str = DEFAULT_XERT_OAUTH_CLIENT_ID
+    oauth_client_secret: str = DEFAULT_XERT_OAUTH_CLIENT_SECRET
 
     def bearer_token(self) -> str:
         if self.access_token:
             return self.access_token
         if self.username and self.password:
-            token = request_xert_token(self.username, self.password)
+            token = request_xert_token(
+                self.username,
+                self.password,
+                client_id=self.oauth_client_id,
+                client_secret=self.oauth_client_secret,
+            )
             return token["access_token"]
         raise ValueError("Set XERT_ACCESS_TOKEN or XERT_USERNAME and XERT_PASSWORD")
 
 
-def request_xert_token(username: str, password: str) -> dict[str, Any]:
+def request_xert_token(
+    username: str,
+    password: str,
+    *,
+    client_id: str = DEFAULT_XERT_OAUTH_CLIENT_ID,
+    client_secret: str = DEFAULT_XERT_OAUTH_CLIENT_SECRET,
+) -> dict[str, Any]:
     """Request an OAuth token from Xert."""
 
+    client_auth = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode(
+        "ascii"
+    )
     body = urlencode(
         {
             "grant_type": "password",
@@ -140,7 +158,7 @@ def request_xert_token(username: str, password: str) -> dict[str, Any]:
         f"{XERT_API_BASE_URL}/oauth/token",
         data=body,
         headers={
-            "Authorization": "Basic eGVydF9wdWJsaWM6eGVydF9wdWJsaWM=",
+            "Authorization": f"Basic {client_auth}",
             "Content-Type": "application/x-www-form-urlencoded",
             "Accept": "application/json",
             "User-Agent": "training-ai/0.1 (+https://www.xertonline.com/API.html)",
@@ -1502,6 +1520,10 @@ def load_xert_credentials(env_path: str | Path = ".env") -> XertCredentials:
         username=values.get("XERT_USERNAME"),
         password=values.get("XERT_PASSWORD"),
         cookie=values.get("XERT_COOKIE"),
+        oauth_client_id=values.get("XERT_OAUTH_CLIENT_ID") or DEFAULT_XERT_OAUTH_CLIENT_ID,
+        oauth_client_secret=(
+            values.get("XERT_OAUTH_CLIENT_SECRET") or DEFAULT_XERT_OAUTH_CLIENT_SECRET
+        ),
     )
 
 
