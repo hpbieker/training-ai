@@ -46,6 +46,14 @@
 - Environment: `temp`, `RuuviTemperature`, `Humidity`, `RuuviHumidity`.
 - Wellness/recovery: `hrv` (rMSSD), `restingHR`, `sleepSecs`, `sleepScore`, plus `weight`, `bodyFat`, `vo2max`, `spO2`, `steps` when populated.
 
+## EatMyRide Product Codes
+
+- EatMyRide / Garmin Carb Balancer is installed on the user's outdoor cycling profile, not the indoor profile.
+- Observed `2marap` intake-event product codes from the 2026-05-22 Oslo-Fjällbacka ride:
+  - `b4` = drink.
+  - `b5` = Coop Seigmann.
+  - `b6` = SiS GO Isotonic Gel Tropical.
+
 ## Data Source Priority
 
 - Default activity-load source priority is Xert, then Garmin, then Intervals.icu.

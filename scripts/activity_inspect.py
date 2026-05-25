@@ -23,6 +23,7 @@ from analysis import (
     summarize_block,
     summarize_rows,
     half_drift,
+    usable_analysis_fields,
 )
 
 
@@ -81,8 +82,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    fields = [field.strip() for field in args.fields.split(",") if field.strip()]
     activity = resolve_activity_ref(args.activity, data_dir=args.data_dir)
+    requested_fields = [field.strip() for field in args.fields.split(",") if field.strip()]
+    fields = usable_analysis_fields(activity, requested_fields)
     rows = activity.streams
 
     result: dict[str, Any] = {
@@ -90,6 +92,7 @@ def main() -> None:
         "streams": {
             "rows": len(rows),
             "fields": list(rows[0].keys()) if rows else [],
+            "ignored_fields": sorted(set(requested_fields) - set(fields)),
             "data_quality": data_quality_summary(rows, fields),
         },
         "total": {
@@ -161,6 +164,8 @@ def activity_metadata(activity) -> dict[str, Any]:
         "weighted_average_watts": metadata.get("weighted_average_watts"),
         "average_heartrate": metadata.get("average_heartrate"),
         "max_heartrate": metadata.get("max_heartrate"),
+        "icu_ignore_hr": metadata.get("icu_ignore_hr"),
+        "icu_ignore_power": metadata.get("icu_ignore_power"),
     }
 
 
@@ -193,6 +198,7 @@ def compact_result(result: dict[str, Any], fields: list[str]) -> dict[str, Any]:
         "activity": result["activity"],
         "streams": {
             "rows": result["streams"]["rows"],
+            "ignored_fields": result["streams"].get("ignored_fields", []),
             "data_quality_flags": compact_quality(result["streams"]["data_quality"]),
         },
         "total": compact_summary_block(result["total"], fields),

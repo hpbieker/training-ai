@@ -58,6 +58,17 @@ class CachedActivity:
         intervals = self.metadata.get("icu_intervals") or []
         return intervals if isinstance(intervals, list) else []
 
+    @property
+    def ignored_stream_fields(self) -> set[str]:
+        """Stream fields that Intervals.icu has explicitly marked unreliable."""
+
+        ignored: set[str] = set()
+        if self.metadata.get("icu_ignore_hr"):
+            ignored.add("heartrate")
+        if self.metadata.get("icu_ignore_power"):
+            ignored.update({"watts", "torque"})
+        return ignored
+
 
 @dataclass(frozen=True)
 class PowerBlock:
@@ -77,6 +88,16 @@ def load_activity(activity_dir: str | Path) -> CachedActivity:
     with (path / "streams.csv").open(newline="", encoding="utf-8-sig") as file:
         streams = list(csv.DictReader(file))
     return CachedActivity(activity_dir=path, metadata=metadata, streams=streams)
+
+
+def usable_analysis_fields(
+    activity: CachedActivity,
+    fields: Iterable[str] = CORE_STREAMS,
+) -> list[str]:
+    """Return requested fields after applying Intervals.icu ignore flags."""
+
+    ignored = activity.ignored_stream_fields
+    return [field for field in fields if field not in ignored]
 
 
 def resolve_activity_ref(ref: str, *, data_dir: str | Path = DATA_DIR) -> CachedActivity:

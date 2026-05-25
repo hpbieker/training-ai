@@ -9,6 +9,7 @@ from typing import Any
 
 from xert_api import (
     cache_activity_summaries,
+    cache_calendar_notes,
     cache_recommended_training,
     cache_recovery_model,
     cache_training_forecast,
@@ -16,9 +17,12 @@ from xert_api import (
     cache_workout,
     cache_workouts,
     copy_workout,
+    copy_workout_with_rows,
     delete_workout,
     list_workouts,
     load_xert_credentials,
+    schedule_calendar_low_xss,
+    set_calendar_note,
     summarize_workout_library,
     update_workout,
 )
@@ -124,10 +128,53 @@ def main() -> None:
         type=int,
         help="Keep only this many matching rows in the copy",
     )
+    moxy_515 = subparsers.add_parser(
+        "create-moxy-515",
+        help="Create a simple Moxy 5-1-5 stepped test workout in Xert",
+    )
+    moxy_515.add_argument(
+        "--template",
+        default="pliignnw1x62b5wp",
+        help="Existing workout path to copy as the Workout Designer template",
+    )
+    moxy_515.add_argument("--name", default="Moxy 515 test")
+    moxy_515.add_argument(
+        "--description",
+        default="Linear 5-1-5 Moxy test: 5 min steps with 1 min recovery.",
+    )
+    moxy_515.add_argument("--start-watts", type=int, default=285)
+    moxy_515.add_argument("--end-watts", type=int, default=320)
+    moxy_515.add_argument("--step-watts", type=int, default=5)
+    moxy_515.add_argument("--work-duration", default="5:00")
+    moxy_515.add_argument("--recovery-duration", default="1:00")
+    moxy_515.add_argument("--recovery-watts", type=int, default=155)
+    moxy_515.add_argument("--warmup-duration", default="12:00")
+    moxy_515.add_argument("--cooldown-duration", default="3:00")
     subparsers.add_parser(
         "training-forecast",
         help="Cache Xert calendar training forecast using XERT_COOKIE",
     )
+    subparsers.add_parser(
+        "calendar-notes",
+        help="Cache Xert calendar notes",
+    )
+    set_note = subparsers.add_parser(
+        "set-calendar-note",
+        help="Set one Xert calendar note and verify it",
+    )
+    set_note.add_argument("date", help="Local calendar date, e.g. 2026-05-27")
+    set_note.add_argument("notes", help="Note text. Use an empty string to clear it.")
+    set_note.add_argument("--update-weight", action="store_true")
+    set_note.add_argument("--weight", type=float)
+    set_note.add_argument("--weight-units", default="kg")
+    schedule_low = subparsers.add_parser(
+        "schedule-low-xss",
+        help="Schedule a manual low-XSS calendar entry and verify it",
+    )
+    schedule_low.add_argument("date", help="Local calendar date, e.g. 2026-05-26")
+    schedule_low.add_argument("low_xss", type=float, help="Low XSS to schedule")
+    schedule_low.add_argument("--title", default="Pure Endurance Training")
+    schedule_low.add_argument("--at", help="Local start time, e.g. 12:00")
     subparsers.add_parser(
         "recovery-model",
         help="Calculate Xert recovery days from direct web model inputs",
@@ -236,6 +283,27 @@ def main() -> None:
         _print_artifacts(result)
         return
 
+    if args.command == "create-moxy-515":
+        result = copy_workout_with_rows(
+            args.template,
+            username=credentials.username,
+            password=credentials.password,
+            name=args.name,
+            description=args.description,
+            rows=_build_moxy_515_rows(
+                start_watts=args.start_watts,
+                end_watts=args.end_watts,
+                step_watts=args.step_watts,
+                work_duration=args.work_duration,
+                recovery_duration=args.recovery_duration,
+                recovery_watts=args.recovery_watts,
+                warmup_duration=args.warmup_duration,
+                cooldown_duration=args.cooldown_duration,
+            ),
+        )
+        _print_artifacts(result)
+        return
+
     if args.command == "training-forecast":
         artifacts = cache_training_forecast(
             cookie=credentials.cookie,
@@ -243,6 +311,43 @@ def main() -> None:
             password=credentials.password,
         )
         _print_artifacts(artifacts)
+        return
+
+    if args.command == "calendar-notes":
+        artifacts = cache_calendar_notes(
+            username=credentials.username,
+            password=credentials.password,
+        )
+        _print_artifacts(artifacts)
+        return
+
+    if args.command == "set-calendar-note":
+        result = set_calendar_note(
+            args.date,
+            args.notes,
+            username=credentials.username,
+            password=credentials.password,
+            update_weight=args.update_weight,
+            weight=args.weight,
+            weight_units=args.weight_units,
+        )
+        _print_artifacts(result)
+        if not result.get("success"):
+            raise SystemExit("Xert calendar note verification failed")
+        return
+
+    if args.command == "schedule-low-xss":
+        result = schedule_calendar_low_xss(
+            args.date,
+            args.low_xss,
+            username=credentials.username,
+            password=credentials.password,
+            title=args.title,
+            at=args.at,
+        )
+        _print_artifacts(result)
+        if not result.get("success"):
+            raise SystemExit("Xert low-XSS calendar verification failed")
         return
 
     if args.command == "recovery-model":
@@ -295,6 +400,59 @@ def _print_workout_summary(rows: list[dict[str, Any]]) -> None:
     print("  ".join("-" * widths[key] for key, _label in columns))
     for row in rows:
         print("  ".join(_format_cell(row.get(key)).ljust(widths[key]) for key, _label in columns))
+
+
+def _build_moxy_515_rows(
+    *,
+    start_watts: int,
+    end_watts: int,
+    step_watts: int,
+    work_duration: str,
+    recovery_duration: str,
+    recovery_watts: int,
+    warmup_duration: str,
+    cooldown_duration: str,
+) -> list[dict[str, Any]]:
+    if step_watts <= 0:
+        raise ValueError("step_watts must be positive")
+    if end_watts < start_watts:
+        raise ValueError("end_watts must be greater than or equal to start_watts")
+    watts = list(range(start_watts, end_watts + 1, step_watts))
+    if not watts or watts[-1] != end_watts:
+        raise ValueError("end_watts must align with start_watts and step_watts")
+
+    rows: list[dict[str, Any]] = []
+
+    def add_row(name: str, duration: str, power: dict[str, Any]) -> None:
+        sequence = len(rows)
+        rows.append(
+            {
+                "DT_RowId": str(sequence),
+                "duration": {"value": duration, "type": "absolute"},
+                "interval_count": "1",
+                "name": name,
+                "power": power,
+                "rib_duration": {"value": "00:00", "type": "absolute"},
+                "rib_power": {"value": 0, "type": "absolute"},
+                "sequence": sequence,
+            }
+        )
+
+    add_row(
+        "Warmup",
+        warmup_duration,
+        {"value": 55, "second_value": 70, "type": "ramp_ftp"},
+    )
+    for index, watt in enumerate(watts):
+        add_row(f"Step {watt}W", work_duration, {"value": watt, "type": "absolute"})
+        if index != len(watts) - 1:
+            add_row(
+                "Recovery",
+                recovery_duration,
+                {"value": recovery_watts, "type": "absolute"},
+            )
+    add_row("Cooldown", cooldown_duration, {"value": 45, "type": "relative_ftp"})
+    return rows
 
 
 def _format_cell(value: Any) -> str:

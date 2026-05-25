@@ -41,6 +41,8 @@ python3 -B scripts/cache_intervals_icu.py activity i147489723
 python3 -B scripts/cache_intervals_icu.py named VT2 --since 2026-01-01
 python3 -B scripts/cache_intervals_icu.py named VT1 --since 2026-01-01
 python3 -B scripts/cache_intervals_icu.py wellness --since 2026-01-01
+python3 -B scripts/cache_intervals_icu.py file i150612397 --kind original
+python3 -B scripts/cache_intervals_icu.py file i150612397 --kind web-original
 ```
 
 For recurring local use, whitelist the narrow command prefix:
@@ -48,6 +50,11 @@ For recurring local use, whitelist the narrow command prefix:
 ```text
 ["python3", "-B", "scripts/cache_intervals_icu.py"]
 ```
+
+`file --kind web-original` uses the web/session endpoint
+`https://intervals.icu/api/activity/<id>/file` and requires
+`INTERVALS_ICU_COOKIE` in `.env`. The regular `file --kind original` command
+uses the API-key endpoint under `/api/v1`.
 
 Metadata updates, such as renaming activities in Intervals.icu, use a separate
 script so the cache script stays download-only:
@@ -149,6 +156,18 @@ Known web endpoints:
   returns the current Forecast AI calendar days.
 - `GET /calendar/forecast-activities-close/<YYYY-MM-DD>` returns nearby
   forecast/calendar activities, training status array and target-event context.
+- `GET /calendar/get-notes` returns calendar notes keyed by local calendar date
+  for the authenticated user. It does not need `forUser` for the current user.
+  Prefer `python3 -B scripts/cache_xert.py calendar-notes`, which writes the
+  response to `data/xert/calendar_notes_<date>.json`.
+- `POST /calendar/save-notes` updates one calendar note. Prefer
+  `python3 -B scripts/cache_xert.py set-calendar-note YYYY-MM-DD "VT1"`, which
+  sends the minimal JSON payload and then reads back `get-notes` to verify.
+  The date argument is a user-local calendar date; the helper converts local
+  midnight to Xert's UTC ISO value, for example Oslo `2026-05-27` becomes
+  `2026-05-26T22:00:00.000Z`. The web request needs only the authenticated
+  cookie jar plus `Content-Type: application/json`, `X-CSRF-TOKEN` and
+  `X-Requested-With: XMLHttpRequest`.
 - `GET /recommended-training?recent=true&date=<UTC-ISO>&additional=false&sport=Cycling`
   returns Xert workout/activity recommendations for a date. The `exercises`
   array contains recommended workouts and activities, not only a small
@@ -299,6 +318,45 @@ python3 -B scripts/cache_garmin.py activity i148448596
 performance condition and secondary Garmin load context. It accepts either a
 Garmin activity id or a cached Intervals.icu activity id; for Intervals
 activities from Garmin Connect it uses `external_id` as the Garmin activity id.
+
+Garmin FIT files can also contain Connect IQ developer fields that are not
+exposed cleanly through Garmin's JSON activity details. For EatMyRide / Garmin
+Carb Balancer, observed outdoor-profile FIT files contain a record-level field:
+
+```text
+app id: fa9d9beb-870b-4924-bb73-df0f53b31a40
+field name: 2marap
+unit: g
+developer index: 4
+developer field: 132
+global message: 20 (record)
+payload: 4 raw bytes
+```
+
+`2marap` is the newer packet/event format. The fourth byte behaves like a
+packet/sequence byte. In the 2026-05-22 Oslo-Fjällbacka ride, intake events
+matched packets shaped like
+`[product_code, 0x8e, 0x02, 0x02]`. The product-code mapping is user-specific
+and lives in `PREFERENCES.md`. Outdoor rides without logged intake are useful
+negative controls because the `2marap` stream can exist even when no intake
+events were recorded.
+
+Older FIT files may contain `1marap` from the same app id. This is a legacy
+packed format rather than the `2marap` event/packet format. The current helper
+decodes it experimentally as two tenths-of-grams counters and reports them
+under `legacy_1marap`; do not treat those counter labels as fully verified.
+
+Use the local FIT helper for a quick EatMyRide underfueling/depletion check:
+
+```bash
+python3 -B scripts/eatmyride_fit.py data/garmin/activities/2026-05-22_22973716239/activity.fit
+```
+
+The current quick estimate treats packet `01` as processed intake in tenths of
+grams and packet `1c` as a burn/depletion candidate in grams. The reported
+net-depletion estimate is therefore `1c - 01/10`, plus the same calculation for
+the final window. This is a pragmatic FIT-field estimate, not a complete
+reimplementation of EatMyRide's app-side model.
 
 Build a compact readiness context for chat after refreshing caches:
 

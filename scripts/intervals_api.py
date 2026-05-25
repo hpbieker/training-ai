@@ -22,7 +22,7 @@ from urllib.request import Request, urlopen
 INTERVALS_API_BASE_URL = "https://intervals.icu/api/v1"
 DEFAULT_DATA_DIR = Path("data")
 
-ActivityFileKind = Literal["original", "fit"]
+ActivityFileKind = Literal["original", "fit", "web-original"]
 
 
 @dataclass(frozen=True)
@@ -228,6 +228,60 @@ def cache_activity_streams(
     }
 
 
+def cache_activity_file(
+    *,
+    activity_id: str,
+    activity_summary: dict[str, Any] | None = None,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    cookie: str | None = None,
+    output_dir: str | Path = DEFAULT_DATA_DIR,
+    kind: ActivityFileKind = "original",
+) -> dict[str, Path]:
+    """Cache the original or generated FIT file for one Intervals.icu activity."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    detail = _request_json(
+        f"/activity/{activity_id}",
+        credentials,
+        params={"intervals": "true"},
+    )
+    activity = activity_summary or detail
+    activity_dir = _activity_cache_dir(output_path, activity)
+    files_dir = activity_dir / "files"
+    files_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata_path = activity_dir / "activity.json"
+    _write_json(metadata_path, detail)
+
+    if kind == "web-original":
+        download_path = _download_activity_web_file(
+            activity_id=activity_id,
+            cookie=cookie or load_intervals_icu_cookie(),
+            output_dir=files_dir,
+            original_file_type=str((activity_summary or detail).get("file_type") or "fit"),
+        )
+    else:
+        download_path = _download_activity_file(
+            activity_id=activity_id,
+            credentials=credentials,
+            output_dir=files_dir,
+            kind=kind,
+            original_file_type=str((activity_summary or detail).get("file_type") or "fit"),
+        )
+    return {
+        "activity_dir": activity_dir,
+        "activity_metadata": metadata_path,
+        "activity_file": download_path,
+    }
+
+
 def download_latest_activity_streams(**kwargs: Any) -> dict[str, Path]:
     """Backward-compatible alias for ``cache_latest_activity_streams``."""
 
@@ -337,6 +391,17 @@ def load_intervals_icu_api_key(env_path: str | Path = ".env") -> str:
     raise KeyError(f"INTERVALS_ICU_API_KEY not found in {path}")
 
 
+def load_intervals_icu_cookie(env_path: str | Path = ".env") -> str:
+    """Load ``INTERVALS_ICU_COOKIE`` from a local dotenv-style file."""
+
+    path = Path(env_path)
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, separator, value = line.partition("=")
+        if separator and key.strip() == "INTERVALS_ICU_COOKIE":
+            return value.strip().strip('"').strip("'")
+    raise KeyError(f"INTERVALS_ICU_COOKIE not found in {path}")
+
+
 def _request_json(
     path: str,
     credentials: IntervalsIcuCredentials,
@@ -398,19 +463,52 @@ def _download_activity_file(
 ) -> Path:
     if kind == "fit":
         path = f"/activity/{activity_id}/fit-file"
-        suffix = ".fit"
+        filename = f"{activity_id}_intervals.fit"
     elif kind == "original":
         path = f"/activity/{activity_id}/file"
-        suffix = f".{original_file_type.lower()}"
+        filename = f"{activity_id}_original.{original_file_type.lower()}"
     else:
         raise ValueError("activity_file_kind must be 'fit' or 'original'")
 
     compressed = _request_bytes(path, credentials)
-    output_file = output_dir / f"{activity_id}{suffix}"
+    output_file = output_dir / filename
     try:
         output_file.write_bytes(gzip.decompress(compressed))
     except gzip.BadGzipFile:
         output_file.write_bytes(compressed)
+    return output_file
+
+
+def _download_activity_web_file(
+    *,
+    activity_id: str,
+    cookie: str,
+    output_dir: Path,
+    original_file_type: str,
+) -> Path:
+    path = f"https://intervals.icu/api/activity/{activity_id}/file"
+    request = Request(
+        path,
+        headers={
+            "Accept": "*/*",
+            "Cookie": cookie,
+            "User-Agent": "training-ai/0.1 (+https://intervals.icu web file client)",
+        },
+    )
+    try:
+        with urlopen(request, timeout=60) as response:
+            body = response.read()
+    except HTTPError as exc:
+        message = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(
+            f"Intervals.icu web file request failed: HTTP {exc.code} {exc.reason}: {message}"
+        ) from exc
+
+    output_file = output_dir / f"{activity_id}_web_original.{original_file_type.lower()}"
+    try:
+        output_file.write_bytes(gzip.decompress(body))
+    except gzip.BadGzipFile:
+        output_file.write_bytes(body)
     return output_file
 
 

@@ -16,7 +16,7 @@ import math
 import re
 from html.parser import HTMLParser
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.error import HTTPError
@@ -289,6 +289,177 @@ def cache_training_forecast(
     path = xert_dir / f"training_forecast_{date.today().isoformat()}.json"
     _write_json(path, forecast)
     return {"training_forecast_json": path}
+
+
+def cache_calendar_notes(
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    output_dir: str | Path = DEFAULT_DATA_DIR,
+) -> dict[str, Path]:
+    """Cache Xert calendar notes from the authenticated web calendar."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    opener = xert_web_login(username=username, password=password)
+    notes = fetch_calendar_notes_with_opener(opener)
+    xert_dir = Path(output_dir) / "xert"
+    xert_dir.mkdir(parents=True, exist_ok=True)
+    path = xert_dir / f"calendar_notes_{date.today().isoformat()}.json"
+    _write_json(path, notes)
+    return {"calendar_notes_json": path}
+
+
+def fetch_calendar_notes_with_opener(opener) -> dict[str, Any]:
+    """Fetch Xert calendar notes for the authenticated user."""
+
+    body = _open_text(
+        opener,
+        Request(
+            f"{XERT_API_BASE_URL}/calendar/get-notes",
+            headers={
+                "Accept": "application/json",
+                "X-Requested-With": "XMLHttpRequest",
+                "User-Agent": "training-ai/0.1 (+Xert calendar notes)",
+            },
+        ),
+        "Xert calendar notes",
+    )
+    notes = json.loads(body)
+    if not isinstance(notes, dict):
+        raise TypeError("Expected Xert calendar notes endpoint to return an object")
+    return notes
+
+
+def set_calendar_note(
+    note_date: str | date,
+    notes: str,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    update_weight: bool = False,
+    weight: float | None = None,
+    weight_units: str = "kg",
+) -> dict[str, Any]:
+    """Set one Xert calendar note and verify it through get-notes."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    day = _coerce_date(note_date)
+    opener = xert_web_login(username=username, password=password)
+    csrf_token = fetch_my_fitness_csrf_token(opener)
+    payload = {
+        "notes": notes,
+        "weight": "" if weight is None else weight,
+        "weight_units": weight_units,
+        "date": _xert_calendar_date_iso(day),
+        "forUser": username,
+        "updateWeight": "true" if update_weight else "false",
+    }
+    request = Request(
+        f"{XERT_API_BASE_URL}/calendar/save-notes",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": csrf_token,
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "training-ai/0.1 (+Xert calendar save-notes)",
+        },
+        method="POST",
+    )
+    response_body = _open_text(opener, request, "Xert calendar save-notes")
+    verified_notes = fetch_calendar_notes_with_opener(opener)
+    date_key = day.isoformat()
+    verified = verified_notes.get(date_key)
+    return {
+        "date": date_key,
+        "payload": payload,
+        "response": response_body,
+        "verified": verified,
+        "verified_notes": (verified or {}).get("notes") if isinstance(verified, dict) else None,
+        "success": isinstance(verified, dict) and verified.get("notes") == notes,
+    }
+
+
+def schedule_calendar_low_xss(
+    event_date: str | date,
+    low_xss: float,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    title: str | None = None,
+    at: str | None = None,
+) -> dict[str, Any]:
+    """Schedule or replace a Xert calendar placeholder with low XSS."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    day = _coerce_date(event_date)
+    opener = xert_web_login(username=username, password=password)
+    csrf_token = fetch_my_fitness_csrf_token(opener)
+    before = fetch_training_forecast_with_opener(opener)
+    existing = _find_forecast_day(before, day)
+    start = _local_calendar_datetime(day, at) if at else _forecast_day_start(existing, day)
+    payload = {
+        "manualExercise": True,
+        "sport": "Cycling",
+        "duration": 0,
+        "title": title or "Pure Endurance Training",
+        "start_date": _iso_z(start),
+        "end_date": _iso_z(start),
+        "distance": 0,
+        "focus": "Endurance",
+        "sfd": 3600,
+        "description": None,
+        "specificity_rating": "Pure",
+        "sp": 1,
+        "xss": low_xss,
+        "xlss": f"{low_xss:g}",
+        "xhss": 0,
+        "xpss": 0,
+        "options": _calendar_event_options(existing),
+    }
+    request = Request(
+        f"{XERT_API_BASE_URL}/createCalendarEvent",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": csrf_token,
+            "X-Requested-With": "XMLHttpRequest",
+            "User-Agent": "training-ai/0.1 (+Xert create calendar event)",
+        },
+        method="POST",
+    )
+    response_body = _open_text(opener, request, "Xert createCalendarEvent")
+    after = fetch_training_forecast_with_opener(opener)
+    verified = _find_forecast_day(after, day)
+    return {
+        "date": day.isoformat(),
+        "payload": payload,
+        "response": response_body,
+        "verified": verified,
+        "success": _is_low_xss_match(verified, low_xss),
+    }
+
+
+def fetch_my_fitness_csrf_token(opener) -> str:
+    """Fetch the CSRF token embedded in Xert's my-fitness page."""
+
+    html_text = _open_text(
+        opener,
+        Request(
+            f"{XERT_API_BASE_URL}/my-fitness",
+            headers={"User-Agent": "training-ai/0.1 (+Xert my-fitness csrf)"},
+        ),
+        "Xert my-fitness",
+    )
+    token = CsrfTokenParser.from_html(html_text)
+    if not token:
+        token_match = re.search(r"Xert\._csrfToken\s*=\s*\"([^\"]+)\"", html_text)
+        token = token_match.group(1) if token_match else None
+    if not token:
+        raise TypeError("Expected Xert my-fitness page to include a CSRF token")
+    return token
 
 
 def cache_recommended_training(
@@ -768,6 +939,85 @@ def _parse_xert_datetime(raw: str) -> datetime | None:
         return None
 
 
+def _coerce_date(value: str | date) -> date:
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
+
+
+def _xert_calendar_date_iso(day: date) -> str:
+    local_midnight = datetime.combine(day, time.min, tzinfo=LOCAL_TIMEZONE)
+    return local_midnight.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00",
+        "Z",
+    )
+
+
+def _local_calendar_datetime(day: date, at: str) -> datetime:
+    hour_text, minute_text = at.split(":", 1)
+    local_value = datetime.combine(
+        day,
+        time(int(hour_text), int(minute_text)),
+        tzinfo=LOCAL_TIMEZONE,
+    )
+    return local_value.astimezone(timezone.utc)
+
+
+def _iso_z(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace(
+        "+00:00",
+        "Z",
+    )
+
+
+def _find_forecast_day(forecast: dict[str, Any], day: date) -> dict[str, Any] | None:
+    for entry in forecast.get("days") or []:
+        if not isinstance(entry, dict):
+            continue
+        start = _forecast_day_start(entry, day)
+        if start.astimezone(LOCAL_TIMEZONE).date() == day:
+            return entry
+    return None
+
+
+def _forecast_day_start(entry: dict[str, Any] | None, fallback_day: date) -> datetime:
+    if entry:
+        if entry.get("start_date"):
+            parsed = _parse_xert_datetime(str(entry["start_date"]))
+            if parsed:
+                return parsed
+        if entry.get("t") is not None:
+            return datetime.fromtimestamp(float(entry["t"]), tz=timezone.utc)
+    return datetime.combine(fallback_day, time.min, tzinfo=LOCAL_TIMEZONE).astimezone(
+        timezone.utc
+    )
+
+
+def _calendar_event_options(existing: dict[str, Any] | None) -> dict[str, Any]:
+    options: dict[str, Any] = {
+        "state": ["scheduled", "manualEntry"],
+    }
+    if existing:
+        state = existing.get("state") or []
+        if "forecast" in state:
+            options["state"].append("forecast")
+        options["planned"] = True
+        if existing.get("path"):
+            options["edit_id"] = existing["path"]
+    return options
+
+
+def _is_low_xss_match(entry: dict[str, Any] | None, low_xss: float) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    return (
+        math.isclose(float(entry.get("xss") or 0), low_xss, abs_tol=0.5)
+        and math.isclose(float(entry.get("xlss") or 0), low_xss, abs_tol=0.5)
+        and math.isclose(float(entry.get("xhss") or 0), 0, abs_tol=0.1)
+        and math.isclose(float(entry.get("xpss") or 0), 0, abs_tol=0.1)
+    )
+
+
 def _open_text(opener, request: Request, label: str) -> str:
     try:
         with opener.open(request, timeout=60) as response:
@@ -1218,6 +1468,42 @@ def copy_workout(
         "removed_rows": removed_rows,
         "result": summary,
         "rename_result": rename_result,
+        "verification": verification,
+    }
+
+
+def copy_workout_with_rows(
+    path: str,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    name: str,
+    description: str | None = None,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Copy a Xert workout and replace its Workout Designer rows."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    opener = xert_web_login(username=username, password=password)
+    page = fetch_workout_designer_page(opener, path)
+    form = workout_designer_form_payload(
+        page,
+        rows=rows,
+        name=name,
+        description=description,
+        submit="copy",
+    )
+    result = post_workout_designer_form(opener, path, form)
+    summary = summarize_workout_update_result(result)
+    new_path = workout_path_from_redirect(summary.get("redirect"))
+    verification = verify_workout_page(opener, new_path) if new_path else None
+    return {
+        "source_path": path,
+        "path": new_path,
+        "submit": "copy",
+        "row_count": len(rows),
+        "result": summary,
         "verification": verification,
     }
 
