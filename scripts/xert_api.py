@@ -16,7 +16,7 @@ import math
 import re
 from html.parser import HTMLParser
 from dataclasses import dataclass
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 from urllib.error import HTTPError
@@ -389,6 +389,9 @@ def schedule_calendar_low_xss(
     password: str | None = None,
     title: str | None = None,
     at: str | None = None,
+    high_xss: float = 0.0,
+    peak_xss: float = 0.0,
+    duration_hours: float = 0.0,
 ) -> dict[str, Any]:
     """Schedule or replace a Xert calendar placeholder with low XSS."""
 
@@ -400,23 +403,26 @@ def schedule_calendar_low_xss(
     before = fetch_training_forecast_with_opener(opener)
     existing = _find_forecast_day(before, day)
     start = _local_calendar_datetime(day, at) if at else _forecast_day_start(existing, day)
+    duration_seconds = max(0, int(round(duration_hours * 3600)))
+    end = start + timedelta(seconds=duration_seconds)
+    total_xss = low_xss + high_xss + peak_xss
     payload = {
         "manualExercise": True,
         "sport": "Cycling",
-        "duration": 0,
+        "duration": duration_seconds,
         "title": title or "Pure Endurance Training",
         "start_date": _iso_z(start),
-        "end_date": _iso_z(start),
+        "end_date": _iso_z(end),
         "distance": 0,
         "focus": "Endurance",
         "sfd": 3600,
         "description": None,
         "specificity_rating": "Pure",
         "sp": 1,
-        "xss": low_xss,
+        "xss": total_xss,
         "xlss": f"{low_xss:g}",
-        "xhss": 0,
-        "xpss": 0,
+        "xhss": f"{high_xss:g}",
+        "xpss": f"{peak_xss:g}",
         "options": _calendar_event_options(existing),
     }
     request = Request(
@@ -438,7 +444,7 @@ def schedule_calendar_low_xss(
         "payload": payload,
         "response": response_body,
         "verified": verified,
-        "success": _is_low_xss_match(verified, low_xss),
+        "success": _is_xss_split_match(verified, low_xss, high_xss, peak_xss),
     }
 
 
@@ -1007,14 +1013,20 @@ def _calendar_event_options(existing: dict[str, Any] | None) -> dict[str, Any]:
     return options
 
 
-def _is_low_xss_match(entry: dict[str, Any] | None, low_xss: float) -> bool:
+def _is_xss_split_match(
+    entry: dict[str, Any] | None,
+    low_xss: float,
+    high_xss: float = 0.0,
+    peak_xss: float = 0.0,
+) -> bool:
     if not isinstance(entry, dict):
         return False
+    total_xss = low_xss + high_xss + peak_xss
     return (
-        math.isclose(float(entry.get("xss") or 0), low_xss, abs_tol=0.5)
+        math.isclose(float(entry.get("xss") or 0), total_xss, abs_tol=0.5)
         and math.isclose(float(entry.get("xlss") or 0), low_xss, abs_tol=0.5)
-        and math.isclose(float(entry.get("xhss") or 0), 0, abs_tol=0.1)
-        and math.isclose(float(entry.get("xpss") or 0), 0, abs_tol=0.1)
+        and math.isclose(float(entry.get("xhss") or 0), high_xss, abs_tol=0.1)
+        and math.isclose(float(entry.get("xpss") or 0), peak_xss, abs_tol=0.1)
     )
 
 
@@ -1133,7 +1145,8 @@ def cache_activity_summaries(
     output_dir: str | Path = DEFAULT_DATA_DIR,
     include_details: bool = True,
     include_session_data: bool = False,
-) -> dict[str, Path]:
+    refresh: bool = False,
+) -> dict[str, Any]:
     """Cache Xert activity list and per-activity summary details."""
 
     credentials = XertCredentials(
@@ -1171,19 +1184,50 @@ def cache_activity_summaries(
         "activities_json": list_json,
         "activities_csv": list_csv,
     }
+    cached_count = 0
+    skipped_count = 0
     if include_details:
         for activity in activities:
             path = _activity_path(activity)
+            activity_dir = _activity_cache_dir(activities_dir, activity)
+            activity_dir.mkdir(parents=True, exist_ok=True)
+            activity_json = activity_dir / "activity.json"
+            if not refresh and _xert_activity_detail_satisfies(
+                activity_json,
+                include_session_data=include_session_data,
+            ):
+                skipped_count += 1
+                continue
             detail = fetch_activity_detail(
                 path,
                 access_token=token,
                 include_session_data=include_session_data,
             )
-            activity_dir = _activity_cache_dir(activities_dir, activity)
-            activity_dir.mkdir(parents=True, exist_ok=True)
-            _write_json(activity_dir / "activity.json", detail)
+            _write_json(activity_json, detail)
+            cached_count += 1
         artifacts["activities_dir"] = activities_dir
+        artifacts["cached_details"] = cached_count
+        artifacts["skipped_details"] = skipped_count
     return artifacts
+
+
+def _xert_activity_detail_satisfies(
+    activity_json: Path,
+    *,
+    include_session_data: bool,
+) -> bool:
+    """Return true when an existing Xert activity detail has the requested detail level."""
+
+    if not activity_json.exists():
+        return False
+    if not include_session_data:
+        return True
+    try:
+        payload = json.loads(activity_json.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return False
+    session_data = payload.get("session_data")
+    return isinstance(session_data, list) and len(session_data) > 0
 
 
 def fetch_activity_detail(

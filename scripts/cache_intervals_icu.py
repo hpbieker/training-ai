@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 from intervals_api import (
@@ -56,6 +57,25 @@ def main() -> None:
     outdoor = subparsers.add_parser("outdoor", help="Cache outdoor ride streams")
     outdoor.add_argument("--since", default=f"{date.today().year}-01-01")
     outdoor.add_argument("--until", default=date.today().isoformat())
+
+    indoor = subparsers.add_parser("indoor", help="Cache indoor/trainer ride streams")
+    indoor.add_argument("--since", default=f"{date.today().year}-01-01")
+    indoor.add_argument("--until", default=date.today().isoformat())
+    indoor.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-download activities that are already cached",
+    )
+
+    tireless = subparsers.add_parser("tireless", help="Cache long Tireless indoor rides")
+    tireless.add_argument("--since", default="2022-01-01")
+    tireless.add_argument("--until", default=date.today().isoformat())
+    tireless.add_argument("--min-minutes", type=float, default=180.0)
+    tireless.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-download activities that are already cached",
+    )
 
     hard_indoor = subparsers.add_parser(
         "hard-indoor",
@@ -166,6 +186,48 @@ def main() -> None:
         _cache_activity_matches(matches, api_key=api_key)
         return
 
+    if args.command == "indoor":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        matches = [
+            activity
+            for activity in activities
+            if _is_indoor_ride(activity)
+        ]
+        _cache_activity_matches(
+            matches,
+            api_key=api_key,
+            skip_existing=not args.refresh,
+        )
+        return
+
+    if args.command == "tireless":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        min_seconds = args.min_minutes * 60
+        matches = [
+            activity
+            for activity in activities
+            if _is_indoor_ride(activity)
+            and "tireless" in str(activity.get("name") or "").lower()
+            and (
+                float(activity.get("elapsed_time") or activity.get("moving_time") or 0)
+                >= min_seconds
+            )
+        ]
+        _cache_activity_matches(
+            matches,
+            api_key=api_key,
+            skip_existing=not args.refresh,
+        )
+        return
+
     if args.command == "hard-indoor":
         activities = list_activities(
             api_key=api_key,
@@ -212,19 +274,47 @@ def _cache_activity_matches(
     matches: list[dict[str, Any]],
     *,
     api_key: str,
+    skip_existing: bool = False,
 ) -> None:
+    cached_count = 0
+    skipped_count = 0
     for activity in sorted(matches, key=lambda item: item.get("start_date_local") or ""):
+        if skip_existing and _activity_is_cached(activity):
+            skipped_count += 1
+            continue
         artifacts = cache_activity_streams(
             activity_id=activity["id"],
             activity_summary=activity,
             api_key=api_key,
         )
+        cached_count += 1
         print(
             f"cached {activity.get('start_date_local')} "
             f"{activity.get('id')} {activity.get('name')}"
         )
         _print_artifacts(artifacts, indent="  ")
-    print(f"cached_count: {len(matches)}")
+    print(f"matched_count: {len(matches)}")
+    print(f"cached_count: {cached_count}")
+    if skip_existing:
+        print(f"skipped_existing_count: {skipped_count}")
+
+
+def _is_indoor_ride(activity: dict[str, Any]) -> bool:
+    activity_type = str(activity.get("type") or "").lower()
+    if activity_type not in {"ride", "virtualride"}:
+        return False
+    return (
+        activity_type == "virtualride"
+        or activity.get("trainer") is True
+        or activity.get("indoor") is True
+    )
+
+
+def _activity_is_cached(activity: dict[str, Any]) -> bool:
+    activity_id = str(activity.get("id") or "")
+    if not activity_id:
+        return False
+    return any(Path("data/activities").glob(f"*_{activity_id}/streams.csv"))
 
 
 if __name__ == "__main__":

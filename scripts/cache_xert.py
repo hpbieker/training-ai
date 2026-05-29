@@ -42,6 +42,11 @@ def main() -> None:
         action="store_true",
         help="Also cache per-second Xert session data such as MPA/XDS/TWS",
     )
+    activities.add_argument(
+        "--refresh",
+        action="store_true",
+        help="Re-download activity details that are already cached",
+    )
 
     subparsers.add_parser("training-info", help="Cache current Xert training info")
     workouts = subparsers.add_parser("workouts", help="Cache the user's Xert workout library")
@@ -173,8 +178,11 @@ def main() -> None:
     )
     schedule_low.add_argument("date", help="Local calendar date, e.g. 2026-05-26")
     schedule_low.add_argument("low_xss", type=float, help="Low XSS to schedule")
+    schedule_low.add_argument("--high-xss", type=float, default=0.0)
+    schedule_low.add_argument("--peak-xss", type=float, default=0.0)
     schedule_low.add_argument("--title", default="Pure Endurance Training")
     schedule_low.add_argument("--at", help="Local start time, e.g. 12:00")
+    schedule_low.add_argument("--duration-hours", type=float, default=0.0)
     subparsers.add_parser(
         "recovery-model",
         help="Calculate Xert recovery days from direct web model inputs",
@@ -199,6 +207,7 @@ def main() -> None:
             oldest=args.since,
             newest=args.until,
             include_session_data=args.session_data,
+            refresh=args.refresh,
         )
         _print_artifacts(artifacts)
         return
@@ -344,6 +353,9 @@ def main() -> None:
             password=credentials.password,
             title=args.title,
             at=args.at,
+            high_xss=args.high_xss,
+            peak_xss=args.peak_xss,
+            duration_hours=args.duration_hours,
         )
         _print_artifacts(result)
         if not result.get("success"):

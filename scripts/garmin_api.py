@@ -146,12 +146,13 @@ def cache_activity(
     """
 
     resolved = resolve_garmin_activity(activity)
+    summary = run_gccli_json(gccli, ["activity", "summary", resolved["garmin_id"]])
+    resolved = {**resolved, "date": summary_start_date(summary) or resolved["date"]}
     target_dir = Path(output_dir) / "activities" / f"{resolved['date']}_{resolved['garmin_id']}"
     target_dir.mkdir(parents=True, exist_ok=True)
 
     artifacts: dict[str, Path] = {}
 
-    summary = run_gccli_json(gccli, ["activity", "summary", resolved["garmin_id"]])
     summary_json = target_dir / "summary.json"
     write_json(summary_json, summary)
     artifacts["summary_json"] = summary_json
@@ -190,10 +191,11 @@ def cache_activity_summary(
     """Cache one Garmin activity's summary and summary-only metrics."""
 
     resolved = resolve_garmin_activity(activity)
+    summary = run_gccli_json(gccli, ["activity", "summary", resolved["garmin_id"]])
+    resolved = {**resolved, "date": summary_start_date(summary) or resolved["date"]}
     target_dir = Path(output_dir) / "activities" / f"{resolved['date']}_{resolved['garmin_id']}"
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    summary = run_gccli_json(gccli, ["activity", "summary", resolved["garmin_id"]])
     summary_json = target_dir / "summary.json"
     write_json(summary_json, summary)
 
@@ -257,6 +259,164 @@ def cache_pure_indoor_vt1_summaries(
         )
         artifacts.extend(cached.values())
     return artifacts
+
+
+def cache_indoor_activities(
+    since: str,
+    until: str,
+    *,
+    gccli: str,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+    limit: int = 1000,
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """Cache Garmin details for indoor cycling activities in a date range."""
+
+    activities = garmin_activity_search(gccli, since, until, limit=limit)
+    cached: list[Path] = []
+    skipped: list[str] = []
+    failed: list[dict[str, str]] = []
+    considered = 0
+
+    for activity in activities:
+        if not is_indoor_cycling_activity(activity):
+            continue
+        activity_id = str(activity.get("activityId") or "")
+        if not activity_id:
+            continue
+        considered += 1
+        if not refresh and garmin_activity_details_cached(activity_id, output_dir=output_dir):
+            skipped.append(activity_id)
+            print(f"skip existing {activity_id}")
+            continue
+        print(f"cache {activity_id} {activity.get('activityName') or ''}")
+        try:
+            artifacts = cache_activity(activity_id, gccli=gccli, output_dir=output_dir)
+        except subprocess.CalledProcessError as error:
+            failed.append(
+                {
+                    "activity_id": activity_id,
+                    "name": str(activity.get("activityName") or ""),
+                    "error": (error.stderr or str(error)).strip(),
+                }
+            )
+            print(f"failed {activity_id}")
+            continue
+        if details_path := artifacts.get("details_json"):
+            cached.append(details_path)
+
+    return {
+        "searched": len(activities),
+        "considered_indoor": considered,
+        "cached": cached,
+        "skipped_existing": skipped,
+        "failed": failed,
+    }
+
+
+def cache_activities(
+    since: str,
+    until: str,
+    *,
+    gccli: str,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+    limit: int = 1000,
+    refresh: bool = False,
+) -> dict[str, Any]:
+    """Cache Garmin details for all activities in a date range."""
+
+    activities = garmin_activity_search(gccli, since, until, limit=limit)
+    cached: list[Path] = []
+    skipped: list[str] = []
+    failed: list[dict[str, str]] = []
+
+    for activity in activities:
+        activity_id = str(activity.get("activityId") or "")
+        if not activity_id:
+            continue
+        if not refresh and garmin_activity_details_cached(activity_id, output_dir=output_dir):
+            skipped.append(activity_id)
+            print(f"skip existing {activity_id}")
+            continue
+        print(f"cache {activity_id} {activity.get('activityName') or ''}")
+        try:
+            artifacts = cache_activity(activity_id, gccli=gccli, output_dir=output_dir)
+        except subprocess.CalledProcessError as error:
+            failed.append(
+                {
+                    "activity_id": activity_id,
+                    "name": str(activity.get("activityName") or ""),
+                    "error": (error.stderr or str(error)).strip(),
+                }
+            )
+            print(f"failed {activity_id}")
+            continue
+        if details_path := artifacts.get("details_json"):
+            cached.append(details_path)
+
+    return {
+        "searched": len(activities),
+        "cached": cached,
+        "skipped_existing": skipped,
+        "failed": failed,
+    }
+
+
+def garmin_activity_search(
+    gccli: str,
+    start_date: str,
+    end_date: str,
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    payload = run_gccli_json(
+        gccli,
+        [
+            "activities",
+            "search",
+            "--start-date",
+            start_date,
+            "--end-date",
+            end_date,
+            "--limit",
+            str(limit),
+        ],
+    )
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        for key in ("activities", "activityList", "results"):
+            values = payload.get(key)
+            if isinstance(values, list):
+                return [item for item in values if isinstance(item, dict)]
+    return []
+
+
+def is_indoor_cycling_activity(activity: dict[str, Any]) -> bool:
+    activity_type = activity.get("activityType") or {}
+    type_key = str(activity_type.get("typeKey") or activity.get("activityTypeDTO", {}).get("typeKey") or "")
+    parent_type = str(activity_type.get("parentTypeId") or "")
+    name = str(activity.get("activityName") or "").lower()
+    return (
+        type_key in {"indoor_cycling", "virtual_ride"}
+        or (parent_type == "2" and "indoor" in name)
+    )
+
+
+def garmin_activity_details_cached(
+    activity_id: str,
+    *,
+    output_dir: str | Path = DEFAULT_OUTPUT_DIR,
+) -> bool:
+    return any((Path(output_dir) / "activities").glob(f"*_{activity_id}/details.json"))
+
+
+def summary_start_date(summary: dict[str, Any]) -> str | None:
+    summary_dto = summary.get("summaryDTO") or {}
+    raw = summary_dto.get("startTimeLocal") or summary.get("startTimeLocal")
+    if not raw:
+        return None
+    return str(raw)[:10]
 
 
 def garmin_activity_metrics(summary: dict[str, Any], details: dict[str, Any]) -> dict[str, Any]:
@@ -323,15 +483,14 @@ def resolve_garmin_activity(activity: str) -> dict[str, str]:
     """Resolve Garmin activity id from a Garmin id or cached Intervals activity."""
 
     candidate_path = Path(activity)
+    metadata_path: Path | None = None
     if candidate_path.exists():
         metadata_path = candidate_path / "activity.json"
     elif activity.startswith("i"):
         matches = sorted((Path("data") / "activities").glob(f"*_{activity}"))
-        metadata_path = matches[-1] / "activity.json" if matches else Path()
-    else:
-        metadata_path = Path()
+        metadata_path = matches[-1] / "activity.json" if matches else None
 
-    if metadata_path.exists():
+    if metadata_path and metadata_path.exists():
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         garmin_id = metadata.get("external_id")
         if not garmin_id:

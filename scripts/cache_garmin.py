@@ -10,9 +10,11 @@ from typing import Any
 
 from garmin_api import (
     DAILY_SPEC_CHOICES,
+    cache_activities,
     cache_activity,
     cache_activity_summary,
     cache_day,
+    cache_indoor_activities,
     cache_pure_indoor_vt1_summaries,
     cache_recent_days,
     resolve_gccli,
@@ -60,6 +62,22 @@ def main() -> None:
         help="Cache Garmin summaries for cached pure indoor VT1 activities",
     )
     vt1_summaries.add_argument("--since", default=f"{date.today().year}-01-01")
+    indoor = subparsers.add_parser(
+        "backfill-indoor",
+        help="Cache Garmin details for indoor cycling activities in a date range",
+    )
+    indoor.add_argument("--since", default=f"{date.today().year}-01-01")
+    indoor.add_argument("--until", default=date.today().isoformat())
+    indoor.add_argument("--limit", type=int, default=1000)
+    indoor.add_argument("--refresh", action="store_true")
+    activities = subparsers.add_parser(
+        "backfill-activities",
+        help="Cache Garmin details for all activities in a date range",
+    )
+    activities.add_argument("--since", default=f"{date.today().year}-01-01")
+    activities.add_argument("--until", default=date.today().isoformat())
+    activities.add_argument("--limit", type=int, default=1000)
+    activities.add_argument("--refresh", action="store_true")
     subparsers.add_parser("status", help="Show gccli auth status")
 
     args = parser.parse_args()
@@ -92,6 +110,43 @@ def main() -> None:
     if args.command == "vt1-summaries":
         for path in cache_pure_indoor_vt1_summaries(args.since, gccli=gccli):
             print(path)
+        return
+
+    if args.command == "backfill-indoor":
+        result = cache_indoor_activities(
+            args.since,
+            args.until,
+            gccli=gccli,
+            limit=args.limit,
+            refresh=args.refresh,
+        )
+        print(f"searched: {result['searched']}")
+        print(f"indoor: {result['considered_indoor']}")
+        print(f"cached: {len(result['cached'])}")
+        print(f"skipped_existing: {len(result['skipped_existing'])}")
+        print(f"failed: {len(result['failed'])}")
+        for path in result["cached"]:
+            print(path)
+        for failure in result["failed"]:
+            print(f"failed {failure['activity_id']}: {failure['name']} - {failure['error']}")
+        return
+
+    if args.command == "backfill-activities":
+        result = cache_activities(
+            args.since,
+            args.until,
+            gccli=gccli,
+            limit=args.limit,
+            refresh=args.refresh,
+        )
+        print(f"searched: {result['searched']}")
+        print(f"cached: {len(result['cached'])}")
+        print(f"skipped_existing: {len(result['skipped_existing'])}")
+        print(f"failed: {len(result['failed'])}")
+        for path in result["cached"]:
+            print(path)
+        for failure in result["failed"]:
+            print(f"failed {failure['activity_id']}: {failure['name']} - {failure['error']}")
         return
 
 

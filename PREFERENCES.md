@@ -50,9 +50,10 @@
 
 - EatMyRide / Garmin Carb Balancer is installed on the user's outdoor cycling profile, not the indoor profile.
 - Observed `2marap` intake-event product codes from the 2026-05-22 Oslo-Fjällbacka ride:
-  - `b4` = drink.
+  - `b4` = 500 ml SiS GO Energy drink.
   - `b5` = Coop Seigmann.
   - `b6` = SiS GO Isotonic Gel Tropical.
+  - `b8` = bolle.
 
 ## Data Source Priority
 
