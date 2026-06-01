@@ -1552,6 +1552,38 @@ def copy_workout_with_rows(
     }
 
 
+def replace_workout_with_rows(
+    path: str,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    name: str,
+    description: str | None = None,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Replace one workout's Workout Designer rows in place."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    opener = xert_web_login(username=username, password=password)
+    page = fetch_workout_designer_page(opener, path)
+    form = workout_designer_form_payload(
+        page,
+        rows=rows,
+        name=name,
+        description=description,
+        submit="save",
+    )
+    result = post_workout_designer_form(opener, path, form)
+    return {
+        "path": path,
+        "submit": "save",
+        "row_count": len(rows),
+        "result": summarize_workout_update_result(result),
+        "verification": verify_workout_page(opener, path),
+    }
+
+
 def delete_workout(
     path: str,
     *,

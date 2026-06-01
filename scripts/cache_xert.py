@@ -21,6 +21,7 @@ from xert_api import (
     delete_workout,
     list_workouts,
     load_xert_credentials,
+    replace_workout_with_rows,
     schedule_calendar_low_xss,
     set_calendar_note,
     summarize_workout_library,
@@ -142,6 +143,10 @@ def main() -> None:
         default="pliignnw1x62b5wp",
         help="Existing workout path to copy as the Workout Designer template",
     )
+    moxy_515.add_argument(
+        "--replace-path",
+        help="Replace an existing workout in place instead of creating a copy",
+    )
     moxy_515.add_argument("--name", default="Moxy 515 test")
     moxy_515.add_argument(
         "--description",
@@ -155,6 +160,12 @@ def main() -> None:
     moxy_515.add_argument("--recovery-watts", type=int, default=155)
     moxy_515.add_argument("--warmup-duration", default="12:00")
     moxy_515.add_argument("--cooldown-duration", default="3:00")
+    moxy_515.add_argument(
+        "--endurance-duration",
+        help="Optional steady endurance block after the final step, e.g. 45:00",
+    )
+    moxy_515.add_argument("--endurance-watts", type=int, default=205)
+    moxy_515.add_argument("--endurance-reps", type=int, default=1)
     subparsers.add_parser(
         "training-forecast",
         help="Cache Xert calendar training forecast using XERT_COOKIE",
@@ -293,22 +304,30 @@ def main() -> None:
         return
 
     if args.command == "create-moxy-515":
-        result = copy_workout_with_rows(
-            args.template,
-            username=credentials.username,
-            password=credentials.password,
-            name=args.name,
-            description=args.description,
-            rows=_build_moxy_515_rows(
-                start_watts=args.start_watts,
-                end_watts=args.end_watts,
-                step_watts=args.step_watts,
-                work_duration=args.work_duration,
-                recovery_duration=args.recovery_duration,
-                recovery_watts=args.recovery_watts,
-                warmup_duration=args.warmup_duration,
-                cooldown_duration=args.cooldown_duration,
-            ),
+        rows = _build_moxy_515_rows(
+            start_watts=args.start_watts,
+            end_watts=args.end_watts,
+            step_watts=args.step_watts,
+            work_duration=args.work_duration,
+            recovery_duration=args.recovery_duration,
+            recovery_watts=args.recovery_watts,
+            warmup_duration=args.warmup_duration,
+            cooldown_duration=args.cooldown_duration,
+            endurance_duration=args.endurance_duration,
+            endurance_watts=args.endurance_watts,
+            endurance_reps=args.endurance_reps,
+        )
+        kwargs = {
+            "username": credentials.username,
+            "password": credentials.password,
+            "name": args.name,
+            "description": args.description,
+            "rows": rows,
+        }
+        result = (
+            replace_workout_with_rows(args.replace_path, **kwargs)
+            if args.replace_path
+            else copy_workout_with_rows(args.template, **kwargs)
         )
         _print_artifacts(result)
         return
@@ -424,11 +443,16 @@ def _build_moxy_515_rows(
     recovery_watts: int,
     warmup_duration: str,
     cooldown_duration: str,
+    endurance_duration: str | None = None,
+    endurance_watts: int = 205,
+    endurance_reps: int = 1,
 ) -> list[dict[str, Any]]:
     if step_watts <= 0:
         raise ValueError("step_watts must be positive")
     if end_watts < start_watts:
         raise ValueError("end_watts must be greater than or equal to start_watts")
+    if endurance_reps <= 0:
+        raise ValueError("endurance_reps must be positive")
     watts = list(range(start_watts, end_watts + 1, step_watts))
     if not watts or watts[-1] != end_watts:
         raise ValueError("end_watts must align with start_watts and step_watts")
@@ -463,6 +487,9 @@ def _build_moxy_515_rows(
                 recovery_duration,
                 {"value": recovery_watts, "type": "absolute"},
             )
+    if endurance_duration:
+        add_row("Endurance", endurance_duration, {"value": endurance_watts, "type": "absolute"})
+        rows[-1]["interval_count"] = str(endurance_reps)
     add_row("Cooldown", cooldown_duration, {"value": 45, "type": "relative_ftp"})
     return rows
 
