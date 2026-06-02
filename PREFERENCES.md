@@ -36,6 +36,10 @@
 - The user dislikes riding indoors when it is sunny/nice outside.
 - If outdoor weather is merely mediocre, indoor riding is preferred over going outside just for the sake of it.
 
+## Nutrition
+
+- Standard sports drink: SiS GO Electrolyte Orange.
+
 ## Sensor Profile
 
 - Mechanical/load: `watts`, `cadence`, `torque`.
@@ -45,15 +49,6 @@
 - Thermal/body: `core_temperature`, `skin_temperature`, `heat_strain_index`.
 - Environment: `temp`, `RuuviTemperature`, `Humidity`, `RuuviHumidity`.
 - Wellness/recovery: `hrv` (rMSSD), `restingHR`, `sleepSecs`, `sleepScore`, plus `weight`, `bodyFat`, `vo2max`, `spO2`, `steps` when populated.
-
-## EatMyRide Product Codes
-
-- EatMyRide / Garmin Carb Balancer is installed on the user's outdoor cycling profile, not the indoor profile.
-- Observed `2marap` intake-event product codes from the 2026-05-22 Oslo-Fjällbacka ride:
-  - `b4` = 500 ml SiS GO Energy drink.
-  - `b5` = Coop Seigmann.
-  - `b6` = SiS GO Isotonic Gel Tropical.
-  - `b8` = bolle.
 
 ## Data Source Priority
 

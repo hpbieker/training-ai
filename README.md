@@ -319,44 +319,49 @@ performance condition and secondary Garmin load context. It accepts either a
 Garmin activity id or a cached Intervals.icu activity id; for Intervals
 activities from Garmin Connect it uses `external_id` as the Garmin activity id.
 
-Garmin FIT files can also contain Connect IQ developer fields that are not
-exposed cleanly through Garmin's JSON activity details. For EatMyRide / Garmin
-Carb Balancer, observed outdoor-profile FIT files contain a record-level field:
+EatMyRide's backend also exposes imported activities and the recorded food plan.
+Add personal credentials to `.env`:
 
 ```text
-app id: fa9d9beb-870b-4924-bb73-df0f53b31a40
-field name: 2marap
-unit: g
-developer index: 4
-developer field: 132
-global message: 20 (record)
-payload: 4 raw bytes
+EATMYRIDE_EMAIL=your-email@example.com
+EATMYRIDE_PASSWORD=your-password
 ```
 
-`2marap` is the newer packet/event format. The fourth byte behaves like a
-packet/sequence byte. In the 2026-05-22 Oslo-Fjällbacka ride, intake events
-matched packets shaped like
-`[product_code, 0x8e, 0x02, 0x02]`. The product-code mapping is user-specific
-and lives in `PREFERENCES.md`. Outdoor rides without logged intake are useful
-negative controls because the `2marap` stream can exist even when no intake
-events were recorded.
-
-Older FIT files may contain `1marap` from the same app id. This is a legacy
-packed format rather than the `2marap` event/packet format. The current helper
-decodes it experimentally as two tenths-of-grams counters and reports them
-under `legacy_1marap`; do not treat those counter labels as fully verified.
-
-Use the local FIT helper for a quick EatMyRide underfueling/depletion check:
+Cache an explicit EatMyRide activity id, all activities for one local Oslo
+calendar date, or the latest activity:
 
 ```bash
-python3 -B scripts/eatmyride_fit.py data/garmin/activities/2026-05-22_22973716239/activity.fit
+python3 -B scripts/cache_eatmyride.py activity 6500779
+python3 -B scripts/cache_eatmyride.py day 2026-05-22
+python3 -B scripts/cache_eatmyride.py latest
+python3 -B scripts/cache_eatmyride.py previous-foodplan --before 2026-06-01
 ```
 
-The current quick estimate treats packet `01` as processed intake in tenths of
-grams and packet `1c` as a burn/depletion candidate in grams. The reported
-net-depletion estimate is therefore `1c - 01/10`, plus the same calculation for
-the final window. This is a pragmatic FIT-field estimate, not a complete
-reimplementation of EatMyRide's app-side model.
+The helper logs in for a fresh JWT without storing the token. It caches activity
+details and recorded intake events under:
+
+```text
+data/eatmyride/
+  activity_lists/2026-05-22.json
+  activities/2026-05-22_6500779/
+    activity.json
+    foodplan.json
+```
+
+Food-plan writes replace the complete server-side list, so write commands
+require an explicit `--yes`. Adjust one existing event, or replace a food plan
+from a reviewed local JSON file:
+
+```bash
+python3 -B scripts/cache_eatmyride.py set-event 6528113 \
+  --label "SiS GO Elektrolyte Orange" --match-time 900 \
+  --time 0 --ml 200 --gram 16 --yes
+python3 -B scripts/cache_eatmyride.py replace-foodplan 6528113 \
+  data/eatmyride/activities/2026-06-01_6528113/foodplan.json --yes
+```
+
+Both commands trigger EatMyRide's activity recalculation, read back the
+server-side state and refresh the local activity cache.
 
 Build a compact readiness context for chat after refreshing caches:
 
