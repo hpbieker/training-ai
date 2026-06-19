@@ -12,9 +12,9 @@
 - Use Intervals.icu stream fields actively for workout analysis: power, heart rate, respiratory, Moxy, thermal, and environmental streams should be checked according to the repo sensor profile.
 - Intervals.icu respiratory stream fields use these meanings:
   - `respiration`: BR, breathing rate in breaths per minute.
-  - `tidal_volume`: VT, Tyme Wear-reported breathing volume per breath; unit/scale is not confirmed.
-  - `tidal_volume_min`: VE, Tyme Wear-reported breathing volume per minute; unit/scale is not confirmed, but use this as the direct VE stream.
-  - Do not derive VE from `tidal_volume` times `respiration` unless the `tidal_volume` unit/scale has been confirmed.
+  - `tidal_volume`: VT, Tyme Wear-reported breathing volume in centiliters per breath, inferred from exported stream values.
+  - `tidal_volume_min`: VE, Tyme Wear-reported breathing volume in liters per minute, inferred from exported stream values.
+  - For Tyme Wear streams, `tidal_volume_min` should be consistent with `tidal_volume / 100 * respiration`.
 - Intervals.icu CORE sensor stream fields use these meanings:
   - `heat_strain_index`: HSI from the CORE 2 sensor, on a 0 to 5.0 scale.
   - `core_temperature`: CORE sensor core temperature in degrees C.
