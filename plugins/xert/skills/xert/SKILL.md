@@ -5,7 +5,7 @@ description: Use when working with Xert live data, recovery model semantics, act
 
 # Xert
 
-Use this skill for Xert-specific source access and source semantics. The plugin is intentionally stateless: it can read from or write to Xert, but it does not own local caching, cross-source training analysis, readiness decisions, or plotting.
+Use this skill for Xert-specific source access and source semantics. The plugin is intentionally stateless: it can read from or write to Xert, but it does not own cross-source training analysis, readiness decisions, or plotting.
 
 ## Start Here
 
@@ -104,7 +104,7 @@ This plugin owns:
 
 The caller owns:
 
-- local persistence/cache
+- local persistence
 - cross-source analysis with Garmin, Intervals.icu, EatMyRide, weather, or user preferences
 - plotting and report generation
 - user-specific workout construction templates

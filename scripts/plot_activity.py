@@ -23,7 +23,7 @@ def main() -> None:
 
     activity_dir = Path(args.activity)
     if not activity_dir.exists():
-        activity_dir = Path("data/intervals-old/activities") / args.activity
+        activity_dir = Path("outputs/intervals/activities") / args.activity
     activity = load_activity(activity_dir)
 
     output = Path(args.output) if args.output else _default_output_path(activity_dir, args.moxy)
@@ -94,7 +94,7 @@ def _shade_intervals(axis, activity) -> None:
 
 def _default_output_path(activity_dir: Path, moxy: bool) -> Path:
     suffix = "moxy" if moxy else "overview"
-    return Path("data/plots") / f"{activity_dir.name}_{suffix}.png"
+    return Path("outputs/plots") / f"{activity_dir.name}_{suffix}.png"
 
 
 if __name__ == "__main__":

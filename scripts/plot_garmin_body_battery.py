@@ -30,7 +30,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        help="Output PNG path. Defaults to data/plots/garmin_body_battery_<date>.png",
+        help="Output PNG path. Defaults to outputs/plots/garmin_body_battery_<date>.png",
     )
     args = parser.parse_args()
 
@@ -46,7 +46,7 @@ def main() -> None:
     output = (
         Path(args.output)
         if args.output
-        else Path("data") / "plots" / f"garmin_body_battery_{day}.png"
+        else Path("outputs") / "plots" / f"garmin_body_battery_{day}.png"
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     plot_body_battery(

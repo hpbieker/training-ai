@@ -2,8 +2,8 @@
 """Stateless command line access to Xert.
 
 This CLI prints live Xert payloads or compact JSON summaries to stdout. It does
-not write local cache files; callers that want persistence should redirect or
-store the output at their own layer.
+not write local files; callers that want persistence should redirect or store
+the output at their own layer.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from xert_api import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Live Xert access without local caching.")
+    parser = argparse.ArgumentParser(description="Live Xert access.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     activities = subparsers.add_parser(

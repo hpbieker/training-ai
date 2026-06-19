@@ -5,7 +5,7 @@ description: Use when working with Intervals.icu live API access, activity metad
 
 # Intervals.icu
 
-Use this skill for Intervals.icu-specific source access, source semantics, and write safety. The plugin can fetch live data and perform cautious remote updates, but it does not own local training analysis, plotting, readiness composition, or long-term artifact storage.
+Use this skill for Intervals.icu-specific source access, source semantics, and write safety. The plugin can fetch live data and perform cautious remote updates, but it does not own repo-level training analysis, plotting, readiness composition, or long-term storage.
 
 ## CLI
 
@@ -29,7 +29,7 @@ Use `search <query>` for Intervals.icu's own activity search endpoint. Use
 `named <fragment> --since ... --until ...` only when you specifically need a
 date-bounded local name-fragment filter.
 
-The normal CLI commands print JSON and do not write local files unless `--output` is supplied. Use explicit file download commands only when a file artifact is actually needed:
+The normal CLI commands print JSON and do not write files unless `--output` is supplied. Use explicit file download commands only when a file is actually needed:
 
 ```bash
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py file <activity-id> --kind original --output /tmp/intervals-files/
@@ -55,15 +55,6 @@ python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py subjective <activi
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness-update <YYYY-MM-DD> --soreness <value> --fatigue <value> --motivation <value>
 ```
 
-Legacy repo wrappers remain available for compatibility with older command names:
-
-```bash
-python3 -B scripts/cache_intervals_icu.py latest
-python3 -B scripts/update_intervals_icu.py wellness <YYYY-MM-DD> --soreness <value>
-```
-
-Despite the old `scripts/cache_intervals_icu.py` name, the compatibility wrapper follows the current live-fetch CLI behavior.
-
 ## Authentication
 
 - API-key access should use `INTERVALS_ICU_API_KEY` in the repo-local `.env` by default.
@@ -79,7 +70,7 @@ Read `references/field-semantics.md` before interpreting Intervals.icu activity 
 
 ## Writes
 
-- Rename or metadata updates must use the plugin CLI/API, never local artifact edits alone, when the user asks to change Intervals.icu itself.
+- Rename or metadata updates must use the plugin CLI/API when the user asks to change Intervals.icu itself.
 - Update only fields the user has explicitly provided or confirmed.
 - When saving RPE, write `icu_rpe`; Intervals.icu derives `session_rpe` and rejects direct writes to `session_rpe`.
 - For daily wellness, do not overwrite an existing value with a different value without explicit confirmation. The CLI enforces this unless `--force` is supplied.

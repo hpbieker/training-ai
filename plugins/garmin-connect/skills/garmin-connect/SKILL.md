@@ -5,7 +5,7 @@ description: Use when working with Garmin Connect live data, gccli access, Garmi
 
 # Garmin Connect
 
-Use this skill for Garmin Connect-specific source access and source semantics. The plugin uses the local `gccli` command as the Garmin Connect transport boundary. It can fetch Garmin data and interpret Garmin-specific fields, but it does not own caching, readiness decisions, cross-source training analysis, or plotting.
+Use this skill for Garmin Connect-specific source access and source semantics. The plugin uses the local `gccli` command as the Garmin Connect transport boundary. It can fetch Garmin data and interpret Garmin-specific fields, but it does not own readiness decisions, cross-source training analysis, or plotting.
 
 ## Start Here
 
@@ -20,7 +20,7 @@ python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity <garmin
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activities --since <YYYY-MM-DD> --until <YYYY-MM-DD>
 ```
 
-The CLI prints JSON to stdout and does not write Garmin cache files. Some Garmin
+The CLI prints JSON to stdout and does not write files by default. Some Garmin
 payloads are too large for chat or terminal review, especially full `day`,
 `recent`, and `activity` without `--summary-only`. For those commands, redirect
 stdout to an explicit temporary input file, then inspect or pass that file to
@@ -45,7 +45,7 @@ Read `references/field-semantics.md` before interpreting Garmin readiness, Body 
 
 ## Writes
 
-This plugin does not write to Garmin Connect and does not support Garmin cache writes.
+This plugin does not write to Garmin Connect.
 
 ## Boundaries
 

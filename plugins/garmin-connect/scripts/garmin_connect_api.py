@@ -254,9 +254,7 @@ def resolve_garmin_activity(activity: str) -> dict[str, str]:
     if candidate_path.exists():
         metadata_path = candidate_path / "activity.json"
     elif activity.startswith("i"):
-        matches = sorted((Path("data/intervals-old") / "activities").glob(f"*_{activity}"))
-        if not matches:
-            matches = sorted((Path("data") / "activities").glob(f"*_{activity}"))
+        matches = sorted((Path("outputs/intervals") / "activities").glob(f"*_{activity}"))
         metadata_path = matches[-1] / "activity.json" if matches else None
 
     if metadata_path and metadata_path.exists():

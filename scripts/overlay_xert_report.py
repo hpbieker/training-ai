@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 from PIL import Image, ImageDraw
 
 
-DATA_DIR = Path("data")
+ARTIFACTS_DIR = Path("outputs")
 
 
 def main() -> None:
@@ -47,9 +47,9 @@ def main() -> None:
         help="Download the xfair PNG even when it already exists locally.",
     )
     parser.add_argument(
-        "--data-dir",
+        "--artifacts-dir",
         type=Path,
-        default=DATA_DIR,
+        default=ARTIFACTS_DIR,
     )
     args = parser.parse_args()
 
@@ -59,7 +59,7 @@ def main() -> None:
         ve_window=args.ve_window,
         smo2_only=args.smo2_only,
         force_download=args.force_download,
-        data_dir=args.data_dir,
+        artifacts_dir=args.artifacts_dir,
     )
     print(f"{result['activity_dir']} -> {result['output_png']}")
 
@@ -71,11 +71,11 @@ def process_activity(
     ve_window: int,
     smo2_only: bool,
     force_download: bool,
-    data_dir: Path,
+    artifacts_dir: Path,
 ) -> dict[str, Path]:
     streams = read_streams(activity_dir / "streams.csv")
 
-    xert_dir = data_dir / "plots" / "xert_report_overlays" / f"{activity_dir.name[:10]}_{xert_path}"
+    xert_dir = artifacts_dir / "plots" / "xert_report_overlays" / f"{activity_dir.name[:10]}_{xert_path}"
     xert_dir.mkdir(parents=True, exist_ok=True)
     report_png = xert_dir / "xfair_downloaded.png"
     if force_download or not report_png.exists():

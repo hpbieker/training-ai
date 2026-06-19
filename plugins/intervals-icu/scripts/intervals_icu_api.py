@@ -20,7 +20,7 @@ from urllib.request import Request, urlopen
 
 
 INTERVALS_API_BASE_URL = "https://intervals.icu/api/v1"
-DEFAULT_DATA_DIR = Path("data/intervals-old")
+DEFAULT_ARTIFACTS_DIR = Path("outputs/intervals")
 
 ActivityFileKind = Literal["original", "fit", "web-original"]
 
@@ -48,7 +48,7 @@ def download_intervals_icu_data(
     athlete_id: str | int = 0,
     oldest: str | date,
     newest: str | date,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
+    output_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
     include_activity_details: bool = True,
     include_intervals: bool = True,
     download_activity_files: bool = False,
@@ -105,7 +105,7 @@ def download_intervals_icu_data(
     if include_activity_details:
         for activity in activities:
             activity_id = _activity_id(activity)
-            activity_dir = _activity_cache_dir(output_path, activity)
+            activity_dir = _activity_artifact_dir(output_path, activity)
             detail = _request_json(
                 f"/activity/{activity_id}",
                 credentials,
@@ -119,7 +119,7 @@ def download_intervals_icu_data(
     if download_activity_files:
         for activity in activities:
             activity_id = _activity_id(activity)
-            activity_dir = _activity_cache_dir(output_path, activity)
+            activity_dir = _activity_artifact_dir(output_path, activity)
             files_dir = activity_dir / "files"
             files_dir.mkdir(parents=True, exist_ok=True)
             download_path = _download_activity_file(
@@ -135,12 +135,12 @@ def download_intervals_icu_data(
     return artifacts
 
 
-def cache_latest_activity_streams(
+def save_latest_activity_streams(
     *,
     api_key: str | None = None,
     bearer_token: str | None = None,
     athlete_id: str | int = 0,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
+    output_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
     lookback_days: int = 365,
     stream_types: list[str] | None = None,
 ) -> dict[str, Path]:
@@ -148,7 +148,7 @@ def cache_latest_activity_streams(
 
     The activity list endpoint is queried over ``lookback_days`` ending today.
     CSV stream exports and activity metadata are saved under
-    ``data/intervals-old/activities/<date>_<activity_id>/`` by default.
+    ``outputs/intervals/activities/<date>_<activity_id>/`` by default.
     """
 
     output_path = Path(output_dir)
@@ -169,7 +169,7 @@ def cache_latest_activity_streams(
         activities,
         key=lambda activity: str(activity.get("start_date_local") or ""),
     )
-    return cache_activity_streams(
+    return save_activity_streams(
         activity_id=_activity_id(latest_activity),
         activity_summary=latest_activity,
         api_key=api_key,
@@ -179,13 +179,13 @@ def cache_latest_activity_streams(
     )
 
 
-def cache_activity_streams(
+def save_activity_streams(
     *,
     activity_id: str,
     activity_summary: dict[str, Any] | None = None,
     api_key: str | None = None,
     bearer_token: str | None = None,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
+    output_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
     stream_types: list[str] | None = None,
 ) -> dict[str, Path]:
     """Save activity metadata and stream CSV for one Intervals.icu activity."""
@@ -213,7 +213,7 @@ def cache_activity_streams(
         params=stream_params,
     )
 
-    activity_dir = _activity_cache_dir(output_path, activity_summary or detail)
+    activity_dir = _activity_artifact_dir(output_path, activity_summary or detail)
     activity_dir.mkdir(parents=True, exist_ok=True)
     metadata_path = activity_dir / "activity.json"
     streams_csv_path = activity_dir / "streams.csv"
@@ -228,14 +228,14 @@ def cache_activity_streams(
     }
 
 
-def cache_activity_file(
+def save_activity_file(
     *,
     activity_id: str,
     activity_summary: dict[str, Any] | None = None,
     api_key: str | None = None,
     bearer_token: str | None = None,
     cookie: str | None = None,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
+    output_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
     kind: ActivityFileKind = "original",
 ) -> dict[str, Path]:
     """Save the original or generated FIT file for one Intervals.icu activity."""
@@ -253,7 +253,7 @@ def cache_activity_file(
         params={"intervals": "true"},
     )
     activity = activity_summary or detail
-    activity_dir = _activity_cache_dir(output_path, activity)
+    activity_dir = _activity_artifact_dir(output_path, activity)
     files_dir = activity_dir / "files"
     files_dir.mkdir(parents=True, exist_ok=True)
 
@@ -290,7 +290,7 @@ def download_activity_streams_csv(
     bearer_token: str | None = None,
     stream_types: list[str] | None = None,
 ) -> Path:
-    """Download activity streams CSV to an explicit path without caching metadata."""
+    """Download activity streams CSV to an explicit path without saving metadata."""
 
     credentials = IntervalsIcuCredentials(
         api_key=api_key,
@@ -321,7 +321,7 @@ def download_activity_file(
     cookie: str | None = None,
     kind: ActivityFileKind = "original",
 ) -> Path:
-    """Download an activity file to an explicit path without caching metadata."""
+    """Download an activity file to an explicit path without saving metadata."""
 
     credentials = IntervalsIcuCredentials(
         api_key=api_key,
@@ -362,19 +362,19 @@ def download_activity_file(
 
 
 def download_latest_activity_streams(**kwargs: Any) -> dict[str, Path]:
-    """Backward-compatible alias for ``cache_latest_activity_streams``."""
+    """Download and save streams for the newest Intervals.icu activity."""
 
-    return cache_latest_activity_streams(**kwargs)
+    return save_latest_activity_streams(**kwargs)
 
 
-def cache_wellness(
+def save_wellness(
     *,
     api_key: str | None = None,
     bearer_token: str | None = None,
     athlete_id: str | int = 0,
     oldest: str | date,
     newest: str | date,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
+    output_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
 ) -> dict[str, Path]:
     """Save Intervals.icu wellness data for a date range.
 
@@ -444,7 +444,7 @@ def list_wellness(
     oldest: str | date,
     newest: str | date,
 ) -> list[dict[str, Any]]:
-    """Fetch Intervals.icu wellness rows for a date range without caching."""
+    """Fetch Intervals.icu wellness rows for a date range without writing files."""
 
     credentials = IntervalsIcuCredentials(
         api_key=api_key,
@@ -546,7 +546,7 @@ def get_activity(
     bearer_token: str | None = None,
     include_intervals: bool = True,
 ) -> dict[str, Any]:
-    """Fetch one Intervals.icu activity without caching it."""
+    """Fetch one Intervals.icu activity without writing files."""
 
     credentials = IntervalsIcuCredentials(
         api_key=api_key,
@@ -754,7 +754,7 @@ def _activity_id(activity: dict[str, Any]) -> str:
     return str(activity_id)
 
 
-def _activity_cache_dir(output_path: Path, activity: dict[str, Any]) -> Path:
+def _activity_artifact_dir(output_path: Path, activity: dict[str, Any]) -> Path:
     activity_id = _activity_id(activity)
     activity_date = str(activity.get("start_date_local") or activity_id)[:10]
     return output_path / "activities" / f"{activity_date}_{activity_id}"

@@ -18,12 +18,12 @@ from matplotlib.lines import Line2D
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Plot an EatMyRide activity's energy graph and food plan from local JSON files.",
+        description="Plot an EatMyRide activity's energy graph and food plan from explicit JSON input.",
     )
     parser.add_argument(
         "activity_dir",
         help=(
-            "Path to a local directory containing activity.json and foodplan.json"
+            "Path to a directory containing explicitly supplied activity.json and foodplan.json"
         ),
     )
     parser.add_argument("--output", help="Output image path")
@@ -359,7 +359,7 @@ def default_title(activity: dict[str, Any], activity_dir: Path) -> str:
 
 
 def default_output_path(activity_dir: Path) -> Path:
-    return Path("data/plots") / f"{activity_dir.name}_eatmyride_fueling.png"
+    return Path("outputs/plots") / f"{activity_dir.name}_eatmyride_fueling.png"
 
 
 if __name__ == "__main__":

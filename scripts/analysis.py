@@ -1,4 +1,4 @@
-"""Shared local analysis helpers for saved Intervals.icu artifacts."""
+"""Shared analysis helpers for saved Intervals.icu inputs."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from statistics import median
 from typing import Any, Iterable
 
 
-DATA_DIR = Path("data/intervals-old")
+ARTIFACTS_DIR = Path("outputs/intervals")
 
 CORE_STREAMS = [
     "watts",
@@ -34,7 +34,7 @@ CORE_STREAMS = [
 
 
 @dataclass(frozen=True)
-class CachedActivity:
+class SavedActivity:
     """A saved Intervals.icu activity plus stream rows."""
 
     activity_dir: Path
@@ -80,18 +80,18 @@ class PowerBlock:
     detection: dict[str, Any]
 
 
-def load_activity(activity_dir: str | Path) -> CachedActivity:
+def load_activity(activity_dir: str | Path) -> SavedActivity:
     """Load one saved activity directory."""
 
     path = Path(activity_dir)
     metadata = json.loads((path / "activity.json").read_text(encoding="utf-8"))
     with (path / "streams.csv").open(newline="", encoding="utf-8-sig") as file:
         streams = list(csv.DictReader(file))
-    return CachedActivity(activity_dir=path, metadata=metadata, streams=streams)
+    return SavedActivity(activity_dir=path, metadata=metadata, streams=streams)
 
 
 def usable_analysis_fields(
-    activity: CachedActivity,
+    activity: SavedActivity,
     fields: Iterable[str] = CORE_STREAMS,
 ) -> list[str]:
     """Return requested fields after applying Intervals.icu ignore flags."""
@@ -100,40 +100,40 @@ def usable_analysis_fields(
     return [field for field in fields if field not in ignored]
 
 
-def resolve_activity_ref(ref: str, *, data_dir: str | Path = DATA_DIR) -> CachedActivity:
+def resolve_activity_ref(ref: str, *, artifacts_dir: str | Path = ARTIFACTS_DIR) -> SavedActivity:
     """Resolve ``latest``, an Intervals activity id, dir name or path."""
 
-    data_path = Path(data_dir)
+    artifacts_path = Path(artifacts_dir)
     if ref == "latest":
         candidates = sorted(
-            iter_cached_activities(data_path),
+            iter_saved_activities(artifacts_path),
             key=lambda activity: activity.start_date_local,
         )
         if not candidates:
-            raise FileNotFoundError(f"No saved activities under {data_path / 'activities'}")
+            raise FileNotFoundError(f"No saved activities under {artifacts_path / 'activities'}")
         return candidates[-1]
 
     candidate_path = Path(ref)
     if candidate_path.exists():
         return load_activity(candidate_path)
 
-    data_candidate = data_path / "activities" / ref
-    if data_candidate.exists():
-        return load_activity(data_candidate)
+    artifacts_candidate = artifacts_path / "activities" / ref
+    if artifacts_candidate.exists():
+        return load_activity(artifacts_candidate)
 
-    matches = sorted((data_path / "activities").glob(f"*_{ref}"))
+    matches = sorted((artifacts_path / "activities").glob(f"*_{ref}"))
     if not matches and ref.startswith("i"):
-        matches = sorted((data_path / "activities").glob(f"*_{ref[1:]}"))
+        matches = sorted((artifacts_path / "activities").glob(f"*_{ref[1:]}"))
     if matches:
         return load_activity(matches[-1])
 
     raise FileNotFoundError(f"Could not resolve saved activity: {ref}")
 
 
-def iter_cached_activities(data_dir: str | Path = DATA_DIR) -> Iterable[CachedActivity]:
+def iter_saved_activities(artifacts_dir: str | Path = ARTIFACTS_DIR) -> Iterable[SavedActivity]:
     """Yield saved activities sorted by activity directory name."""
 
-    activities_dir = Path(data_dir) / "activities"
+    activities_dir = Path(artifacts_dir) / "activities"
     for activity_dir in sorted(activities_dir.iterdir()):
         if (activity_dir / "activity.json").exists() and (activity_dir / "streams.csv").exists():
             yield load_activity(activity_dir)
@@ -271,7 +271,7 @@ def summarize_block(
     }
 
 
-def interval_rows(activity: CachedActivity, interval: dict[str, Any]) -> list[dict[str, str]]:
+def interval_rows(activity: SavedActivity, interval: dict[str, Any]) -> list[dict[str, str]]:
     """Return stream rows for one Intervals.icu interval."""
 
     start = int(interval.get("start_index") or 0)
@@ -279,7 +279,7 @@ def interval_rows(activity: CachedActivity, interval: dict[str, Any]) -> list[di
     return activity.streams[start:end]
 
 
-def intervals_by_type(activity: CachedActivity, interval_type: str) -> list[list[dict[str, str]]]:
+def intervals_by_type(activity: SavedActivity, interval_type: str) -> list[list[dict[str, str]]]:
     """Return stream row slices for intervals matching type, e.g. WORK."""
 
     wanted = interval_type.upper()
@@ -302,7 +302,7 @@ def has_moxy(rows: list[dict[str, str]]) -> bool:
     return bool(rows_with_values(rows, "smo2", "thb"))
 
 
-def moxy_interval_summary(activity: CachedActivity) -> list[dict[str, Any]]:
+def moxy_interval_summary(activity: SavedActivity) -> list[dict[str, Any]]:
     """Summarize Moxy data by Intervals.icu interval."""
 
     summaries = []
@@ -322,7 +322,7 @@ def moxy_interval_summary(activity: CachedActivity) -> list[dict[str, Any]]:
     return summaries
 
 
-def recovery_reoxygenation(activity: CachedActivity) -> list[dict[str, Any]]:
+def recovery_reoxygenation(activity: SavedActivity) -> list[dict[str, Any]]:
     """Calculate SmO2 rise and peak reached in each recovery interval."""
 
     recoveries = []
@@ -355,8 +355,8 @@ def latest_activity_with_moxy(
     indoor_only: bool = False,
     name_contains: str | None = None,
     require_work_overlap: bool = True,
-    data_dir: str | Path = DATA_DIR,
-) -> CachedActivity | None:
+    artifacts_dir: str | Path = ARTIFACTS_DIR,
+) -> SavedActivity | None:
     """Find the latest saved activity with Moxy values.
 
     When ``require_work_overlap`` is true, SmO2/THb must overlap at least one
@@ -365,7 +365,7 @@ def latest_activity_with_moxy(
     """
 
     activities = sorted(
-        iter_cached_activities(data_dir),
+        iter_saved_activities(artifacts_dir),
         key=lambda activity: activity.start_date_local,
         reverse=True,
     )
@@ -656,13 +656,13 @@ def load_wellness_range(
     oldest: str | date,
     newest: str | date,
     *,
-    data_dir: str | Path = DATA_DIR,
+    artifacts_dir: str | Path = ARTIFACTS_DIR,
 ) -> list[dict[str, Any]]:
     """Load a saved wellness JSON range."""
 
     oldest_value = oldest.isoformat() if isinstance(oldest, date) else oldest
     newest_value = newest.isoformat() if isinstance(newest, date) else newest
-    path = Path(data_dir) / "wellness" / f"{oldest_value}_{newest_value}.json"
+    path = Path(artifacts_dir) / "wellness" / f"{oldest_value}_{newest_value}.json"
     return json.loads(path.read_text(encoding="utf-8"))
 
 

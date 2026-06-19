@@ -24,9 +24,9 @@ local plugin. Start with `plugins/intervals-icu/skills/intervals-icu/SKILL.md`.
 Xert source semantics, live access, CLI examples and write-safety rules live in
 the local plugin. Start with `plugins/xert/skills/xert/SKILL.md`.
 
-Do not use `data/xert` or other local Xert caches for current analysis,
-summaries, readiness or recommendations. Fetch Xert data live through the plugin
-and pass only normalized source-aware output to repo-level helpers such as
+Fetch Xert data live through the plugin for current analysis, summaries,
+readiness or recommendations, and pass only normalized source-aware output to
+repo-level helpers such as
 `scripts/readiness_snapshot.py`.
 
 ## Use EatMyRide
@@ -35,10 +35,8 @@ EatMyRide live access, source semantics, CLI examples and write-safety rules
 live in the local plugin. Start with
 `plugins/eatmyride/skills/eatmyride/SKILL.md`.
 
-Do not use `data/eatmyride` or other local EatMyRide caches for current
-analysis, fueling checks or recommendations. Fetch EatMyRide data live through
-the plugin. Historical files may still be plotted when the user explicitly
-selects a local artifact.
+Fetch EatMyRide data live through the plugin for current analysis, fueling
+checks or recommendations.
 
 ## Use Yr / MET Norway
 
@@ -69,7 +67,7 @@ use, this project uses `gccli`, with credentials managed by `gccli auth login`
 outside the repository. Source-specific access and interpretation live in the
 repo-local Garmin Connect plugin at
 `plugins/garmin-connect/skills/garmin-connect/SKILL.md`. Garmin Connect data is
-fetched live through the plugin; this project does not support a Garmin cache.
+fetched live through the plugin.
 
 Install and authenticate:
 

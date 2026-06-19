@@ -55,7 +55,7 @@ def main() -> None:
         "activity",
         help="Activity ref: latest, saved dir path/name, or Intervals.icu activity id",
     )
-    parser.add_argument("--data-dir", default="data/intervals-old")
+    parser.add_argument("--artifacts-dir", default="outputs/intervals")
     parser.add_argument("--target", type=float, help="Detect blocks near target watts")
     parser.add_argument("--threshold", type=float, help="Detect blocks above watts threshold")
     parser.add_argument("--tolerance", type=float, default=10.0)
@@ -89,7 +89,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        help="Write JSON to this path. Defaults to data/activity-inspect/<activity>_<timestamp>.json",
+        help="Write JSON to this path. Defaults to outputs/activity-inspect/<activity>_<timestamp>.json",
     )
     parser.add_argument(
         "--stdout",
@@ -100,7 +100,7 @@ def main() -> None:
     if args.brief and args.compact:
         parser.error("--brief and --compact are alternative output shapes; choose one")
 
-    activity = resolve_activity_ref(args.activity, data_dir=args.data_dir)
+    activity = resolve_activity_ref(args.activity, artifacts_dir=args.artifacts_dir)
     requested_fields = [field.strip() for field in args.fields.split(",") if field.strip()]
     fields = usable_analysis_fields(activity, requested_fields)
     rows = activity.streams
@@ -513,7 +513,7 @@ def parse_duration(raw: str) -> int:
 def default_output_path(activity) -> Path:
     activity_id = sanitize_filename(activity.id or activity.activity_dir.name)
     timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
-    return Path("data/activity-inspect") / f"{activity_id}_{timestamp}.json"
+    return Path("outputs/activity-inspect") / f"{activity_id}_{timestamp}.json"
 
 
 def sanitize_filename(raw: str) -> str:

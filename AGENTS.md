@@ -5,22 +5,18 @@
   `plugins/eatmyride/skills/eatmyride/SKILL.md`. The plugin owns field
   interpretation and write-safety rules; this repo still owns local persistence and
   cross-source training analysis.
-- Do not use cached EatMyRide data as a source for current analysis or
-  recommendations. Fetch EatMyRide data live through the plugin whenever
-  EatMyRide context is needed. Old local EatMyRide files may exist only as
-  historical artifacts.
+- Fetch EatMyRide data live through the plugin whenever EatMyRide context is
+  needed for current analysis or recommendations.
 - For Xert-specific source semantics, use the repo-local plugin skill at
   `plugins/xert/skills/xert/SKILL.md`. The plugin owns live Xert access, field
   interpretation, API quirks and write-safety rules; this repo still owns local
   persistence, readiness composition and cross-source training analysis.
-- Do not use cached Xert data as a source for current analysis, summaries,
-  readiness or recommendations. Fetch Xert data live through the plugin and pass
-  normalized source-aware output into repo-level analysis helpers. Old local
-  Xert files may exist only as historical artifacts.
+- Fetch Xert data live through the plugin for current analysis, summaries,
+  readiness or recommendations, and pass normalized source-aware output into
+  repo-level analysis helpers.
 - For Xert xfair report overlays, use
   `python3 -B scripts/overlay_xert_report.py --activity-dir <activity-dir> --xert-path <xert-activity-path>`.
-  The Xert path must be supplied explicitly from live/source-aware context; do
-  not infer it from old local Xert caches.
+  The Xert path must be supplied explicitly from live/source-aware context.
 - For Yr/MET Norway-specific source semantics, use the repo-local plugin skill
   at `plugins/yr/skills/yr/SKILL.md`. The plugin owns Locationforecast field
   interpretation, API quirks and live CLI access; this repo still owns
@@ -31,16 +27,14 @@
   at `plugins/intervals-icu/skills/intervals-icu/SKILL.md`. The plugin owns
   Intervals.icu API access, field interpretation and write-safety rules; this
   repo still owns readiness composition and cross-source training analysis.
-- For EatMyRide glycogen/fueling plots from local JSON files, use
-  `python3 -B scripts/plot_eatmyride_fueling.py <activity-dir>`. This is a
-  repo-level visualization helper for explicitly selected historical artifacts,
-  not a source for current EatMyRide data.
+- For EatMyRide glycogen/fueling plots from an explicitly supplied JSON file,
+  use `python3 -B scripts/plot_eatmyride_fueling.py <activity-dir>`.
 - When the user asks for analyses or comparisons, answer in chat by default.
 - Do not create standalone report files for analyses or comparisons unless the user explicitly asks for a file.
-- Treat `data/` as temporary local output. It is ignored by git and can contain downloaded activities, streams, scratch outputs and generated reports when explicitly requested.
+- Treat `outputs/` as temporary local output. It is ignored by git and can contain downloaded activities, streams, scratch outputs and generated reports when explicitly requested.
 - For workout analyses, exclude warm-up and cooldown from interval metrics. Prefer detecting the actual work segment from the power trace rather than using the full stream.
 - For workout analyses, ask the user how the session felt when it is natural to do so, especially after interpreting sensor/load data. Do not ask again if the user has already provided feel/RPE in the conversation or it is already present on the activity. If the user wants the subjective response saved to Intervals.icu, use the update helper and prefer Intervals.icu's activity fields for feel/RPE when available rather than burying the information only in chat.
-- For explicitly saved activity inspection, prefer reusable helpers in `scripts/analysis.py` and `scripts/activity_inspect.py` over one-off Python snippets. Use `python3 -B scripts/activity_inspect.py <activity-ref> --brief` for a first-pass chat-analysis artifact; the helper writes JSON to `data/activity-inspect/` by default and prints the output path. Add target/threshold detection such as `--target 300 --tolerance 12 --min-block 10m` or `--threshold 190 --min-block 3m` when identifying work blocks from power. Use `--compact` or full output when detailed per-sensor/per-block JSON is needed, `--no-intervals` when Intervals.icu intervals are not needed, `--output <path>` for a specific artifact path, and `--stdout` only when full terminal JSON is genuinely wanted.
+- For explicitly saved activity inspection, prefer reusable helpers in `scripts/analysis.py` and `scripts/activity_inspect.py` over one-off Python snippets. Use `python3 -B scripts/activity_inspect.py <activity-ref> --brief` for a first-pass chat-analysis artifact; the helper writes JSON to `outputs/activity-inspect/` by default and prints the output path. Add target/threshold detection such as `--target 300 --tolerance 12 --min-block 10m` or `--threshold 190 --min-block 3m` when identifying work blocks from power. Use `--compact` or full output when detailed per-sensor/per-block JSON is needed, `--no-intervals` when Intervals.icu intervals are not needed, `--output <path>` for a specific artifact path, and `--stdout` only when full terminal JSON is genuinely wanted.
 - Do not limit training analysis to power and heart rate. Use the sensor profile from `PREFERENCES.md`, check available streams per activity and use the relevant ones when present:
   - For any sensor stream, be careful with min, max, average and drift calculations when the relevant measurement window has longer continuous gaps, repeated dropouts or clearly unusable value blocks. An occasional missing point is acceptable and should not by itself invalidate the aggregate. Report meaningful data-quality limitations rather than treating incomplete data as a clean continuous signal.
   - For heart/cardiovascular data, derive W/HR and HR drift where useful.
@@ -80,7 +74,7 @@
   data. In particular, if Garmin Connect is available, prefer Garmin for Garmin
   Training Readiness, Body Battery, HRV, stress, sleep and Garmin/Firstbeat
   activity metrics.
-- This repo owns local artifact inspection, workout analysis, readiness
+- This repo owns saved-file inspection, workout analysis, readiness
   composition and cross-source training analysis. The plugin owns how
   Intervals.icu fields and writes should be interpreted.
 

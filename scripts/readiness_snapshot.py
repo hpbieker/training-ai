@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-DATA_DIR = Path("data/intervals-old")
+ARTIFACTS_DIR = Path("outputs/intervals")
 LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 
 
@@ -19,7 +19,7 @@ def main() -> None:
         description="Summarize Intervals and provided Garmin/Xert JSON for chat readiness.",
     )
     parser.add_argument("--date", default=date.today().isoformat())
-    parser.add_argument("--data-dir", default=str(DATA_DIR))
+    parser.add_argument("--artifacts-dir", default=str(ARTIFACTS_DIR))
     parser.add_argument(
         "--now",
         help="Current local time for freshness/projection, e.g. 2026-05-20T08:15",
@@ -48,7 +48,7 @@ def main() -> None:
     planned_at = parse_local_datetime(args.planned_at) if args.planned_at else None
     snapshot = build_readiness_snapshot(
         args.date,
-        data_dir=Path(args.data_dir),
+        artifacts_dir=Path(args.artifacts_dir),
         now=now,
         planned_at=planned_at,
         xert_input=load_xert_input(args.xert_json),
@@ -60,14 +60,14 @@ def main() -> None:
 def build_readiness_snapshot(
     day: str,
     *,
-    data_dir: Path = DATA_DIR,
+    artifacts_dir: Path = ARTIFACTS_DIR,
     now: datetime | None = None,
     planned_at: datetime | None = None,
     xert_input: dict[str, Any] | None = None,
     garmin_input: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(LOCAL_TIMEZONE)
-    activity = latest_activity_on_or_before(day, data_dir=data_dir)
+    activity = latest_activity_on_or_before(day, artifacts_dir=artifacts_dir)
     xert_activity = matching_xert_activity(
         activity,
         day=day,
@@ -108,8 +108,8 @@ def build_readiness_snapshot(
     }
 
 
-def latest_activity_on_or_before(day: str, *, data_dir: Path) -> dict[str, Any] | None:
-    activities_dir = data_dir / "activities"
+def latest_activity_on_or_before(day: str, *, artifacts_dir: Path) -> dict[str, Any] | None:
+    activities_dir = artifacts_dir / "activities"
     if not activities_dir.exists():
         return None
 

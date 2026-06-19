@@ -44,4 +44,4 @@ Garmin Connect data is useful as extra physiological and activity context, but i
 ## Sync Caveats
 
 - Garmin Connect only exposes data that has synced from the device. If expected data is missing or stale enough to affect a decision, ask the user to sync Garmin/the watch before relying on it.
-- Do not use local Garmin cache artifacts as a source. Fetch live Garmin Connect data through the plugin when Garmin context is needed.
+- Fetch live Garmin Connect data through the plugin when Garmin context is needed.
