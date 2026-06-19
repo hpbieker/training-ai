@@ -1,0 +1,25 @@
+{
+  "name": "eatmyride",
+  "version": "0.1.0",
+  "description": "EatMyRide source semantics for cycling fueling analysis.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "EatMyRide",
+    "shortDescription": "Understand EatMyRide activity, food-plan, and glycogen data.",
+    "longDescription": "EatMyRide provides source-specific guidance for interpreting fueling, glycogen, product, and food-plan payloads from EatMyRide. It is intentionally stateless: local persistence and cross-source training analysis live in the training-ai layer.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "Data Analysis",
+      "Command Line"
+    ],
+    "defaultPrompt": [
+      "What EatMyRide activities do I have today?",
+      "How was fueling on my latest ride?",
+      "Help me update the food plan for my latest ride."
+    ]
+  }
+}

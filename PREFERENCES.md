@@ -39,11 +39,8 @@
 ## Nutrition
 
 - Standard sports drink: SiS GO Electrolyte Orange.
-- For EatMyRide, do not interpret activity `warning` as a fueling-quality
-  verdict. Treat it as a likely workflow/status flag for whether intake has
-  been reviewed or edited. Judge fueling primarily from foodplan totals,
-  `energyGraph.energy.glycogen`, `caloriesThreshold`, `caloriesStart`,
-  `caloriesNeeded`, `energyNeeded`, and relevant intake timing.
+- For EatMyRide-specific field semantics and write-safety, use the repo-local
+  `eatmyride` plugin skill.
 - For new activity analyses where fueling has not been registered, ask the
   user what they ate and drank if the session is recent enough that recall is
   plausible. For older activities, state that fueling is unknown rather than

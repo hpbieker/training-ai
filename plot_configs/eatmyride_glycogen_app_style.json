@@ -1,5 +1,5 @@
 {
-  "description": "EatMyRide app-style glycogen chart. Uses cached energyGraph.energy.glycogen values converted to grams with kcal-equivalent / 4.0, matching the observed UI threshold display.",
+  "description": "EatMyRide app-style glycogen chart. Uses energyGraph.energy.glycogen values converted to grams with kcal-equivalent / 4.0, matching the observed UI threshold display.",
   "y_axis": "carbs",
   "curve_kcal_per_gram": 4.0,
   "summary_kcal_per_gram": 4.0,

@@ -1,6 +1,13 @@
 # Project Instructions
 
 - Apply user-specific preferences from `PREFERENCES.md` when they are relevant.
+- For EatMyRide-specific source semantics, use the repo-local plugin skill at
+  `plugins/eatmyride/skills/eatmyride/SKILL.md`. The plugin owns field
+  interpretation and write-safety rules; this repo still owns local persistence and
+  cross-source training analysis.
+- For EatMyRide glycogen/fueling plots from local JSON files, use
+  `python3 -B scripts/plot_eatmyride_fueling.py <activity-dir>`. This is a
+  repo-level visualization helper, not plugin-owned live access.
 - When the user asks for analyses or comparisons, answer in chat by default.
 - Do not create standalone report files for analyses or comparisons unless the user explicitly asks for a file.
 - Treat `data/` as temporary local cache/output. It is ignored by git and can contain downloaded activities, streams, scratch outputs and generated reports when explicitly requested.

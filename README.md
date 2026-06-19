@@ -2,6 +2,12 @@
 
 Utilities for downloading and analysing cycling training data.
 
+## Local plugins
+
+This repo includes a local `eatmyride` Codex plugin under `plugins/eatmyride/`.
+It keeps EatMyRide source semantics and write-safety rules separate from this
+repo's local persistence/orchestration layer.
+
 ## Download data from Intervals.icu
 
 Create an Intervals.icu API key in your account settings, then run:
@@ -333,133 +339,9 @@ performance condition and secondary Garmin load context. It accepts either a
 Garmin activity id or a cached Intervals.icu activity id; for Intervals
 activities from Garmin Connect it uses `external_id` as the Garmin activity id.
 
-EatMyRide's backend also exposes imported activities and the recorded food plan.
-Add personal credentials to `.env`:
-
-```text
-EATMYRIDE_EMAIL=your-email@example.com
-EATMYRIDE_PASSWORD=your-password
-```
-
-Cache an explicit EatMyRide activity id, all activities for one local Oslo
-calendar date, or the latest activity:
-
-```bash
-python3 -B scripts/cache_eatmyride.py activity 6500779
-python3 -B scripts/cache_eatmyride.py day 2026-05-22
-python3 -B scripts/cache_eatmyride.py latest
-python3 -B scripts/cache_eatmyride.py previous-foodplan --before 2026-06-01
-```
-
-The helper logs in for a fresh JWT without storing the token. It caches activity
-details and recorded intake events under:
-
-```text
-data/eatmyride/
-  activity_lists/2026-05-22.json
-  activities/2026-05-22_6500779/
-    activity.json
-    foodplan.json
-```
-
-Food-plan writes replace the complete server-side list, so write commands
-require an explicit `--yes`. Adjust one existing event, or replace a food plan
-from a reviewed local JSON file:
-
-```bash
-python3 -B scripts/cache_eatmyride.py set-event 6528113 \
-  --label "SiS GO Elektrolyte Orange" --match-time 900 \
-  --time 0 --ml 200 --gram 16 --yes
-python3 -B scripts/cache_eatmyride.py replace-foodplan 6528113 \
-  data/eatmyride/activities/2026-06-01_6528113/foodplan.json --yes
-```
-
-Both commands trigger EatMyRide's activity recalculation, read back the
-server-side state and refresh the local activity cache.
-
-Plot the cached EatMyRide glycogen/energy estimate. The default output mirrors
-the app-style glycogen chart with carbohydrate grams on the y-axis, background
-risk zones, final level and total depletion. EatMyRide exposes only the upper
-`caloriesThreshold`; the lower high-risk boundary is derived as 60% of that
-threshold unless overridden. The default gram axis uses EatMyRide's
-kcal-equivalent values divided by `4.0`, matching the observed UI threshold
-display. Override this with `--curve-kcal-per-gram` and
-`--summary-kcal-per-gram` if later EatMyRide captures show a different scale:
-
-```bash
-python3 -B scripts/plot_eatmyride_fueling.py 6528113
-python3 -B scripts/plot_eatmyride_fueling.py 2026-06-01_6528113 \
-  --output data/plots/2026-06-01_6528113_fueling.png
-python3 -B scripts/plot_eatmyride_fueling.py 6528113 \
-  --config plot_configs/eatmyride_glycogen_app_style.json
-python3 -B scripts/plot_eatmyride_fueling.py 6528113 --hide-fueling
-python3 -B scripts/plot_eatmyride_fueling.py 6528113 --curve-kcal-per-gram 4.8
-python3 -B scripts/plot_eatmyride_fueling.py 6528113 --y-axis kcal
-```
-
-Product lookup and custom product creation are also supported. Nutritional
-arguments are entered in normal kcal/gram units and converted to EatMyRide's
-milligram-based API payload:
-
-```bash
-python3 -B scripts/cache_eatmyride.py search-products "lefse"
-python3 -B scripts/cache_eatmyride.py create-product \
-  --label "Lefse" \
-  --weight-grams 75 \
-  --calories-kcal 250 \
-  --carbohydrates-grams 45 \
-  --fat-grams 7 \
-  --protein-grams 4 \
-  --salt-grams 0.7 \
-  --sugars-grams 18 \
-  --saturated-fat-grams 3 \
-  --dry-run
-```
-
-Remove `--dry-run` and add `--yes` after reviewing the payload to create the
-remote product.
-
-Custom products can also be listed, updated from a reviewed product JSON object,
-or deleted:
-
-```bash
-python3 -B scripts/cache_eatmyride.py products --contains lefse
-python3 -B scripts/cache_eatmyride.py update-product 10077560 product.json --yes
-python3 -B scripts/cache_eatmyride.py delete-product 10139005 --yes
-```
-
-Additional EatMyRide endpoints observed in the mobile-app traffic are noted
-below for later use:
-
-```text
-GET  /api/activities/evaluated/<activity-id>
-GET  /api/products/regular/drink
-GET  /api/products/regular/food
-GET  /api/account/profile
-GET  /api/days/<local-date>
-GET  /api/days/<local-date>/timeline
-```
-
-`activities/evaluated` includes the evaluated activity, energy graph and burn
-series. The product endpoints are useful when adding intake events for products
-that are not already present in a recorded food plan. Profile and day endpoints
-are lower-priority sources for user settings and whole-day nutrition context.
-The activity-level `carbohydratesFromFood` field is misleadingly named: observed
-responses match rounded food energy in kcal, not carbohydrate grams. Calculate
-carbohydrate grams from `/foodplan/<activity-id>` event quantities and product
-servings instead.
-
-The mobile app also exposes file-import flows that likely have corresponding
-backend upload endpoints, but their request details have not been captured yet:
-
-```text
-Routes:         upload .fit or .gpx
-Training plans: upload .fit
-Activities:     upload .fit
-```
-
-To automate these safely, capture the URL, HTTP method, multipart field names
-and any metadata sent by the app during a manual upload.
+EatMyRide live access, source semantics, CLI examples and write-safety rules
+live in the local plugin. Start with
+`plugins/eatmyride/skills/eatmyride/SKILL.md`.
 
 Build a compact readiness context for chat after refreshing caches:
 

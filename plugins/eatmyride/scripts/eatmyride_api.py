@@ -1,9 +1,9 @@
-"""Cache EatMyRide activity details and recorded food-plan events."""
+"""Access EatMyRide activity details and food-plan events."""
 
 from __future__ import annotations
 
-import json
 import os
+import json
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -11,7 +11,6 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
-from zoneinfo import ZoneInfo
 
 
 EATMYRIDE_API_BASE_URL = os.environ.get(
@@ -19,8 +18,7 @@ EATMYRIDE_API_BASE_URL = os.environ.get(
     "https://backend.eatmyride.com/api",
 )
 EATMYRIDE_API_VERSION = os.environ.get("EATMYRIDE_API_VERSION", "1.03")
-DEFAULT_DATA_DIR = Path("data/eatmyride")
-LOCAL_TIMEZONE = ZoneInfo("Europe/Oslo")
+LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 
 
 @dataclass(frozen=True)
@@ -31,7 +29,7 @@ class EatMyRideCredentials:
     password: str
 
     def login(self) -> str:
-        """Return a fresh JWT without persisting it locally."""
+        """Return a session JWT without persisting it locally."""
 
         payload = _request_json(
             "/auth/login",
@@ -54,12 +52,24 @@ def load_eatmyride_credentials(env_path: str | Path = ".env") -> EatMyRideCreden
     return EatMyRideCredentials(email=email, password=password)
 
 
-def list_activities_for_day(day: str | date, *, token: str) -> list[dict[str, Any]]:
-    """List activities whose start falls within one local Oslo calendar day."""
+def list_activities(
+    start_day: str | date,
+    end_day: str | date | None = None,
+    *,
+    token: str,
+) -> list[dict[str, Any]]:
+    """List activities whose start falls within an inclusive local date range."""
 
-    local_day = date.fromisoformat(day) if isinstance(day, str) else day
-    start = datetime.combine(local_day, time.min, tzinfo=LOCAL_TIMEZONE)
-    end = start + timedelta(days=1)
+    local_start = date.fromisoformat(start_day) if isinstance(start_day, str) else start_day
+    local_end = (
+        local_start
+        if end_day is None
+        else date.fromisoformat(end_day) if isinstance(end_day, str) else end_day
+    )
+    if local_end < local_start:
+        raise ValueError("end_day must be on or after start_day")
+    start = datetime.combine(local_start, time.min, tzinfo=LOCAL_TIMEZONE)
+    end = datetime.combine(local_end + timedelta(days=1), time.min, tzinfo=LOCAL_TIMEZONE)
     payload = _request_json(
         f"/activities/list/{quote(start.isoformat())}/{quote(end.isoformat())}",
         token=token,
@@ -69,32 +79,9 @@ def list_activities_for_day(day: str | date, *, token: str) -> list[dict[str, An
     return [
         activity
         for activity in payload
-        if _activity_local_date(activity) == local_day
+        if (activity_date := _activity_local_date(activity)) is not None
+        and local_start <= activity_date <= local_end
     ]
-
-
-def cache_activity(
-    activity_id: str | int,
-    *,
-    token: str,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
-) -> dict[str, Path]:
-    """Cache one EatMyRide activity and its recorded food-plan events."""
-
-    activity = get_activity(activity_id, token=token)
-    foodplan = get_foodplan(activity_id, token=token)
-
-    activity_dir = _activity_cache_dir(Path(output_dir), activity)
-    activity_dir.mkdir(parents=True, exist_ok=True)
-    activity_path = activity_dir / "activity.json"
-    foodplan_path = activity_dir / "foodplan.json"
-    _write_json(activity_path, activity)
-    _write_json(foodplan_path, foodplan)
-    return {
-        "activity_dir": activity_dir,
-        "activity": activity_path,
-        "foodplan": foodplan_path,
-    }
 
 
 def get_activity(activity_id: str | int, *, token: str) -> dict[str, Any]:
@@ -107,7 +94,7 @@ def get_activity(activity_id: str | int, *, token: str) -> dict[str, Any]:
 
 
 def get_foodplan(activity_id: str | int, *, token: str) -> list[dict[str, Any]]:
-    """Return recorded food-plan events for one EatMyRide activity."""
+    """Return food-plan events for one EatMyRide activity."""
 
     foodplan = _request_json(f"/foodplan/{activity_id}", token=token)
     if not isinstance(foodplan, list):
@@ -132,6 +119,8 @@ def search_products(
         method="POST",
         json_body=body,
     )
+    if isinstance(payload, dict) and isinstance(payload.get("searchResults"), list):
+        return payload["searchResults"]
     if not isinstance(payload, list):
         raise TypeError("Expected EatMyRide product search endpoint to return a list")
     return payload
@@ -276,7 +265,7 @@ def build_custom_product_payload(
 
 
 def summarize_foodplan(foodplan: list[dict[str, Any]]) -> dict[str, float]:
-    """Return intake totals calculated from recorded event quantities.
+    """Return intake totals calculated from food-plan event quantities.
 
     EatMyRide product carbohydrate values are stored in milligrams per product
     serving. The activity-level ``carbohydratesFromFood`` field is actually a
@@ -336,43 +325,6 @@ def replace_foodplan(
     }
 
 
-def cache_day(
-    day: str | date,
-    *,
-    token: str,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
-) -> list[dict[str, Path]]:
-    """Cache all EatMyRide activities for one local Oslo calendar day."""
-
-    local_day = date.fromisoformat(day) if isinstance(day, str) else day
-    activities = list_activities_for_day(local_day, token=token)
-    lists_dir = Path(output_dir) / "activity_lists"
-    lists_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(lists_dir / f"{local_day.isoformat()}.json", activities)
-    return [
-        cache_activity(activity["id"], token=token, output_dir=output_dir)
-        for activity in activities
-    ]
-
-
-def cache_latest_activity(
-    *,
-    token: str,
-    output_dir: str | Path = DEFAULT_DATA_DIR,
-    lookback_days: int = 7,
-) -> dict[str, Path]:
-    """Cache the newest EatMyRide activity in a recent local-day window."""
-
-    today = datetime.now(LOCAL_TIMEZONE).date()
-    activities = []
-    for offset in range(lookback_days + 1):
-        activities.extend(list_activities_for_day(today - timedelta(days=offset), token=token))
-    if not activities:
-        raise RuntimeError(f"No EatMyRide activities found in the last {lookback_days} days")
-    latest = max(activities, key=lambda activity: str(activity.get("date") or ""))
-    return cache_activity(latest["id"], token=token, output_dir=output_dir)
-
-
 def _request_json(
     path: str,
     *,
@@ -396,7 +348,7 @@ def _request_text(
     headers = {
         "Accept": "application/json",
         "accept-version": EATMYRIDE_API_VERSION,
-        "User-Agent": "training-ai/0.1 (+EatMyRide personal cache client)",
+        "User-Agent": "training-ai/0.1 (+EatMyRide personal API client)",
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -418,15 +370,6 @@ def _request_text(
         ) from exc
     except URLError as exc:
         raise RuntimeError(f"EatMyRide request failed: {exc.reason}") from exc
-
-
-def _activity_cache_dir(root: Path, activity: dict[str, Any]) -> Path:
-    activity_id = activity.get("id")
-    if not activity_id:
-        raise KeyError(f"EatMyRide activity is missing id: {activity}")
-    activity_date = _activity_local_date(activity)
-    local_date = activity_date.isoformat() if activity_date else "unknown"
-    return root / "activities" / f"{local_date}_{activity_id}"
 
 
 def _activity_local_date(activity: dict[str, Any]) -> date | None:
@@ -461,10 +404,3 @@ def _grams_to_milligrams(value: float) -> int:
 
 def _round_int(value: float) -> int:
     return int(round(value))
-
-
-def _write_json(path: Path, payload: Any) -> None:
-    path.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )

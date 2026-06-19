@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot EatMyRide glycogen/energy estimates with logged fueling events."""
+"""Plot EatMyRide glycogen/energy estimates with food-plan events."""
 
 from __future__ import annotations
 
@@ -18,13 +18,12 @@ from matplotlib.lines import Line2D
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Plot a cached EatMyRide activity's energy graph and food plan.",
+        description="Plot an EatMyRide activity's energy graph and food plan from local JSON files.",
     )
     parser.add_argument(
-        "activity",
+        "activity_dir",
         help=(
-            "EatMyRide activity id, activity cache dir name, or path to a directory "
-            "containing activity.json and foodplan.json"
+            "Path to a local directory containing activity.json and foodplan.json"
         ),
     )
     parser.add_argument("--output", help="Output image path")
@@ -60,7 +59,7 @@ def main() -> None:
     parser.add_argument(
         "--hide-fueling",
         action="store_true",
-        help="Hide logged food and drink markers.",
+        help="Hide food and drink markers from the food plan.",
     )
     parser.add_argument(
         "--high-risk-ratio",
@@ -71,7 +70,7 @@ def main() -> None:
     args = parser.parse_args()
     config = load_config(args.config)
 
-    activity_dir = resolve_activity_dir(args.activity)
+    activity_dir = resolve_activity_dir(args.activity_dir)
     output = Path(args.output) if args.output else default_output_path(activity_dir)
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -93,23 +92,10 @@ def resolve_activity_dir(ref: str) -> Path:
     candidate = Path(ref)
     if (candidate / "activity.json").exists() and (candidate / "foodplan.json").exists():
         return candidate
-
-    root = Path("data/eatmyride/activities")
-    candidate = root / ref
-    if (candidate / "activity.json").exists() and (candidate / "foodplan.json").exists():
-        return candidate
-
-    matches = [
-        path
-        for path in root.glob(f"*_{ref}")
-        if (path / "activity.json").exists() and (path / "foodplan.json").exists()
-    ]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        names = ", ".join(path.name for path in matches)
-        raise SystemExit(f"Ambiguous EatMyRide activity {ref!r}: {names}")
-    raise SystemExit(f"Could not resolve cached EatMyRide activity: {ref}")
+    raise SystemExit(
+        "Expected a directory containing EatMyRide activity.json and foodplan.json: "
+        f"{ref}"
+    )
 
 
 def load_config(path: Path | None) -> dict[str, Any]:
@@ -225,7 +211,7 @@ def plot_eatmyride_fueling(
         fig.text(
             0.12,
             0.02,
-            f"Logged intake: {total_carbs:.1f} g carbs, {total_ml:.0f} ml fluid, {total_carbs / (duration / 3600):.1f} g/h.",
+            f"Food plan: {total_carbs:.1f} g carbs, {total_ml:.0f} ml fluid, {total_carbs / (duration / 3600):.1f} g/h.",
             fontsize=10,
             color="#555555",
         )
