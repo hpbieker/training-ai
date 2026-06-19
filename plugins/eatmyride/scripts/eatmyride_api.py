@@ -93,6 +93,54 @@ def get_activity(activity_id: str | int, *, token: str) -> dict[str, Any]:
     return activity
 
 
+def summarize_activity(activity: dict[str, Any]) -> dict[str, Any]:
+    """Return compact fueling-relevant activity fields."""
+
+    glycogen = _energy_series(activity, "glycogen")
+    return {
+        "id": activity.get("id"),
+        "label": activity.get("label") or activity.get("name"),
+        "date": activity.get("date"),
+        "sport": activity.get("sport"),
+        "type": activity.get("type"),
+        "tracker": activity.get("tracker"),
+        "duration_s": activity.get("duration"),
+        "distance_m": activity.get("distance"),
+        "elevation_m": activity.get("elevation"),
+        "average_heart_rate": activity.get("avgHeartRate"),
+        "normalized_power": activity.get("normalizedPower"),
+        "average_temperature": activity.get("averageTemperature"),
+        "calories_start": activity.get("caloriesStart"),
+        "calories_threshold": activity.get("caloriesThreshold"),
+        "calories_needed": activity.get("caloriesNeeded"),
+        "energy_needed": activity.get("energyNeeded"),
+        "estimated_fat_consumption": activity.get("estimatedFatConsumption"),
+        "carbohydrates_from_food_kcal_observed": activity.get("carbohydratesFromFood"),
+        "glycogen": glycogen,
+        "warning": activity.get("warning"),
+        "is_evaluated": activity.get("isEvaluated"),
+        "evaluated_at": activity.get("evaluatedAt"),
+        "preparation_meal": activity.get("preparationMeal"),
+        "recovery_meal": activity.get("recoveryMeal"),
+        "ride_type": activity.get("rideType"),
+        "profile": activity.get("profile"),
+        "goal": activity.get("goal"),
+    }
+
+
+def summarize_fueling(
+    activity: dict[str, Any],
+    foodplan: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Return compact activity energy state plus item-level intake."""
+
+    return {
+        "activity": summarize_activity(activity),
+        "foodplan": summarize_foodplan_events(foodplan),
+        "summary": summarize_foodplan(foodplan),
+    }
+
+
 def get_foodplan(activity_id: str | int, *, token: str) -> list[dict[str, Any]]:
     """Return food-plan events for one EatMyRide activity."""
 
@@ -100,6 +148,28 @@ def get_foodplan(activity_id: str | int, *, token: str) -> list[dict[str, Any]]:
     if not isinstance(foodplan, list):
         raise TypeError("Expected EatMyRide foodplan endpoint to return a list")
     return foodplan
+
+
+def _energy_series(activity: dict[str, Any], key: str) -> dict[str, Any] | None:
+    energy = activity.get("energyGraph", {}).get("energy", {})
+    values = energy.get(key)
+    times = energy.get("time")
+    if not isinstance(values, list) or not values:
+        return None
+    numeric = [value for value in values if isinstance(value, (int, float))]
+    if not numeric:
+        return None
+    min_value = min(numeric)
+    min_index = values.index(min_value)
+    time_at_min = times[min_index] if isinstance(times, list) and min_index < len(times) else None
+    return {
+        "start": values[0],
+        "end": values[-1],
+        "min": min_value,
+        "time_at_min_s": time_at_min,
+        "delta": values[-1] - values[0] if isinstance(values[-1], (int, float)) and isinstance(values[0], (int, float)) else None,
+        "points": len(values),
+    }
 
 
 def search_products(
@@ -287,6 +357,39 @@ def summarize_foodplan(foodplan: list[dict[str, Any]]) -> dict[str, float]:
     return {
         "carbohydrates_grams": carbohydrates_grams,
         "fluids_ml": fluids_ml,
+    }
+
+
+def summarize_foodplan_events(foodplan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return compact item-level food-plan rows for analysis output."""
+
+    return [summarize_foodplan_event(event) for event in foodplan]
+
+
+def summarize_foodplan_event(event: dict[str, Any]) -> dict[str, Any]:
+    """Return one compact food-plan event with calculated intake values."""
+
+    product = event.get("product") or {}
+    serving_quantity = float(product.get("ingredientsQty") or 1)
+    serving_unit = product.get("ingredientsQtyUnit")
+    if serving_unit == "gram" and event.get("gram") is not None:
+        serving_count = float(event["gram"]) / serving_quantity
+    else:
+        serving_count = 1.0
+    carbohydrates_grams = float(product.get("carbohydrates") or 0) * serving_count / 1000
+    return {
+        "id": event.get("id"),
+        "activity_id": event.get("activityId"),
+        "time_s": event.get("time"),
+        "distance_m": event.get("distance"),
+        "product_id": event.get("productId") or product.get("id"),
+        "label": product.get("label"),
+        "category": product.get("category"),
+        "subcategory": product.get("subcategory"),
+        "gram": event.get("gram"),
+        "ml": event.get("ml"),
+        "carbohydrates_grams": carbohydrates_grams,
+        "calories_kcal": float(product.get("calories") or 0) * serving_count,
     }
 
 

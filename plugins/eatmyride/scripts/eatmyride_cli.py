@@ -19,6 +19,9 @@ from eatmyride_api import (
     list_products,
     load_eatmyride_credentials,
     replace_foodplan,
+    summarize_activity,
+    summarize_foodplan_events,
+    summarize_fueling,
     search_products,
     summarize_foodplan,
     update_product,
@@ -36,10 +39,18 @@ def main() -> None:
 
     activity = subparsers.add_parser("activity", help="Fetch one EatMyRide activity")
     activity.add_argument("activity_id")
+    activity.add_argument("--summary", action="store_true", help="Return compact fueling fields")
 
     foodplan = subparsers.add_parser("foodplan", help="Fetch one activity food plan")
     foodplan.add_argument("activity_id")
     foodplan.add_argument("--summary", action="store_true", help="Include calculated totals")
+
+    fueling = subparsers.add_parser(
+        "fueling",
+        help="Fetch compact activity energy state and food-plan intake",
+    )
+    fueling.add_argument("activity_id")
+    fueling.add_argument("--summary", action="store_true", required=True, help="Return compact fueling summary")
 
     day = subparsers.add_parser(
         "activities",
@@ -169,14 +180,29 @@ def main() -> None:
     token = _login(args.env)
 
     if args.command == "activity":
-        _print_json(get_activity(args.activity_id, token=token))
+        activity_payload = get_activity(args.activity_id, token=token)
+        if args.summary:
+            _print_json({"activity": summarize_activity(activity_payload)})
+        else:
+            _print_json(activity_payload)
         return
 
     if args.command == "foodplan":
-        payload: dict[str, Any] = {"foodplan": get_foodplan(args.activity_id, token=token)}
+        foodplan_payload = get_foodplan(args.activity_id, token=token)
         if args.summary:
-            payload["summary"] = summarize_foodplan(payload["foodplan"])
+            payload = {
+                "foodplan": summarize_foodplan_events(foodplan_payload),
+                "summary": summarize_foodplan(foodplan_payload),
+            }
+        else:
+            payload = {"foodplan": foodplan_payload}
         _print_json(payload)
+        return
+
+    if args.command == "fueling":
+        activity_payload = get_activity(args.activity_id, token=token)
+        foodplan_payload = get_foodplan(args.activity_id, token=token)
+        _print_json(summarize_fueling(activity_payload, foodplan_payload))
         return
 
     if args.command == "activities":

@@ -84,10 +84,20 @@ def load_activity(activity_dir: str | Path) -> SavedActivity:
     """Load one saved activity directory."""
 
     path = Path(activity_dir)
-    metadata = json.loads((path / "activity.json").read_text(encoding="utf-8"))
+    metadata = load_activity_metadata(path)
     with (path / "streams.csv").open(newline="", encoding="utf-8-sig") as file:
         streams = list(csv.DictReader(file))
     return SavedActivity(activity_dir=path, metadata=metadata, streams=streams)
+
+
+def load_activity_metadata(activity_dir: str | Path) -> dict[str, Any]:
+    """Load only activity metadata, without reading the stream CSV."""
+
+    path = Path(activity_dir)
+    metadata_payload = json.loads((path / "activity.json").read_text(encoding="utf-8"))
+    if isinstance(metadata_payload, dict) and isinstance(metadata_payload.get("activity"), dict):
+        return metadata_payload["activity"]
+    return metadata_payload
 
 
 def usable_analysis_fields(
@@ -101,20 +111,12 @@ def usable_analysis_fields(
 
 
 def resolve_activity_ref(ref: str, *, artifacts_dir: str | Path = ARTIFACTS_DIR) -> SavedActivity:
-    """Resolve ``latest``, an Intervals activity id, dir name or path."""
+    """Resolve an Intervals activity id, dir name, dir path or file path."""
 
     artifacts_path = Path(artifacts_dir)
-    if ref == "latest":
-        candidates = sorted(
-            iter_saved_activities(artifacts_path),
-            key=lambda activity: activity.start_date_local,
-        )
-        if not candidates:
-            raise FileNotFoundError(f"No saved activities under {artifacts_path / 'activities'}")
-        return candidates[-1]
-
     candidate_path = Path(ref)
     if candidate_path.exists():
+        candidate_path = activity_dir_from_path(candidate_path)
         return load_activity(candidate_path)
 
     artifacts_candidate = artifacts_path / "activities" / ref
@@ -128,6 +130,43 @@ def resolve_activity_ref(ref: str, *, artifacts_dir: str | Path = ARTIFACTS_DIR)
         return load_activity(matches[-1])
 
     raise FileNotFoundError(f"Could not resolve saved activity: {ref}")
+
+
+def activity_dir_from_path(path: Path) -> Path:
+    """Return an activity directory from either a directory or known file path."""
+
+    activity_dir = path.parent if path.is_file() else path
+    activity_json = activity_dir / "activity.json"
+    streams_csv = activity_dir / "streams.csv"
+    if not activity_json.exists() or not streams_csv.exists():
+        missing = [
+            str(candidate)
+            for candidate in (activity_json, streams_csv)
+            if not candidate.exists()
+        ]
+        raise FileNotFoundError(
+            f"Expected an activity directory with activity.json and streams.csv; missing: "
+            f"{', '.join(missing)}"
+        )
+    return activity_dir
+
+
+def iter_saved_activity_metadata(
+    artifacts_dir: str | Path = ARTIFACTS_DIR,
+) -> Iterable[tuple[Path, dict[str, Any]]]:
+    """Yield saved activity directories with metadata only."""
+
+    activities_dir = Path(artifacts_dir) / "activities"
+    for activity_dir in sorted(activities_dir.iterdir()):
+        if (activity_dir / "activity.json").exists() and (activity_dir / "streams.csv").exists():
+            yield activity_dir, load_activity_metadata(activity_dir)
+
+
+def activity_sort_key(candidate: tuple[Path, dict[str, Any]]) -> tuple[str, str]:
+    """Sort saved activities by local start time, falling back to directory name."""
+
+    activity_dir, metadata = candidate
+    return str(metadata.get("start_date_local") or ""), activity_dir.name
 
 
 def iter_saved_activities(artifacts_dir: str | Path = ARTIFACTS_DIR) -> Iterable[SavedActivity]:

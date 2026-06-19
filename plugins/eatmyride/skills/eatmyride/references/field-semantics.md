@@ -1,5 +1,10 @@
 # EatMyRide Field Semantics
 
+This file documents field meaning for callers that use
+`plugins/eatmyride/scripts/eatmyride_cli.py`. Endpoint names below are
+implementation notes for maintaining `eatmyride_api.py`; analysis workflows
+should use the CLI commands from `SKILL.md`.
+
 ## Authentication
 
 - Default API base: `https://backend.eatmyride.com/api`.
@@ -12,10 +17,12 @@
 
 ## Activity And Food Plan
 
-- `GET /api/activities/<activity-id>` returns the activity document.
-- `GET /api/foodplan/<activity-id>` returns the activity's food-plan event list.
+- `activities <start> <end>` is the cheap first pass for selecting an activity by id/date/duration, but observed list entries do not include evaluated fueling fields or `energyGraph`.
+- `foodplan <activity-id> --summary` returns the activity's food-plan event list plus calculated food-plan totals.
+- `activity <activity-id> --summary` returns compact activity-level fueling and energy state fields from the full activity document.
 - A food plan can be prepared before an activity and updated afterward; do not assume every event represents confirmed real-world intake unless the user or app workflow confirms it.
 - Activity-level fueling fields are useful for summary context, but food-plan events are the source of item-level food and drink details.
+- For intake-only analysis, `foodplan <activity-id> --summary` can be enough. Fetch `activity <activity-id> --summary` only when activity-level energy state fields are needed, especially `energyGraph.energy.glycogen`, `caloriesThreshold`, `caloriesStart`, `caloriesNeeded`, `energyNeeded`, `estimatedFatConsumption`, or `carbohydratesFromFood`.
 - `carbohydratesFromFood` is misleadingly named. Observed responses match rounded food energy in kcal, not carbohydrate grams.
 - `warning` should not be used as a fueling-quality signal.
 
@@ -42,12 +49,22 @@
 
 ## Write Flow
 
-- Food-plan replacement posts the full list to `/api/foodplan/<activity-id>`.
-- The mobile-app-compatible flow then updates the activity document with `PUT /api/activities/<activity-id>` to trigger recalculation.
+- `foodplan-replace <activity-id> <foodplan.json> --yes` sends the full replacement list.
+- The CLI's mobile-app-compatible flow then updates the activity document to trigger recalculation.
 - Verify by reading both the activity and the food plan back from the server.
 - Product create/update/delete endpoints affect remote account state and should require explicit confirmation.
 
-## Observed Additional Endpoints
+## Implementation Endpoint Notes
+
+These are observed backend paths used or investigated by `eatmyride_api.py`.
+They are not caller-facing workflow instructions:
+
+- `GET /api/activities/<activity-id>` backs `activity <activity-id>`.
+- `GET /api/foodplan/<activity-id>` backs `foodplan <activity-id>`.
+- `GET /api/activities/list/<start>/<end>` backs `activities <start> <end>`.
+- Food-plan replacement posts to `/api/foodplan/<activity-id>` and then updates `/api/activities/<activity-id>` to trigger recalculation.
+
+## Observed Additional Backend Paths
 
 - `GET /api/activities/evaluated/<activity-id>`
 - `GET /api/products/regular/drink`
@@ -56,7 +73,7 @@
 - `GET /api/days/<local-date>`
 - `GET /api/days/<local-date>/timeline`
 
-The evaluated activity endpoint can include evaluated activity, energy graph and burn series. Product endpoints are useful when adding intake events for products that are not already present in a food plan.
+The evaluated activity endpoint can include evaluated activity, energy graph and burn series, but observed responses can be larger than the normal activity document. The day endpoint is small but does not expose activity-level fueling state. Product endpoints are useful when adding intake events for products that are not already present in a food plan.
 
 ## Observed App Upload Flows
 

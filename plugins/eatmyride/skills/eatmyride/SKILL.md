@@ -29,17 +29,22 @@ python3 -B plugins/eatmyride/scripts/eatmyride_cli.py activities <start-YYYY-MM-
 - Single activity:
 
 ```bash
-python3 -B plugins/eatmyride/scripts/eatmyride_cli.py activity <activity-id>
+python3 -B plugins/eatmyride/scripts/eatmyride_cli.py activity <activity-id> --summary
 python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan <activity-id> --summary
+python3 -B plugins/eatmyride/scripts/eatmyride_cli.py fueling <activity-id> --summary
 ```
 
 - For one local date, pass the same date as start and end: `activities <local-YYYY-MM-DD> <local-YYYY-MM-DD>`.
 - For "today's EatMyRide activities", use the user's local date for both arguments.
 - For a week or date range, use inclusive local dates: `activities <start-YYYY-MM-DD> <end-YYYY-MM-DD>`.
 - For "latest" or "most recent" EatMyRide activity requests, choose a reasonable local date range, call `activities <start-YYYY-MM-DD> <end-YYYY-MM-DD>`, then select the newest activity by its `date` field.
-- When analyzing fueling, fetch both `activity <activity-id>` and `foodplan <activity-id> --summary`; activity-only payloads are not enough.
+- Use the activity list as the cheap first pass for selecting an activity. It usually includes id, date and duration, but not the evaluated fueling fields or `energyGraph`.
+- When analyzing what the user ate or drank, fetch `foodplan <activity-id> --summary`; this returns compact item rows plus calculated food-plan totals and is usually enough for intake analysis.
+- Fetch `activity <activity-id> --summary` only when the analysis needs activity-level fueling or energy state fields such as `energyGraph.energy.glycogen`, `caloriesThreshold`, `caloriesStart`, `caloriesNeeded`, `energyNeeded`, `estimatedFatConsumption`, or `carbohydratesFromFood`.
+- When analysis needs both intake and activity-level energy/glycogen state, fetch `fueling <activity-id> --summary` instead of separate `foodplan` and `activity` calls.
+- `activity --summary` reduces the local JSON passed to callers, but the current CLI implementation still reads the full activity document before summarizing it.
 - Do not interpret activity `warning` as a fueling-quality verdict. Treat it as a likely workflow/status flag for whether intake has been reviewed or edited.
-- If available, use `energyGraph.energy.glycogen` for depletion/final-state shape and `caloriesThreshold` for risk-zone context.
+- If available, use `energyGraph.energy.glycogen` for depletion/final-state shape and `caloriesThreshold` for risk-zone context. When reporting glycogen state, include the lowest value as well as the final value.
 
 ## Food Plans
 
@@ -58,7 +63,7 @@ python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan-replace <activity
 ```
 
 - Food-plan writes replace the complete server-side list. Require explicit user confirmation before replacing a food plan or editing an event.
-- After any food-plan write, trigger/read the recalculated activity state and read back `/foodplan/<activity-id>` before reporting success.
+- After any food-plan write, trigger/read the recalculated activity state and read back the food plan before reporting success.
 - Calculate carbohydrate grams from food-plan event quantities and product serving fields.
 
 ## Products
@@ -86,14 +91,14 @@ python3 -B plugins/eatmyride/scripts/eatmyride_cli.py product-update <product-id
 python3 -B plugins/eatmyride/scripts/eatmyride_cli.py product-delete <product-id> --yes
 ```
 
-- Use suggested/regular product endpoints only to identify candidate products; food-plan totals still come from activity food-plan events.
+- Use suggested/regular product commands only to identify candidate products; food-plan totals still come from activity food-plan events.
 - For product create/update/delete, require explicit confirmation unless doing a dry run. Review the payload before remote product writes.
 - Use `product-create --dry-run` to inspect product payloads before creating them; use product write commands with `--yes` only after confirmation.
 - Product payload arguments should be presented to users in normal kcal, grams and ml. EatMyRide stores weight/macros/salt and many nutrients as integer milligrams.
 
 ## Fueling Interpretation
 
-- Judge fueling primarily from `/foodplan/<activity-id>` events plus activity energy fields such as `energyGraph.energy.glycogen`, `caloriesThreshold`, `caloriesStart`, `caloriesNeeded` and `energyNeeded`.
+- Judge fueling primarily from `foodplan <activity-id> --summary` events plus activity energy fields such as `energyGraph.energy.glycogen`, `caloriesThreshold`, `caloriesStart`, `caloriesNeeded` and `energyNeeded`.
 - Do not rely on activity-level `carbohydratesFromFood` as carbohydrate grams; observed values match rounded food energy in kcal.
 - Distinguish EatMyRide food-plan fueling from likely real-world fueling. If products are missing from EatMyRide or the plan may not have been updated after the activity, state that uncertainty instead of treating the food plan as complete.
 - For recent activities with missing fueling, ask what the user ate and drank when recall is plausible. For older activities, state that fueling is unknown.

@@ -146,14 +146,16 @@ def fetch_activity(
         if include_details
         else {}
     )
-    return {
+    payload = {
         "source": "garmin_connect_gccli",
         "source_time_local": local_now(),
         "resolved_activity": resolved,
-        "summary": summary,
-        "details": details if include_details else None,
         "metrics_summary": garmin_activity_metrics(summary, details),
     }
+    if include_details:
+        payload["summary"] = summary
+        payload["details"] = details
+    return payload
 
 
 def garmin_activity_search(

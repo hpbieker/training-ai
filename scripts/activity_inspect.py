@@ -17,6 +17,7 @@ from typing import Any
 
 from analysis import (
     CORE_STREAMS,
+    SavedActivity,
     data_quality_summary,
     detect_power_blocks,
     detect_steady_power_segment,
@@ -26,6 +27,7 @@ from analysis import (
     summarize_rows,
     half_drift,
     usable_analysis_fields,
+    value,
 )
 
 
@@ -52,8 +54,13 @@ DEFAULT_FIELDS = [
 def main() -> None:
     parser = argparse.ArgumentParser(description="Inspect a saved Intervals.icu activity artifact.")
     parser.add_argument(
-        "activity",
-        help="Activity ref: latest, saved dir path/name, or Intervals.icu activity id",
+        "activities",
+        nargs="+",
+        metavar="activity",
+        help=(
+            "Activity ref(s): saved dir path/name, activity.json/streams.csv path, "
+            "or saved Intervals.icu activity id"
+        ),
     )
     parser.add_argument("--artifacts-dir", default="outputs/intervals")
     parser.add_argument("--target", type=float, help="Detect blocks near target watts")
@@ -99,8 +106,41 @@ def main() -> None:
     args = parser.parse_args()
     if args.brief and args.compact:
         parser.error("--brief and --compact are alternative output shapes; choose one")
+    try:
+        inspections = [inspect_activity(activity_ref, args) for activity_ref in args.activities]
+    except FileNotFoundError as exc:
+        parser.error(str(exc))
+    activities = [activity for activity, _ in inspections]
+    results = [result for _, result in inspections]
+    output_json = json.dumps(results[0] if len(results) == 1 else results, indent=2, sort_keys=True)
+    if args.stdout:
+        print(output_json)
+        return
 
-    activity = resolve_activity_ref(args.activity, artifacts_dir=args.artifacts_dir)
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(output_json + "\n", encoding="utf-8")
+        print(str(output_path.resolve()))
+        return
+
+    if len(results) == 1:
+        output_path = default_output_path(activities[0])
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(output_json + "\n", encoding="utf-8")
+        print(str(output_path.resolve()))
+        return
+
+    for activity, result in zip(activities, results):
+        activity_json = json.dumps(result, indent=2, sort_keys=True)
+        output_path = default_output_path(activity)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(activity_json + "\n", encoding="utf-8")
+        print(str(output_path.resolve()))
+
+
+def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[SavedActivity, dict[str, Any]]:
+    activity = resolve_activity_ref(activity_ref, artifacts_dir=args.artifacts_dir)
     requested_fields = [field.strip() for field in args.fields.split(",") if field.strip()]
     fields = usable_analysis_fields(activity, requested_fields)
     rows = activity.streams
@@ -160,19 +200,12 @@ def main() -> None:
         ]
 
     if args.brief:
+        result["_rows"] = rows
         result = brief_result(result)
     elif args.compact:
         result = compact_result(result, fields)
 
-    output_json = json.dumps(result, indent=2, sort_keys=True)
-    if args.stdout:
-        print(output_json)
-        return
-
-    output_path = Path(args.output) if args.output else default_output_path(activity)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(output_json + "\n", encoding="utf-8")
-    print(str(output_path.resolve()))
+    return activity, result
 
 
 def activity_metadata(activity) -> dict[str, Any]:
@@ -292,15 +325,20 @@ def compact_summary_block(block: dict[str, Any], fields: list[str]) -> dict[str,
 def brief_result(result: dict[str, Any]) -> dict[str, Any]:
     """Return a terse result intended as the first-pass chat analysis input."""
 
-    work_blocks = result.get("detected_power_blocks") or [
+    rows = result.get("_rows") or []
+    detected_blocks = result.get("detected_power_blocks") or []
+    saved_work_intervals = [
         interval
         for interval in result.get("intervals", [])
         if str(interval.get("type") or "").upper() == "WORK"
     ]
+    work_blocks = detected_blocks or saved_work_intervals
+    block_source = "detected_power_blocks" if detected_blocks else "intervals_icu_work_intervals"
     recoveries = brief_recoveries(
         result.get("moxy", {}).get("recovery_reoxygenation", []),
         work_block_count=len(work_blocks),
     )
+    hard_block = hardest_block(work_blocks)
     return {
         "activity": brief_activity(result["activity"]),
         "streams": {
@@ -309,6 +347,17 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
             "data_quality_issues": compact_quality(result["streams"]["data_quality"]),
         },
         "total": brief_total(result["total"]),
+        "key_efforts": key_efforts(rows),
+        "peaks": peak_summary(rows),
+        "hardest_block": (
+            {
+                **brief_work_block(hard_block, index=work_blocks.index(hard_block) + 1),
+                "hr_recovery_after_block": hr_recovery_after_block(rows, hard_block),
+            }
+            if hard_block
+            else None
+        ),
+        "block_source": block_source,
         "work_blocks": [
             brief_work_block(block, index=index)
             for index, block in enumerate(work_blocks, start=1)
@@ -373,12 +422,131 @@ def brief_total(block: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def key_efforts(rows: list[dict[str, str]]) -> dict[str, Any]:
+    return drop_none(
+        {
+            "best_5m_power": rolling_best(rows, "watts", 5 * 60, digits=0),
+            "best_20m_power": rolling_best(rows, "watts", 20 * 60, digits=0),
+            "best_5s_ve": rolling_best(rows, "tidal_volume_min", 5, digits=1),
+            "best_5m_ve": rolling_best(rows, "tidal_volume_min", 5 * 60, digits=1),
+        }
+    )
+
+
+def peak_summary(rows: list[dict[str, str]]) -> dict[str, Any]:
+    return drop_none(
+        {
+            "core_temp_peak": field_peak(rows, "core_temperature", digits=2),
+            "ve_peak": field_peak(rows, "tidal_volume_min", digits=1),
+            "br_peak": field_peak(rows, "respiration", digits=1),
+        }
+    )
+
+
+def rolling_best(
+    rows: list[dict[str, str]],
+    field: str,
+    window_seconds: int,
+    *,
+    digits: int,
+) -> dict[str, Any] | None:
+    samples = [(index, value(row, field)) for index, row in enumerate(rows)]
+    samples = [(index, sample) for index, sample in samples if sample is not None]
+    if len(samples) < window_seconds:
+        return None
+
+    best: tuple[float, int, int] | None = None
+    running_sum = 0.0
+    start = 0
+    for end, (_, sample) in enumerate(samples):
+        running_sum += sample
+        if end - start + 1 > window_seconds:
+            running_sum -= samples[start][1]
+            start += 1
+        if end - start + 1 != window_seconds:
+            continue
+        average = running_sum / window_seconds
+        if best is None or average > best[0]:
+            best = (average, samples[start][0], samples[end][0])
+
+    if best is None:
+        return None
+    average, start_index, end_index = best
+    return {
+        "avg": rounded(average, digits=digits),
+        "start_s": rounded(row_time(rows, start_index), digits=0),
+        "end_s": rounded(row_time(rows, end_index), digits=0),
+    }
+
+
+def field_peak(rows: list[dict[str, str]], field: str, *, digits: int) -> dict[str, Any] | None:
+    best: tuple[float, int] | None = None
+    for index, row in enumerate(rows):
+        sample = value(row, field)
+        if sample is None:
+            continue
+        if best is None or sample > best[0]:
+            best = (sample, index)
+    if best is None:
+        return None
+    sample, index = best
+    return {"value": rounded(sample, digits=digits), "time_s": rounded(row_time(rows, index), digits=0)}
+
+
+def hardest_block(blocks: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not blocks:
+        return None
+
+    def score(block: dict[str, Any]) -> float:
+        summary = block.get("summary") or {}
+        watts = stat(summary, "watts", "avg", digits=1) or 0
+        duration = block.get("duration_seconds") or 0
+        hr = stat(summary, "heartrate", "avg", digits=1) or 0
+        return float(watts) * min(float(duration), 30 * 60) + float(hr)
+
+    return max(blocks, key=score)
+
+
+def hr_recovery_after_block(
+    rows: list[dict[str, str]],
+    block: dict[str, Any],
+    *,
+    window_seconds: int = 60,
+) -> dict[str, Any] | None:
+    end_index = block.get("end_index")
+    if not isinstance(end_index, int) or end_index >= len(rows):
+        return None
+    start_hr = value(rows[max(0, end_index - 1)], "heartrate")
+    if start_hr is None:
+        return None
+    window = rows[end_index : min(len(rows), end_index + window_seconds)]
+    hr_values = [sample for row in window if (sample := value(row, "heartrate")) is not None]
+    if not hr_values:
+        return None
+    low = min(hr_values)
+    return {
+        "window_s": window_seconds,
+        "start_hr": rounded(start_hr, digits=0),
+        "low_hr": rounded(low, digits=0),
+        "drop_bpm": rounded(start_hr - low, digits=0),
+    }
+
+
+def row_time(rows: list[dict[str, str]], index: int) -> float | None:
+    if index < 0 or index >= len(rows):
+        return None
+    parsed = value(rows[index], "time")
+    return parsed if parsed is not None else float(index)
+
+
 def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
     summary = block.get("summary") or {}
+    source = block.get("detection", {}).get("source")
     return drop_none(
         {
             "n": index,
-            "label": block.get("label"),
+            "label": brief_block_label(block, index=index),
+            "source": source,
             "source_index": block.get("index"),
             "duration_s": rounded(block.get("duration_seconds"), digits=0),
             "watts_avg": stat(summary, "watts", "avg", digits=0),
@@ -399,6 +567,14 @@ def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
             "core_temp_max": stat(summary, "core_temperature", "max", digits=2),
         }
     )
+
+
+def brief_block_label(block: dict[str, Any], *, index: int) -> str | None:
+    label = block.get("label")
+    source = block.get("detection", {}).get("source")
+    if source == "intervals_icu" and label == "WORK":
+        return f"saved_interval_{index}"
+    return label
 
 
 def brief_recoveries(
@@ -512,7 +688,7 @@ def parse_duration(raw: str) -> int:
 
 def default_output_path(activity) -> Path:
     activity_id = sanitize_filename(activity.id or activity.activity_dir.name)
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S%f")
     return Path("outputs/activity-inspect") / f"{activity_id}_{timestamp}.json"
 
 

@@ -1,0 +1,7 @@
+interface:
+  display_name: "Training Analysis"
+  short_description: "Analyze training and readiness here."
+  default_prompt: "Use $training-analysis to analyze a workout, readiness question, forecast, or training recommendation with this repo's source plugins and helper scripts."
+
+policy:
+  allow_implicit_invocation: true
