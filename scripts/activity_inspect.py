@@ -344,8 +344,12 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
         moxy_recoveries=result.get("moxy", {}).get("recovery_reoxygenation", []),
         work_block_count=len(work_blocks),
     )
+    post_work_blocks = brief_post_work_blocks(
+        saved_recovery_intervals,
+        work_block_count=len(work_blocks),
+    )
     hard_block = hardest_block(work_blocks)
-    return {
+    brief = {
         "activity": brief_activity(result["activity"]),
         "streams": {
             "rows": result["streams"]["rows"],
@@ -375,6 +379,9 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
             else None
         ),
     }
+    if post_work_blocks:
+        brief["post_work_blocks"] = post_work_blocks
+    return brief
 
 
 def brief_activity(activity: dict[str, Any]) -> dict[str, Any]:
@@ -599,6 +606,7 @@ def brief_recoveries(
     *,
     moxy_recoveries: list[dict[str, Any]],
     work_block_count: int,
+    max_recovery_seconds: int = 10 * 60,
 ) -> list[dict[str, Any]]:
     moxy_by_after_work_block = {}
     for moxy_recovery in moxy_recoveries:
@@ -613,6 +621,8 @@ def brief_recoveries(
             continue
         if after_work_block < 1 or after_work_block > work_block_count:
             continue
+        if (block.get("duration_seconds") or 0) > max_recovery_seconds:
+            continue
         recoveries.append(
             brief_recovery(
                 block,
@@ -622,6 +632,44 @@ def brief_recoveries(
             )
         )
     return recoveries
+
+
+def brief_post_work_blocks(
+    blocks: list[dict[str, Any]],
+    *,
+    work_block_count: int,
+    min_seconds: int = 10 * 60,
+) -> list[dict[str, Any]]:
+    post_work_blocks = []
+    for block in blocks:
+        after_work_block = recovery_after_work_block(block)
+        if after_work_block != work_block_count:
+            continue
+        if (block.get("duration_seconds") or 0) <= min_seconds:
+            continue
+        post_work_blocks.append(brief_post_work_block(block, index=len(post_work_blocks) + 1))
+    return post_work_blocks
+
+
+def brief_post_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
+    summary = block.get("summary") or {}
+    drift = block.get("drift") or {}
+    return drop_none(
+        {
+            "n": index,
+            "source_index": block.get("index"),
+            "duration_s": rounded(block.get("duration_seconds"), digits=0),
+            "watts_avg": stat(summary, "watts", "avg", digits=0),
+            "watts_drift": rounded(drift.get("watts"), digits=1),
+            "hr_avg": stat(summary, "heartrate", "avg", digits=0),
+            "hr_start": stat(summary, "heartrate", "start", digits=0),
+            "hr_min": stat(summary, "heartrate", "min", digits=0),
+            "hr_end": stat(summary, "heartrate", "end", digits=0),
+            "br_avg": stat(summary, "respiration", "avg", digits=1),
+            "ve_avg": stat(summary, "tidal_volume_min", "avg", digits=1),
+            "core_temp_max": stat(summary, "core_temperature", "max", digits=2),
+        }
+    )
 
 
 def recovery_after_work_block(block: dict[str, Any]) -> int | None:

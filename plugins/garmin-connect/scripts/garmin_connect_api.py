@@ -272,6 +272,12 @@ def resolve_garmin_activity(activity: str) -> dict[str, str]:
             "date": start_date,
         }
 
+    if activity.startswith("i"):
+        raise SystemExit(
+            f"Could not resolve Garmin activity id from Intervals activity {activity}. "
+            "Pass a Garmin activity id or a saved activity artifact that contains a Garmin external_id."
+        )
+
     return {
         "garmin_id": activity,
         "source": "garmin_activity_id",
