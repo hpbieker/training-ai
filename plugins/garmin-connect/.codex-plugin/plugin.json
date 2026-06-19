@@ -1,0 +1,26 @@
+{
+  "name": "garmin-connect",
+  "version": "0.1.0+codex.20260619",
+  "description": "Garmin Connect source semantics and live access for training readiness and activity context.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Garmin Connect",
+    "shortDescription": "Fetch and interpret Garmin Connect health, readiness, and activity data.",
+    "longDescription": "Garmin Connect provides source-specific guidance for using gccli-backed Garmin health, readiness, Body Battery, Training Readiness, Training Status, and activity metadata. Local persistence and cross-source analysis live outside the plugin.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "Data Analysis",
+      "Command Line"
+    ],
+    "composerIcon": "./assets/garmin-connect-icon.png",
+    "defaultPrompt": [
+      "Fetch Garmin Connect readiness data for today.",
+      "Check Garmin Connect auth status.",
+      "Help me interpret Garmin Training Readiness and Body Battery."
+    ]
+  }
+}

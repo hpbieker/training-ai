@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot Garmin Body Battery and stress for one day."""
+"""Plot Garmin Body Battery and stress from a Garmin Connect JSON payload."""
 
 from __future__ import annotations
 
@@ -16,14 +16,14 @@ from matplotlib.ticker import FuncFormatter
 import matplotlib.pyplot as plt
 
 
-DATA_DIR = Path("data")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Plot Garmin Body Battery and stress for one day.",
+        description="Plot Garmin Body Battery and stress from Garmin Connect JSON.",
     )
-    parser.add_argument("date", help="Date formatted YYYY-MM-DD")
+    parser.add_argument(
+        "garmin_json",
+        help="JSON from plugins/garmin-connect/scripts/garmin_connect_cli.py day",
+    )
     parser.add_argument(
         "--activity-dir",
         help="Optional cached activity directory to mark workout start/stop",
@@ -34,17 +34,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    day = args.date
-    stress = _load_json(DATA_DIR / "garmin" / "stress" / f"{day}.json")
-    body_battery = _load_body_battery(day, stress=stress)
-    sleep = _load_json(DATA_DIR / "garmin" / "sleep" / f"{day}.json")
+    garmin = _load_json(Path(args.garmin_json))
+    day = str(garmin.get("date") or "garmin-connect")
+    sources = garmin.get("sources") if isinstance(garmin.get("sources"), dict) else garmin
+    stress = sources.get("stress") or {}
+    body_battery = _body_battery_payload(sources, stress=stress)
+    sleep = sources.get("sleep") or {}
     activity_window = _activity_window(args.activity_dir) if args.activity_dir else None
     sleep_window = _sleep_window(sleep)
 
     output = (
         Path(args.output)
         if args.output
-        else DATA_DIR / "plots" / f"garmin_body_battery_{day}.png"
+        else Path("data") / "plots" / f"garmin_body_battery_{day}.png"
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     plot_body_battery(
@@ -187,25 +189,22 @@ def _sleep_window(sleep: dict[str, Any]) -> tuple[datetime, datetime] | None:
     return _parse_garmin_local_datetime(start), _parse_garmin_local_datetime(end)
 
 
-def _load_body_battery(day: str, *, stress: dict[str, Any] | None = None) -> dict[str, Any]:
+def _body_battery_payload(
+    sources: dict[str, Any],
+    *,
+    stress: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if stress:
         dense_points = _body_battery_points_from_stress(stress)
         if dense_points:
             return {"bodyBatteryValuesArray": dense_points}
 
-    exact = DATA_DIR / "garmin" / "body_battery" / f"{day}_{day}.json"
-    if exact.exists():
-        payload = _load_json(exact)
-        return payload[0] if isinstance(payload, list) else payload
-
-    candidates = sorted((DATA_DIR / "garmin" / "body_battery").glob(f"*{day}*.json"))
-    for candidate in candidates:
-        payload = _load_json(candidate)
-        if isinstance(payload, list):
-            for row in payload:
-                if row.get("date") == day:
-                    return row
-    raise FileNotFoundError(f"No Body Battery cache found for {day}")
+    payload = sources.get("body_battery") or sources.get("body_battery_range")
+    if isinstance(payload, list) and payload:
+        return payload[-1]
+    if isinstance(payload, dict):
+        return payload
+    raise ValueError("No Body Battery data found in Garmin Connect JSON")
 
 
 def _body_battery_points_from_stress(stress: dict[str, Any]) -> list[list[float]]:

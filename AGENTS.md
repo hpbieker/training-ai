@@ -25,6 +25,8 @@
   at `plugins/yr/skills/yr/SKILL.md`. The plugin owns Locationforecast field
   interpretation, API quirks and live CLI access; this repo still owns
   cross-source training analysis.
+- For Garmin Connect-specific source semantics, use the repo-local plugin skill
+  at `plugins/garmin-connect/skills/garmin-connect/SKILL.md`.
 - For EatMyRide glycogen/fueling plots from local JSON files, use
   `python3 -B scripts/plot_eatmyride_fueling.py <activity-dir>`. This is a
   repo-level visualization helper for explicitly selected historical artifacts,
@@ -48,8 +50,8 @@
   recommendations, fetch one or more relevant forecast points for the planned
   ride area or route corridor rather than relying on a single point forecast.
   Use fresh live data for same-day and next-day training-weather decisions.
-- For “can/should I train?” questions, prefer `python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD>` after refreshing relevant inputs when appropriate. Pass selected Xert readiness fields as one normalized JSON file with `--xert-json <file>`; do not pass raw Xert API/plugin payloads. Add `--now <local time>` and `--planned-at <local time>` for same-day or next-morning planning. Treat the script output as decision inputs, not a conclusion: the chat answer should still weigh the user's normal training load, goals, planned future sessions and any user-provided body feel.
-- Before same-day or next-morning training recommendations, refresh volatile inputs when possible, including Garmin day/recent data for Body Battery/stress/readiness and current Xert recovery data. Obtain Xert readiness context live through the Xert plugin, translate it to the normalized readiness JSON shape, then pass that file into `scripts/readiness_snapshot.py`; the readiness script should not call plugins directly or interpret raw Xert fields.
+- For “can/should I train?” questions, prefer `python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD>` after refreshing relevant inputs when appropriate. Pass Garmin Connect day data as an explicit JSON file with `--garmin-json <file>` and selected Xert readiness fields as one normalized JSON file with `--xert-json <file>`; do not pass raw Xert API/plugin payloads. Add `--now <local time>` and `--planned-at <local time>` for same-day or next-morning planning. Treat the script output as decision inputs, not a conclusion: the chat answer should still weigh the user's normal training load, goals, planned future sessions and any user-provided body feel.
+- Before same-day or next-morning training recommendations, refresh volatile inputs when possible, including live Garmin Connect day/recent data for Body Battery/stress/readiness and current Xert recovery data. Obtain Xert readiness context live through the Xert plugin, translate it to the normalized readiness JSON shape, then pass that file into `scripts/readiness_snapshot.py`; the readiness script should not call plugins directly or interpret raw Xert fields.
 - For readiness recommendations, prefer a transparent combination of recent training load plus wellness fields actually present: HRV, resting HR, sleep duration and sleep score. Do not assume Garmin Training Readiness or Body Battery are available through Intervals.icu unless those fields appear in the downloaded wellness data.
 - When presenting planned workouts or forecasts, use readable training language rather than raw JSON terms. Do not use code blocks/text boxes for short workout-plan summaries unless the user explicitly asks for raw values. Translate technical forecast fields into plain language, for example "utendørs sykling", "planlagt/forecastet", "høyintensiv treningsdag", and "arbeid over terskel".
 - Prefer UTC for internal time calculations and stored/comparable timestamps. Convert to the machine's local timezone at the boundaries: when parsing user-facing local inputs, displaying times in chat, matching human calendar days, or calling APIs that explicitly require local dates. Avoid mixing naive local datetimes with UTC-aware datetimes inside calculation logic.
@@ -71,15 +73,15 @@
 
 ## Garmin
 
-- Use Garmin as extra activity and readiness context when cached, according to the configured data-source priority.
-- For activity analyses, cache Garmin activity details when available (`python3 -B scripts/cache_garmin.py activity <intervals_activity_id>`).
+- Use Garmin Connect as extra live activity and readiness context according to the configured data-source priority.
+- For activity analyses, fetch Garmin activity details through the Garmin Connect plugin when available.
 - For activity summaries, use Garmin/Firstbeat activity training load, TSS/IF, aerobic and anaerobic training effect, training effect label/message, stamina begin/end/min, performance condition trend, calories and Garmin normalized power when available.
 - For readiness summaries, use Garmin Training Readiness, HRV status/baseline, Body Battery charge/drain, daily stress, sleep details, resting HR and training status when available.
 - Treat Garmin aggregated readiness as a second opinion, not as a replacement for Xert/Intervals load or actual workout sensor response.
 - Treat Garmin recovery time/readiness as a live physiological estimate that can change after watch sync based on stress, HRV, sleep, activity and other signals. Garmin projections are therefore provisional and refresh/sync-sensitive.
 - Interpret Garmin recovery time as guidance for readiness for the next hard workout, not as a blanket restriction on easy or moderate training.
 - When Garmin recovery time is available for a planned future session, project the remaining recovery time forward to the planned session time, assuming no intervening training unless known. Use positive remaining Garmin recovery to scale confidence and ambition based on planned intensity, Xert recovery, wellness signals and actual workout response.
-- When refreshing Garmin time-series caches for same-day readiness (`heart_rate`, `stress`, Body Battery, etc.), check whether the expected Garmin data is present and how recent the newest returned datapoint is. Garmin Connect only has data that has synced from the watch/head unit. If Garmin data is missing, incomplete, or stale enough to affect a "can I train now?" decision, explicitly encourage the user to sync Garmin/the watch before relying on those signals.
+- When fetching Garmin time-series data for same-day readiness (`heart_rate`, `stress`, Body Battery, etc.), check whether the expected Garmin data is present and how recent the newest returned datapoint is. Garmin Connect only has data that has synced from the watch/head unit. If Garmin data is missing, incomplete, or stale enough to affect a "can I train now?" decision, explicitly encourage the user to sync Garmin/the watch before relying on those signals.
 - For stress, inspect post-workout stress instead of relying only on daily average stress. Continuous orange/high stress after the workout suggests the body is still actively working and should reduce same-day training ambition.
 - For post-workout heart rate, use the lowest post-workout HR value and especially the lowest sustained 5-minute post-workout HR average. Do not base the interpretation on latest HR or average post-workout HR, since those are too sensitive to movement and timing.
 - If sleep occurred after the previous workout, separate the immediate post-workout window from the overnight period. Use post-workout HR/stress mainly for the evening after the workout, and use sleep, HRV, resting HR and Body Battery as the stronger morning-readiness signals.

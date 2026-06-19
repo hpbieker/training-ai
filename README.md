@@ -152,11 +152,14 @@ Source documentation:
 - https://api.met.no/weatherapi/locationforecast/2.0/documentation
 - https://api.met.no/doc/GettingStarted
 
-## Download health data from Garmin Connect
+## Fetch health data from Garmin Connect
 
 Garmin Connect does not provide a simple public personal API. For local personal
 use, this project uses `gccli`, with credentials managed by `gccli auth login`
-outside the repository.
+outside the repository. Source-specific access and interpretation live in the
+repo-local Garmin Connect plugin at
+`plugins/garmin-connect/skills/garmin-connect/SKILL.md`. Garmin Connect data is
+fetched live through the plugin; this project does not support a Garmin cache.
 
 Install and authenticate:
 
@@ -165,38 +168,49 @@ Install and authenticate:
 /opt/homebrew/bin/gccli auth login
 ```
 
-Cache Garmin readiness/health data:
+Fetch Garmin readiness/health data:
 
 ```bash
-python3 -B scripts/cache_garmin.py day 2026-05-14
-python3 -B scripts/cache_garmin.py recent --days 7 --until 2026-05-14
+python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day 2026-05-14
+python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py recent --days 7 --until 2026-05-14
 ```
 
-`day` refreshes all daily Garmin health sources used for readiness checks,
+`day` fetches all daily Garmin health sources used for readiness checks,
 including heart rate, stress, HRV, sleep, summary, training readiness and
 training status. `--only` is available for targeted debugging, but normal
-readiness work should refresh the whole day so the sources stay in sync.
+readiness work should fetch the whole day so the sources stay in sync.
 
-Use `python3 -B scripts/cache_garmin.py status` only for troubleshooting
-`gccli` authentication. It does not refresh readiness data.
+Full Garmin payloads can be large. Redirect full `day`, `recent`, and
+`activity` without `--summary-only` to an explicit temporary JSON input file
+instead of dumping them into chat or terminal output:
 
-Cache Garmin metadata for a specific activity when Garmin's activity-level
+```bash
+python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day 2026-05-14 > /tmp/garmin-connect-day.json
+```
+
+Use `python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py status`
+only for troubleshooting `gccli` authentication. It does not fetch readiness
+data.
+
+Fetch Garmin metadata for a specific activity when Garmin's activity-level
 assessment is useful:
 
 ```bash
-python3 -B scripts/cache_garmin.py activity i148448596
+python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity i148448596
 ```
 
-`activity` caches Garmin activity metadata such as Training Effect, stamina,
+`activity` fetches Garmin activity metadata such as Training Effect, stamina,
 performance condition and secondary Garmin load context. It accepts either a
 Garmin activity id or a cached Intervals.icu activity id; for Intervals
 activities from Garmin Connect it uses `external_id` as the Garmin activity id.
+Use `--summary-only` when the chart details are not needed.
 
 ## Build readiness context
 
-Build a compact readiness context for chat. The script reads local Garmin and
-Intervals.icu inputs when present, and accepts a normalized Xert readiness JSON
-with only the selected fields this repo needs:
+Build a compact readiness context for chat. The script reads local Intervals.icu
+inputs when present, accepts a Garmin Connect day JSON with `--garmin-json`,
+and accepts a normalized Xert readiness JSON with only the selected fields this
+repo needs:
 
 ```json
 {
@@ -221,30 +235,12 @@ with only the selected fields this repo needs:
 ```
 
 ```bash
-python3 -B scripts/readiness_snapshot.py --date 2026-05-14 --xert-json /tmp/xert-readiness.json
+python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day 2026-05-14 > /tmp/garmin-connect-day.json
+python3 -B scripts/readiness_snapshot.py --date 2026-05-14 --garmin-json /tmp/garmin-connect-day.json --xert-json /tmp/xert-readiness.json
 ```
 
 The readiness script does not call source plugins itself and does not parse raw
-source API payloads; source-specific field interpretation belongs to the source
-plugin or the orchestration layer above this script. The only repo-level
-contract is the normalized JSON passed with `--xert-json`.
-
-Files are stored under:
-
-```text
-data/
-  garmin/
-    training_readiness/2026-05-14.json
-    body_battery/2026-05-08_2026-05-14.json
-    stress/2026-05-14.json
-    heart_rate/2026-05-14.json
-    hrv/2026-05-14.json
-    sleep/2026-05-14.json
-    summary/2026-05-14.json
-    training_status/2026-05-14.json
-    activities/2026-05-15_22888238753/
-      summary.json
-      details.json
-      metrics_summary.json
-      manifest.json
-```
+Xert API payloads; source-specific field interpretation belongs to the source
+plugin or the orchestration layer above this script. The repo-level contracts
+are the Garmin Connect day JSON passed with `--garmin-json` and the normalized
+Xert JSON passed with `--xert-json`.

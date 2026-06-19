@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a compact readiness context from cached training data."""
+"""Build a compact readiness context from selected training inputs."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Summarize Garmin, Intervals and provided Xert JSON for chat readiness.",
+        description="Summarize Intervals and provided Garmin/Xert JSON for chat readiness.",
     )
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--data-dir", default=str(DATA_DIR))
@@ -35,6 +35,13 @@ def main() -> None:
             "The payload should contain recovery and optional activity_loads objects."
         ),
     )
+    parser.add_argument(
+        "--garmin-json",
+        help=(
+            "Path to a Garmin Connect day JSON payload from "
+            "plugins/garmin-connect/scripts/garmin_connect_cli.py day."
+        ),
+    )
     args = parser.parse_args()
 
     now = parse_local_datetime(args.now) if args.now else datetime.now(LOCAL_TIMEZONE)
@@ -45,6 +52,7 @@ def main() -> None:
         now=now,
         planned_at=planned_at,
         xert_input=load_xert_input(args.xert_json),
+        garmin_input=load_garmin_input(args.garmin_json),
     )
     print(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True))
 
@@ -56,6 +64,7 @@ def build_readiness_snapshot(
     now: datetime | None = None,
     planned_at: datetime | None = None,
     xert_input: dict[str, Any] | None = None,
+    garmin_input: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(LOCAL_TIMEZONE)
     activity = latest_activity_on_or_before(day, data_dir=data_dir)
@@ -66,13 +75,13 @@ def build_readiness_snapshot(
     )
     if activity and xert_activity:
         activity["xert_load"] = xert_activity
-    garmin = garmin_snapshot(day, activity=activity, data_dir=data_dir)
+    garmin = garmin_snapshot(day, activity=activity, garmin_input=garmin_input)
     xert = latest_xert_advice(
         now=now,
         planned_at=planned_at,
         xert_input=xert_input,
     )
-    freshness = cache_freshness(garmin=garmin, xert=xert, now=now)
+    freshness = input_freshness(garmin=garmin, xert=xert, now=now)
     return {
         "date": day,
         "snapshot_time_local": format_local(now),
@@ -80,7 +89,7 @@ def build_readiness_snapshot(
         "latest_activity": activity,
         "garmin": garmin,
         "xert": xert,
-        "cache_freshness": freshness,
+        "input_freshness": freshness,
         "recommendation_inputs": recommendation_inputs(
             activity=activity,
             garmin=garmin,
@@ -247,41 +256,23 @@ def garmin_snapshot(
     day: str,
     *,
     activity: dict[str, Any] | None,
-    data_dir: Path,
+    garmin_input: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    summary = load_optional_json(data_dir / "garmin" / "summary" / f"{day}.json")
-    hrv = load_optional_json(data_dir / "garmin" / "hrv" / f"{day}.json")
-    sleep = load_optional_json(data_dir / "garmin" / "sleep" / f"{day}.json")
-    stress = load_optional_json(data_dir / "garmin" / "stress" / f"{day}.json")
-    heart_rate = load_optional_json(data_dir / "garmin" / "heart_rate" / f"{day}.json")
-    readiness_rows = load_optional_json(
-        data_dir / "garmin" / "training_readiness" / f"{day}.json",
-    )
-    training_status = load_optional_json(
-        data_dir / "garmin" / "training_status" / f"{day}.json",
-    )
+    sources = garmin_sources_for_day(day, garmin_input)
+    summary = sources.get("summary")
+    hrv = sources.get("hrv")
+    sleep = sources.get("sleep")
+    stress = sources.get("stress")
+    heart_rate = sources.get("heart_rate")
+    readiness_rows = sources.get("training_readiness")
+    training_status = sources.get("training_status")
+    body_battery = sources.get("body_battery") or sources.get("body_battery_range")
     readiness = latest_row(readiness_rows)
 
     post_start_ms = None
     if activity and activity.get("end_local"):
         post_start_ms = local_timestamp_ms(str(activity["end_local"]))
     post_end_ms = post_activity_end_ms(post_start_ms=post_start_ms, sleep=sleep)
-    stress_for_post = load_post_activity_series(
-        data_dir=data_dir,
-        day=day,
-        current=stress,
-        post_start_ms=post_start_ms,
-        series_key="stressValuesArray",
-        cache_subdir="stress",
-    )
-    heart_rate_for_post = load_post_activity_series(
-        data_dir=data_dir,
-        day=day,
-        current=heart_rate,
-        post_start_ms=post_start_ms,
-        series_key="heartRateValues",
-        cache_subdir="heart_rate",
-    )
 
     return {
         "summary": compact_summary(summary),
@@ -290,22 +281,38 @@ def garmin_snapshot(
         "training_readiness": compact_training_readiness(readiness),
         "training_status": compact_training_status(training_status),
         "stress": compact_stress(
-            stress_for_post,
+            stress,
             post_start_ms=post_start_ms,
             post_end_ms=post_end_ms,
         ),
         "heart_rate": compact_heart_rate(
-            heart_rate_for_post,
+            heart_rate,
             post_start_ms=post_start_ms,
             post_end_ms=post_end_ms,
         ),
         "body_battery": compact_body_battery(
-            day,
-            data_dir=data_dir,
             summary=summary,
             stress=stress,
+            body_battery=body_battery,
         ),
     }
+
+
+def garmin_sources_for_day(day: str, garmin_input: dict[str, Any] | None) -> dict[str, Any]:
+    if not garmin_input:
+        return {}
+    if isinstance(garmin_input.get("sources"), dict):
+        return garmin_input["sources"]
+    if isinstance(garmin_input.get("days"), list):
+        for entry in garmin_input["days"]:
+            if isinstance(entry, dict) and entry.get("date") == day:
+                sources = entry.get("sources")
+                if isinstance(sources, dict):
+                    result = dict(sources)
+                    if "body_battery_range" in garmin_input:
+                        result.setdefault("body_battery_range", garmin_input["body_battery_range"])
+                    return result
+    return garmin_input
 
 
 def compact_summary(summary: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -508,28 +515,21 @@ def compact_heart_rate(
 
 
 def compact_body_battery(
-    day: str,
     *,
-    data_dir: Path,
     summary: dict[str, Any] | None,
     stress: dict[str, Any] | None,
+    body_battery: Any,
 ) -> dict[str, Any] | None:
-    result = compact_body_battery_from_daily_cache(summary=summary, stress=stress)
+    result = compact_body_battery_from_daily_sources(summary=summary, stress=stress)
     if result:
         return result
 
-    body_battery_dir = data_dir / "garmin" / "body_battery"
-    if not body_battery_dir.exists():
-        return None
-    candidates = sorted(body_battery_dir.glob(f"*{day}*.json"))
-    if not candidates:
-        return None
-    payload_path, payload, day_payload = latest_body_battery_payload(candidates)
+    day_payload = body_battery_day_payload(body_battery)
     if not isinstance(day_payload, dict):
         return None
     values = valid_series_values(day_payload.get("bodyBatteryValuesArray"))
     return {
-        "source_file": str(payload_path),
+        "source": "garmin_connect_body_battery",
         "charged": day_payload.get("charged"),
         "drained": day_payload.get("drained"),
         "latest": latest_point(values),
@@ -538,7 +538,7 @@ def compact_body_battery(
     }
 
 
-def compact_body_battery_from_daily_cache(
+def compact_body_battery_from_daily_sources(
     *,
     summary: dict[str, Any] | None,
     stress: dict[str, Any] | None,
@@ -552,7 +552,7 @@ def compact_body_battery_from_daily_cache(
         return None
 
     return {
-        "source_file": "daily Garmin summary/stress cache",
+        "source": "garmin_connect_summary_or_stress",
         "at_wake": (summary or {}).get("bodyBatteryAtWakeTime") if summary else None,
         "charged": (summary or {}).get("bodyBatteryChargedValue") if summary else None,
         "drained": (summary or {}).get("bodyBatteryDrainedValue") if summary else None,
@@ -615,25 +615,8 @@ def post_activity_window(start_ms: int, end_ms: int | None) -> dict[str, Any]:
     return {
         "start_local": timestamp_ms_to_local(start_ms),
         "end_local": timestamp_ms_to_local(end_ms) if end_ms is not None else None,
-        "end_reason": "sleep_start" if end_ms is not None else "open_until_latest_cache",
+        "end_reason": "sleep_start" if end_ms is not None else "open_until_latest_input",
     }
-
-
-def latest_body_battery_payload(paths: list[Path]) -> tuple[Path, Any, dict[str, Any] | None]:
-    best_path = paths[-1]
-    best_payload = load_json(best_path)
-    best_day_payload = body_battery_day_payload(best_payload)
-    best_timestamp = latest_body_battery_timestamp(best_day_payload)
-    for path in paths:
-        payload = load_json(path)
-        day_payload = body_battery_day_payload(payload)
-        timestamp = latest_body_battery_timestamp(day_payload)
-        if timestamp > best_timestamp:
-            best_path = path
-            best_payload = payload
-            best_day_payload = day_payload
-            best_timestamp = timestamp
-    return best_path, best_payload, best_day_payload
 
 
 def body_battery_day_payload(payload: Any) -> dict[str, Any] | None:
@@ -641,13 +624,6 @@ def body_battery_day_payload(payload: Any) -> dict[str, Any] | None:
     if not isinstance(day_payload, dict):
         return None
     return day_payload
-
-
-def latest_body_battery_timestamp(day_payload: dict[str, Any] | None) -> int:
-    if not day_payload:
-        return 0
-    values = valid_series_values(day_payload.get("bodyBatteryValuesArray"))
-    return values[-1][0] if values else 0
 
 
 def latest_xert_advice(
@@ -742,7 +718,7 @@ def availability_notes(
         notes.append("No cached Intervals activity found on or before this date.")
     for key, value in garmin.items():
         if value is None:
-            notes.append(f"Missing Garmin {key} cache for {day}.")
+            notes.append(f"Missing Garmin {key} input for {day}.")
     if xert is None:
         notes.append("No Xert recovery JSON input provided.")
     stale = [
@@ -752,9 +728,9 @@ def availability_notes(
     ]
     if stale:
         notes.append(
-            "Potentially stale time-series cache: "
+            "Potentially stale time-series input: "
             + ", ".join(stale)
-            + ". Refresh the affected input before relying on a now-decision."
+            + ". Fetch fresh source data before relying on a now-decision."
         )
     return notes
 
@@ -794,7 +770,7 @@ def recommendation_inputs(
                 else None
             ),
         },
-        "cache_freshness": freshness,
+        "input_freshness": freshness,
         "latest_activity_load": latest_activity_load_input(activity),
         "xert_recovery": xert_recovery_input(xert),
         "garmin_recovery_readiness": {
@@ -889,7 +865,7 @@ def xert_recovery_input(xert: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
-def cache_freshness(
+def input_freshness(
     *,
     garmin: dict[str, Any],
     xert: dict[str, Any] | None,
@@ -970,54 +946,20 @@ def load_xert_input(raw_path: str | None) -> dict[str, Any] | None:
     if not isinstance(payload, dict):
         raise SystemExit(f"Xert readiness JSON must be an object: {path}")
     payload.setdefault("source_file", str(path))
-    payload.setdefault("source_time_local", format_local(cache_file_time(path)))
+    payload.setdefault("source_time_local", format_local(file_modified_time(path)))
     return payload
 
 
-def load_optional_json(path: Path) -> Any | None:
-    if not path.exists():
+def load_garmin_input(raw_path: str | None) -> dict[str, Any] | None:
+    if not raw_path:
         return None
-    return load_json(path)
-
-
-def load_post_activity_series(
-    *,
-    data_dir: Path,
-    day: str,
-    current: Any,
-    post_start_ms: int | None,
-    series_key: str,
-    cache_subdir: str,
-) -> Any:
-    if post_start_ms is None or not isinstance(current, dict):
-        return current
-
-    post_start_day = timestamp_ms_to_local(post_start_ms)
-    if not post_start_day:
-        return current
-    post_start_date = post_start_day[:10]
-    if post_start_date >= day:
-        return current
-
-    previous = load_optional_json(data_dir / "garmin" / cache_subdir / f"{post_start_date}.json")
-    if not isinstance(previous, dict):
-        return current
-
-    merged = dict(current)
-    merged_values = []
-    for payload in [previous, current]:
-        values = payload.get(series_key) if isinstance(payload, dict) else None
-        if isinstance(values, list):
-            merged_values.extend(values)
-    merged[series_key] = sorted(
-        merged_values,
-        key=lambda row: row[0] if isinstance(row, list) and row else 0,
-    )
-    merged["post_activity_series_sources"] = [
-        f"data/garmin/{cache_subdir}/{post_start_date}.json",
-        f"data/garmin/{cache_subdir}/{day}.json",
-    ]
-    return merged
+    path = Path(raw_path)
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Garmin Connect JSON must be an object: {path}")
+    payload.setdefault("source_file", str(path))
+    payload.setdefault("source_time_local", format_local(file_modified_time(path)))
+    return payload
 
 
 def latest_row(rows: Any) -> dict[str, Any] | None:
@@ -1055,7 +997,7 @@ def hours_since_local(raw: Any, now: datetime) -> float | None:
     return round((now - parse_local_datetime(str(raw))).total_seconds() / 3600, 1)
 
 
-def cache_file_time(path: Path) -> datetime:
+def file_modified_time(path: Path) -> datetime:
     return datetime.fromtimestamp(path.stat().st_mtime, tz=LOCAL_TIMEZONE)
 
 
