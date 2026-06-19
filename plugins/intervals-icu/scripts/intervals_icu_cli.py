@@ -40,6 +40,14 @@ def main() -> None:
     recent.add_argument("--lookback-days", type=int, default=365)
     _add_output_arg(recent)
 
+    activities = subparsers.add_parser(
+        "activities",
+        help="Fetch activity summaries for a date range",
+    )
+    activities.add_argument("--since", required=True, help="Start date formatted YYYY-MM-DD")
+    activities.add_argument("--until", required=True, help="End date formatted YYYY-MM-DD")
+    _add_output_arg(activities)
+
     activity = subparsers.add_parser("activity", help="Fetch one activity")
     activity.add_argument("activity_id")
     activity.add_argument(
@@ -232,6 +240,15 @@ def main() -> None:
             {"activities": recent_activities, "matched_count": len(recent_activities)},
             output=args.output,
         )
+        return
+
+    if args.command == "activities":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        _print_activity_matches(activities, source_activities=activities, output=args.output)
         return
 
     if args.command == "activity":

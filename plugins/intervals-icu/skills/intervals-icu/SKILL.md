@@ -13,6 +13,7 @@ Use the local CLI when Intervals.icu access is needed:
 
 ```bash
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py latest
+python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activities --since <YYYY-MM-DD> --until <YYYY-MM-DD>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activity <activity-id>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activity <activity-id> --summary-only
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py streams <activity-id> --output /tmp/intervals-streams.csv
@@ -25,6 +26,8 @@ The `activity` command fetches activity metadata and optional interval details;
 it does not include stream samples. Download streams separately with
 `streams <activity-id> --output <file>` when stream data is needed. Streams are
 CSV artifacts and should be written to a file, not printed to console output.
+Use `activities --since ... --until ...` as the first choice for date-bounded
+activity lists, recent-week summaries, and "what workouts did I do" questions.
 Use `search <query>` for Intervals.icu's own activity search endpoint. Use
 `named <fragment> --since ... --until ...` only when you specifically need a
 date-bounded local name-fragment filter.
