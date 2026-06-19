@@ -183,6 +183,20 @@ Known web endpoints:
   between intervals, relative power (`relative_ftp`, `ramp_ltp`, etc.) and
   `DT_RowId`; this is the correct source to modify a workout, not the resolved
   OAuth workout payload.
+- Slope-mode Workout Designer rows are encoded in the row `power` object. Known
+  slope row types include `t_slope_pp` (slope with the main `value` as percent
+  of peak power), `t_slope_mmp` (slope with an MMP-related main `value`) and
+  `t_slope_w` (slope with the main `value` in watts). The slope percentage is
+  stored in `power.second_value`, for example
+  `{"value": 350, "second_value": 4, "type": "t_slope_w"}` represents a
+  4-percent slope row with a 350 W watt reference/model value. Use the designer
+  intervals endpoint to verify these rows after saving.
+- The resolved OAuth workout endpoint (`GET /oauth/workout/<path>`) may fail
+  with HTTP 500 for workouts containing `t_slope_w` rows, even when the web
+  Workout Designer accepts the rows and `GET /oauth/workouts` lists the updated
+  workout summary correctly. For mixed-mode/slope workouts, verify with
+  `/workout/<path>/intervals` and `workouts --filter ... --summary`; do not rely
+  only on the resolved OAuth workout payload.
 - To update an existing workout, log in via the web flow, read
   `/workout/<path>/intervals`, modify the relevant row values, then `POST` an
   `application/x-www-form-urlencoded` form to `/workout/<path>` with `_token`,
@@ -362,6 +376,90 @@ python3 -B scripts/cache_eatmyride.py replace-foodplan 6528113 \
 
 Both commands trigger EatMyRide's activity recalculation, read back the
 server-side state and refresh the local activity cache.
+
+Plot the cached EatMyRide glycogen/energy estimate. The default output mirrors
+the app-style glycogen chart with carbohydrate grams on the y-axis, background
+risk zones, final level and total depletion. EatMyRide exposes only the upper
+`caloriesThreshold`; the lower high-risk boundary is derived as 60% of that
+threshold unless overridden. The default gram axis uses EatMyRide's
+kcal-equivalent values divided by `4.0`, matching the observed UI threshold
+display. Override this with `--curve-kcal-per-gram` and
+`--summary-kcal-per-gram` if later EatMyRide captures show a different scale:
+
+```bash
+python3 -B scripts/plot_eatmyride_fueling.py 6528113
+python3 -B scripts/plot_eatmyride_fueling.py 2026-06-01_6528113 \
+  --output data/plots/2026-06-01_6528113_fueling.png
+python3 -B scripts/plot_eatmyride_fueling.py 6528113 \
+  --config plot_configs/eatmyride_glycogen_app_style.json
+python3 -B scripts/plot_eatmyride_fueling.py 6528113 --hide-fueling
+python3 -B scripts/plot_eatmyride_fueling.py 6528113 --curve-kcal-per-gram 4.8
+python3 -B scripts/plot_eatmyride_fueling.py 6528113 --y-axis kcal
+```
+
+Product lookup and custom product creation are also supported. Nutritional
+arguments are entered in normal kcal/gram units and converted to EatMyRide's
+milligram-based API payload:
+
+```bash
+python3 -B scripts/cache_eatmyride.py search-products "lefse"
+python3 -B scripts/cache_eatmyride.py create-product \
+  --label "Lefse" \
+  --weight-grams 75 \
+  --calories-kcal 250 \
+  --carbohydrates-grams 45 \
+  --fat-grams 7 \
+  --protein-grams 4 \
+  --salt-grams 0.7 \
+  --sugars-grams 18 \
+  --saturated-fat-grams 3 \
+  --dry-run
+```
+
+Remove `--dry-run` and add `--yes` after reviewing the payload to create the
+remote product.
+
+Custom products can also be listed, updated from a reviewed product JSON object,
+or deleted:
+
+```bash
+python3 -B scripts/cache_eatmyride.py products --contains lefse
+python3 -B scripts/cache_eatmyride.py update-product 10077560 product.json --yes
+python3 -B scripts/cache_eatmyride.py delete-product 10139005 --yes
+```
+
+Additional EatMyRide endpoints observed in the mobile-app traffic are noted
+below for later use:
+
+```text
+GET  /api/activities/evaluated/<activity-id>
+GET  /api/products/regular/drink
+GET  /api/products/regular/food
+GET  /api/account/profile
+GET  /api/days/<local-date>
+GET  /api/days/<local-date>/timeline
+```
+
+`activities/evaluated` includes the evaluated activity, energy graph and burn
+series. The product endpoints are useful when adding intake events for products
+that are not already present in a recorded food plan. Profile and day endpoints
+are lower-priority sources for user settings and whole-day nutrition context.
+The activity-level `carbohydratesFromFood` field is misleadingly named: observed
+responses match rounded food energy in kcal, not carbohydrate grams. Calculate
+carbohydrate grams from `/foodplan/<activity-id>` event quantities and product
+servings instead.
+
+The mobile app also exposes file-import flows that likely have corresponding
+backend upload endpoints, but their request details have not been captured yet:
+
+```text
+Routes:         upload .fit or .gpx
+Training plans: upload .fit
+Activities:     upload .fit
+```
+
+To automate these safely, capture the URL, HTTP method, multipart field names
+and any metadata sent by the app during a manual upload.
 
 Build a compact readiness context for chat after refreshing caches:
 

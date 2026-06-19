@@ -329,6 +329,59 @@ def cache_wellness(
     }
 
 
+def get_wellness(
+    *,
+    day: str | date,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+) -> dict[str, Any]:
+    """Fetch one Intervals.icu wellness record."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    day_value = _date_to_string(day)
+    wellness = _request_json(
+        f"/athlete/{athlete_id}/wellness",
+        credentials,
+        params={"oldest": day_value, "newest": day_value},
+    )
+    if not isinstance(wellness, list):
+        raise TypeError("Expected Intervals.icu wellness endpoint to return a list")
+    if not wellness:
+        return {}
+    if not isinstance(wellness[0], dict):
+        raise TypeError("Expected Intervals.icu wellness row to be an object")
+    return wellness[0]
+
+
+def update_wellness(
+    *,
+    day: str | date,
+    updates: dict[str, Any],
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+) -> dict[str, Any]:
+    """Update one Intervals.icu wellness record and return the updated document."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    updated = _request_json(
+        f"/athlete/{athlete_id}/wellness/{_date_to_string(day)}",
+        credentials,
+        method="PUT",
+        json_body=updates,
+    )
+    if not isinstance(updated, dict):
+        raise TypeError("Expected Intervals.icu update wellness endpoint to return an object")
+    return updated
+
+
 def list_activities(
     *,
     api_key: str | None = None,

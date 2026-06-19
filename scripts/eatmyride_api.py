@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -13,8 +14,11 @@ from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 
-EATMYRIDE_API_BASE_URL = "https://backend.eatmyride.com/api"
-EATMYRIDE_API_VERSION = "1.03"
+EATMYRIDE_API_BASE_URL = os.environ.get(
+    "EATMYRIDE_API_BASE_URL",
+    "https://backend.eatmyride.com/api",
+)
+EATMYRIDE_API_VERSION = os.environ.get("EATMYRIDE_API_VERSION", "1.03")
 DEFAULT_DATA_DIR = Path("data/eatmyride")
 LOCAL_TIMEZONE = ZoneInfo("Europe/Oslo")
 
@@ -111,6 +115,192 @@ def get_foodplan(activity_id: str | int, *, token: str) -> list[dict[str, Any]]:
     return foodplan
 
 
+def search_products(
+    query: str,
+    *,
+    token: str,
+    product_filter: str | None = None,
+) -> list[dict[str, Any]]:
+    """Search EatMyRide products using the same endpoint as the mobile app."""
+
+    body: dict[str, Any] = {"q": query}
+    if product_filter is not None:
+        body["filter"] = product_filter
+    payload = _request_json(
+        "/products/search",
+        token=token,
+        method="POST",
+        json_body=body,
+    )
+    if not isinstance(payload, list):
+        raise TypeError("Expected EatMyRide product search endpoint to return a list")
+    return payload
+
+
+def list_products(*, token: str) -> list[dict[str, Any]]:
+    """Return the user's custom EatMyRide products."""
+
+    payload = _request_json("/products", token=token)
+    if not isinstance(payload, list):
+        raise TypeError("Expected EatMyRide product list endpoint to return a list")
+    return payload
+
+
+def get_suggested_products(
+    activity_id: str | int,
+    kind: str,
+    *,
+    token: str,
+) -> list[dict[str, Any]]:
+    """Return EatMyRide suggested food or drink products for an activity."""
+
+    if kind not in {"food", "drinks"}:
+        raise ValueError("kind must be 'food' or 'drinks'")
+    payload = _request_json(f"/products/suggested/{activity_id}/{kind}", token=token)
+    if not isinstance(payload, list):
+        raise TypeError("Expected EatMyRide suggested products endpoint to return a list")
+    return payload
+
+
+def create_product(
+    product: dict[str, Any],
+    *,
+    token: str,
+) -> dict[str, Any]:
+    """Create a custom EatMyRide product and return the server object."""
+
+    payload = _request_json(
+        "/products",
+        token=token,
+        method="POST",
+        json_body=product,
+    )
+    if not isinstance(payload, dict):
+        raise TypeError("Expected EatMyRide product create endpoint to return an object")
+    return payload
+
+
+def update_product(
+    product_id: str | int,
+    product: dict[str, Any],
+    *,
+    token: str,
+) -> dict[str, Any]:
+    """Update one custom EatMyRide product and return the server object."""
+
+    payload = _request_json(
+        f"/products/{product_id}",
+        token=token,
+        method="PUT",
+        json_body=product,
+    )
+    if not isinstance(payload, dict):
+        raise TypeError("Expected EatMyRide product update endpoint to return an object")
+    return payload
+
+
+def delete_product(
+    product_id: str | int,
+    *,
+    token: str,
+) -> str:
+    """Delete one custom EatMyRide product and return the server response."""
+
+    return _request_text(f"/products/{product_id}", token=token, method="DELETE")
+
+
+def build_custom_product_payload(
+    *,
+    label: str,
+    weight_grams: float | None = None,
+    volume_ml: float | None = None,
+    calories_kcal: float = 0,
+    carbohydrates_grams: float = 0,
+    fat_grams: float = 0,
+    protein_grams: float = 0,
+    ingredients_qty: float = 1,
+    ingredients_qty_unit: str = "piece",
+    tags: str | None = None,
+    salt_grams: float = 0,
+    sugars_grams: float = 0,
+    saturated_fat_grams: float = 0,
+    fibers_grams: float = 0,
+    caffeine_mg: float = 0,
+    per_minute_ms: int = 4000,
+) -> dict[str, Any]:
+    """Return the mobile-app-shaped payload for a custom EatMyRide product.
+
+    EatMyRide stores weight, macros, salt and most micronutrients as integer
+    milligrams. The public UI presents most of these as grams.
+    """
+
+    return {
+        "weight": _optional_grams_to_milligrams(weight_grams),
+        "volume": None if volume_ml is None else _round_int(volume_ml),
+        "calories": _round_int(calories_kcal),
+        "carbohydrates": _grams_to_milligrams(carbohydrates_grams),
+        "fat": _grams_to_milligrams(fat_grams),
+        "protein": _grams_to_milligrams(protein_grams),
+        "ingredientsQty": ingredients_qty,
+        "ingredientsQtyUnit": ingredients_qty_unit,
+        "label": label,
+        "tags": tags,
+        "salt": _grams_to_milligrams(salt_grams),
+        "sugars": _grams_to_milligrams(sugars_grams),
+        "ofWhichSaturated": _grams_to_milligrams(saturated_fat_grams),
+        "fibers": _grams_to_milligrams(fibers_grams),
+        "iron": 0,
+        "caffeine": _round_int(caffeine_mg),
+        "vitaminB6": 0,
+        "vitaminB12": 0,
+        "calcium": 0,
+        "folate": 0,
+        "zinc": 0,
+        "omega3": 0,
+        "omega6": 0,
+        "sodium": 0,
+        "potassium": 0,
+        "phosphorus": 0,
+        "magnesium": 0,
+        "copper": 0,
+        "selenium": 0,
+        "iodine": 0,
+        "vitaminD": 0,
+        "vitaminE": 0,
+        "vitaminK": 0,
+        "vitaminK1": 0,
+        "vitaminK2": 0,
+        "vitaminC": 0,
+        "per_minute": per_minute_ms,
+    }
+
+
+def summarize_foodplan(foodplan: list[dict[str, Any]]) -> dict[str, float]:
+    """Return intake totals calculated from recorded event quantities.
+
+    EatMyRide product carbohydrate values are stored in milligrams per product
+    serving. The activity-level ``carbohydratesFromFood`` field is actually a
+    rounded energy total in kcal, despite its name.
+    """
+
+    carbohydrates_grams = 0.0
+    fluids_ml = 0.0
+    for event in foodplan:
+        product = event.get("product") or {}
+        serving_quantity = float(product.get("ingredientsQty") or 1)
+        serving_unit = product.get("ingredientsQtyUnit")
+        if serving_unit == "gram" and event.get("gram") is not None:
+            serving_count = float(event["gram"]) / serving_quantity
+        else:
+            serving_count = 1.0
+        carbohydrates_grams += float(product.get("carbohydrates") or 0) * serving_count / 1000
+        fluids_ml += float(event.get("ml") or 0)
+    return {
+        "carbohydrates_grams": carbohydrates_grams,
+        "fluids_ml": fluids_ml,
+    }
+
+
 def replace_foodplan(
     activity_id: str | int,
     foodplan: list[dict[str, Any]],
@@ -190,6 +380,18 @@ def _request_json(
     method: str = "GET",
     json_body: Any = None,
 ) -> Any:
+    return json.loads(
+        _request_text(path, token=token, method=method, json_body=json_body)
+    )
+
+
+def _request_text(
+    path: str,
+    *,
+    token: str | None = None,
+    method: str = "GET",
+    json_body: Any = None,
+) -> str:
     body = json.dumps(json_body).encode("utf-8") if json_body is not None else None
     headers = {
         "Accept": "application/json",
@@ -208,7 +410,7 @@ def _request_json(
     )
     try:
         with urlopen(request, timeout=60) as response:
-            return json.loads(response.read().decode("utf-8"))
+            return response.read().decode("utf-8")
     except HTTPError as exc:
         message = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(
@@ -245,6 +447,20 @@ def _load_env_values(env_path: str | Path) -> dict[str, str]:
         if separator:
             values[key.strip()] = value.strip().strip('"').strip("'")
     return values
+
+
+def _optional_grams_to_milligrams(value: float | None) -> int | None:
+    if value is None:
+        return None
+    return _grams_to_milligrams(value)
+
+
+def _grams_to_milligrams(value: float) -> int:
+    return _round_int(value * 1000)
+
+
+def _round_int(value: float) -> int:
+    return int(round(value))
 
 
 def _write_json(path: Path, payload: Any) -> None:

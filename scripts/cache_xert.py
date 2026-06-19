@@ -166,6 +166,37 @@ def main() -> None:
     )
     moxy_515.add_argument("--endurance-watts", type=int, default=205)
     moxy_515.add_argument("--endurance-reps", type=int, default=1)
+    openers = subparsers.add_parser(
+        "create-openers",
+        help="Create a short high-power openers workout with long recoveries.",
+    )
+    openers.add_argument(
+        "--template",
+        default="pliignnw1x62b5wp",
+        help="Existing workout path to copy as the Workout Designer template",
+    )
+    openers.add_argument(
+        "--replace-path",
+        help="Replace an existing workout in place instead of creating a copy",
+    )
+    openers.add_argument("--name", default="Openers")
+    openers.add_argument("--description", default="Short high-power openers with long recoveries.")
+    openers.add_argument("--sets", type=int, default=2)
+    openers.add_argument("--reps", type=int, default=5)
+    openers.add_argument("--work-duration", default="0:30")
+    openers.add_argument("--work-watts", type=int, default=350)
+    openers.add_argument(
+        "--work-mode",
+        choices=("erg", "slope", "slope-watts", "slope-absolute"),
+        default="erg",
+    )
+    openers.add_argument("--slope-percent", type=float, default=4.0)
+    openers.add_argument("--slope-target-pp", type=float, default=85.0)
+    openers.add_argument("--recovery-duration", default="4:30")
+    openers.add_argument("--recovery-watts", type=int, default=140)
+    openers.add_argument("--set-recovery-duration", default="10:00")
+    openers.add_argument("--warmup-duration", default="15:00")
+    openers.add_argument("--cooldown-duration", default="10:00")
     subparsers.add_parser(
         "training-forecast",
         help="Cache Xert calendar training forecast using XERT_COOKIE",
@@ -316,6 +347,36 @@ def main() -> None:
             endurance_duration=args.endurance_duration,
             endurance_watts=args.endurance_watts,
             endurance_reps=args.endurance_reps,
+        )
+        kwargs = {
+            "username": credentials.username,
+            "password": credentials.password,
+            "name": args.name,
+            "description": args.description,
+            "rows": rows,
+        }
+        result = (
+            replace_workout_with_rows(args.replace_path, **kwargs)
+            if args.replace_path
+            else copy_workout_with_rows(args.template, **kwargs)
+        )
+        _print_artifacts(result)
+        return
+
+    if args.command == "create-openers":
+        rows = _build_openers_rows(
+            sets=args.sets,
+            reps=args.reps,
+            work_duration=args.work_duration,
+            work_watts=args.work_watts,
+            work_mode=args.work_mode,
+            slope_percent=args.slope_percent,
+            slope_target_pp=args.slope_target_pp,
+            recovery_duration=args.recovery_duration,
+            recovery_watts=args.recovery_watts,
+            set_recovery_duration=args.set_recovery_duration,
+            warmup_duration=args.warmup_duration,
+            cooldown_duration=args.cooldown_duration,
         )
         kwargs = {
             "username": credentials.username,
@@ -490,6 +551,82 @@ def _build_moxy_515_rows(
     if endurance_duration:
         add_row("Endurance", endurance_duration, {"value": endurance_watts, "type": "absolute"})
         rows[-1]["interval_count"] = str(endurance_reps)
+    add_row("Cooldown", cooldown_duration, {"value": 45, "type": "relative_ftp"})
+    return rows
+
+
+def _build_openers_rows(
+    *,
+    sets: int,
+    reps: int,
+    work_duration: str,
+    work_watts: int,
+    work_mode: str,
+    slope_percent: float,
+    slope_target_pp: float,
+    recovery_duration: str,
+    recovery_watts: int,
+    set_recovery_duration: str,
+    warmup_duration: str,
+    cooldown_duration: str,
+) -> list[dict[str, Any]]:
+    if sets <= 0:
+        raise ValueError("sets must be positive")
+    if reps <= 0:
+        raise ValueError("reps must be positive")
+
+    rows: list[dict[str, Any]] = []
+
+    def add_row(name: str, duration: str, power: dict[str, Any]) -> None:
+        sequence = len(rows)
+        rows.append(
+            {
+                "DT_RowId": str(sequence),
+                "duration": {"value": duration, "type": "absolute"},
+                "interval_count": "1",
+                "name": name,
+                "power": power,
+                "rib_duration": {"value": "00:00", "type": "absolute"},
+                "rib_power": {"value": 0, "type": "absolute"},
+                "sequence": sequence,
+            }
+        )
+
+    add_row("Warmup", warmup_duration, {"value": 50, "second_value": 65, "type": "ramp_ftp"})
+    if work_mode == "erg":
+        work_power = {"value": work_watts, "type": "absolute"}
+    elif work_mode == "slope":
+        work_power = {
+            "value": slope_target_pp,
+            "second_value": slope_percent,
+            "type": "t_slope_pp",
+        }
+    elif work_mode == "slope-watts":
+        work_power = {
+            "value": work_watts,
+            "second_value": slope_percent,
+            "type": "t_slope_w",
+        }
+    elif work_mode == "slope-absolute":
+        work_power = {
+            "value": work_watts,
+            "second_value": slope_percent,
+            "type": "t_slope_absolute",
+        }
+    else:
+        raise ValueError(f"Unsupported work_mode: {work_mode}")
+
+    for set_index in range(sets):
+        for rep_index in range(reps):
+            add_row(
+                f"Opener {set_index + 1}.{rep_index + 1}",
+                work_duration,
+                work_power,
+            )
+            if not (set_index == sets - 1 and rep_index == reps - 1):
+                add_row("Recovery", recovery_duration, {"value": recovery_watts, "type": "absolute"})
+        if set_index != sets - 1:
+            add_row("Set recovery", set_recovery_duration, {"value": recovery_watts, "type": "absolute"})
     add_row("Cooldown", cooldown_duration, {"value": 45, "type": "relative_ftp"})
     return rows
 
