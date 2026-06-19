@@ -18,7 +18,12 @@
 ## Wellness
 
 - Intervals.icu wellness fields may come from Garmin or other connected systems.
-- Use only wellness fields that are actually present in the fetched wellness data. Do not assume Garmin Training Readiness, Body Battery, or other Garmin-specific fields are present through Intervals.icu.
+- Use only wellness fields that are actually present in the fetched wellness data.
+- For Garmin-specific wellness and readiness fields such as Training Readiness,
+  Body Battery, HRV, stress and sleep, prefer Garmin Connect when it is
+  available. These values can change through the day after device syncs, Garmin
+  Connect is normally the freshest source, and it can expose useful time series
+  for fields such as stress, heart rate and Body Battery.
 - Use daily wellness fields for pre-training subjective values rather than storing them on the activity.
 - Do not add a generic wellness comment such as `Pre training`.
 

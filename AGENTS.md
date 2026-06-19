@@ -56,49 +56,47 @@
   Use fresh live data for same-day and next-day training-weather decisions.
 - For “can/should I train?” questions, prefer `python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD>` after refreshing relevant inputs when appropriate. Pass Garmin Connect day data as an explicit JSON file with `--garmin-json <file>` and selected Xert readiness fields as one normalized JSON file with `--xert-json <file>`; do not pass raw Xert API/plugin payloads. Add `--now <local time>` and `--planned-at <local time>` for same-day or next-morning planning. Treat the script output as decision inputs, not a conclusion: the chat answer should still weigh the user's normal training load, goals, planned future sessions and any user-provided body feel.
 - Before same-day or next-morning training recommendations, refresh volatile inputs when possible, including live Garmin Connect day/recent data for Body Battery/stress/readiness and current Xert recovery data. Obtain Xert readiness context live through the Xert plugin, translate it to the normalized readiness JSON shape, then pass that file into `scripts/readiness_snapshot.py`; the readiness script should not call plugins directly or interpret raw Xert fields.
-- For readiness recommendations, prefer a transparent combination of recent training load plus wellness fields actually present: HRV, resting HR, sleep duration and sleep score. Do not assume Garmin Training Readiness or Body Battery are available through Intervals.icu unless those fields appear in the downloaded wellness data.
+- For readiness recommendations, prefer a transparent combination of recent
+  training load plus wellness fields actually present in the provided source
+  inputs: HRV, resting HR, sleep duration and sleep score.
 - When presenting planned workouts or forecasts, use readable training language rather than raw JSON terms. Do not use code blocks/text boxes for short workout-plan summaries unless the user explicitly asks for raw values. Translate technical forecast fields into plain language, for example "utendørs sykling", "planlagt/forecastet", "høyintensiv treningsdag", and "arbeid over terskel".
 - Prefer UTC for internal time calculations and stored/comparable timestamps. Convert to the machine's local timezone at the boundaries: when parsing user-facing local inputs, displaying times in chat, matching human calendar days, or calling APIs that explicitly require local dates. Avoid mixing naive local datetimes with UTC-aware datetimes inside calculation logic.
 
 ## Intervals.icu
 
-- Fetch Intervals.icu activity, stream, interval and wellness context live through
-  the Intervals.icu plugin by default. Save artifacts only when the user
-  explicitly asks for a file or a downstream helper requires one.
-- Treat Intervals.icu as a copy/aggregation layer for data that often originates
-  in other systems. When the original system is available locally or through a
-  live plugin/helper, prefer the original source because it may contain better,
-  fresher or more complete data.
-- For activity summaries, use Intervals.icu metadata and intervals to orient the
-  analysis, but prefer Xert for activity-load language when Xert data is
-  available.
-- Use Intervals.icu stream fields actively for workout analysis when fetched or
-  explicitly supplied: power, heart rate, respiratory, Moxy, thermal and
-  environmental streams should be checked according to the sensor profile in
-  `PREFERENCES.md`.
-- Respect Intervals.icu ignore flags in activity metadata. If `icu_ignore_hr` is
-  true, do not use heart rate, W/HR or HR drift for that activity. If
-  `icu_ignore_power` is true, do not use power/torque-derived metrics for that
-  activity unless the user explicitly asks to inspect the raw stream.
-- Treat Intervals.icu load, intensity and interval metadata as useful secondary
-  context. Do not let Intervals.icu load override Xert XSS when both are
-  available.
-- Intervals.icu wellness fields may come from Garmin or other connected systems.
-  Use only the wellness fields that are actually present in the live/fetched
-  wellness payload, and do not assume unavailable Garmin-specific fields are
-  present there.
-- For Intervals.icu activity renames or metadata updates, use the Intervals.icu
-  plugin/update helper rather than editing local artifacts when the user asks
-  to change Intervals.icu itself.
-- Intervals.icu activities may include subjective fields such as `feel`, `perceived_exertion`, `session_rpe` and `icu_rpe`. When saving RPE, write `icu_rpe`; Intervals.icu derives `session_rpe` from RPE and duration and rejects direct writes to `session_rpe`. Update only fields the user has explicitly provided or confirmed, then refresh/read back the activity to verify the stored values.
-- Intervals.icu daily wellness can be read with `python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness --since <YYYY-MM-DD> --until <YYYY-MM-DD>` and updated with `python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness-update <YYYY-MM-DD> --soreness <value> --fatigue <value> --motivation <value>`. Use the daily wellness fields for pre-training subjective values rather than storing them on the activity, and do not add a generic wellness comment such as "Pre training". For Intervals.icu wellness UI scales, use: `sleepQuality`: `1 = great`, `2 = good`, `3 = avg`, `4 = poor`; `soreness`, `fatigue` and `stress`: `1 = low`, `2 = avg`, `3 = high`, `4 = extreme`; `mood`: `1 = great`, `2 = good`, `3 = ok`, `4 = grumpy`; `motivation`: `1 = extreme`, `2 = high`, `3 = avg`, `4 = low`; `injury`: `1 = none`, `2 = niggle`, `3 = poor`, `4 = injured`; `hydration`: `1 = good`, `2 = ok`, `3 = poor`, `4 = bad`. Refresh/read back the wellness day after updating.
-- For routine pre-training wellness logging, ask for `soreness`, `fatigue` and `motivation` and save them to Intervals.icu wellness when the user confirms. If any of those fields are already populated for the day, do not overwrite them without first asking the user to confirm the overwrite. Treat `soreness` primarily as local leg/muscle soreness/heaviness before training; leg ache that disrupts sleep after hard training is an important recovery signal and should reduce next-day training ambition even if model-based readiness looks acceptable. Treat `fatigue` as general/systemic tiredness that may not be fully captured by Xert/Garmin, and `motivation` as mental readiness/drive to do the session. Do not suggest or log `stress`, `sleepQuality`, `hydration` or `injury` as routine fields; Garmin normally populates sleep, and the other fields are only useful when the user explicitly says they are relevant.
+- Use the Intervals.icu plugin skill for Intervals.icu API access, source
+  semantics, field interpretation and write-safety rules.
+- Fetch Intervals.icu activity, stream, interval and wellness context live
+  through the plugin by default. Save artifacts only when the user explicitly
+  asks for a file or a downstream repo helper requires one.
+- Treat Intervals.icu as a copy/aggregation layer for data that often
+  originates in other systems. Prefer live original-source plugins when they
+  are available for source-specific signals: Xert for XSS/recovery/difficulty,
+  Garmin Connect for Garmin/Firstbeat activity and readiness context, and
+  EatMyRide for fueling/glycogen context.
+- Use Intervals.icu for live activity metadata, interval summaries, wellness
+  fields and stream exports when those are the best available inputs, but do
+  not use Intervals.icu copies as a replacement for better original-source
+  data. In particular, if Garmin Connect is available, prefer Garmin for Garmin
+  Training Readiness, Body Battery, HRV, stress, sleep and Garmin/Firstbeat
+  activity metrics.
+- This repo owns local artifact inspection, workout analysis, readiness
+  composition and cross-source training analysis. The plugin owns how
+  Intervals.icu fields and writes should be interpreted.
 
 ## Garmin Connect
 
-- Use Garmin Connect as extra live activity and readiness context according to the configured data-source priority.
-- For activity analyses, fetch Garmin activity details through the Garmin Connect plugin when available.
-- Garmin-unique or Garmin-most-useful activity context is typically Training Effect, Stamina and Garmin/Firstbeat Training Load.
+- Use Garmin Connect as extra live activity and readiness context according to
+  the configured data-source priority.
+- For current-day wellness/readiness, prefer Garmin Connect for Garmin-specific
+  fields when Garmin data is available. Training Readiness, Body Battery, HRV,
+  stress, heart rate and sleep can change through the day after device syncs,
+  and Garmin can expose useful time series for fields such as stress, heart
+  rate and Body Battery.
+- For activity analyses, fetch Garmin activity details through the Garmin
+  Connect plugin when available. Garmin-unique or Garmin-most-useful activity
+  context is typically Training Effect, Stamina and Garmin/Firstbeat Training
+  Load.
 - Garmin can in some cases expose more sensor time series than sources such as Strava and Xert, but Intervals.icu typically has all activity time series needed for analysis.
 - For activity summaries, use Garmin/Firstbeat activity training load, TSS/IF, aerobic and anaerobic training effect, training effect label/message, stamina begin/end/min, performance condition trend, calories and Garmin normalized power when available.
 - For readiness summaries, use Garmin Training Readiness, HRV status/baseline, Body Battery charge/drain, daily stress, sleep details, resting HR and training status when available.
