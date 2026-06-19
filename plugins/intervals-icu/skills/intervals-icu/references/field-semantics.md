@@ -10,6 +10,34 @@
 ## Activity And Streams
 
 - Use Intervals.icu stream fields actively for workout analysis: power, heart rate, respiratory, Moxy, thermal, and environmental streams should be checked according to the repo sensor profile.
+- Intervals.icu respiratory stream fields use these meanings:
+  - `respiration`: BR, breathing rate in breaths per minute.
+  - `tidal_volume`: VT, Tyme Wear-reported breathing volume per breath; unit/scale is not confirmed.
+  - `tidal_volume_min`: VE, Tyme Wear-reported breathing volume per minute; unit/scale is not confirmed, but use this as the direct VE stream.
+  - Do not derive VE from `tidal_volume` times `respiration` unless the `tidal_volume` unit/scale has been confirmed.
+- Intervals.icu CORE sensor stream fields use these meanings:
+  - `heat_strain_index`: HSI from the CORE 2 sensor, on a 0 to 5.0 scale.
+  - `core_temperature`: CORE sensor core temperature in degrees C.
+  - `skin_temperature`: CORE sensor skin temperature in degrees C.
+- Other Intervals.icu stream fields use these meanings:
+  - `time`: elapsed activity time in seconds.
+  - `watts`: power in watts.
+  - `heartrate`: heart rate in beats per minute.
+  - `distance`: distance in meters.
+  - `lat`: latitude in degrees.
+  - `lng`: longitude in degrees.
+  - `velocity_smooth`: smoothed speed in meters per second.
+  - `temp`: measured ambient air temperature in degrees C.
+  - `cadence`: crank cadence in revolutions per minute.
+  - `altitude`: elevation above sea level in meters.
+  - `torque`: torque in Nm from the power sensor.
+  - `left_right_balance`: left-side power percentage.
+  - `Humidity`: relative humidity percentage.
+  - `RuuviHumidity`: relative humidity percentage from Ruuvi.
+  - `RuuviTemperature`: ambient air temperature in degrees C from Ruuvi.
+- Intervals.icu muscle oxygen sensor stream fields use these meanings:
+  - `smo2`: muscle oxygen saturation percentage from a Moxy or similar muscle oxygen sensor.
+  - `thb`: total hemoglobin in g/dL from a Moxy or similar muscle oxygen sensor; use primarily for trend analysis.
 - Respect Intervals.icu ignore flags in activity metadata:
   - If `icu_ignore_hr` is true, do not use heart rate, W/HR, or HR drift for that activity.
   - If `icu_ignore_power` is true, do not use power or torque-derived metrics unless the user explicitly asks to inspect the raw stream.
