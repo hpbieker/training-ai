@@ -98,9 +98,9 @@ python3 -B plugins/eatmyride/scripts/eatmyride_cli.py product-delete <product-id
 - Distinguish EatMyRide food-plan fueling from likely real-world fueling. If products are missing from EatMyRide or the plan may not have been updated after the activity, state that uncertainty instead of treating the food plan as complete.
 - For recent activities with missing fueling, ask what the user ate and drank when recall is plausible. For older activities, state that fueling is unknown.
 
-## Local training-ai Helpers
+## Implementation Files
 
-When working inside the `training-ai` repo, the current implementation lives in:
+This local plugin currently exposes:
 
 - `plugins/eatmyride/scripts/eatmyride_cli.py` for live command-line access.
 - `plugins/eatmyride/scripts/eatmyride_api.py` for API access and source-specific helpers.

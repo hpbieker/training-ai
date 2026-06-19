@@ -5,9 +5,30 @@
   `plugins/eatmyride/skills/eatmyride/SKILL.md`. The plugin owns field
   interpretation and write-safety rules; this repo still owns local persistence and
   cross-source training analysis.
+- Do not use cached EatMyRide data as a source for current analysis or
+  recommendations. Fetch EatMyRide data live through the plugin whenever
+  EatMyRide context is needed. Old local EatMyRide files may exist only as
+  historical artifacts.
+- For Xert-specific source semantics, use the repo-local plugin skill at
+  `plugins/xert/skills/xert/SKILL.md`. The plugin owns live Xert access, field
+  interpretation, API quirks and write-safety rules; this repo still owns local
+  persistence, readiness composition and cross-source training analysis.
+- Do not use cached Xert data as a source for current analysis, summaries,
+  readiness or recommendations. Fetch Xert data live through the plugin and pass
+  normalized source-aware output into repo-level analysis helpers. Old local
+  Xert files may exist only as historical artifacts.
+- For Xert xfair report overlays, use
+  `python3 -B scripts/overlay_xert_report.py --activity-dir <activity-dir> --xert-path <xert-activity-path>`.
+  The Xert path must be supplied explicitly from live/source-aware context; do
+  not infer it from old local Xert caches.
+- For Yr/MET Norway-specific source semantics, use the repo-local plugin skill
+  at `plugins/yr/skills/yr/SKILL.md`. The plugin owns Locationforecast field
+  interpretation, API quirks and live CLI access; this repo still owns
+  cross-source training analysis.
 - For EatMyRide glycogen/fueling plots from local JSON files, use
   `python3 -B scripts/plot_eatmyride_fueling.py <activity-dir>`. This is a
-  repo-level visualization helper, not plugin-owned live access.
+  repo-level visualization helper for explicitly selected historical artifacts,
+  not a source for current EatMyRide data.
 - When the user asks for analyses or comparisons, answer in chat by default.
 - Do not create standalone report files for analyses or comparisons unless the user explicitly asks for a file.
 - Treat `data/` as temporary local cache/output. It is ignored by git and can contain downloaded activities, streams, scratch outputs and generated reports when explicitly requested.
@@ -20,19 +41,25 @@
   - For respiratory data, analyze both averages and drift over the workout/intervals, especially BR drift, VE drift, VT drift, and whether rising VE comes from higher BR or deeper VT.
   - For muscle oxygenation data, analyze min, max and drift over intervals/workout, including SmO2 desaturation, re-oxygenation in recoveries, THb trend/drift, and how local muscle oxygenation changes align with power, HR and respiratory drift. For re-oxygenation in recoveries, quantify both how much SmO2 rises during each recovery and the peak SmO2 reached in that recovery.
 - Use the data source priority from `PREFERENCES.md` for activity-load context unless the user overrides it for a specific analysis. For Xert summaries, always include numeric difficulty because the text difficulty rating is useful but too coarse on its own.
-- For weather forecasts, use the preferred weather source from `PREFERENCES.md`. Prefer cached data under `data/weather/` when available, and avoid ad hoc weather websites unless the preferred source is unavailable or the user explicitly asks for another source. For outdoor ride recommendations, check weather across the likely route/corridor rather than a single point forecast.
-- For “can/should I train?” questions, prefer `python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD>` after refreshing relevant caches when appropriate. Add `--now <local time>` and `--planned-at <local time>` for same-day or next-morning planning. Treat the script output as decision inputs, not a conclusion: the chat answer should still weigh the user's normal training load, goals, planned future sessions and any user-provided body feel.
-- Before same-day or next-morning training recommendations, refresh volatile caches when possible: Garmin day/recent data for Body Battery/stress/readiness and Xert `recovery-model` for current recovery load/days/workout capacity.
+- For weather forecasts, use the repo-local `yr` plugin skill when the preferred
+  source is Yr/MET Norway. Fetch weather live; do not use or create local Yr
+  weather files. Avoid ad hoc weather websites unless the preferred source is
+  unavailable or the user explicitly asks for another source. For outdoor ride
+  recommendations, fetch one or more relevant forecast points for the planned
+  ride area or route corridor rather than relying on a single point forecast.
+  Use fresh live data for same-day and next-day training-weather decisions.
+- For “can/should I train?” questions, prefer `python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD>` after refreshing relevant inputs when appropriate. Pass selected Xert readiness fields as one normalized JSON file with `--xert-json <file>`; do not pass raw Xert API/plugin payloads. Add `--now <local time>` and `--planned-at <local time>` for same-day or next-morning planning. Treat the script output as decision inputs, not a conclusion: the chat answer should still weigh the user's normal training load, goals, planned future sessions and any user-provided body feel.
+- Before same-day or next-morning training recommendations, refresh volatile inputs when possible, including Garmin day/recent data for Body Battery/stress/readiness and current Xert recovery data. Obtain Xert readiness context live through the Xert plugin, translate it to the normalized readiness JSON shape, then pass that file into `scripts/readiness_snapshot.py`; the readiness script should not call plugins directly or interpret raw Xert fields.
 - For readiness recommendations, prefer a transparent combination of recent training load plus wellness fields actually present: HRV, resting HR, sleep duration and sleep score. Do not assume Garmin Training Readiness or Body Battery are available through Intervals.icu unless those fields appear in the downloaded wellness data.
 - When presenting planned workouts or forecasts, use readable training language rather than raw JSON terms. Do not use code blocks/text boxes for short workout-plan summaries unless the user explicitly asks for raw values. Translate technical forecast fields into plain language, for example "utendørs sykling", "planlagt/forecastet", "høyintensiv treningsdag", and "arbeid over terskel".
-- Prefer UTC for internal time calculations and stored/comparable timestamps. Convert to the user's local timezone (`Europe/Oslo`) at the boundaries: when parsing user-facing local inputs, displaying times in chat, matching human calendar days, or calling APIs that explicitly require local dates. Avoid mixing naive local datetimes with UTC-aware datetimes inside calculation logic.
+- Prefer UTC for internal time calculations and stored/comparable timestamps. Convert to the machine's local timezone at the boundaries: when parsing user-facing local inputs, displaying times in chat, matching human calendar days, or calling APIs that explicitly require local dates. Avoid mixing naive local datetimes with UTC-aware datetimes inside calculation logic.
 
 ## Intervals.icu
 
 - Use Intervals.icu as the primary cached source for activity metadata and stream data when available.
 - Treat Intervals.icu as a copy/aggregation layer for data that often originates in other systems. When the original system is available locally or through a cache/helper, prefer the original source because it may contain better, fresher or more complete data.
 - For activity downloads, keep one activity directory under `data/activities/<date>_<activity_id>/` with `activity.json` for metadata and `streams.csv` for stream data.
-- For activity summaries, use Intervals.icu metadata and intervals to orient the analysis, but prefer Xert for activity-load language when Xert is cached.
+- For activity summaries, use Intervals.icu metadata and intervals to orient the analysis, but prefer Xert for activity-load language when Xert data is available.
 - Use Intervals.icu stream fields actively for workout analysis: power, heart rate, respiratory, Moxy, thermal and environmental streams should be checked according to the sensor profile in `PREFERENCES.md`.
 - Respect Intervals.icu ignore flags in cached activity metadata. If `icu_ignore_hr` is true, do not use heart rate, W/HR or HR drift for that activity. If `icu_ignore_power` is true, do not use power/torque-derived metrics for that activity unless the user explicitly asks to inspect the raw stream.
 - Treat Intervals.icu load, intensity and interval metadata as useful secondary context. Do not let Intervals.icu load override Xert XSS when both are available.
@@ -41,28 +68,6 @@
 - Cached Intervals.icu activities may include subjective fields such as `feel`, `perceived_exertion`, `session_rpe` and `icu_rpe`. When saving RPE, write `icu_rpe`; Intervals.icu derives `session_rpe` from RPE and duration and rejects direct writes to `session_rpe`. Update only fields the user has explicitly provided or confirmed, then refresh/read back the activity to verify the stored values.
 - Intervals.icu daily wellness can be read with `python3 -B scripts/cache_intervals_icu.py wellness --since <YYYY-MM-DD> --until <YYYY-MM-DD>` and updated with `python3 -B scripts/update_intervals_icu.py wellness <YYYY-MM-DD> --soreness <value> --fatigue <value> --motivation <value>`. Use the daily wellness fields for pre-training subjective values rather than storing them on the activity, and do not add a generic wellness comment such as "Pre training". For Intervals.icu wellness UI scales, use: `sleepQuality`: `1 = great`, `2 = good`, `3 = avg`, `4 = poor`; `soreness`, `fatigue` and `stress`: `1 = low`, `2 = avg`, `3 = high`, `4 = extreme`; `mood`: `1 = great`, `2 = good`, `3 = ok`, `4 = grumpy`; `motivation`: `1 = extreme`, `2 = high`, `3 = avg`, `4 = low`; `injury`: `1 = none`, `2 = niggle`, `3 = poor`, `4 = injured`; `hydration`: `1 = good`, `2 = ok`, `3 = poor`, `4 = bad`. Refresh/read back the wellness day after updating.
 - For routine pre-training wellness logging, ask for `soreness`, `fatigue` and `motivation` and save them to Intervals.icu wellness when the user confirms. If any of those fields are already populated for the day, do not overwrite them without first asking the user to confirm the overwrite. Treat `soreness` primarily as local leg/muscle soreness/heaviness before training; leg ache that disrupts sleep after hard training is an important recovery signal and should reduce next-day training ambition even if model-based readiness looks acceptable. Treat `fatigue` as general/systemic tiredness that may not be fully captured by Xert/Garmin, and `motivation` as mental readiness/drive to do the session. Do not suggest or log `stress`, `sleepQuality`, `hydration` or `injury` as routine fields; Garmin normally populates sleep, and the other fields are only useful when the user explicitly says they are relevant.
-
-## Xert
-
-- Use Xert as the preferred default source for activity-load context when cached, because it provides the MPA model and activity-level XSS fields.
-- For activity summaries, use Xert XSS, low/high/peak XSS, XEP, focus, specificity, freshness/status and fitness signature when available.
-- Always include numeric difficulty for Xert activity summaries; the text difficulty rating is useful but too coarse on its own.
-- For recovery/readiness, default to `python3 -B scripts/cache_xert.py recovery-model`. It logs in to Xert web, reads `/my-fitness` `trainingAdvice`/`trainingPlan`, reads `/profile/settings` `ir_params`, and calculates low/high/peak recovery days and workout capacity locally.
-- Do not use per-activity `summary.progression.rl` as current Recovery Load.
-- Do not use Xert tiredness/status/form category as the main readiness signal; prefer the recovery time fields.
-- Express Xert recovery days as hours. `0` recovery hours is Xert's fresh threshold; negative recovery hours mean the athlete is on the fresh side of that threshold.
-- Interpret low/high/peak recovery hours by system: low means low XSS / any activity, high means high XSS / work over threshold power (TP), and peak means peak XSS / peak-power-relevant work over TP.
-- Treat low recovery as the first readiness gate. If low recovery hours are still positive, Xert does not indicate freshness for more cycling load, because all cycling generates low XSS. High/peak recovery being fresh only becomes actionable after low recovery is fresh enough.
-- In Xert forecast/activity state, `high_intensity` means planned work over TP that generates high and/or peak XSS. Still check the actual low/high/peak XSS split; do not infer the workout cost from the label alone.
-- In Xert calendar forecast payloads, do not present `xss_target` as the planned workout XSS unless its meaning has been verified. It can appear on rest days and looks more like a model/day target than the specific placeholder workout load. Use `xss`, `xlss`, `xhss` and `xpss` as the planned placeholder load.
-- Xert calendar notes are separate from forecast/trainingPlan fields. Read them with `python3 -B scripts/cache_xert.py calendar-notes` (`GET /calendar/get-notes`) and update them with `python3 -B scripts/cache_xert.py set-calendar-note <YYYY-MM-DD> "<note>"` (`POST /calendar/save-notes`). Treat the date argument as the user's local `Europe/Oslo` calendar day; the helper converts local midnight to Xert's UTC ISO timestamp. Always read back and verify after updating.
-- Describe whether a planned XSS load is small, moderate or large relative to the user's current Xert training load, not as an absolute label. For example, compare planned total/low/high/peak XSS with current `trainingload_*` / forecast `tls` values before calling it large.
-- Treat `python3 -B scripts/cache_xert.py workouts` as the user's direct Xert workout-library source. Use `python3 -B scripts/cache_xert.py workouts --filter "XMB: VT1" --summary` for chat-friendly workout tables with duration, parsed work watts, XSS split, difficulty and path. Use `python3 -B scripts/cache_xert.py workout <path>` to retrieve a resolved workout with target watts and interval durations using the user's current fitness signature. The OAuth workout payload is resolved/read-oriented; to edit a workout, use `python3 -B scripts/cache_xert.py update-workout <path>` instead of ad hoc scripts. It uses the authenticated web Workout Designer flow, preserves designer row structure and `DT_RowId`, supports `--submit calculate` for validation, and can match rows by name/power before changing duration/power. Use `copy-workout` for variants; it re-fetches the copied workout and removes Xert's `(Copy)` suffix when needed. Re-fetch `workout <path>` and `workouts` after saving to verify.
-- For Xert mixed-mode/slope workouts, verify against Workout Designer rows (`GET /workout/<path>/intervals`) rather than relying only on `GET /oauth/workout/<path>`. Known slope row types are `t_slope_pp`, `t_slope_mmp` and `t_slope_w`; `power.second_value` stores slope percent, while `power.value` stores the type-specific model value (for `t_slope_w`, watts). Example: `{"value": 350, "second_value": 4, "type": "t_slope_w"}` is a 4% slope row with a 350 W watt reference/model value. The resolved OAuth workout endpoint may return HTTP 500 for `t_slope_w` workouts even when the designer rows and `workouts --summary` verify correctly.
-- Xert web workout deletion uses `DELETE /workout/<path>` with `X-Requested-With: XMLHttpRequest` on an authenticated web session. Use `python3 -B scripts/cache_xert.py delete-workout <path> --yes`; this is destructive, so require explicit confirmation before using it and verify afterwards by refreshing `workouts`.
-- `recommended-training` is still useful for recommendation/ranking context; filter `exercises` by `exerciseType == "Workout"` there when selecting among recommended options, then rank by the user's goal, XSS split, duration, focus, suitability, difficulty and `XMB: ` name preference.
-- Treat Xert recovery-hour projection as deterministic from the cached Xert advice timestamp when assuming no intervening training. Subtract elapsed time from the low/high/peak recovery hours and state it that way.
-- Interpret Xert workout capacity as how much training can be done now while still being just fresh before the next planned Xert workout. Do not treat it as a generic independent estimate of total absorbable training.
 
 ## Garmin
 

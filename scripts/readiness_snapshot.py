@@ -8,16 +8,15 @@ import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from zoneinfo import ZoneInfo
 
 
 DATA_DIR = Path("data")
-LOCAL_TIMEZONE = ZoneInfo("Europe/Oslo")
+LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Summarize cached Garmin, Xert and Intervals data for chat readiness.",
+        description="Summarize Garmin, Intervals and provided Xert JSON for chat readiness.",
     )
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--data-dir", default=str(DATA_DIR))
@@ -29,6 +28,13 @@ def main() -> None:
         "--planned-at",
         help="Planned workout local time, e.g. 2026-05-21T10:00",
     )
+    parser.add_argument(
+        "--xert-json",
+        help=(
+            "Path to a normalized readiness-input JSON payload with selected Xert fields. "
+            "The payload should contain recovery and optional activity_loads objects."
+        ),
+    )
     args = parser.parse_args()
 
     now = parse_local_datetime(args.now) if args.now else datetime.now(LOCAL_TIMEZONE)
@@ -38,6 +44,7 @@ def main() -> None:
         data_dir=Path(args.data_dir),
         now=now,
         planned_at=planned_at,
+        xert_input=load_xert_input(args.xert_json),
     )
     print(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True))
 
@@ -48,14 +55,23 @@ def build_readiness_snapshot(
     data_dir: Path = DATA_DIR,
     now: datetime | None = None,
     planned_at: datetime | None = None,
+    xert_input: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(LOCAL_TIMEZONE)
     activity = latest_activity_on_or_before(day, data_dir=data_dir)
-    xert_activity = matching_xert_activity(activity, day=day, data_dir=data_dir)
+    xert_activity = matching_xert_activity(
+        activity,
+        day=day,
+        xert_input=xert_input,
+    )
     if activity and xert_activity:
         activity["xert_load"] = xert_activity
     garmin = garmin_snapshot(day, activity=activity, data_dir=data_dir)
-    xert = latest_xert_advice(data_dir=data_dir, now=now, planned_at=planned_at)
+    xert = latest_xert_advice(
+        now=now,
+        planned_at=planned_at,
+        xert_input=xert_input,
+    )
     freshness = cache_freshness(garmin=garmin, xert=xert, now=now)
     return {
         "date": day,
@@ -73,7 +89,13 @@ def build_readiness_snapshot(
             now=now,
             planned_at=planned_at,
         ),
-        "notes": availability_notes(day, activity=activity, garmin=garmin, xert=xert, freshness=freshness, data_dir=data_dir),
+        "notes": availability_notes(
+            day,
+            activity=activity,
+            garmin=garmin,
+            xert=xert,
+            freshness=freshness,
+        ),
     }
 
 
@@ -139,9 +161,9 @@ def matching_xert_activity(
     activity: dict[str, Any] | None,
     *,
     day: str,
-    data_dir: Path,
+    xert_input: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    xert_activities = xert_activities_on_or_before(day, data_dir=data_dir)
+    xert_activities = xert_activities_from_input(xert_input, day=day)
     if not xert_activities:
         return None
     if not activity or not activity.get("start_local"):
@@ -167,55 +189,58 @@ def matching_xert_activity(
     return None
 
 
-def xert_activities_on_or_before(day: str, *, data_dir: Path) -> list[dict[str, Any]]:
-    xert_activities_dir = data_dir / "xert" / "activities"
-    if not xert_activities_dir.exists():
+def xert_activities_from_input(
+    xert_input: dict[str, Any] | None,
+    *,
+    day: str,
+) -> list[dict[str, Any]]:
+    if not xert_input:
         return []
-
-    candidates = []
-    for activity_dir in sorted(xert_activities_dir.iterdir()):
-        metadata_path = activity_dir / "activity.json"
-        if not metadata_path.exists():
-            continue
-        payload = load_json(metadata_path)
-        summary = payload.get("summary") or {}
-        start_local = xert_start_local(summary)
-        if not start_local or start_local[:10] > day:
-            continue
-        candidates.append((start_local, activity_dir, payload, summary))
-
-    if not candidates:
+    result: list[dict[str, Any]] = []
+    activity_loads = xert_input.get("activity_loads") or []
+    if isinstance(activity_loads, dict):
+        activity_loads = [activity_loads]
+    if not isinstance(activity_loads, list):
         return []
+    for payload in activity_loads:
+        if not isinstance(payload, dict):
+            continue
+        normalized = compact_xert_activity_load(payload, source_file=xert_input.get("source_file"))
+        if not normalized:
+            continue
+        start_local = normalized.get("start_local")
+        if not start_local or str(start_local)[:10] > day:
+            continue
+        result.append(normalized)
+    return sorted(result, key=lambda item: str(item.get("start_local") or ""))
 
-    activities = []
-    for _, activity_dir, payload, summary in candidates:
-        progression = summary.get("progression") or {}
-        xss = progression.get("xss") or {}
-        session = summary.get("session") or {}
-        start_local = xert_start_local(summary)
-        duration = number(summary.get("duration") or session.get("total_elapsed_time"))
-        activities.append(
-            {
-                "source_file": str(activity_dir / "activity.json"),
-                "name": payload.get("name") or summary.get("name"),
-                "start_local": start_local,
-                "elapsed_minutes": minutes(duration),
-                "xss": {
-                    "total": summary.get("xss") or xss.get("total"),
-                    "low": summary.get("xlss") or xss.get("xlss"),
-                    "high": summary.get("xhss") or xss.get("xhss"),
-                    "peak": summary.get("xpss") or xss.get("xpss"),
-                },
-                "xep_watts": summary.get("xep"),
-                "focus": summary.get("focus"),
-                "specificity": summary.get("specificity"),
-                "difficulty": summary.get("difficulty"),
-                "difficulty_rating": summary.get("difficulty_rating"),
-                "freshness": summary.get("freshness"),
-                "signature": summary.get("sig") or progression.get("signature"),
-            }
-        )
-    return activities
+
+def compact_xert_activity_load(
+    payload: dict[str, Any],
+    *,
+    source_file: str | None = None,
+) -> dict[str, Any] | None:
+    start_local = payload.get("start_local")
+    if not start_local:
+        return None
+    result = {
+        "source": payload.get("source") or "xert_readiness_json",
+        "path": payload.get("path"),
+        "name": payload.get("name"),
+        "start_local": start_local,
+        "elapsed_minutes": payload.get("elapsed_minutes"),
+        "xss": payload.get("xss"),
+        "xep_watts": payload.get("xep_watts"),
+        "focus": payload.get("focus"),
+        "specificity": payload.get("specificity"),
+        "difficulty": payload.get("difficulty"),
+        "difficulty_rating": payload.get("difficulty_rating"),
+        "freshness": payload.get("freshness"),
+        "signature": payload.get("signature"),
+    }
+    if source_file:
+        result["source_file"] = source_file
+    return result
 
 
 def garmin_snapshot(
@@ -373,16 +398,16 @@ def compact_training_status(status: dict[str, Any] | None) -> dict[str, Any] | N
     if not status:
         return None
     latest_status = (
-        status.get("mostRecentTrainingStatus", {})
+        (status.get("mostRecentTrainingStatus") or {})
         .get("latestTrainingStatusData", {})
     )
     latest_device_status = first_mapping_value(latest_status)
     load_balance = (
-        status.get("mostRecentTrainingLoadBalance", {})
+        (status.get("mostRecentTrainingLoadBalance") or {})
         .get("metricsTrainingLoadBalanceDTOMap", {})
     )
     latest_load_balance = first_mapping_value(load_balance)
-    vo2max = status.get("mostRecentVO2Max", {})
+    vo2max = status.get("mostRecentVO2Max") or {}
     return {
         "training_status": latest_device_status.get("trainingStatus")
         if latest_device_status
@@ -627,44 +652,52 @@ def latest_body_battery_timestamp(day_payload: dict[str, Any] | None) -> int:
 
 def latest_xert_advice(
     *,
-    data_dir: Path,
     now: datetime,
     planned_at: datetime | None,
+    xert_input: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    xert_dir = data_dir / "xert"
-    if not xert_dir.exists():
+    if not xert_input:
         return None
-    candidates = sorted(xert_dir.glob("recovery_model_*.json"))
-    if not candidates:
+    recovery = xert_input.get("recovery")
+    if not isinstance(recovery, dict):
         return None
-    model = load_json(candidates[-1])
-    source_time = cache_file_time(candidates[-1])
+    return compact_xert_recovery(
+        recovery,
+        now=now,
+        planned_at=planned_at,
+        source_time_local=xert_input.get("source_time_local"),
+        source_file=xert_input.get("source_file"),
+    )
+
+
+def compact_xert_recovery(
+    recovery: dict[str, Any],
+    *,
+    now: datetime,
+    planned_at: datetime | None,
+    source_time_local: Any,
+    source_file: str | None,
+) -> dict[str, Any]:
     hours_until_planned = (
         round((planned_at - now).total_seconds() / 3600, 1)
         if planned_at is not None
         else None
     )
-    recovery_days = model.get("recovery_days") or {}
-    at_state = model.get("at_state") or {}
-    training_load = at_state.get("tl") if isinstance(at_state, dict) else {}
-    recovery_load = at_state.get("rl") if isinstance(at_state, dict) else {}
-    recovery_hours = {
-        "low": hours(recovery_days.get("lo")),
-        "high": hours(recovery_days.get("hi")),
-        "peak": hours(recovery_days.get("pk")),
-    }
-    return {
-        "source_file": str(candidates[-1]),
-        "source_mtime_local": format_local(source_time),
-        "training_status": model.get("training_status"),
-        "targetXSS": model.get("targetXSS"),
-        "recovery_offset": model.get("recovery_offset"),
-        "next_workout_days": model.get("next_workout_days"),
-        "recovery_days": {
-            "low": recovery_days.get("lo"),
-            "high": recovery_days.get("hi"),
-            "peak": recovery_days.get("pk"),
-        },
+    recovery_hours = recovery.get("recovery_hours") or {}
+    if not isinstance(recovery_hours, dict):
+        recovery_hours = {}
+    workout_capacity = recovery.get("workout_capacity") or {}
+    if not isinstance(workout_capacity, dict):
+        workout_capacity = {}
+    result = {
+        "source": recovery.get("source") or "xert_readiness_json",
+        "source_time_local": format_local(parse_local_datetime(str(source_time_local)))
+        if source_time_local
+        else None,
+        "training_status": recovery.get("training_status"),
+        "target_xss": recovery.get("target_xss"),
+        "recovery_offset": recovery.get("recovery_offset"),
+        "next_workout_days": recovery.get("next_workout_days"),
         "recovery_hours": {
             "meaning": (
                 "Positive hours are Xert's recommended wait before more load "
@@ -675,32 +708,25 @@ def latest_xert_advice(
             **recovery_hours,
         },
         "projected_recovery_hours_at_planned_time": {
-            "meaning": "Simple time projection from cached advice; assumes no intervening training.",
+            "meaning": "Simple time projection from Xert advice; assumes no intervening training.",
             "hours_until_planned": hours_until_planned,
-            "low": project_hours(recovery_hours["low"], hours_until_planned),
-            "high": project_hours(recovery_hours["high"], hours_until_planned),
-            "peak": project_hours(recovery_hours["peak"], hours_until_planned),
+            "low": project_hours(recovery_hours.get("low"), hours_until_planned),
+            "high": project_hours(recovery_hours.get("high"), hours_until_planned),
+            "peak": project_hours(recovery_hours.get("peak"), hours_until_planned),
         },
         "workout_capacity": {
             "meaning": (
                 "Training that can be done now while still being just fresh before "
                 "the next planned Xert workout."
             ),
-            "low": (model.get("workout_capacity") or {}).get("lo"),
-            "high": (model.get("workout_capacity") or {}).get("hi"),
-            "peak": (model.get("workout_capacity") or {}).get("pk"),
+            **workout_capacity,
         },
-        "training_load": {
-            "low": training_load.get("ftp") if isinstance(training_load, dict) else None,
-            "high": training_load.get("hie") if isinstance(training_load, dict) else None,
-            "peak": training_load.get("pp") if isinstance(training_load, dict) else None,
-        },
-        "recovery_load": {
-            "low": recovery_load.get("ftp") if isinstance(recovery_load, dict) else None,
-            "high": recovery_load.get("hie") if isinstance(recovery_load, dict) else None,
-            "peak": recovery_load.get("pp") if isinstance(recovery_load, dict) else None,
-        },
+        "training_load": recovery.get("training_load"),
+        "recovery_load": recovery.get("recovery_load"),
     }
+    if source_file:
+        result["source_file"] = source_file
+    return result
 
 
 def availability_notes(
@@ -710,7 +736,6 @@ def availability_notes(
     garmin: dict[str, Any],
     xert: dict[str, Any] | None,
     freshness: dict[str, Any],
-    data_dir: Path,
 ) -> list[str]:
     notes = []
     if not activity:
@@ -718,10 +743,8 @@ def availability_notes(
     for key, value in garmin.items():
         if value is None:
             notes.append(f"Missing Garmin {key} cache for {day}.")
-    if not (data_dir / "xert").exists():
-        notes.append("No cached Xert directory found.")
     if xert is None:
-        notes.append("No cached Xert training advice found.")
+        notes.append("No Xert recovery JSON input provided.")
     stale = [
         key
         for key, value in freshness.items()
@@ -731,7 +754,7 @@ def availability_notes(
         notes.append(
             "Potentially stale time-series cache: "
             + ", ".join(stale)
-            + ". Ask the user to sync Garmin if this affects a now-decision."
+            + ". Refresh the affected input before relying on a now-decision."
         )
     return notes
 
@@ -885,8 +908,8 @@ def cache_freshness(
             latest_nested(garmin, "body_battery", "latest"),
             now=now,
         ),
-        "xert_recovery_model_file": freshness_from_local_time(
-            xert.get("source_mtime_local") if xert else None,
+        "xert_recovery_data": freshness_from_local_time(
+            xert.get("source_time_local") if xert else None,
             now=now,
         ),
     }
@@ -937,6 +960,18 @@ def pick(source: dict[str, Any], keys: list[str]) -> dict[str, Any]:
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_xert_input(raw_path: str | None) -> dict[str, Any] | None:
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Xert readiness JSON must be an object: {path}")
+    payload.setdefault("source_file", str(path))
+    payload.setdefault("source_time_local", format_local(cache_file_time(path)))
+    return payload
 
 
 def load_optional_json(path: Path) -> Any | None:
@@ -1006,11 +1041,6 @@ def minutes(seconds: float | None) -> float | None:
     return round(seconds / 60, 1) if seconds is not None else None
 
 
-def hours(days: Any) -> float | None:
-    value = number(days)
-    return round(value * 24, 1) if value is not None else None
-
-
 def project_hours(current_hours: Any, hours_until: Any) -> float | None:
     current = number(current_hours)
     delta = number(hours_until)
@@ -1051,27 +1081,6 @@ def add_seconds(local_iso: str, seconds: float | None) -> str | None:
 
 def same_local_date(left: Any, right: Any) -> bool:
     return bool(left and right and str(left)[:10] == str(right)[:10])
-
-
-def xert_start_local(summary: dict[str, Any]) -> str | None:
-    start = summary.get("start_date")
-    if isinstance(start, dict):
-        raw = start.get("date")
-        if raw:
-            parsed = datetime.fromisoformat(str(raw))
-            timezone_name = start.get("timezone")
-            if timezone_name == "UTC":
-                parsed = parsed.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE)
-            return parsed.replace(tzinfo=None).isoformat()
-    raw_progression_start = (summary.get("progression") or {}).get("start_date")
-    if raw_progression_start:
-        return (
-            datetime.fromisoformat(str(raw_progression_start).replace("Z", "+00:00"))
-            .astimezone(LOCAL_TIMEZONE)
-            .replace(tzinfo=None)
-            .isoformat()
-        )
-    return None
 
 
 def local_timestamp_ms(local_iso: str) -> int:

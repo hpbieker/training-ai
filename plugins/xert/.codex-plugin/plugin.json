@@ -1,0 +1,26 @@
+{
+  "name": "xert",
+  "version": "0.1.0+codex.20260619091045",
+  "description": "Xert source semantics and live access for cycling training data.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Xert",
+    "shortDescription": "Understand Xert activities, recovery, workouts, and calendar data.",
+    "longDescription": "Xert provides source-specific guidance for interpreting Xert training, recovery, activity, workout, and calendar payloads. It is intentionally stateless: local persistence and cross-source training analysis live outside the plugin.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "Data Analysis",
+      "Command Line"
+    ],
+    "composerIcon": "./assets/xert-icon.png",
+    "defaultPrompt": [
+      "How recovered am I according to Xert?",
+      "Show my Xert workout library.",
+      "Help me update a Xert calendar note."
+    ]
+  }
+}

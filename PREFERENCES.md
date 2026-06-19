@@ -24,6 +24,7 @@
 ## Xert Workout Selection
 
 - When choosing a Xert workout to perform, prefer workout names that start with `XMB: ` when suitable for the training goal and load target.
+- When ranking Xert recommended workouts, filter to actual workouts first, then rank by the user's goal, XSS split, duration, focus, suitability, difficulty and the `XMB: ` name preference.
 
 ## Observed Workout Responses
 
@@ -71,9 +72,3 @@
 - Default activity-load source priority is Xert, then Garmin, then Intervals.icu.
 - The user may override this priority for a specific analysis.
 - Xert is preferred by default because of the MPA model and its activity-level XSS, low/high/peak XSS, XEP, focus, specificity, difficulty, freshness/status and fitness-signature context.
-
-## Weather
-
-- Use Yr/MET Norway's official Locationforecast API (`api.met.no`) as the default weather source.
-- Use the user's home/start area around Slemdal as the default weather anchor when relevant.
-- Add likely destination or exposed-route points, such as Ytre Enebakk, when the planned ride suggests them.

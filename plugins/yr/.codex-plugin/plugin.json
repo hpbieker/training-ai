@@ -1,0 +1,26 @@
+{
+  "name": "yr",
+  "version": "0.1.0+codex.20260619",
+  "description": "Yr/MET Norway source semantics and live forecast access.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Yr",
+    "shortDescription": "Fetch and interpret Yr/MET Norway forecasts.",
+    "longDescription": "Yr provides source-specific guidance for using MET Norway's Locationforecast API. Local persistence, domain-specific analysis, and downstream decisions live outside the plugin.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Productivity",
+    "capabilities": [
+      "Data Analysis",
+      "Command Line"
+    ],
+    "composerIcon": "./assets/yr-icon.png",
+    "defaultPrompt": [
+      "Fetch a weather forecast for a place.",
+      "Check weather for a planned route with times and places.",
+      "Help me interpret a Yr Locationforecast payload."
+    ]
+  }
+}

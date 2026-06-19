@@ -4,9 +4,13 @@ Utilities for downloading and analysing cycling training data.
 
 ## Local plugins
 
-This repo includes a local `eatmyride` Codex plugin under `plugins/eatmyride/`.
-It keeps EatMyRide source semantics and write-safety rules separate from this
-repo's local persistence/orchestration layer.
+This repo includes local Codex plugins under `plugins/`. They keep
+source-specific live access, field semantics and write-safety rules separate
+from this repo's persistence, orchestration and cross-source analysis.
+
+- Xert: `plugins/xert/skills/xert/SKILL.md`
+- EatMyRide: `plugins/eatmyride/skills/eatmyride/SKILL.md`
+- Yr: `plugins/yr/skills/yr/SKILL.md`
 
 ## Download data from Intervals.icu
 
@@ -105,194 +109,43 @@ download_intervals_icu_data(
 )
 ```
 
-## Download data from Xert
+## Use Xert
 
-Xert can add activity-level strain and difficulty context such as XSS, low/high/
-peak XSS, XEP, focus, specificity, difficulty rating and the fitness signature
-used for the activity.
+Xert source semantics, live access, CLI examples and write-safety rules live in
+the local plugin. Start with `plugins/xert/skills/xert/SKILL.md`.
 
-Add credentials to `.env`:
+Do not use `data/xert` or other local Xert caches for current analysis,
+summaries, readiness or recommendations. Fetch Xert data live through the plugin
+and pass only normalized source-aware output to repo-level helpers such as
+`scripts/readiness_snapshot.py`.
 
-```text
-XERT_USERNAME=your-email@example.com
-XERT_PASSWORD=your-password
-# Optional for Xert web calendar endpoints that require browser session auth:
-XERT_COOKIE='cookie-name=value; another-cookie=value'
-```
+## Use EatMyRide
 
-Then cache activity summaries:
+EatMyRide live access, source semantics, CLI examples and write-safety rules
+live in the local plugin. Start with
+`plugins/eatmyride/skills/eatmyride/SKILL.md`.
 
-```bash
-python3 -B scripts/cache_xert.py activities --since 2026-01-01
-python3 -B scripts/cache_xert.py training-info
-python3 -B scripts/cache_xert.py recovery-model
-python3 -B scripts/cache_xert.py workouts
-python3 -B scripts/cache_xert.py workouts --filter "XMB: VT1" --summary
-python3 -B scripts/cache_xert.py training-forecast
-python3 -B scripts/xert_advice.py
-```
+Do not use `data/eatmyride` or other local EatMyRide caches for current
+analysis, fueling checks or recommendations. Fetch EatMyRide data live through
+the plugin. Historical files may still be plotted when the user explicitly
+selects a local artifact.
 
-`training-info` caches Xert's current status, signature, training load and
-target XSS. `recovery-model` is the default readiness source: it logs in to Xert
-web, reads `trainingAdvice`/`trainingPlan` from `/my-fitness`, reads `ir_params`
-from `/profile/settings`, and calculates recovery days and workout capacity
-locally. Negative recovery hours mean the athlete is on the fresh side of the
-relevant Xert threshold.
+## Use Yr / MET Norway
 
-### Xert web calendar endpoints
-
-Some Xert calendar functionality is available only through an authenticated web
-session. The local helper can log in through `/auth`, extract the Laravel CSRF
-token, post credentials to `/auth/login`, and reuse the resulting cookie jar.
-`XERT_COOKIE` can still be supplied manually, but username/password web login is
-preferred when it works.
-
-Known OAuth endpoints:
-
-- `GET /oauth/workouts` lists the user's own Xert workout library.
-- `GET /oauth/workout/<path>` retrieves one resolved workout using the user's
-  current fitness signature, returning target power in watts and interval
-  durations. Use the `path` from the workouts list. The OAuth workout endpoints
-  are useful for reading/listing, but they do not provide the designer rows
-  needed to edit a workout.
-
-Known web endpoints:
-
-- `GET /calendar/training-forecast?duration=-1&includePlaceholders=true`
-  returns the current Forecast AI calendar days.
-- `GET /calendar/forecast-activities-close/<YYYY-MM-DD>` returns nearby
-  forecast/calendar activities, training status array and target-event context.
-- `GET /calendar/get-notes` returns calendar notes keyed by local calendar date
-  for the authenticated user. It does not need `forUser` for the current user.
-  Prefer `python3 -B scripts/cache_xert.py calendar-notes`, which writes the
-  response to `data/xert/calendar_notes_<date>.json`.
-- `POST /calendar/save-notes` updates one calendar note. Prefer
-  `python3 -B scripts/cache_xert.py set-calendar-note YYYY-MM-DD "VT1"`, which
-  sends the minimal JSON payload and then reads back `get-notes` to verify.
-  The date argument is a user-local calendar date; the helper converts local
-  midnight to Xert's UTC ISO value, for example Oslo `2026-05-27` becomes
-  `2026-05-26T22:00:00.000Z`. The web request needs only the authenticated
-  cookie jar plus `Content-Type: application/json`, `X-CSRF-TOKEN` and
-  `X-Requested-With: XMLHttpRequest`.
-- `GET /recommended-training?recent=true&date=<UTC-ISO>&additional=false&sport=Cycling`
-  returns Xert workout/activity recommendations for a date. The `exercises`
-  array contains recommended workouts and activities, not only a small
-  recommendation list. Filter by `exerciseType == "Workout"` when selecting a
-  workout from recommendations, and then rank by XSS split, duration, focus,
-  suitability, difficulty and naming preference. For the user's own workout
-  library, prefer the OAuth `workouts`/`workout` endpoints above.
-- `GET /workout/<path>` returns the web Workout Designer page when using an
-  authenticated web-login cookie jar. The form action is `POST /workout/<path>`
-  and contains the CSRF token, workout title, description and signature fields.
-- `GET /workout/<path>/intervals` returns the editable Workout Designer rows as
-  JSON. These rows preserve designer concepts such as interval groups, rest
-  between intervals, relative power (`relative_ftp`, `ramp_ltp`, etc.) and
-  `DT_RowId`; this is the correct source to modify a workout, not the resolved
-  OAuth workout payload.
-- Slope-mode Workout Designer rows are encoded in the row `power` object. Known
-  slope row types include `t_slope_pp` (slope with the main `value` as percent
-  of peak power), `t_slope_mmp` (slope with an MMP-related main `value`) and
-  `t_slope_w` (slope with the main `value` in watts). The slope percentage is
-  stored in `power.second_value`, for example
-  `{"value": 350, "second_value": 4, "type": "t_slope_w"}` represents a
-  4-percent slope row with a 350 W watt reference/model value. Use the designer
-  intervals endpoint to verify these rows after saving.
-- The resolved OAuth workout endpoint (`GET /oauth/workout/<path>`) may fail
-  with HTTP 500 for workouts containing `t_slope_w` rows, even when the web
-  Workout Designer accepts the rows and `GET /oauth/workouts` lists the updated
-  workout summary correctly. For mixed-mode/slope workouts, verify with
-  `/workout/<path>/intervals` and `workouts --filter ... --summary`; do not rely
-  only on the resolved OAuth workout payload.
-- To update an existing workout, log in via the web flow, read
-  `/workout/<path>/intervals`, modify the relevant row values, then `POST` an
-  `application/x-www-form-urlencoded` form to `/workout/<path>` with `_token`,
-  `name`, `description`, `pp`, `atc` in joules, `ftp`, `submit=save`, and
-  `rows=<JSON encoded designer rows>`. Use `submit=calculate` first when
-  validating the edited rows without saving. A successful save returns JSON
-  with `info: "Workout saved"`. Re-fetch both `workout <path>` and `workouts`
-  after saving to verify the name, duration, XSS, difficulty and interval
-  durations. Prefer the reusable CLI for this instead of ad hoc scripts:
-  `python3 -B scripts/cache_xert.py update-workout <path> --match-name Intervals --match-power 300 --set-duration 26:00 --name "XMB: VT2 3x26 min (300W)"`.
-- Use `workouts --filter ... --summary` for chat-friendly workout library
-  listings. It prints name, duration, parsed work watts from names like
-  `(205W)`, XSS split, difficulty and path.
-- To create a workout variant, prefer
-  `python3 -B scripts/cache_xert.py copy-workout <path> --name "..."`.
-  Xert may append `(Copy)` during copy; the CLI re-fetches the new workout page
-  and saves the requested name again when needed.
-- `DELETE /workout/<path>` deletes a workout when using an authenticated web
-  session. Send `X-Requested-With: XMLHttpRequest`. This is destructive: only
-  use it after explicit confirmation, then re-fetch `workouts` to verify the
-  workout disappeared from the library. Prefer
-  `python3 -B scripts/cache_xert.py delete-workout <path> --yes`.
-- `GET /profile/settings` returns the profile settings page. Use the web-login
-  cookie jar, parse the returned HTML, and extract embedded JSON from `<script>`
-  blocks. The user/IR settings are exposed in script text containing
-  `window.user_params =`; parse the JSON object following keys such as
-  `ir_params` when time constants or recovery-model settings are needed. The
-  profile username can also be read from the first `span.username` text.
-- `POST /createCalendarEvent` creates a planned calendar event/workout.
-- `POST /pinCalendarEvent` toggles pinning for a calendar item.
-- `POST /deleteCalendarEvent` deletes a calendar item.
-
-Adapt Forecast is not just a simple server-side `POST`. Xert's UI loads
-`/calendar/training-forecast` data, runs the adaptation in the browser via
-`/js/libxert-worker.js`, then shows a confirmation step. Saving the adapted
-forecast posts to `/account/settings/training-program` with a payload including
-`fromDate`, `toDate`, `duration`, `program_type: "targetEvent"` and the computed
-`result`. Do not automate the save step without explicit confirmation, because
-Xert warns that unpinned planned activities may be removed.
-
-Use `--session-data` only when you need per-second Xert fields such as MPA,
-XDS and TWS:
+Yr/MET Norway forecast access, source semantics and CLI examples live in the
+local plugin. Start with `plugins/yr/skills/yr/SKILL.md`.
 
 ```bash
-python3 -B scripts/cache_xert.py activities --since 2026-05-01 --session-data
+python3 -B plugins/yr/scripts/yr_cli.py
+python3 -B plugins/yr/scripts/yr_cli.py <known-location>
+python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000
 ```
 
-Xert files are stored under:
+Forecasts are fetched live and printed to stdout. The Yr plugin does not write
+local weather files.
 
-```text
-data/
-  xert/
-    activity_summaries/
-      2026-01-01_2026-05-14.csv
-      2026-01-01_2026-05-14.json
-    activities/
-      2026-05-14_<xert-path>/
-        activity.json
-    training_info_2026-05-14.json
-    recovery_model_2026-05-14.json
-```
-
-For recurring local use, whitelist the narrow command prefix:
-
-```text
-["python3", "-B", "scripts/cache_xert.py"]
-```
-
-## Download weather from Yr / MET Norway
-
-Use MET Norway's public Locationforecast API, the same forecast source used by
-Yr, for training-weather decisions.
-
-```bash
-python3 -B scripts/cache_yr_weather.py oslo
-python3 -B scripts/cache_yr_weather.py lier
-python3 -B scripts/cache_yr_weather.py --lat 59.91 --lon 10.75 --label custom-oslo
-```
-
-Forecasts are stored under:
-
-```text
-data/
-  weather/
-    oslo/
-      yr_locationforecast_2026-05-14_163000.json
-      yr_locationforecast_2026-05-14_163000.csv
-```
-
-The API requires a non-generic User-Agent. The local client sets one by default.
+The API requires a non-generic User-Agent. The plugin client sets one by
+default.
 
 Source documentation:
 
@@ -339,18 +192,42 @@ performance condition and secondary Garmin load context. It accepts either a
 Garmin activity id or a cached Intervals.icu activity id; for Intervals
 activities from Garmin Connect it uses `external_id` as the Garmin activity id.
 
-EatMyRide live access, source semantics, CLI examples and write-safety rules
-live in the local plugin. Start with
-`plugins/eatmyride/skills/eatmyride/SKILL.md`.
+## Build readiness context
 
-Build a compact readiness context for chat after refreshing caches:
+Build a compact readiness context for chat. The script reads local Garmin and
+Intervals.icu inputs when present, and accepts a normalized Xert readiness JSON
+with only the selected fields this repo needs:
 
-```bash
-python3 -B scripts/readiness_snapshot.py --date 2026-05-14
+```json
+{
+  "source_time_local": "2026-05-14T08:15:00+02:00",
+  "recovery": {
+    "recovery_hours": {"low": -3.5, "high": 12.0, "peak": 24.0},
+    "training_load": {"low": 125.0, "high": 1.2, "peak": 0.4},
+    "recovery_load": {"low": 90.0, "high": 0.8, "peak": 0.2},
+    "workout_capacity": {"low": 250.0, "high": 8.0, "peak": 1.0},
+    "training_status": {"form_cat": "Fresh"}
+  },
+  "activity_loads": [
+    {
+      "start_local": "2026-05-13T17:30:00",
+      "name": "Endurance ride",
+      "xss": {"total": 75.0, "low": 70.0, "high": 4.0, "peak": 1.0},
+      "difficulty": 42.0,
+      "difficulty_rating": "Moderate"
+    }
+  ]
+}
 ```
 
-This summarizes cached Garmin, Xert and latest Intervals.icu activity data,
-including post-workout heart rate and stress when a prior activity is found.
+```bash
+python3 -B scripts/readiness_snapshot.py --date 2026-05-14 --xert-json /tmp/xert-readiness.json
+```
+
+The readiness script does not call source plugins itself and does not parse raw
+source API payloads; source-specific field interpretation belongs to the source
+plugin or the orchestration layer above this script. The only repo-level
+contract is the normalized JSON passed with `--xert-json`.
 
 Files are stored under:
 
