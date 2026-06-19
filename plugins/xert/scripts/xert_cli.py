@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 from datetime import date, datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from xert_api import (
@@ -48,6 +49,15 @@ def main() -> None:
     activity = subparsers.add_parser("activity", help="Fetch one Xert activity detail payload")
     activity.add_argument("path", help="Xert activity path from activities output")
     activity.add_argument("--session-data", action="store_true")
+    activity.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Return compact activity load fields without second-by-second session data",
+    )
+    activity.add_argument(
+        "--output",
+        help="Write activity JSON to this file instead of stdout. Required with --session-data.",
+    )
 
     subparsers.add_parser("training-info", help="Fetch current Xert training_info payload")
     subparsers.add_parser("recovery-model", help="Fetch model inputs and calculated recovery hours")
@@ -127,12 +137,21 @@ def main() -> None:
             newest=args.end,
         )
     elif args.command == "activity":
-        payload = fetch_activity_detail(
+        if args.session_data and args.summary_only:
+            raise SystemExit("Use either --session-data or --summary-only, not both")
+        if args.session_data and not args.output:
+            raise SystemExit("Use --output <file> with --session-data to avoid huge terminal output")
+        activity_payload = fetch_activity_detail(
             args.path,
             username=credentials.username,
             password=credentials.password,
             include_session_data=args.session_data,
         )
+        if args.summary_only:
+            payload = compact_activity_load(activity_payload)
+            payload["path"] = args.path
+        else:
+            payload = activity_payload
     elif args.command == "training-info":
         payload = fetch_training_info(
             username=credentials.username,
@@ -231,7 +250,12 @@ def main() -> None:
     else:
         raise AssertionError(f"Unhandled command: {args.command}")
 
-    print(json.dumps(payload, indent=2, sort_keys=True))
+    output_path = getattr(args, "output", None)
+    if output_path:
+        Path(output_path).write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        print(json.dumps({"wrote": output_path}, indent=2, sort_keys=True))
+    else:
+        print(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def fetch_training_info(

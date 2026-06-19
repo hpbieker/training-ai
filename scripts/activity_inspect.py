@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Inspect a cached activity for Codex workout analysis.
+"""Inspect a saved Intervals.icu activity artifact for Codex workout analysis.
 
 This script is intentionally optimized for agent use: it prints structured JSON
 to stdout so the chat answer can be written from one stable inspection result
@@ -48,12 +48,12 @@ DEFAULT_FIELDS = [
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Inspect a cached Intervals.icu activity.")
+    parser = argparse.ArgumentParser(description="Inspect a saved Intervals.icu activity artifact.")
     parser.add_argument(
         "activity",
-        help="Activity ref: latest, cached dir path/name, or Intervals.icu activity id",
+        help="Activity ref: latest, saved dir path/name, or Intervals.icu activity id",
     )
-    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--data-dir", default="data/intervals-old")
     parser.add_argument("--target", type=float, help="Detect blocks near target watts")
     parser.add_argument("--threshold", type=float, help="Detect blocks above watts threshold")
     parser.add_argument("--tolerance", type=float, default=10.0)
@@ -78,7 +78,7 @@ def main() -> None:
     parser.add_argument(
         "--no-intervals",
         action="store_true",
-        help="Omit cached Intervals.icu interval summaries from the output",
+        help="Omit saved Intervals.icu interval summaries from the output",
     )
     args = parser.parse_args()
 

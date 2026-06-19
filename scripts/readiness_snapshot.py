@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 
-DATA_DIR = Path("data")
+DATA_DIR = Path("data/intervals-old")
 LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 
 
@@ -715,7 +715,7 @@ def availability_notes(
 ) -> list[str]:
     notes = []
     if not activity:
-        notes.append("No cached Intervals activity found on or before this date.")
+        notes.append("No saved Intervals activity artifact found on or before this date.")
     for key, value in garmin.items():
         if value is None:
             notes.append(f"Missing Garmin {key} input for {day}.")

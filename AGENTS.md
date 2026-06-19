@@ -27,16 +27,20 @@
   cross-source training analysis.
 - For Garmin Connect-specific source semantics, use the repo-local plugin skill
   at `plugins/garmin-connect/skills/garmin-connect/SKILL.md`.
+- For Intervals.icu-specific source semantics, use the repo-local plugin skill
+  at `plugins/intervals-icu/skills/intervals-icu/SKILL.md`. The plugin owns
+  Intervals.icu API access, field interpretation and write-safety rules; this
+  repo still owns readiness composition and cross-source training analysis.
 - For EatMyRide glycogen/fueling plots from local JSON files, use
   `python3 -B scripts/plot_eatmyride_fueling.py <activity-dir>`. This is a
   repo-level visualization helper for explicitly selected historical artifacts,
   not a source for current EatMyRide data.
 - When the user asks for analyses or comparisons, answer in chat by default.
 - Do not create standalone report files for analyses or comparisons unless the user explicitly asks for a file.
-- Treat `data/` as temporary local cache/output. It is ignored by git and can contain downloaded activities, streams, scratch outputs and generated reports when explicitly requested.
+- Treat `data/` as temporary local output. It is ignored by git and can contain downloaded activities, streams, scratch outputs and generated reports when explicitly requested.
 - For workout analyses, exclude warm-up and cooldown from interval metrics. Prefer detecting the actual work segment from the power trace rather than using the full stream.
 - For workout analyses, ask the user how the session felt when it is natural to do so, especially after interpreting sensor/load data. Do not ask again if the user has already provided feel/RPE in the conversation or it is already present on the activity. If the user wants the subjective response saved to Intervals.icu, use the update helper and prefer Intervals.icu's activity fields for feel/RPE when available rather than burying the information only in chat.
-- For cached activity inspection, prefer reusable helpers in `scripts/analysis.py` and `scripts/activity_inspect.py` over one-off Python snippets. Use `python3 -B scripts/activity_inspect.py <activity-ref> --compact` for a standard stream summary, and add target/threshold detection such as `--target 300 --tolerance 12 --min-block 10m` or `--threshold 190 --min-block 3m` when identifying work blocks from power. Use `--no-intervals` when cached Intervals.icu intervals are not needed.
+- For explicitly saved activity inspection, prefer reusable helpers in `scripts/analysis.py` and `scripts/activity_inspect.py` over one-off Python snippets. Use `python3 -B scripts/activity_inspect.py <activity-ref> --compact` for a standard stream summary, and add target/threshold detection such as `--target 300 --tolerance 12 --min-block 10m` or `--threshold 190 --min-block 3m` when identifying work blocks from power. Use `--no-intervals` when Intervals.icu intervals are not needed.
 - Do not limit training analysis to power and heart rate. Use the sensor profile from `PREFERENCES.md`, check available streams per activity and use the relevant ones when present:
   - For any sensor stream, be careful with min, max, average and drift calculations when the relevant measurement window has longer continuous gaps, repeated dropouts or clearly unusable value blocks. An occasional missing point is acceptable and should not by itself invalidate the aggregate. Report meaningful data-quality limitations rather than treating incomplete data as a clean continuous signal.
   - For heart/cardiovascular data, derive W/HR and HR drift where useful.
@@ -58,17 +62,36 @@
 
 ## Intervals.icu
 
-- Use Intervals.icu as the primary cached source for activity metadata and stream data when available.
-- Treat Intervals.icu as a copy/aggregation layer for data that often originates in other systems. When the original system is available locally or through a cache/helper, prefer the original source because it may contain better, fresher or more complete data.
-- For activity downloads, keep one activity directory under `data/activities/<date>_<activity_id>/` with `activity.json` for metadata and `streams.csv` for stream data.
-- For activity summaries, use Intervals.icu metadata and intervals to orient the analysis, but prefer Xert for activity-load language when Xert data is available.
-- Use Intervals.icu stream fields actively for workout analysis: power, heart rate, respiratory, Moxy, thermal and environmental streams should be checked according to the sensor profile in `PREFERENCES.md`.
-- Respect Intervals.icu ignore flags in cached activity metadata. If `icu_ignore_hr` is true, do not use heart rate, W/HR or HR drift for that activity. If `icu_ignore_power` is true, do not use power/torque-derived metrics for that activity unless the user explicitly asks to inspect the raw stream.
-- Treat Intervals.icu load, intensity and interval metadata as useful secondary context. Do not let Intervals.icu load override Xert XSS when both are available.
-- Intervals.icu wellness fields may come from Garmin or other connected systems. Use only the wellness fields that are actually present in the downloaded Intervals.icu wellness cache, and do not assume unavailable Garmin-specific fields are present there.
-- For Intervals.icu activity renames or metadata updates, use the update helper rather than editing local cache only when the user asks to change Intervals.icu itself.
-- Cached Intervals.icu activities may include subjective fields such as `feel`, `perceived_exertion`, `session_rpe` and `icu_rpe`. When saving RPE, write `icu_rpe`; Intervals.icu derives `session_rpe` from RPE and duration and rejects direct writes to `session_rpe`. Update only fields the user has explicitly provided or confirmed, then refresh/read back the activity to verify the stored values.
-- Intervals.icu daily wellness can be read with `python3 -B scripts/cache_intervals_icu.py wellness --since <YYYY-MM-DD> --until <YYYY-MM-DD>` and updated with `python3 -B scripts/update_intervals_icu.py wellness <YYYY-MM-DD> --soreness <value> --fatigue <value> --motivation <value>`. Use the daily wellness fields for pre-training subjective values rather than storing them on the activity, and do not add a generic wellness comment such as "Pre training". For Intervals.icu wellness UI scales, use: `sleepQuality`: `1 = great`, `2 = good`, `3 = avg`, `4 = poor`; `soreness`, `fatigue` and `stress`: `1 = low`, `2 = avg`, `3 = high`, `4 = extreme`; `mood`: `1 = great`, `2 = good`, `3 = ok`, `4 = grumpy`; `motivation`: `1 = extreme`, `2 = high`, `3 = avg`, `4 = low`; `injury`: `1 = none`, `2 = niggle`, `3 = poor`, `4 = injured`; `hydration`: `1 = good`, `2 = ok`, `3 = poor`, `4 = bad`. Refresh/read back the wellness day after updating.
+- Fetch Intervals.icu activity, stream, interval and wellness context live through
+  the Intervals.icu plugin by default. Save artifacts only when the user
+  explicitly asks for a file or a downstream helper requires one.
+- Treat Intervals.icu as a copy/aggregation layer for data that often originates
+  in other systems. When the original system is available locally or through a
+  live plugin/helper, prefer the original source because it may contain better,
+  fresher or more complete data.
+- For activity summaries, use Intervals.icu metadata and intervals to orient the
+  analysis, but prefer Xert for activity-load language when Xert data is
+  available.
+- Use Intervals.icu stream fields actively for workout analysis when fetched or
+  explicitly supplied: power, heart rate, respiratory, Moxy, thermal and
+  environmental streams should be checked according to the sensor profile in
+  `PREFERENCES.md`.
+- Respect Intervals.icu ignore flags in activity metadata. If `icu_ignore_hr` is
+  true, do not use heart rate, W/HR or HR drift for that activity. If
+  `icu_ignore_power` is true, do not use power/torque-derived metrics for that
+  activity unless the user explicitly asks to inspect the raw stream.
+- Treat Intervals.icu load, intensity and interval metadata as useful secondary
+  context. Do not let Intervals.icu load override Xert XSS when both are
+  available.
+- Intervals.icu wellness fields may come from Garmin or other connected systems.
+  Use only the wellness fields that are actually present in the live/fetched
+  wellness payload, and do not assume unavailable Garmin-specific fields are
+  present there.
+- For Intervals.icu activity renames or metadata updates, use the Intervals.icu
+  plugin/update helper rather than editing local artifacts when the user asks
+  to change Intervals.icu itself.
+- Intervals.icu activities may include subjective fields such as `feel`, `perceived_exertion`, `session_rpe` and `icu_rpe`. When saving RPE, write `icu_rpe`; Intervals.icu derives `session_rpe` from RPE and duration and rejects direct writes to `session_rpe`. Update only fields the user has explicitly provided or confirmed, then refresh/read back the activity to verify the stored values.
+- Intervals.icu daily wellness can be read with `python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness --since <YYYY-MM-DD> --until <YYYY-MM-DD>` and updated with `python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness-update <YYYY-MM-DD> --soreness <value> --fatigue <value> --motivation <value>`. Use the daily wellness fields for pre-training subjective values rather than storing them on the activity, and do not add a generic wellness comment such as "Pre training". For Intervals.icu wellness UI scales, use: `sleepQuality`: `1 = great`, `2 = good`, `3 = avg`, `4 = poor`; `soreness`, `fatigue` and `stress`: `1 = low`, `2 = avg`, `3 = high`, `4 = extreme`; `mood`: `1 = great`, `2 = good`, `3 = ok`, `4 = grumpy`; `motivation`: `1 = extreme`, `2 = high`, `3 = avg`, `4 = low`; `injury`: `1 = none`, `2 = niggle`, `3 = poor`, `4 = injured`; `hydration`: `1 = good`, `2 = ok`, `3 = poor`, `4 = bad`. Refresh/read back the wellness day after updating.
 - For routine pre-training wellness logging, ask for `soreness`, `fatigue` and `motivation` and save them to Intervals.icu wellness when the user confirms. If any of those fields are already populated for the day, do not overwrite them without first asking the user to confirm the overwrite. Treat `soreness` primarily as local leg/muscle soreness/heaviness before training; leg ache that disrupts sleep after hard training is an important recovery signal and should reduce next-day training ambition even if model-based readiness looks acceptable. Treat `fatigue` as general/systemic tiredness that may not be fully captured by Xert/Garmin, and `motivation` as mental readiness/drive to do the session. Do not suggest or log `stress`, `sleepQuality`, `hydration` or `injury` as routine fields; Garmin normally populates sleep, and the other fields are only useful when the user explicitly says they are relevant.
 
 ## Garmin Connect

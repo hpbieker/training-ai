@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot cached Intervals.icu activities."""
+"""Plot saved Intervals.icu activity artifacts."""
 
 from __future__ import annotations
 
@@ -15,15 +15,15 @@ from analysis import load_activity, value
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Plot a cached activity.")
-    parser.add_argument("activity", help="Activity cache dir name or path")
+    parser = argparse.ArgumentParser(description="Plot a saved Intervals.icu activity artifact.")
+    parser.add_argument("activity", help="Saved activity dir name or path")
     parser.add_argument("--output", help="Output image path")
     parser.add_argument("--moxy", action="store_true", help="Include Moxy-focused panels")
     args = parser.parse_args()
 
     activity_dir = Path(args.activity)
     if not activity_dir.exists():
-        activity_dir = Path("data/activities") / args.activity
+        activity_dir = Path("data/intervals-old/activities") / args.activity
     activity = load_activity(activity_dir)
 
     output = Path(args.output) if args.output else _default_output_path(activity_dir, args.moxy)

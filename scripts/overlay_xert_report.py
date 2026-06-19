@@ -23,7 +23,7 @@ def main() -> None:
         "--activity-dir",
         type=Path,
         required=True,
-        help="Process one cached Intervals activity directory.",
+        help="Process one saved Intervals activity artifact directory.",
     )
     parser.add_argument(
         "--xert-path",

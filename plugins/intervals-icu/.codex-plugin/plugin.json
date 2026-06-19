@@ -1,0 +1,26 @@
+{
+  "name": "intervals-icu",
+  "version": "0.1.0+codex.20260619",
+  "description": "Intervals.icu source semantics and API access for training activity, stream, and wellness data.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Intervals.icu",
+    "shortDescription": "Fetch and interpret Intervals.icu activities, intervals, wellness, and files.",
+    "longDescription": "Intervals.icu provides source-specific guidance and CLI access for activity metadata, interval summaries, wellness fields, subjective fields, file downloads, and cautious Intervals.icu writes. Plotting, readiness composition, and cross-source training analysis live in the training-ai layer.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "Data Analysis",
+      "Command Line"
+    ],
+    "composerIcon": "./assets/intervals-icu-icon.png",
+    "defaultPrompt": [
+      "Fetch my latest Intervals.icu activity.",
+      "Read Intervals.icu wellness for today.",
+      "Help me save RPE to Intervals.icu."
+    ]
+  }
+}

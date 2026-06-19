@@ -1,0 +1,537 @@
+#!/usr/bin/env python3
+"""Command-line tool for Intervals.icu API access."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import date
+from pathlib import Path
+
+from intervals_icu_api import (
+    download_activity_file,
+    download_activity_streams_csv,
+    get_activity,
+    get_wellness,
+    list_activities,
+    list_wellness,
+    load_intervals_icu_api_key,
+    search_activities,
+    update_activity,
+    update_wellness,
+)
+
+
+METADATA_UNAVAILABLE_SAMPLE_LIMIT = 20
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Fetch and update Intervals.icu data.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    latest = subparsers.add_parser("latest", help="Fetch the latest activity summary")
+    latest.add_argument("--lookback-days", type=int, default=365)
+    _add_output_arg(latest)
+
+    recent = subparsers.add_parser("recent", help="Fetch recent activity summaries")
+    recent.add_argument("--count", type=int, default=2)
+    recent.add_argument("--lookback-days", type=int, default=365)
+    _add_output_arg(recent)
+
+    activity = subparsers.add_parser("activity", help="Fetch one activity")
+    activity.add_argument("activity_id")
+    activity.add_argument(
+        "--summary-only",
+        "--no-intervals",
+        dest="omit_intervals",
+        action="store_true",
+        default=False,
+        help="Omit Intervals.icu interval summaries from the activity payload",
+    )
+    _add_output_arg(activity)
+
+    file_parser = subparsers.add_parser(
+        "file",
+        help="Download the original or generated FIT file for one activity id",
+    )
+    file_parser.add_argument("activity_id")
+    file_parser.add_argument(
+        "--kind",
+        choices=["original", "fit", "web-original"],
+        default="original",
+        help="Download the API original, web-session original, or Intervals.icu generated FIT",
+    )
+    file_parser.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="Explicit file path or directory for the downloaded artifact",
+    )
+
+    streams = subparsers.add_parser(
+        "streams",
+        help="Download activity streams CSV for one activity id",
+    )
+    streams.add_argument("activity_id")
+    streams.add_argument(
+        "--type",
+        dest="stream_types",
+        action="append",
+        help="Stream type to include. Can be repeated.",
+    )
+    streams.add_argument(
+        "--output",
+        required=True,
+        type=Path,
+        help="Explicit CSV file path or directory for the downloaded streams",
+    )
+
+    search = subparsers.add_parser(
+        "search",
+        help="Search activities by query text",
+    )
+    search.add_argument("query")
+    search.add_argument("--limit", type=int, default=10)
+    search.add_argument(
+        "--since",
+        help="Optional start date used to report activities whose metadata cannot be searched",
+    )
+    search.add_argument(
+        "--until",
+        help="Optional end date used to report activities whose metadata cannot be searched",
+    )
+    _add_output_arg(search)
+
+    named = subparsers.add_parser(
+        "named",
+        help="Fetch activities whose names contain a case-insensitive text fragment",
+    )
+    named.add_argument("text", help="Name fragment, for example VT1 or VT2")
+    named.add_argument("--since", default=f"{date.today().year}-01-01")
+    named.add_argument("--until", default=date.today().isoformat())
+    _add_output_arg(named)
+
+    outdoor = subparsers.add_parser("outdoor", help="Fetch outdoor ride summaries")
+    outdoor.add_argument("--since", default=f"{date.today().year}-01-01")
+    outdoor.add_argument("--until", default=date.today().isoformat())
+    _add_output_arg(outdoor)
+
+    indoor = subparsers.add_parser("indoor", help="Fetch indoor/trainer ride summaries")
+    indoor.add_argument("--since", default=f"{date.today().year}-01-01")
+    indoor.add_argument("--until", default=date.today().isoformat())
+    _add_output_arg(indoor)
+
+    tireless = subparsers.add_parser("tireless", help="Fetch long Tireless indoor rides")
+    tireless.add_argument("--since", default="2022-01-01")
+    tireless.add_argument("--until", default=date.today().isoformat())
+    tireless.add_argument("--min-minutes", type=float, default=180.0)
+    _add_output_arg(tireless)
+
+    hard_indoor = subparsers.add_parser(
+        "hard-indoor",
+        help="Fetch hard indoor workout summaries by name pattern",
+    )
+    hard_indoor.add_argument("--since", default=f"{date.today().year}-01-01")
+    hard_indoor.add_argument("--until", default=date.today().isoformat())
+    hard_indoor.add_argument(
+        "--pattern",
+        action="append",
+        default=None,
+        help="Case-insensitive name fragment. Can be repeated.",
+    )
+    _add_output_arg(hard_indoor)
+
+    wellness = subparsers.add_parser("wellness", help="Fetch wellness data")
+    wellness.add_argument("--since", default=f"{date.today().year}-01-01")
+    wellness.add_argument("--until", default=date.today().isoformat())
+    _add_output_arg(wellness)
+
+    rename = subparsers.add_parser("rename", help="Rename one activity")
+    rename.add_argument("activity_id")
+    rename.add_argument("name")
+
+    subjective = subparsers.add_parser(
+        "subjective",
+        help="Update subjective Intervals.icu fields for one activity",
+    )
+    subjective.add_argument("activity_id")
+    subjective.add_argument(
+        "--feel",
+        help="Subjective feel value to store in Intervals.icu's feel field",
+    )
+    subjective.add_argument(
+        "--rpe",
+        "--session-rpe",
+        dest="rpe",
+        type=float,
+        help="RPE value to store in Intervals.icu's icu_rpe field",
+    )
+
+    wellness_update = subparsers.add_parser(
+        "wellness-update",
+        help="Update one daily wellness record",
+    )
+    wellness_update.add_argument("date", help="Local date formatted YYYY-MM-DD")
+    wellness_update.add_argument(
+        "--soreness",
+        type=int,
+        help="Daily soreness value to store in Intervals.icu's soreness field",
+    )
+    wellness_update.add_argument(
+        "--fatigue",
+        type=int,
+        help="Daily fatigue value to store in Intervals.icu's fatigue field",
+    )
+    wellness_update.add_argument(
+        "--motivation",
+        type=int,
+        help="Daily motivation value to store in Intervals.icu's motivation field",
+    )
+    wellness_update.add_argument(
+        "--comments",
+        help="Daily wellness comments. Only use for explicit user-provided notes.",
+    )
+    wellness_update.add_argument(
+        "--force",
+        action="store_true",
+        help="Allow overwriting an existing wellness value with a different value.",
+    )
+
+    args = parser.parse_args()
+    api_key = load_intervals_icu_api_key()
+
+    if args.command == "latest":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=date.fromordinal(date.today().toordinal() - args.lookback_days),
+            newest=date.today(),
+        )
+        if not activities:
+            raise SystemExit(f"No Intervals.icu activities found in last {args.lookback_days} days")
+        latest_activity = max(
+            activities,
+            key=lambda activity: str(activity.get("start_date_local") or ""),
+        )
+        _emit_json({"activity": latest_activity}, output=args.output)
+        return
+
+    if args.command == "recent":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=date.fromordinal(date.today().toordinal() - args.lookback_days),
+            newest=date.today(),
+        )
+        recent_activities = sorted(
+            activities,
+            key=lambda activity: activity.get("start_date_local") or "",
+            reverse=True,
+        )[: args.count]
+        _emit_json(
+            {"activities": recent_activities, "matched_count": len(recent_activities)},
+            output=args.output,
+        )
+        return
+
+    if args.command == "activity":
+        activity_payload = get_activity(
+            activity_id=args.activity_id,
+            api_key=api_key,
+            include_intervals=not args.omit_intervals,
+        )
+        _emit_json({"activity": activity_payload}, output=args.output)
+        return
+
+    if args.command == "file":
+        activity_file = download_activity_file(
+            activity_id=args.activity_id,
+            api_key=api_key,
+            kind=args.kind,
+            output_path=args.output,
+        )
+        _emit_json({"activity_file": activity_file})
+        return
+
+    if args.command == "streams":
+        streams_csv = download_activity_streams_csv(
+            activity_id=args.activity_id,
+            api_key=api_key,
+            stream_types=args.stream_types,
+            output_path=args.output,
+        )
+        _emit_json({"streams_csv": streams_csv})
+        return
+
+    if args.command == "search":
+        activities = search_activities(
+            query=args.query,
+            limit=args.limit,
+            api_key=api_key,
+        )
+        source_activities = None
+        if args.since or args.until:
+            if not args.since or not args.until:
+                parser.error("search requires both --since and --until when date bounds are used")
+            source_activities = list_activities(
+                api_key=api_key,
+                oldest=args.since,
+                newest=args.until,
+            )
+        _print_activity_matches(activities, source_activities=source_activities, output=args.output)
+        return
+
+    if args.command == "named":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        matches = [
+            activity
+            for activity in activities
+            if args.text.lower() in str(activity.get("name") or "").lower()
+        ]
+        _print_activity_matches(matches, source_activities=activities, output=args.output)
+        return
+
+    if args.command == "outdoor":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        matches = [
+            activity
+            for activity in activities
+            if str(activity.get("type") or "").lower() == "ride"
+        ]
+        _print_activity_matches(matches, source_activities=activities, output=args.output)
+        return
+
+    if args.command == "indoor":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        matches = [
+            activity
+            for activity in activities
+            if _is_indoor_ride(activity)
+        ]
+        _print_activity_matches(matches, source_activities=activities, output=args.output)
+        return
+
+    if args.command == "tireless":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        min_seconds = args.min_minutes * 60
+        matches = [
+            activity
+            for activity in activities
+            if _is_indoor_ride(activity)
+            and "tireless" in str(activity.get("name") or "").lower()
+            and (
+                float(activity.get("elapsed_time") or activity.get("moving_time") or 0)
+                >= min_seconds
+            )
+        ]
+        _print_activity_matches(matches, source_activities=activities, output=args.output)
+        return
+
+    if args.command == "hard-indoor":
+        activities = list_activities(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        patterns = args.pattern or [
+            "60/60",
+            "60-60",
+            "30/30",
+            "30-30",
+            "vo2",
+            "vo2max",
+            "vt2",
+        ]
+        matches = [
+            activity
+            for activity in activities
+            if str(activity.get("type") or "").lower() == "virtualride"
+            and any(
+                pattern.lower() in str(activity.get("name") or "").lower()
+                for pattern in patterns
+            )
+        ]
+        _print_activity_matches(matches, source_activities=activities, output=args.output)
+        return
+
+    if args.command == "wellness":
+        wellness_rows = list_wellness(
+            api_key=api_key,
+            oldest=args.since,
+            newest=args.until,
+        )
+        _emit_json(
+            {"wellness": wellness_rows, "matched_count": len(wellness_rows)},
+            output=args.output,
+        )
+        return
+
+    if args.command == "rename":
+        updated = update_activity(
+            activity_id=args.activity_id,
+            updates={"name": args.name},
+            api_key=api_key,
+        )
+        print(f"updated {updated.get('id')}: {updated.get('name')}")
+        return
+
+    if args.command == "subjective":
+        updates = {}
+        if args.feel is not None:
+            updates["feel"] = args.feel
+        if args.rpe is not None:
+            updates["icu_rpe"] = args.rpe
+        if not updates:
+            parser.error("subjective requires at least one subjective field")
+
+        updated = update_activity(
+            activity_id=args.activity_id,
+            updates=updates,
+            api_key=api_key,
+        )
+        saved = {field: updated.get(field) for field in updates}
+        print(f"updated {updated.get('id')}: {saved}")
+        return
+
+    if args.command == "wellness-update":
+        updates = {}
+        if args.soreness is not None:
+            updates["soreness"] = args.soreness
+        if args.fatigue is not None:
+            updates["fatigue"] = args.fatigue
+        if args.motivation is not None:
+            updates["motivation"] = args.motivation
+        if args.comments is not None:
+            updates["comments"] = args.comments
+        if not updates:
+            parser.error("wellness-update requires at least one wellness field")
+
+        current = get_wellness(day=args.date, api_key=api_key)
+        conflicting = {
+            field: {"current": current.get(field), "requested": value}
+            for field, value in updates.items()
+            if _has_value(current.get(field)) and current.get(field) != value
+        }
+        if conflicting and not args.force:
+            parser.error(
+                "refusing to overwrite existing wellness values without --force: "
+                f"{conflicting}"
+            )
+
+        updated = update_wellness(
+            day=args.date,
+            updates=updates,
+            api_key=api_key,
+        )
+        saved = {field: updated.get(field) for field in updates}
+        print(f"updated wellness {updated.get('id')}: {saved}")
+        return
+
+
+def _print_activity_matches(
+    matches: list[dict[str, object]],
+    *,
+    source_activities: list[dict[str, object]] | None = None,
+    output: Path | None,
+) -> None:
+    payload: dict[str, object] = {
+        "activities": sorted(matches, key=lambda item: str(item.get("start_date_local") or "")),
+        "matched_count": len(matches),
+    }
+    if source_activities is not None:
+        unavailable = [
+            _metadata_unavailable_summary(activity)
+            for activity in source_activities
+            if _activity_metadata_unavailable(activity)
+        ]
+        if unavailable:
+            sorted_unavailable = sorted(
+                unavailable,
+                key=lambda item: str(item.get("start_date_local") or ""),
+            )
+            payload["metadata_warning"] = (
+                "Some activities in the requested range do not expose searchable metadata "
+                "through the Intervals.icu API. Name/type filters may miss these activities."
+            )
+            payload["metadata_unavailable_count"] = len(unavailable)
+            payload["metadata_unavailable_activities"] = sorted_unavailable[
+                :METADATA_UNAVAILABLE_SAMPLE_LIMIT
+            ]
+            omitted_count = len(sorted_unavailable) - METADATA_UNAVAILABLE_SAMPLE_LIMIT
+            if omitted_count > 0:
+                payload["metadata_unavailable_omitted_count"] = omitted_count
+    _emit_json(payload, output=output)
+
+
+def _activity_metadata_unavailable(activity: dict[str, object]) -> bool:
+    if activity.get("_note"):
+        return True
+    has_searchable_metadata = any(
+        _has_value(activity.get(field))
+        for field in ("name", "type", "distance", "elapsed_time", "moving_time")
+    )
+    return str(activity.get("source") or "").upper() == "STRAVA" and not has_searchable_metadata
+
+
+def _metadata_unavailable_summary(activity: dict[str, object]) -> dict[str, object]:
+    summary = {
+        "id": activity.get("id"),
+        "source": activity.get("source"),
+        "start_date_local": activity.get("start_date_local"),
+    }
+    if activity.get("_note"):
+        summary["note"] = activity.get("_note")
+    return {key: value for key, value in summary.items() if value is not None}
+
+
+def _is_indoor_ride(activity: dict[str, Any]) -> bool:
+    activity_type = str(activity.get("type") or "").lower()
+    if activity_type not in {"ride", "virtualride"}:
+        return False
+    return (
+        activity_type == "virtualride"
+        or activity.get("trainer") is True
+        or activity.get("indoor") is True
+    )
+
+
+def _has_value(value: object) -> bool:
+    return value is not None and value != ""
+
+
+def _add_output_arg(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Write JSON payload to this explicit file instead of stdout",
+    )
+
+
+def _emit_json(payload: object, *, output: Path | None = None) -> None:
+    body = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True, default=str)
+    if output is None:
+        print(body)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(f"{body}\n", encoding="utf-8")
+    print(f"wrote: {output}")
+
+
+if __name__ == "__main__":
+    main()

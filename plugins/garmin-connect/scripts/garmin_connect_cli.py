@@ -43,7 +43,7 @@ def main() -> None:
     )
     activity.add_argument(
         "activity",
-        help="Garmin activity id, Intervals activity id, or cached Intervals activity dir",
+        help="Garmin activity id, Intervals activity id, or saved Intervals activity dir",
     )
     activity.add_argument(
         "--summary-only",

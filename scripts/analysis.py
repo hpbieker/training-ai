@@ -1,4 +1,4 @@
-"""Shared local analysis helpers for cached Intervals.icu data."""
+"""Shared local analysis helpers for saved Intervals.icu artifacts."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from statistics import median
 from typing import Any, Iterable
 
 
-DATA_DIR = Path("data")
+DATA_DIR = Path("data/intervals-old")
 
 CORE_STREAMS = [
     "watts",
@@ -35,7 +35,7 @@ CORE_STREAMS = [
 
 @dataclass(frozen=True)
 class CachedActivity:
-    """A cached Intervals.icu activity plus stream rows."""
+    """A saved Intervals.icu activity plus stream rows."""
 
     activity_dir: Path
     metadata: dict[str, Any]
@@ -81,7 +81,7 @@ class PowerBlock:
 
 
 def load_activity(activity_dir: str | Path) -> CachedActivity:
-    """Load one cached activity directory."""
+    """Load one saved activity directory."""
 
     path = Path(activity_dir)
     metadata = json.loads((path / "activity.json").read_text(encoding="utf-8"))
@@ -110,7 +110,7 @@ def resolve_activity_ref(ref: str, *, data_dir: str | Path = DATA_DIR) -> Cached
             key=lambda activity: activity.start_date_local,
         )
         if not candidates:
-            raise FileNotFoundError(f"No cached activities under {data_path / 'activities'}")
+            raise FileNotFoundError(f"No saved activities under {data_path / 'activities'}")
         return candidates[-1]
 
     candidate_path = Path(ref)
@@ -127,11 +127,11 @@ def resolve_activity_ref(ref: str, *, data_dir: str | Path = DATA_DIR) -> Cached
     if matches:
         return load_activity(matches[-1])
 
-    raise FileNotFoundError(f"Could not resolve cached activity: {ref}")
+    raise FileNotFoundError(f"Could not resolve saved activity: {ref}")
 
 
 def iter_cached_activities(data_dir: str | Path = DATA_DIR) -> Iterable[CachedActivity]:
-    """Yield cached activities sorted by activity directory name."""
+    """Yield saved activities sorted by activity directory name."""
 
     activities_dir = Path(data_dir) / "activities"
     for activity_dir in sorted(activities_dir.iterdir()):
@@ -357,7 +357,7 @@ def latest_activity_with_moxy(
     require_work_overlap: bool = True,
     data_dir: str | Path = DATA_DIR,
 ) -> CachedActivity | None:
-    """Find the latest cached activity with Moxy values.
+    """Find the latest saved activity with Moxy values.
 
     When ``require_work_overlap`` is true, SmO2/THb must overlap at least one
     WORK interval. This avoids selecting activities where Moxy only appears in
@@ -658,7 +658,7 @@ def load_wellness_range(
     *,
     data_dir: str | Path = DATA_DIR,
 ) -> list[dict[str, Any]]:
-    """Load a cached wellness JSON range."""
+    """Load a saved wellness JSON range."""
 
     oldest_value = oldest.isoformat() if isinstance(oldest, date) else oldest
     newest_value = newest.isoformat() if isinstance(newest, date) else newest

@@ -26,7 +26,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--activity-dir",
-        help="Optional cached activity directory to mark workout start/stop",
+        help="Optional saved activity directory to mark workout start/stop",
     )
     parser.add_argument(
         "--output",

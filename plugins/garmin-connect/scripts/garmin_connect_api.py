@@ -126,8 +126,8 @@ def fetch_activity(
     """Fetch one Garmin activity's summary and optional details metadata.
 
     ``activity`` may be a Garmin activity id, an Intervals.icu activity id, or a
-    cached Intervals.icu activity directory. Intervals caches from Garmin expose
-    the Garmin activity id as ``external_id``.
+    saved Intervals.icu activity artifact directory. Intervals artifacts from
+    Garmin expose the Garmin activity id as ``external_id``.
     """
 
     resolved = resolve_garmin_activity(activity)
@@ -247,14 +247,16 @@ def detail_metric_stats(details: dict[str, Any], metric_key: str) -> dict[str, A
 
 
 def resolve_garmin_activity(activity: str) -> dict[str, str]:
-    """Resolve Garmin activity id from a Garmin id or cached Intervals activity."""
+    """Resolve Garmin activity id from a Garmin id or saved Intervals activity."""
 
     candidate_path = Path(activity)
     metadata_path: Path | None = None
     if candidate_path.exists():
         metadata_path = candidate_path / "activity.json"
     elif activity.startswith("i"):
-        matches = sorted((Path("data") / "activities").glob(f"*_{activity}"))
+        matches = sorted((Path("data/intervals-old") / "activities").glob(f"*_{activity}"))
+        if not matches:
+            matches = sorted((Path("data") / "activities").glob(f"*_{activity}"))
         metadata_path = matches[-1] / "activity.json" if matches else None
 
     if metadata_path and metadata_path.exists():

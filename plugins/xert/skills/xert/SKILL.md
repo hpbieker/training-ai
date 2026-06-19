@@ -13,7 +13,7 @@ Use the local CLI when live Xert data is needed:
 
 ```bash
 python3 -B plugins/xert/scripts/xert_cli.py activities <start-YYYY-MM-DD> <end-YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_cli.py activity <activity-path> [--session-data]
+python3 -B plugins/xert/scripts/xert_cli.py activity <activity-path> [--summary-only|--session-data --output /tmp/xert-activity.json]
 python3 -B plugins/xert/scripts/xert_cli.py training-info
 python3 -B plugins/xert/scripts/xert_cli.py recovery-model
 python3 -B plugins/xert/scripts/xert_cli.py readiness-input [--activity <activity-path>]
@@ -28,6 +28,32 @@ python3 -B plugins/xert/scripts/xert_cli.py recommended-training --date <YYYY-MM
 For `activities`, pass the user's intended local calendar dates. The command treats
 both dates as an inclusive local-date range on the machine running the command and
 converts the boundaries to UTC timestamps for Xert.
+
+For activity analyses, prefer:
+
+```bash
+python3 -B plugins/xert/scripts/xert_cli.py activity <activity-path> --summary-only
+```
+
+This returns compact Xert load/context fields such as XSS split, XEP, focus,
+specificity, difficulty, freshness and fitness signature. Use full `activity`
+only when the raw Xert payload is needed.
+
+Use `--session-data` only when Xert-specific time-series fields are specifically
+needed and are not already available from a better source. The session payload
+can include second-by-second fields such as Xert difficulty/MPA/model fields,
+heart rate, power, speed, elevation and other activity streams. For routine
+activity analysis, prefer Intervals.icu or Garmin streams when they already
+contain the data needed, and do not call Xert `--session-data` just to duplicate
+those time series.
+
+When `--session-data` is needed, always write it to an explicit temporary file:
+
+```bash
+python3 -B plugins/xert/scripts/xert_cli.py activity <activity-path> --session-data --output /tmp/xert-activity.json
+```
+
+Do not print Xert session data to chat or terminal output.
 
 Credentials are read from `.env`:
 

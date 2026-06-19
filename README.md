@@ -11,103 +11,13 @@ from this repo's persistence, orchestration and cross-source analysis.
 - Xert: `plugins/xert/skills/xert/SKILL.md`
 - EatMyRide: `plugins/eatmyride/skills/eatmyride/SKILL.md`
 - Yr: `plugins/yr/skills/yr/SKILL.md`
+- Garmin Connect: `plugins/garmin-connect/skills/garmin-connect/SKILL.md`
+- Intervals.icu: `plugins/intervals-icu/skills/intervals-icu/SKILL.md`
 
-## Download data from Intervals.icu
+## Use Intervals.icu
 
-Create an Intervals.icu API key in your account settings, then run:
-
-```python
-import os
-
-from scripts.intervals_api import cache_latest_activity_streams, download_intervals_icu_data
-
-artifacts = download_intervals_icu_data(
-    api_key=os.environ["INTERVALS_ICU_API_KEY"],
-    oldest="2026-01-01",
-    newest="2026-01-31",
-    output_dir="data",
-    include_activity_details=True,
-    include_intervals=True,
-    download_activity_files=True,
-    activity_file_kind="fit",
-)
-
-print(artifacts)
-```
-
-To cache streams for the newest activity:
-
-```python
-artifacts = cache_latest_activity_streams(
-    api_key=os.environ["INTERVALS_ICU_API_KEY"],
-)
-```
-
-Or use the CLI wrapper:
-
-```bash
-python3 -B scripts/cache_intervals_icu.py latest
-python3 -B scripts/cache_intervals_icu.py activity i147489723
-python3 -B scripts/cache_intervals_icu.py named VT2 --since 2026-01-01
-python3 -B scripts/cache_intervals_icu.py named VT1 --since 2026-01-01
-python3 -B scripts/cache_intervals_icu.py wellness --since 2026-01-01
-python3 -B scripts/cache_intervals_icu.py file i150612397 --kind original
-python3 -B scripts/cache_intervals_icu.py file i150612397 --kind web-original
-```
-
-For recurring local use, whitelist the narrow command prefix:
-
-```text
-["python3", "-B", "scripts/cache_intervals_icu.py"]
-```
-
-`file --kind web-original` uses the web/session endpoint
-`https://intervals.icu/api/activity/<id>/file` and requires
-`INTERVALS_ICU_COOKIE` in `.env`. The regular `file --kind original` command
-uses the API-key endpoint under `/api/v1`.
-
-Metadata updates, such as renaming activities in Intervals.icu, use a separate
-script so the cache script stays download-only:
-
-```bash
-python3 -B scripts/update_intervals_icu.py rename i148170330 "VT1 180 min"
-```
-
-Activity-specific files are stored under:
-
-```text
-data/
-  activities/
-    2026-05-12_i147489723/
-      activity.json
-      streams.csv
-  activity_summaries/
-    2026-01-01_2026-01-31.csv
-    2026-01-01_2026-01-31.json
-  wellness/
-    2026-01-01_2026-05-14.csv
-    2026-01-01_2026-05-14.json
-```
-
-By default `athlete_id=0`, which means Intervals.icu uses the athlete connected
-to the API key or OAuth token.
-
-The generated FIT files are the best starting point for detailed stream
-analysis of watt, heart rate, VE, BR, VT, SmO2, THb, core temperature, skin
-temperature and air temperature, assuming those streams exist in the original
-activity or in Intervals.icu's generated FIT export.
-
-## OAuth
-
-For a multi-user app, pass `bearer_token` instead of `api_key`:
-
-```python
-download_intervals_icu_data(
-    bearer_token="...",
-    oldest="2026-01-01",
-    newest="2026-01-31",
-)
-```
+Intervals.icu source semantics, API access and write-safety rules live in the
+local plugin. Start with `plugins/intervals-icu/skills/intervals-icu/SKILL.md`.
 
 ## Use Xert
 
@@ -180,14 +90,6 @@ including heart rate, stress, HRV, sleep, summary, training readiness and
 training status. `--only` is available for targeted debugging, but normal
 readiness work should fetch the whole day so the sources stay in sync.
 
-Full Garmin payloads can be large. Redirect full `day`, `recent`, and
-`activity` without `--summary-only` to an explicit temporary JSON input file
-instead of dumping them into chat or terminal output:
-
-```bash
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day 2026-05-14 > /tmp/garmin-connect-day.json
-```
-
 Use `python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py status`
 only for troubleshooting `gccli` authentication. It does not fetch readiness
 data.
@@ -201,8 +103,8 @@ python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity i148448
 
 `activity` fetches Garmin activity metadata such as Training Effect, stamina,
 performance condition and secondary Garmin load context. It accepts either a
-Garmin activity id or a cached Intervals.icu activity id; for Intervals
-activities from Garmin Connect it uses `external_id` as the Garmin activity id.
+Garmin activity id or a saved Intervals.icu artifact id; for Intervals
+artifacts from Garmin Connect it uses `external_id` as the Garmin activity id.
 Use `--summary-only` when the chart details are not needed.
 
 ## Build readiness context
