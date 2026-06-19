@@ -16,6 +16,7 @@ python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py latest
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activities --since <YYYY-MM-DD> --until <YYYY-MM-DD>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activity <activity-id>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activity <activity-id> --summary-only
+python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py save-activity <activity-id>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py streams <activity-id> --output /tmp/intervals-streams.csv
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py search <query> --limit 10
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py named <name-fragment> --since <YYYY-MM-DD> --until <YYYY-MM-DD>
@@ -26,6 +27,11 @@ The `activity` command fetches activity metadata and optional interval details;
 it does not include stream samples. Download streams separately with
 `streams <activity-id> --output <file>` when stream data is needed. Streams are
 CSV artifacts and should be written to a file, not printed to console output.
+Use `save-activity <activity-id>` when a repo-level analysis helper needs a
+local activity package; it saves `activity.json` and `streams.csv` under
+`outputs/intervals/activities/<date>_<activity-id>/`. This keeps Intervals.icu
+download/API access in the plugin while letting repo helpers analyze local
+artifacts only.
 Use `activities --since ... --until ...` as the first choice for date-bounded
 activity lists, recent-week summaries, and "what workouts did I do" questions.
 Use `search <query>` for Intervals.icu's own activity search endpoint. Use

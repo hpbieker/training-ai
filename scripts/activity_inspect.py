@@ -334,8 +334,14 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
     ]
     work_blocks = detected_blocks or saved_work_intervals
     block_source = "detected_power_blocks" if detected_blocks else "intervals_icu_work_intervals"
+    saved_recovery_intervals = [
+        interval
+        for interval in result.get("intervals", [])
+        if str(interval.get("type") or "").upper() == "RECOVERY"
+    ]
     recoveries = brief_recoveries(
-        result.get("moxy", {}).get("recovery_reoxygenation", []),
+        saved_recovery_intervals,
+        moxy_recoveries=result.get("moxy", {}).get("recovery_reoxygenation", []),
         work_block_count=len(work_blocks),
     )
     hard_block = hardest_block(work_blocks)
@@ -541,7 +547,10 @@ def row_time(rows: list[dict[str, str]], index: int) -> float | None:
 
 def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
     summary = block.get("summary") or {}
+    drift = block.get("drift") or {}
     source = block.get("detection", {}).get("source")
+    watts_avg = stat(summary, "watts", "avg", digits=1)
+    hr_avg = stat(summary, "heartrate", "avg", digits=1)
     return drop_none(
         {
             "n": index,
@@ -549,22 +558,30 @@ def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
             "source": source,
             "source_index": block.get("index"),
             "duration_s": rounded(block.get("duration_seconds"), digits=0),
-            "watts_avg": stat(summary, "watts", "avg", digits=0),
+            "watts_avg": rounded(watts_avg, digits=0),
             "watts_max": stat(summary, "watts", "max", digits=0),
-            "hr_avg": stat(summary, "heartrate", "avg", digits=0),
+            "hr_avg": rounded(hr_avg, digits=0),
             "hr_max": stat(summary, "heartrate", "max", digits=0),
             "hr_end": stat(summary, "heartrate", "end", digits=0),
+            "w_per_hr": rounded(watts_avg / hr_avg, digits=3) if watts_avg and hr_avg else None,
+            "watts_drift": rounded(drift.get("watts"), digits=1),
+            "hr_drift": rounded(drift.get("heartrate"), digits=1),
             "br_avg": stat(summary, "respiration", "avg", digits=1),
             "br_max": stat(summary, "respiration", "max", digits=1),
+            "br_drift": rounded(drift.get("respiration"), digits=1),
             "vt_avg": stat(summary, "tidal_volume", "avg", digits=0),
             "vt_max": stat(summary, "tidal_volume", "max", digits=0),
+            "vt_drift": rounded(drift.get("tidal_volume"), digits=1),
             "ve_avg": stat(summary, "tidal_volume_min", "avg", digits=1),
             "ve_max": stat(summary, "tidal_volume_min", "max", digits=1),
+            "ve_drift": rounded(drift.get("tidal_volume_min"), digits=1),
             "smo2_avg": stat(summary, "smo2", "avg", digits=1),
             "smo2_min": stat(summary, "smo2", "min", digits=1),
             "smo2_end": stat(summary, "smo2", "end", digits=1),
+            "smo2_drift": rounded(drift.get("smo2"), digits=1),
             "thb_avg": stat(summary, "thb", "avg", digits=2),
             "core_temp_max": stat(summary, "core_temperature", "max", digits=2),
+            "core_temp_drift": rounded(drift.get("core_temperature"), digits=2),
         }
     )
 
@@ -580,8 +597,15 @@ def brief_block_label(block: dict[str, Any], *, index: int) -> str | None:
 def brief_recoveries(
     blocks: list[dict[str, Any]],
     *,
+    moxy_recoveries: list[dict[str, Any]],
     work_block_count: int,
 ) -> list[dict[str, Any]]:
+    moxy_by_after_work_block = {}
+    for moxy_recovery in moxy_recoveries:
+        after_work_block = recovery_after_work_block(moxy_recovery)
+        if after_work_block is not None:
+            moxy_by_after_work_block[after_work_block] = moxy_recovery
+
     recoveries = []
     for block in blocks:
         after_work_block = recovery_after_work_block(block)
@@ -594,6 +618,7 @@ def brief_recoveries(
                 block,
                 index=len(recoveries) + 1,
                 after_work_block=after_work_block,
+                moxy_recovery=moxy_by_after_work_block.get(after_work_block),
             )
         )
     return recoveries
@@ -609,20 +634,40 @@ def brief_recovery(
     *,
     index: int,
     after_work_block: int,
+    moxy_recovery: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    summary = block.get("summary") or {}
+    moxy = moxy_recovery or {}
     return drop_none(
         {
             "n": index,
             "after_work_block": after_work_block,
-            "smo2_start": rounded(block.get("smo2_start"), digits=1),
-            "smo2_min": rounded(block.get("smo2_min"), digits=1),
-            "smo2_peak": rounded(block.get("smo2_peak"), digits=1),
-            "smo2_end": rounded(block.get("smo2_end"), digits=1),
-            "smo2_rise_min_to_peak": rounded(block.get("smo2_rise_min_to_peak"), digits=1),
-            "smo2_rise_start_to_peak": rounded(block.get("smo2_rise_start_to_peak"), digits=1),
-            "thb_avg": rounded(block.get("thb_avg"), digits=2),
+            "duration_s": rounded(block.get("duration_seconds"), digits=0),
+            "watts_avg": stat(summary, "watts", "avg", digits=0),
+            "hr_start": stat(summary, "heartrate", "start", digits=0),
+            "hr_min": stat(summary, "heartrate", "min", digits=0),
+            "hr_end": stat(summary, "heartrate", "end", digits=0),
+            "hr_drop_start_to_min": recovery_drop(summary, "heartrate"),
+            "ve_min": stat(summary, "tidal_volume_min", "min", digits=1),
+            "ve_end": stat(summary, "tidal_volume_min", "end", digits=1),
+            "smo2_start": rounded(moxy.get("smo2_start"), digits=1),
+            "smo2_min": rounded(moxy.get("smo2_min"), digits=1),
+            "smo2_peak": rounded(moxy.get("smo2_peak"), digits=1),
+            "smo2_end": rounded(moxy.get("smo2_end"), digits=1),
+            "smo2_rise_min_to_peak": rounded(moxy.get("smo2_rise_min_to_peak"), digits=1),
+            "smo2_rise_start_to_peak": rounded(moxy.get("smo2_rise_start_to_peak"), digits=1),
+            "thb_avg": rounded(moxy.get("thb_avg"), digits=2),
         }
     )
+
+
+def recovery_drop(summary: dict[str, Any], field: str) -> float | int | None:
+    stats = summary.get(field) or {}
+    start = stats.get("start")
+    minimum = stats.get("min")
+    if not isinstance(start, (int, float)) or not isinstance(minimum, (int, float)):
+        return None
+    return rounded(start - minimum, digits=0)
 
 
 def stat(

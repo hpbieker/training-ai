@@ -16,6 +16,7 @@ from intervals_icu_api import (
     list_activities,
     list_wellness,
     load_intervals_icu_api_key,
+    save_activity_streams,
     search_activities,
     update_activity,
     update_wellness,
@@ -59,6 +60,25 @@ def main() -> None:
         help="Omit Intervals.icu interval summaries from the activity payload",
     )
     _add_output_arg(activity)
+
+    save_activity = subparsers.add_parser(
+        "save-activity",
+        help="Save activity metadata and streams for local analysis",
+    )
+    save_activity.add_argument("activity_id")
+    save_activity.add_argument(
+        "--type",
+        dest="stream_types",
+        action="append",
+        help="Stream type to include. Can be repeated.",
+    )
+    save_activity.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("outputs/intervals"),
+        help="Directory for saved Intervals.icu artifacts",
+    )
+    _add_output_arg(save_activity)
 
     file_parser = subparsers.add_parser(
         "file",
@@ -258,6 +278,16 @@ def main() -> None:
             include_intervals=not args.omit_intervals,
         )
         _emit_json({"activity": activity_payload}, output=args.output)
+        return
+
+    if args.command == "save-activity":
+        artifacts = save_activity_streams(
+            activity_id=args.activity_id,
+            api_key=api_key,
+            output_dir=args.output_dir,
+            stream_types=args.stream_types,
+        )
+        _emit_json({key: str(value) for key, value in artifacts.items()}, output=args.output)
         return
 
     if args.command == "file":
