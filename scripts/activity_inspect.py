@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 """Inspect a saved Intervals.icu activity artifact for Codex workout analysis.
 
-This script is intentionally optimized for agent use: it prints structured JSON
-to stdout so the chat answer can be written from one stable inspection result
-instead of ad hoc one-off snippets.
+This script is intentionally optimized for agent use: it writes structured JSON
+to a stable file so the chat answer can be written from one inspection result
+instead of ad hoc one-off snippets or oversized terminal output.
 """
 
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import json
+from pathlib import Path
+import re
 from typing import Any
 
 from analysis import (
@@ -17,7 +20,6 @@ from analysis import (
     data_quality_summary,
     detect_power_blocks,
     detect_steady_power_segment,
-    interval_rows,
     recovery_reoxygenation,
     resolve_activity_ref,
     summarize_block,
@@ -76,11 +78,27 @@ def main() -> None:
         help="Print a smaller chat-oriented JSON view",
     )
     parser.add_argument(
+        "--brief",
+        action="store_true",
+        help="Write a terse analysis-ready JSON view with total, work blocks, and recoveries",
+    )
+    parser.add_argument(
         "--no-intervals",
         action="store_true",
         help="Omit saved Intervals.icu interval summaries from the output",
     )
+    parser.add_argument(
+        "--output",
+        help="Write JSON to this path. Defaults to data/activity-inspect/<activity>_<timestamp>.json",
+    )
+    parser.add_argument(
+        "--stdout",
+        action="store_true",
+        help="Print full JSON to stdout instead of writing a file",
+    )
     args = parser.parse_args()
+    if args.brief and args.compact:
+        parser.error("--brief and --compact are alternative output shapes; choose one")
 
     activity = resolve_activity_ref(args.activity, data_dir=args.data_dir)
     requested_fields = [field.strip() for field in args.fields.split(",") if field.strip()]
@@ -141,10 +159,20 @@ def main() -> None:
             for block in blocks
         ]
 
-    if args.compact:
+    if args.brief:
+        result = brief_result(result)
+    elif args.compact:
         result = compact_result(result, fields)
 
-    print(json.dumps(result, indent=2, sort_keys=True))
+    output_json = json.dumps(result, indent=2, sort_keys=True)
+    if args.stdout:
+        print(output_json)
+        return
+
+    output_path = Path(args.output) if args.output else default_output_path(activity)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(output_json + "\n", encoding="utf-8")
+    print(str(output_path.resolve()))
 
 
 def activity_metadata(activity) -> dict[str, Any]:
@@ -174,20 +202,23 @@ def interval_summaries(activity, fields: list[str]) -> list[dict[str, Any]]:
     for index, interval in enumerate(activity.intervals, start=1):
         start = int(interval.get("start_index") or 0)
         end = int(interval.get("end_index") or start)
-        rows = interval_rows(activity, interval)
-        summaries.append(
+        summary = summarize_block(
+            activity.streams,
+            start_index=start,
+            end_index=end,
+            label=interval.get("name") or interval.get("type") or f"interval_{index}",
+            fields=fields,
+            detection={"source": "intervals_icu"},
+        )
+        summary.update(
             {
                 "index": index,
                 "type": interval.get("type"),
                 "name": interval.get("name"),
-                "start_index": start,
-                "end_index": end,
                 "elapsed_time": interval.get("elapsed_time"),
-                "summary": summarize_rows(rows, fields),
-                "drift": half_drift(rows, fields),
-                "data_quality": data_quality_summary(rows, fields),
             }
         )
+        summaries.append(summary)
     return summaries
 
 
@@ -258,6 +289,188 @@ def compact_summary_block(block: dict[str, Any], fields: list[str]) -> dict[str,
     }
 
 
+def brief_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Return a terse result intended as the first-pass chat analysis input."""
+
+    work_blocks = result.get("detected_power_blocks") or [
+        interval
+        for interval in result.get("intervals", [])
+        if str(interval.get("type") or "").upper() == "WORK"
+    ]
+    recoveries = brief_recoveries(
+        result.get("moxy", {}).get("recovery_reoxygenation", []),
+        work_block_count=len(work_blocks),
+    )
+    return {
+        "activity": brief_activity(result["activity"]),
+        "streams": {
+            "rows": result["streams"]["rows"],
+            "ignored_fields": result["streams"].get("ignored_fields", []),
+            "data_quality_issues": compact_quality(result["streams"]["data_quality"]),
+        },
+        "total": brief_total(result["total"]),
+        "work_blocks": [
+            brief_work_block(block, index=index)
+            for index, block in enumerate(work_blocks, start=1)
+        ],
+        "recoveries": recoveries,
+        "steady_vt1_segment": (
+            brief_work_block(result["steady_vt1_segment"], index=1)
+            if "steady_vt1_segment" in result
+            else None
+        ),
+    }
+
+
+def brief_activity(activity: dict[str, Any]) -> dict[str, Any]:
+    elapsed = activity.get("elapsed_time")
+    moving = activity.get("moving_time")
+    return {
+        "id": activity.get("id"),
+        "name": activity.get("name"),
+        "start_date_local": activity.get("start_date_local"),
+        "type": activity.get("type"),
+        "duration_min": round(elapsed / 60, 1) if isinstance(elapsed, (int, float)) else None,
+        "moving_min": round(moving / 60, 1) if isinstance(moving, (int, float)) else None,
+        "icu_training_load": activity.get("icu_training_load"),
+        "icu_intensity": activity.get("icu_intensity"),
+        "icu_ignore_hr": activity.get("icu_ignore_hr"),
+        "icu_ignore_power": activity.get("icu_ignore_power"),
+    }
+
+
+def brief_total(block: dict[str, Any]) -> dict[str, Any]:
+    summary = block.get("summary") or {}
+    drift = block.get("drift") or {}
+    return drop_none(
+        {
+            "watts_avg": stat(summary, "watts", "avg", digits=0),
+            "watts_max": stat(summary, "watts", "max", digits=0),
+            "hr_avg": stat(summary, "heartrate", "avg", digits=0),
+            "hr_max": stat(summary, "heartrate", "max", digits=0),
+            "br_avg": stat(summary, "respiration", "avg", digits=1),
+            "br_max": stat(summary, "respiration", "max", digits=1),
+            "vt_avg": stat(summary, "tidal_volume", "avg", digits=0),
+            "vt_max": stat(summary, "tidal_volume", "max", digits=0),
+            "ve_avg": stat(summary, "tidal_volume_min", "avg", digits=1),
+            "ve_max": stat(summary, "tidal_volume_min", "max", digits=1),
+            "smo2_avg": stat(summary, "smo2", "avg", digits=1),
+            "smo2_min": stat(summary, "smo2", "min", digits=1),
+            "smo2_max": stat(summary, "smo2", "max", digits=1),
+            "thb_avg": stat(summary, "thb", "avg", digits=2),
+            "core_temp_avg": stat(summary, "core_temperature", "avg", digits=2),
+            "core_temp_max": stat(summary, "core_temperature", "max", digits=2),
+            "skin_temp_avg": stat(summary, "skin_temperature", "avg", digits=2),
+            "environment_temp_avg": stat(summary, "RuuviTemperature", "avg", digits=1),
+            "humidity_avg": stat(summary, "RuuviHumidity", "avg", digits=1),
+            "watts_drift": rounded(drift.get("watts"), digits=1),
+            "hr_drift": rounded(drift.get("heartrate"), digits=1),
+            "br_drift": rounded(drift.get("respiration"), digits=1),
+            "ve_drift": rounded(drift.get("tidal_volume_min"), digits=1),
+            "smo2_drift": rounded(drift.get("smo2"), digits=1),
+            "core_temp_drift": rounded(drift.get("core_temperature"), digits=2),
+        }
+    )
+
+
+def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
+    summary = block.get("summary") or {}
+    return drop_none(
+        {
+            "n": index,
+            "label": block.get("label"),
+            "source_index": block.get("index"),
+            "duration_s": rounded(block.get("duration_seconds"), digits=0),
+            "watts_avg": stat(summary, "watts", "avg", digits=0),
+            "watts_max": stat(summary, "watts", "max", digits=0),
+            "hr_avg": stat(summary, "heartrate", "avg", digits=0),
+            "hr_max": stat(summary, "heartrate", "max", digits=0),
+            "hr_end": stat(summary, "heartrate", "end", digits=0),
+            "br_avg": stat(summary, "respiration", "avg", digits=1),
+            "br_max": stat(summary, "respiration", "max", digits=1),
+            "vt_avg": stat(summary, "tidal_volume", "avg", digits=0),
+            "vt_max": stat(summary, "tidal_volume", "max", digits=0),
+            "ve_avg": stat(summary, "tidal_volume_min", "avg", digits=1),
+            "ve_max": stat(summary, "tidal_volume_min", "max", digits=1),
+            "smo2_avg": stat(summary, "smo2", "avg", digits=1),
+            "smo2_min": stat(summary, "smo2", "min", digits=1),
+            "smo2_end": stat(summary, "smo2", "end", digits=1),
+            "thb_avg": stat(summary, "thb", "avg", digits=2),
+            "core_temp_max": stat(summary, "core_temperature", "max", digits=2),
+        }
+    )
+
+
+def brief_recoveries(
+    blocks: list[dict[str, Any]],
+    *,
+    work_block_count: int,
+) -> list[dict[str, Any]]:
+    recoveries = []
+    for block in blocks:
+        after_work_block = recovery_after_work_block(block)
+        if after_work_block is None:
+            continue
+        if after_work_block < 1 or after_work_block > work_block_count:
+            continue
+        recoveries.append(
+            brief_recovery(
+                block,
+                index=len(recoveries) + 1,
+                after_work_block=after_work_block,
+            )
+        )
+    return recoveries
+
+
+def recovery_after_work_block(block: dict[str, Any]) -> int | None:
+    source_index = block.get("index")
+    return max(0, (source_index - 1) // 2) if isinstance(source_index, int) else None
+
+
+def brief_recovery(
+    block: dict[str, Any],
+    *,
+    index: int,
+    after_work_block: int,
+) -> dict[str, Any]:
+    return drop_none(
+        {
+            "n": index,
+            "after_work_block": after_work_block,
+            "smo2_start": rounded(block.get("smo2_start"), digits=1),
+            "smo2_min": rounded(block.get("smo2_min"), digits=1),
+            "smo2_peak": rounded(block.get("smo2_peak"), digits=1),
+            "smo2_end": rounded(block.get("smo2_end"), digits=1),
+            "smo2_rise_min_to_peak": rounded(block.get("smo2_rise_min_to_peak"), digits=1),
+            "smo2_rise_start_to_peak": rounded(block.get("smo2_rise_start_to_peak"), digits=1),
+            "thb_avg": rounded(block.get("thb_avg"), digits=2),
+        }
+    )
+
+
+def stat(
+    summary: dict[str, Any],
+    field: str,
+    key: str,
+    *,
+    digits: int,
+) -> float | int | None:
+    stats = summary.get(field) or {}
+    return rounded(stats.get(key), digits=digits)
+
+
+def rounded(value: Any, *, digits: int) -> float | int | None:
+    if not isinstance(value, (int, float)):
+        return None
+    rounded_value = round(value, digits)
+    return int(rounded_value) if digits == 0 else rounded_value
+
+
+def drop_none(values: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in values.items() if value is not None}
+
+
 def compact_stats(stats: dict[str, Any] | None) -> dict[str, Any] | None:
     if not stats:
         return None
@@ -295,6 +508,17 @@ def parse_duration(raw: str) -> int:
     if value.endswith("h"):
         return round(float(value[:-1]) * 3600)
     return round(float(value))
+
+
+def default_output_path(activity) -> Path:
+    activity_id = sanitize_filename(activity.id or activity.activity_dir.name)
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    return Path("data/activity-inspect") / f"{activity_id}_{timestamp}.json"
+
+
+def sanitize_filename(raw: str) -> str:
+    clean = re.sub(r"[^A-Za-z0-9_.-]+", "-", raw.strip())
+    return clean.strip("-") or "activity"
 
 
 if __name__ == "__main__":
