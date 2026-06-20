@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from intervals_icu_api import (
+    delete_activity,
     download_activity_file,
     download_activity_streams_csv,
     get_activity,
@@ -17,6 +18,7 @@ from intervals_icu_api import (
     list_wellness,
     load_intervals_icu_api_key,
     save_activity_streams,
+    save_latest_activity_streams,
     search_activities,
     update_activity,
     update_wellness,
@@ -79,6 +81,25 @@ def main() -> None:
         help="Directory for saved Intervals.icu artifacts",
     )
     _add_output_arg(save_activity)
+
+    save_latest = subparsers.add_parser(
+        "save-latest",
+        help="Save the latest activity metadata and streams for local analysis",
+    )
+    save_latest.add_argument("--lookback-days", type=int, default=365)
+    save_latest.add_argument(
+        "--type",
+        dest="stream_types",
+        action="append",
+        help="Stream type to include. Can be repeated.",
+    )
+    save_latest.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("outputs/intervals"),
+        help="Directory for saved Intervals.icu artifacts",
+    )
+    _add_output_arg(save_latest)
 
     file_parser = subparsers.add_parser(
         "file",
@@ -179,6 +200,19 @@ def main() -> None:
     rename = subparsers.add_parser("rename", help="Rename one activity")
     rename.add_argument("activity_id")
     rename.add_argument("name")
+
+    delete = subparsers.add_parser("delete-activity", help="Delete one activity")
+    delete.add_argument("activity_id")
+    delete.add_argument(
+        "--confirm",
+        required=True,
+        help="Required safety confirmation. Must exactly match the activity id.",
+    )
+    delete.add_argument(
+        "--no-verify",
+        action="store_true",
+        help="Skip fetching the deleted activity afterward to verify it is gone.",
+    )
 
     subjective = subparsers.add_parser(
         "subjective",
@@ -285,6 +319,16 @@ def main() -> None:
             activity_id=args.activity_id,
             api_key=api_key,
             output_dir=args.output_dir,
+            stream_types=args.stream_types,
+        )
+        _emit_json({key: str(value) for key, value in artifacts.items()}, output=args.output)
+        return
+
+    if args.command == "save-latest":
+        artifacts = save_latest_activity_streams(
+            api_key=api_key,
+            output_dir=args.output_dir,
+            lookback_days=args.lookback_days,
             stream_types=args.stream_types,
         )
         _emit_json({key: str(value) for key, value in artifacts.items()}, output=args.output)
@@ -436,6 +480,51 @@ def main() -> None:
             api_key=api_key,
         )
         print(f"updated {updated.get('id')}: {updated.get('name')}")
+        return
+
+    if args.command == "delete-activity":
+        if args.confirm != args.activity_id:
+            parser.error("--confirm must exactly match the activity id")
+
+        existing = get_activity(
+            activity_id=args.activity_id,
+            api_key=api_key,
+            include_intervals=False,
+        )
+        deleted = delete_activity(
+            activity_id=args.activity_id,
+            api_key=api_key,
+        )
+        result = {
+            "deleted": True,
+            "activity_id": args.activity_id,
+            "deleted_response": deleted,
+            "activity": {
+                "id": existing.get("id"),
+                "name": existing.get("name"),
+                "source": existing.get("source"),
+                "external_id": existing.get("external_id"),
+                "strava_id": existing.get("strava_id"),
+                "start_date_local": existing.get("start_date_local"),
+                "created": existing.get("created"),
+            },
+        }
+        if not args.no_verify:
+            try:
+                get_activity(
+                    activity_id=args.activity_id,
+                    api_key=api_key,
+                    include_intervals=False,
+                )
+                result["verified_deleted"] = False
+                raise SystemExit(f"delete did not verify: {args.activity_id} still exists")
+            except RuntimeError as exc:
+                message = str(exc)
+                result["verify_error"] = message
+                result["verified_deleted"] = "HTTP 404" in message or "Not Found" in message
+                if not result["verified_deleted"]:
+                    raise
+        _emit_json(result)
         return
 
     if args.command == "subjective":

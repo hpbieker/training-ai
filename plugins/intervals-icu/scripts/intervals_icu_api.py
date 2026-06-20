@@ -586,6 +586,31 @@ def update_activity(
     return updated
 
 
+def delete_activity(
+    *,
+    activity_id: str,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+) -> dict[str, Any]:
+    """Delete one Intervals.icu activity and return the API response."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    body = _request_bytes(
+        f"/activity/{activity_id}",
+        credentials,
+        method="DELETE",
+    )
+    if not body:
+        return {"id": activity_id}
+    deleted = json.loads(body.decode("utf-8"))
+    if not isinstance(deleted, dict):
+        raise TypeError("Expected Intervals.icu delete activity endpoint to return an object")
+    return deleted
+
+
 def load_intervals_icu_api_key(env_path: str | Path = ".env") -> str:
     """Load ``INTERVALS_ICU_API_KEY`` from a local dotenv-style file."""
 

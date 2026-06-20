@@ -78,6 +78,7 @@ Writes must be explicit and verified. Do not perform a write unless the user has
 python3 -B plugins/xert/scripts/xert_cli.py calendar-note-set <YYYY-MM-DD> "<note>" --yes
 python3 -B plugins/xert/scripts/xert_cli.py workout-update <workout-path> --match-name "<row>" --set-duration <MM:SS> --dry-run
 python3 -B plugins/xert/scripts/xert_cli.py workout-update <workout-path> --match-name "<row>" --set-duration <MM:SS> --yes
+python3 -B plugins/xert/scripts/xert_cli.py workout-update <workout-path> --match-name "<row>" --set-interval-count <N> --set-rib-duration <MM:SS> --set-rib-power <value> --set-rib-power-type <type> --dry-run
 python3 -B plugins/xert/scripts/xert_cli.py workout-delete <workout-path> --yes
 ```
 

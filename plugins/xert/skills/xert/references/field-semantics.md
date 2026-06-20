@@ -78,6 +78,23 @@ Use `workout <path>` to fetch the resolved OAuth workout payload for the user's 
 
 Use `workout-rows <path>` to inspect editable Workout Designer rows. For mixed-mode/slope workouts, verify against Workout Designer rows rather than relying only on `workout <path>`.
 
+Workout Designer can represent repeated blocks inside one row rather than as
+one row per visible interval. Preserve that model when editing:
+
+- `interval_count` is the number of repeats for that row.
+- `rib_duration` is the recovery-in-between duration inserted between repeats.
+- `rib_power` is the recovery-in-between power target.
+- For a row with `interval_count=2`, one `rib_duration` separates the two
+  repeated work intervals. A separate following row may represent an additional
+  interval in the same named set.
+- Endurance repeats can be represented the same way, for example one
+  `Endurance` row with `interval_count=4`, `duration=15:00`, and `power=205`
+  instead of four copied rows.
+
+When modifying repeated workouts, update repeat-row fields when possible. If a
+new row is needed, append a minimal editable row with a new `sequence` and blank
+`DT_RowId`. Validate with `calculate` before saving.
+
 Known Workout Designer slope row types observed here:
 
 - `t_slope_pp`
@@ -92,6 +109,10 @@ For relevant slope rows, `power.second_value` stores slope percent. The verified
 ```
 
 The resolved OAuth workout endpoint can return HTTP 500 for some slope variants even when the saved workout is valid. In that case, verify through `workout-rows <path>` and `workouts --summary`.
+
+`training-forecast` can return `{}` even when a workout path is still editable
+through Workout Designer. Do not rely on forecast alone to identify or modify
+the active workout.
 
 Workout deletion uses `DELETE /workout/<path>` with `X-Requested-With: XMLHttpRequest` on an authenticated web session. Treat it as destructive: require explicit user confirmation and verify afterwards.
 

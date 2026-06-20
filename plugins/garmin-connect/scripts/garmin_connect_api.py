@@ -260,7 +260,7 @@ def resolve_garmin_activity(activity: str) -> dict[str, str]:
         metadata_path = matches[-1] / "activity.json" if matches else None
 
     if metadata_path and metadata_path.exists():
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        metadata = load_activity_metadata(metadata_path)
         garmin_id = metadata.get("external_id")
         if not garmin_id:
             raise SystemExit(f"No Garmin external_id found in {metadata_path}")
@@ -283,6 +283,17 @@ def resolve_garmin_activity(activity: str) -> dict[str, str]:
         "source": "garmin_activity_id",
         "date": date.today().isoformat(),
     }
+
+
+def load_activity_metadata(metadata_path: Path) -> dict[str, Any]:
+    """Load Intervals activity metadata from either flat or wrapped JSON."""
+
+    payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if isinstance(payload, dict) and isinstance(payload.get("activity"), dict):
+        return payload["activity"]
+    if isinstance(payload, dict):
+        return payload
+    raise SystemExit(f"Expected JSON object in {metadata_path}")
 
 
 def run_gccli_json(gccli: str, args: list[str]) -> Any:

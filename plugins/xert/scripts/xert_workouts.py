@@ -112,6 +112,10 @@ def update_workout(
     match_power: float | None = None,
     set_duration: str | None = None,
     set_power: float | None = None,
+    set_interval_count: str | None = None,
+    set_rib_duration: str | None = None,
+    set_rib_power: float | None = None,
+    set_rib_power_type: str | None = None,
     submit: str = "save",
 ) -> dict[str, Any]:
     """Update a Xert workout through the authenticated Workout Designer flow."""
@@ -120,7 +124,18 @@ def update_workout(
         raise ValueError("submit must be 'calculate' or 'save'")
     if not username or not password:
         raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
-    if not any([name, description is not None, set_duration, set_power is not None]):
+    if not any(
+        [
+            name,
+            description is not None,
+            set_duration,
+            set_power is not None,
+            set_interval_count,
+            set_rib_duration,
+            set_rib_power is not None,
+            set_rib_power_type,
+        ]
+    ):
         raise ValueError("No workout update requested")
 
     opener = xert_web_login(username=username, password=password)
@@ -132,8 +147,19 @@ def update_workout(
         match_power=match_power,
         set_duration=set_duration,
         set_power=set_power,
+        set_interval_count=set_interval_count,
+        set_rib_duration=set_rib_duration,
+        set_rib_power=set_rib_power,
+        set_rib_power_type=set_rib_power_type,
     )
-    if (set_duration or set_power is not None) and changed_rows == 0:
+    if (
+        set_duration
+        or set_power is not None
+        or set_interval_count
+        or set_rib_duration
+        or set_rib_power is not None
+        or set_rib_power_type
+    ) and changed_rows == 0:
         raise ValueError("No workout rows matched the requested update")
 
     form = workout_designer_form_payload(
@@ -224,10 +250,23 @@ def update_workout_rows(
     match_power: float | None = None,
     set_duration: str | None = None,
     set_power: float | None = None,
+    set_interval_count: str | None = None,
+    set_rib_duration: str | None = None,
+    set_rib_power: float | None = None,
+    set_rib_power_type: str | None = None,
 ) -> int:
     """Modify editable Workout Designer rows in place."""
 
-    if not set_duration and set_power is None:
+    if not any(
+        [
+            set_duration,
+            set_power is not None,
+            set_interval_count,
+            set_rib_duration,
+            set_rib_power is not None,
+            set_rib_power_type,
+        ]
+    ):
         return 0
     changed = 0
     for row in rows:
@@ -249,6 +288,24 @@ def update_workout_rows(
                 raise TypeError(f"Workout row has invalid power object: {row}")
             power["value"] = set_power
             power.setdefault("type", "absolute")
+        if set_interval_count is not None:
+            row["interval_count"] = set_interval_count
+        if set_rib_duration is not None:
+            rib_duration = row.setdefault("rib_duration", {})
+            if not isinstance(rib_duration, dict):
+                raise TypeError(f"Workout row has invalid rib_duration object: {row}")
+            rib_duration["value"] = set_rib_duration
+            rib_duration.setdefault("type", "absolute")
+        if set_rib_power is not None or set_rib_power_type is not None:
+            rib_power = row.setdefault("rib_power", {})
+            if not isinstance(rib_power, dict):
+                raise TypeError(f"Workout row has invalid rib_power object: {row}")
+            if set_rib_power is not None:
+                rib_power["value"] = set_rib_power
+            if set_rib_power_type is not None:
+                rib_power["type"] = set_rib_power_type
+            else:
+                rib_power.setdefault("type", "absolute")
         changed += 1
     return changed
 

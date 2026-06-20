@@ -115,6 +115,10 @@ def main() -> None:
     workout_update.add_argument("--match-power", type=float)
     workout_update.add_argument("--set-duration")
     workout_update.add_argument("--set-power", type=float)
+    workout_update.add_argument("--set-interval-count")
+    workout_update.add_argument("--set-rib-duration")
+    workout_update.add_argument("--set-rib-power", type=float)
+    workout_update.add_argument("--set-rib-power-type")
     workout_update.add_argument(
         "--dry-run",
         action="store_true",
@@ -237,6 +241,10 @@ def main() -> None:
             match_power=args.match_power,
             set_duration=args.set_duration,
             set_power=args.set_power,
+            set_interval_count=args.set_interval_count,
+            set_rib_duration=args.set_rib_duration,
+            set_rib_power=args.set_rib_power,
+            set_rib_power_type=args.set_rib_power_type,
             submit="calculate" if args.dry_run else "save",
         )
     elif args.command == "workout-delete":

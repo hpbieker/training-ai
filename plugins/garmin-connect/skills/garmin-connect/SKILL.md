@@ -15,10 +15,15 @@ Use the local CLI when live Garmin Connect data is needed:
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py status
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day <YYYY-MM-DD>
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py recent --days 7 --until <YYYY-MM-DD>
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity <garmin-id-or-intervals-activity>
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity <garmin-id-or-intervals-activity> --summary-only
+python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity <garmin-id-or-saved-intervals-activity>
+python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity <garmin-id-or-saved-intervals-activity> --summary-only
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activities --since <YYYY-MM-DD> --until <YYYY-MM-DD>
 ```
+
+For `activity`, an Intervals.icu id/path is only resolvable when a saved local
+activity artifact exists and its metadata contains Garmin's `external_id`.
+Fetching or refreshing that artifact belongs to the caller/repo orchestration
+layer, not the Garmin plugin.
 
 The CLI prints JSON to stdout and does not write files by default. Some Garmin
 payloads are too large for chat or terminal review, especially full `day`,

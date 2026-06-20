@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import argparse
-import csv
 from collections import deque
 from pathlib import Path
 from urllib.request import Request, urlopen
 
 from PIL import Image, ImageDraw
+
+from analysis import load_streams_csv
 
 
 ARTIFACTS_DIR = Path("outputs")
@@ -209,8 +210,7 @@ def rolling_average(
 
 
 def read_streams(path: Path) -> list[dict[str, str]]:
-    with path.open(newline="", encoding="utf-8-sig") as file:
-        return list(csv.DictReader(file))
+    return load_streams_csv(path)
 
 
 def value(row: dict[str, str], key: str) -> float | None:

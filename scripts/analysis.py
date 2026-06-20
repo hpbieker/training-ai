@@ -80,13 +80,36 @@ class PowerBlock:
     detection: dict[str, Any]
 
 
+def load_streams_csv(path: str | Path) -> list[dict[str, str]]:
+    """Load an Intervals.icu streams CSV with normalized header names."""
+
+    with Path(path).open(newline="", encoding="utf-8-sig") as file:
+        reader = csv.DictReader(file)
+        reader.fieldnames = [
+            normalize_stream_fieldname(field)
+            for field in (reader.fieldnames or [])
+        ]
+        return [
+            {
+                normalize_stream_fieldname(key): value
+                for key, value in row.items()
+            }
+            for row in reader
+        ]
+
+
+def normalize_stream_fieldname(fieldname: str | None) -> str:
+    """Return a stable stream field name from CSV headers."""
+
+    return str(fieldname or "").lstrip("\ufeff").strip()
+
+
 def load_activity(activity_dir: str | Path) -> SavedActivity:
     """Load one saved activity directory."""
 
     path = Path(activity_dir)
     metadata = load_activity_metadata(path)
-    with (path / "streams.csv").open(newline="", encoding="utf-8-sig") as file:
-        streams = list(csv.DictReader(file))
+    streams = load_streams_csv(path / "streams.csv")
     return SavedActivity(activity_dir=path, metadata=metadata, streams=streams)
 
 
@@ -275,6 +298,75 @@ def half_drift(
     return drift
 
 
+def half_relative_to_power_drift(
+    rows: list[dict[str, str]],
+    fields: Iterable[str] = ("heartrate", "respiration", "tidal_volume_min"),
+    *,
+    power_field: str = "watts",
+    min_power: float = 50.0,
+) -> dict[str, float | None]:
+    """Return percent drift in field-per-watt from first half to second half."""
+
+    if len(rows) < 2:
+        return {field: None for field in fields}
+    split = len(rows) // 2
+    return {
+        field: relative_to_power_change(
+            rows[:split],
+            rows[split:],
+            field=field,
+            power_field=power_field,
+            min_power=min_power,
+        )
+        for field in fields
+    }
+
+
+def relative_to_power_change(
+    first_rows: list[dict[str, str]],
+    second_rows: list[dict[str, str]],
+    *,
+    field: str,
+    power_field: str,
+    min_power: float,
+) -> float | None:
+    first_ratio = average_field_per_watt(
+        first_rows,
+        field=field,
+        power_field=power_field,
+        min_power=min_power,
+    )
+    second_ratio = average_field_per_watt(
+        second_rows,
+        field=field,
+        power_field=power_field,
+        min_power=min_power,
+    )
+    if first_ratio is None or second_ratio is None or first_ratio == 0:
+        return None
+    return (second_ratio - first_ratio) / first_ratio * 100
+
+
+def average_field_per_watt(
+    rows: list[dict[str, str]],
+    *,
+    field: str,
+    power_field: str,
+    min_power: float,
+) -> float | None:
+    ratios = []
+    for row in rows:
+        field_value = value(row, field)
+        watts = value(row, power_field)
+        if (
+            field_value is not None
+            and watts is not None
+            and watts >= min_power
+        ):
+            ratios.append(field_value / watts)
+    return sum(ratios) / len(ratios) if ratios else None
+
+
 def summarize_block(
     rows: list[dict[str, str]],
     *,
@@ -306,8 +398,124 @@ def summarize_block(
         "detection": detection or {},
         "summary": summarize_rows(block_rows, fields),
         "drift": half_drift(block_rows, fields),
+        "relative_to_power_drift": half_relative_to_power_drift(block_rows),
         "data_quality": data_quality_summary(block_rows, fields),
     }
+
+
+def detect_pause_segments(
+    rows: list[dict[str, str]],
+    *,
+    min_seconds: float = 60,
+    speed_threshold: float = 0.6,
+    watts_threshold: float = 20,
+) -> list[dict[str, Any]]:
+    """Detect likely stopped/coasting pause segments from stream rows."""
+
+    segments: list[dict[str, Any]] = []
+    start_index: int | None = None
+    for index, row in enumerate(rows):
+        if value(row, "time") is None:
+            if start_index is not None:
+                append_pause_segment(
+                    segments,
+                    rows,
+                    start_index=start_index,
+                    end_index=index,
+                    min_seconds=min_seconds,
+                    speed_threshold=speed_threshold,
+                    watts_threshold=watts_threshold,
+                )
+                start_index = None
+            continue
+        is_pause = pause_row(
+            row,
+            speed_threshold=speed_threshold,
+            watts_threshold=watts_threshold,
+        )
+        if is_pause and start_index is None:
+            start_index = index
+        if (not is_pause or index == len(rows) - 1) and start_index is not None:
+            end_index = index + 1 if is_pause and index == len(rows) - 1 else index
+            append_pause_segment(
+                segments,
+                rows,
+                start_index=start_index,
+                end_index=end_index,
+                min_seconds=min_seconds,
+                speed_threshold=speed_threshold,
+                watts_threshold=watts_threshold,
+            )
+            start_index = None
+    return segments
+
+
+def pause_row(
+    row: dict[str, str],
+    *,
+    speed_threshold: float,
+    watts_threshold: float,
+) -> bool:
+    """Return true when a stream row looks like a stop/pause."""
+
+    speed = value(row, "velocity_smooth") or 0.0
+    watts = value(row, "watts") or 0.0
+    return speed < speed_threshold and watts < watts_threshold
+
+
+def append_pause_segment(
+    segments: list[dict[str, Any]],
+    rows: list[dict[str, str]],
+    *,
+    start_index: int,
+    end_index: int,
+    min_seconds: float,
+    speed_threshold: float,
+    watts_threshold: float,
+) -> None:
+    """Append a pause segment if it has a usable duration."""
+
+    start_row = rows[start_index]
+    end_row = rows[max(start_index, end_index - 1)]
+    start_time = value(start_row, "time")
+    end_time = value(end_row, "time")
+    if start_time is None or end_time is None or end_time < start_time:
+        return
+    duration_s = end_time - start_time + 1
+    if duration_s < min_seconds:
+        return
+    mid_row = rows[(start_index + max(start_index, end_index - 1)) // 2]
+    segments.append(
+        {
+            "start_index": start_index,
+            "end_index": end_index,
+            "start_s": round(start_time),
+            "end_s": round(end_time),
+            "duration_s": round(duration_s),
+            "mid_s": round((start_time + end_time) / 2),
+            "distance_m": rounded_value(mid_row, "distance"),
+            "lat": rounded_value(mid_row, "lat", digits=6),
+            "lng": rounded_value(mid_row, "lng", digits=6),
+            "hr_start": rounded_value(start_row, "heartrate"),
+            "hr_end": rounded_value(end_row, "heartrate"),
+            "detection": {
+                "method": "speed_and_power",
+                "speed_threshold_mps": speed_threshold,
+                "watts_threshold": watts_threshold,
+                "min_seconds": min_seconds,
+            },
+        }
+    )
+
+
+def rounded_value(row: dict[str, str], field: str, *, digits: int = 0) -> float | int | None:
+    """Return a rounded stream value for compact output."""
+
+    parsed = value(row, field)
+    if parsed is None:
+        return None
+    rounded = round(parsed, digits)
+    return int(rounded) if digits == 0 else rounded
 
 
 def interval_rows(activity: SavedActivity, interval: dict[str, Any]) -> list[dict[str, str]]:
@@ -565,6 +773,132 @@ def detect_power_blocks(
         )
 
     return blocks
+
+
+def detect_stable_power_blocks(
+    rows: list[dict[str, str]],
+    *,
+    min_power: float = 120,
+    min_seconds: int = 8 * 60,
+    max_gap_seconds: int = 60,
+    smoothing_seconds: int = 30,
+    bin_size: int = 5,
+    tolerance: float = 12,
+    raw_stability_tolerance: float = 25,
+    min_stability_fraction: float = 0.75,
+    max_power_stddev: float = 35,
+    max_targets: int = 8,
+    field: str = "watts",
+) -> list[PowerBlock]:
+    """Detect sustained stable power plateaus without knowing the workout type.
+
+    This is intentionally conservative and mainly targets structured indoor
+    rides where ERG-like blocks cluster around repeated watt levels. It first
+    finds common rounded power targets by total time, then reuses
+    ``detect_power_blocks`` for each candidate target and removes overlapping
+    duplicate blocks.
+    """
+
+    raw_values = [value(row, field) or 0.0 for row in rows]
+    if not raw_values:
+        return []
+    smoothed = rolling_mean(raw_values, smoothing_seconds)
+    buckets: dict[int, int] = {}
+    for sample in smoothed:
+        if sample < min_power:
+            continue
+        bucket = int(round(sample / bin_size) * bin_size)
+        buckets[bucket] = buckets.get(bucket, 0) + 1
+
+    target_candidates = [
+        target
+        for target, count in sorted(buckets.items(), key=lambda item: item[1], reverse=True)
+        if count >= min_seconds
+    ]
+    selected_targets: list[int] = []
+    for target in target_candidates:
+        if any(abs(target - selected) <= tolerance for selected in selected_targets):
+            continue
+        selected_targets.append(target)
+        if len(selected_targets) >= max_targets:
+            break
+
+    candidates: list[PowerBlock] = []
+    for target in selected_targets:
+        for block in detect_power_blocks(
+            rows,
+            target=target,
+            tolerance=tolerance,
+            min_seconds=min_seconds,
+            max_gap_seconds=max_gap_seconds,
+            smoothing_seconds=smoothing_seconds,
+            field=field,
+        ):
+            if not stable_power_block(
+                rows,
+                block,
+                field=field,
+                tolerance=raw_stability_tolerance,
+                min_fraction=min_stability_fraction,
+                max_stddev=max_power_stddev,
+            ):
+                continue
+            candidates.append(
+                PowerBlock(
+                    label=f"auto_power_{target}_{len(candidates) + 1}",
+                    start_index=block.start_index,
+                    end_index=block.end_index,
+                    detection={
+                        **block.detection,
+                        "method": "detect_stable_power_blocks",
+                        "auto_target": target,
+                        "min_power": min_power,
+                        "bin_size": bin_size,
+                    },
+                )
+            )
+
+    return remove_overlapping_power_blocks(candidates)
+
+
+def stable_power_block(
+    rows: list[dict[str, str]],
+    block: PowerBlock,
+    *,
+    field: str,
+    tolerance: float,
+    min_fraction: float,
+    max_stddev: float,
+) -> bool:
+    """Return true when raw power is stable enough for a plateau label."""
+
+    samples = stream_values(rows[block.start_index : block.end_index], field)
+    if not samples:
+        return False
+    average = sum(samples) / len(samples)
+    variance = sum((sample - average) ** 2 for sample in samples) / len(samples)
+    stddev = variance**0.5
+    within_target = sum(1 for sample in samples if abs(sample - average) <= tolerance)
+    return stddev <= max_stddev and within_target / len(samples) >= min_fraction
+
+
+def remove_overlapping_power_blocks(blocks: list[PowerBlock]) -> list[PowerBlock]:
+    """Keep the longest block when auto-detected power plateaus overlap."""
+
+    selected: list[PowerBlock] = []
+    for block in sorted(
+        blocks,
+        key=lambda candidate: (candidate.end_index - candidate.start_index),
+        reverse=True,
+    ):
+        if any(blocks_overlap(block, existing) for existing in selected):
+            continue
+        selected.append(block)
+    return sorted(selected, key=lambda candidate: candidate.start_index)
+
+
+def blocks_overlap(left: PowerBlock, right: PowerBlock) -> bool:
+    return max(left.start_index, right.start_index) < min(left.end_index, right.end_index)
 
 
 def _append_power_block(
