@@ -22,6 +22,7 @@ from intervals_icu_api import (
     search_activities,
     update_activity,
     update_wellness,
+    upload_activity_file,
 )
 
 
@@ -213,6 +214,15 @@ def main() -> None:
         action="store_true",
         help="Skip fetching the deleted activity afterward to verify it is gone.",
     )
+
+    upload = subparsers.add_parser("upload-activity", help="Upload one activity file")
+    upload.add_argument("file_path", type=Path)
+    upload.add_argument(
+        "--athlete-id",
+        default=0,
+        help='Intervals.icu athlete id. Defaults to 0 for "current athlete".',
+    )
+    _add_output_arg(upload)
 
     subjective = subparsers.add_parser(
         "subjective",
@@ -525,6 +535,15 @@ def main() -> None:
                 if not result["verified_deleted"]:
                     raise
         _emit_json(result)
+        return
+
+    if args.command == "upload-activity":
+        uploaded = upload_activity_file(
+            file_path=args.file_path,
+            api_key=api_key,
+            athlete_id=args.athlete_id,
+        )
+        _emit_json(uploaded, output=args.output)
         return
 
     if args.command == "subjective":

@@ -10,6 +10,7 @@ import base64
 import csv
 import gzip
 import json
+import mimetypes
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -611,6 +612,37 @@ def delete_activity(
     return deleted
 
 
+def upload_activity_file(
+    *,
+    file_path: str | Path,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+) -> dict[str, Any]:
+    """Upload one activity file to Intervals.icu and return the API response.
+
+    Intervals may deduplicate uploads and return an existing activity id instead
+    of creating a new one.
+    """
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    path = Path(file_path)
+    body, content_type = _multipart_file_body(path, field_name="file")
+    uploaded = _request_json(
+        f"/athlete/{athlete_id}/activities",
+        credentials,
+        method="POST",
+        body=body,
+        content_type=content_type,
+    )
+    if not isinstance(uploaded, dict):
+        raise TypeError("Expected Intervals.icu upload activity endpoint to return an object")
+    return uploaded
+
+
 def load_intervals_icu_api_key(env_path: str | Path = ".env") -> str:
     """Load ``INTERVALS_ICU_API_KEY`` from a local dotenv-style file."""
 
@@ -640,6 +672,8 @@ def _request_json(
     params: dict[str, Any] | None = None,
     method: str = "GET",
     json_body: dict[str, Any] | None = None,
+    body: bytes | None = None,
+    content_type: str | None = None,
 ) -> Any:
     body = _request_bytes(
         path,
@@ -647,6 +681,8 @@ def _request_json(
         params=params,
         method=method,
         json_body=json_body,
+        body=body,
+        content_type=content_type,
     )
     return json.loads(body.decode("utf-8"))
 
@@ -658,9 +694,13 @@ def _request_bytes(
     params: dict[str, Any] | None = None,
     method: str = "GET",
     json_body: dict[str, Any] | None = None,
+    body: bytes | None = None,
+    content_type: str | None = None,
 ) -> bytes:
     query = f"?{urlencode(params)}" if params else ""
-    body = json.dumps(json_body).encode("utf-8") if json_body is not None else None
+    if json_body is not None and body is not None:
+        raise ValueError("Use either json_body or body, not both")
+    request_body = json.dumps(json_body).encode("utf-8") if json_body is not None else body
     headers = {
         "Authorization": credentials.auth_header(),
         "Accept": "application/json, text/csv, */*",
@@ -668,9 +708,11 @@ def _request_bytes(
     }
     if json_body is not None:
         headers["Content-Type"] = "application/json"
+    if content_type is not None:
+        headers["Content-Type"] = content_type
     request = Request(
         f"{INTERVALS_API_BASE_URL}{path}{query}",
-        data=body,
+        data=request_body,
         headers=headers,
         method=method,
     )
@@ -682,6 +724,24 @@ def _request_bytes(
         raise RuntimeError(
             f"Intervals.icu request failed: HTTP {exc.code} {exc.reason}: {message}"
         ) from exc
+
+
+def _multipart_file_body(path: Path, *, field_name: str) -> tuple[bytes, str]:
+    boundary = f"----training-ai-intervals-{path.name.replace(' ', '-')}"
+    content_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    body = b"".join(
+        [
+            f"--{boundary}\r\n".encode("utf-8"),
+            (
+                f'Content-Disposition: form-data; name="{field_name}"; '
+                f'filename="{path.name}"\r\n'
+            ).encode("utf-8"),
+            f"Content-Type: {content_type}\r\n\r\n".encode("utf-8"),
+            path.read_bytes(),
+            f"\r\n--{boundary}--\r\n".encode("utf-8"),
+        ]
+    )
+    return body, f"multipart/form-data; boundary={boundary}"
 
 
 def _download_activity_file(

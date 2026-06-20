@@ -67,6 +67,7 @@ python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness --since <
 For remote updates:
 
 ```bash
+python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py upload-activity /path/to/activity.fit
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py rename <activity-id> "<new name>"
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py delete-activity <activity-id> --confirm <activity-id>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py subjective <activity-id> --feel <value> --rpe <value>
@@ -90,6 +91,11 @@ Read `references/field-semantics.md` before interpreting Intervals.icu activity 
 
 - Rename or metadata updates must use the plugin CLI/API when the user asks to change Intervals.icu itself.
 - Activity deletion must use `delete-activity <activity-id> --confirm <activity-id>`, which fetches the activity first and verifies the delete afterward by default. Only delete activities that the user explicitly asked to remove or that have been identified by a confirmed, narrow duplicate rule.
+- Deleting an activity can remove it from date-bounded activity lists while a direct `activity <id>` lookup can still return the id for a while. Verify deletion or replacement with both the date-bounded `activities --since ... --until ...` list and, when relevant, direct lookups for the deleted id and replacement id.
+- Activity uploads use `upload-activity <file>` and post the file as multipart form-data field `file` to Intervals.icu. FIT, FIT.GZ, GPX, TCX, and similar activity files can be accepted when Intervals supports the format.
+- Intervals.icu may deduplicate uploads and return an existing `i...` activity id instead of creating a new id. It may also reuse an id after delete+reupload. Treat the upload response id as the canonical result, then fetch that id and the date-bounded activity list to verify.
+- When repairing Strava API-unavailable stubs, direct Strava-backed activity lookups can return only a stub with `_note`/`note` such as `STRAVA activities are not available via the API`. If a local export file is available, upload it and verify whether the old stub disappears from date-bounded lists. If the export has no file, there may be nothing to repair via API upload.
+- For original-file comparisons, prefer `file <activity-id> --kind original`. `--kind fit` downloads an Intervals-generated FIT and can have different device metadata and summary fields from the original uploaded file.
 - Update only fields the user has explicitly provided or confirmed.
 - When saving RPE, write `icu_rpe`; Intervals.icu derives `session_rpe` and rejects direct writes to `session_rpe`.
 - Activity interval boundaries can be read from `GET /api/v1/activity/<activity-id>/intervals`, which returns `icu_intervals` and `icu_groups`.

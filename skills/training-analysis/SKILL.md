@@ -78,6 +78,11 @@ Use this skill as the repo-level operating manual for training analysis. Keep so
 - Pass Garmin Connect day data as an explicit JSON file with `--garmin-json <file>`.
 - Add `--now <local time>` and `--planned-at <local time>` for same-day or next-morning planning.
 - Treat script output as decision inputs, not the conclusion. The chat answer should still weigh normal training load, goals, planned future sessions, and user-provided body feel.
+- For training recommendations, account for what the user is training for and
+  how much time remains until that target. Choose the session type by combining
+  target specificity and time horizon with readiness, recent load, weather and
+  user constraints. If the target or time horizon is missing and materially
+  affects the recommendation, ask for it or state the assumption.
 - Prefer a transparent combination of recent training load plus wellness fields actually present in source inputs: HRV, resting HR, sleep duration, and sleep score.
 - Treat Garmin aggregated readiness as a second opinion, not as a replacement for Xert/Intervals load or actual workout sensor response.
 - Treat Garmin recovery time/readiness as live, sync-sensitive physiological estimates. Interpret Garmin recovery time as guidance for readiness for the next hard workout, not a blanket restriction on easy or moderate training.
