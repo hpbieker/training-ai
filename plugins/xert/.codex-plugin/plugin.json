@@ -1,6 +1,6 @@
 {
   "name": "xert",
-  "version": "0.1.0+codex.20260619115308",
+  "version": "0.1.0+codex.20260710112029",
   "description": "Xert source semantics and live access for cycling training data.",
   "author": {
     "name": "Hans Petter Bieker"
@@ -17,6 +17,7 @@
       "Command Line"
     ],
     "composerIcon": "./assets/xert-icon.png",
+    "logo": "./assets/xert-icon.png",
     "defaultPrompt": [
       "How recovered am I according to Xert?",
       "Show my Xert workout library.",

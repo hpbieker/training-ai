@@ -112,6 +112,7 @@ def update_workout(
     match_power: float | None = None,
     set_duration: str | None = None,
     set_power: float | None = None,
+    set_row_name: str | None = None,
     set_interval_count: str | None = None,
     set_rib_duration: str | None = None,
     set_rib_power: float | None = None,
@@ -120,8 +121,8 @@ def update_workout(
 ) -> dict[str, Any]:
     """Update a Xert workout through the authenticated Workout Designer flow."""
 
-    if submit not in {"calculate", "save"}:
-        raise ValueError("submit must be 'calculate' or 'save'")
+    if submit not in {"calculate", "save", "copy"}:
+        raise ValueError("submit must be 'calculate', 'save', or 'copy'")
     if not username or not password:
         raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
     if not any(
@@ -130,6 +131,7 @@ def update_workout(
             description is not None,
             set_duration,
             set_power is not None,
+            set_row_name is not None,
             set_interval_count,
             set_rib_duration,
             set_rib_power is not None,
@@ -147,6 +149,7 @@ def update_workout(
         match_power=match_power,
         set_duration=set_duration,
         set_power=set_power,
+        set_row_name=set_row_name,
         set_interval_count=set_interval_count,
         set_rib_duration=set_rib_duration,
         set_rib_power=set_rib_power,
@@ -155,6 +158,7 @@ def update_workout(
     if (
         set_duration
         or set_power is not None
+        or set_row_name is not None
         or set_interval_count
         or set_rib_duration
         or set_rib_power is not None
@@ -171,15 +175,54 @@ def update_workout(
     )
     result = post_workout_designer_form(opener, path, form)
     verification = None
-    if submit == "save":
-        verification = verify_workout_page(opener, path)
+    verification_path = path
+    redirect_path = workout_path_from_redirect(result.get("redirect"))
+    if submit == "copy" and redirect_path:
+        verification_path = redirect_path
+    if submit in {"save", "copy"}:
+        verification = verify_workout_page(opener, verification_path)
     return {
         "path": path,
+        "created_path": redirect_path if submit == "copy" else None,
         "submit": submit,
         "changed_rows": changed_rows,
         "result": summarize_workout_update_result(result),
         "verification": verification,
     }
+
+
+def calculate_new_workout(
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    name: str = "Xert calculate probe",
+    description: str = "Calculated by training-ai; not saved.",
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Calculate a new unsaved Xert workout through Workout Designer."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    if not rows:
+        raise ValueError("At least one workout row is required")
+
+    opener = xert_web_login(username=username, password=password)
+    page = fetch_workout_designer_page(opener, "")
+    form = workout_designer_form_payload(
+        page,
+        rows=rows,
+        name=name,
+        description=description,
+        submit="calculate",
+    )
+    form["exclude_from_recommendations"] = "1"
+    result = post_workout_designer_form(opener, "", form)
+    return {
+        "submit": "calculate",
+        "saved": False,
+        "result": summarize_workout_update_result(result),
+    }
+
 
 def delete_workout(
     path: str,
@@ -210,10 +253,13 @@ def delete_workout(
 def fetch_workout_designer_page(opener, path: str) -> dict[str, Any]:
     """Fetch Workout Designer page values needed for update POSTs."""
 
+    workout_url = (
+        f"{XERT_API_BASE_URL}/workout" if not path else f"{XERT_API_BASE_URL}/workout/{path}"
+    )
     html_text = _open_text(
         opener,
         Request(
-            f"{XERT_API_BASE_URL}/workout/{path}",
+            workout_url,
             headers={"User-Agent": "xert-plugin/0.1 (+Xert workout designer page)"},
         ),
         "Xert workout designer",
@@ -250,6 +296,7 @@ def update_workout_rows(
     match_power: float | None = None,
     set_duration: str | None = None,
     set_power: float | None = None,
+    set_row_name: str | None = None,
     set_interval_count: str | None = None,
     set_rib_duration: str | None = None,
     set_rib_power: float | None = None,
@@ -261,6 +308,7 @@ def update_workout_rows(
         [
             set_duration,
             set_power is not None,
+            set_row_name is not None,
             set_interval_count,
             set_rib_duration,
             set_rib_power is not None,
@@ -288,6 +336,8 @@ def update_workout_rows(
                 raise TypeError(f"Workout row has invalid power object: {row}")
             power["value"] = set_power
             power.setdefault("type", "absolute")
+        if set_row_name is not None:
+            row["name"] = set_row_name
         if set_interval_count is not None:
             row["interval_count"] = set_interval_count
         if set_rib_duration is not None:
@@ -338,15 +388,18 @@ def workout_designer_form_payload(
 def post_workout_designer_form(opener, path: str, form: dict[str, str]) -> dict[str, Any]:
     """Post a calculate/save request to Xert Workout Designer."""
 
+    workout_url = (
+        f"{XERT_API_BASE_URL}/workout" if not path else f"{XERT_API_BASE_URL}/workout/{path}"
+    )
     request = Request(
-        f"{XERT_API_BASE_URL}/workout/{path}",
+        workout_url,
         data=urlencode(form).encode("utf-8"),
         headers={
             "Accept": "application/json, text/javascript, */*; q=0.01",
             "Content-Type": "application/x-www-form-urlencoded",
             "X-Requested-With": "XMLHttpRequest",
             "X-CSRF-TOKEN": form["_token"],
-            "Referer": f"{XERT_API_BASE_URL}/workout/{path}",
+            "Referer": workout_url,
             "User-Agent": "xert-plugin/0.1 (+Xert workout designer update)",
         },
         method="POST",
@@ -389,6 +442,19 @@ def summarize_workout_update_result(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(payload.get("data"), list):
         compact["data_points"] = len(payload["data"])
     return compact
+
+def workout_path_from_redirect(redirect: Any) -> str | None:
+    """Extract the workout path from a Xert workout redirect URL/path."""
+
+    if not redirect:
+        return None
+    text = str(redirect)
+    match = re.search(r"/workout/([^/?#]+)", text)
+    if match:
+        return match.group(1)
+    if re.fullmatch(r"[A-Za-z0-9]+", text):
+        return text
+    return None
 
 def parse_work_watts_from_name(name: str) -> float | None:
     """Extract a trailing work target such as '(205W)' from a workout name."""

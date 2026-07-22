@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from xert_activities import fetch_activity_detail, list_activities
+from xert_activities import fetch_activity_detail, list_activities, list_activity_details
 from xert_calendar import (
     fetch_calendar_notes_with_opener,
     fetch_recommended_training_with_login,
@@ -32,6 +32,7 @@ from xert_recovery import (
     infer_next_workout_days,
 )
 from xert_workouts import (
+    calculate_new_workout,
     delete_workout,
     fetch_workout,
     fetch_workout_designer_rows,

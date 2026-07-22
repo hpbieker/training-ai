@@ -54,3 +54,46 @@ def fetch_activity_detail(
     if not isinstance(detail, dict):
         raise TypeError("Expected Xert activity detail endpoint to return an object")
     return detail
+
+
+def list_activity_details(
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    oldest: str | date,
+    newest: str | date,
+    include_session_data: bool = False,
+) -> list[dict[str, Any]]:
+    """List activities and fetch compact detail documents using one token."""
+
+    credentials = XertCredentials(
+        username=username,
+        password=password,
+    )
+    token = credentials.bearer_token()
+    activities = _request_json(
+        "/oauth/activity",
+        token,
+        params={
+            "from": _date_to_unix(oldest),
+            "to": _date_to_unix(newest, end_of_day=True),
+        },
+    )
+    if not isinstance(activities, dict) or not isinstance(activities.get("activities"), list):
+        raise TypeError("Expected Xert activity endpoint to return an activities list")
+
+    details: list[dict[str, Any]] = []
+    for activity in activities["activities"]:
+        if not isinstance(activity, dict) or not activity.get("path"):
+            continue
+        detail = _request_json(
+            f"/oauth/activity/{activity['path']}",
+            token,
+            params={"include_session_data": 1 if include_session_data else 0},
+        )
+        if not isinstance(detail, dict):
+            raise TypeError("Expected Xert activity detail endpoint to return an object")
+        detail["path"] = activity.get("path")
+        detail["activity_list_row"] = activity
+        details.append(detail)
+    return details

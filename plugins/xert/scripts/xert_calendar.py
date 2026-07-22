@@ -152,17 +152,28 @@ def recommended_training_url(
     additional: bool,
     sport: str | None,
 ) -> str:
-    from datetime import datetime, time, timezone
-
-    value_date = date.fromisoformat(date_value) if isinstance(date_value, str) else date_value
-    timestamp = datetime.combine(value_date, time.min, tzinfo=timezone.utc).isoformat()
     params = {
         "recent": str(recent).lower(),
-        "date": timestamp,
+        "date": recommended_training_timestamp(date_value),
         "additional": str(additional).lower(),
         "sport": sport if sport else "null",
     }
     return f"{XERT_API_BASE_URL}/recommended-training?{urlencode(params)}"
+
+
+def recommended_training_timestamp(date_value: str | date | datetime) -> str:
+    if isinstance(date_value, datetime):
+        value = date_value
+    elif isinstance(date_value, date):
+        value = datetime.combine(date_value, time.min, tzinfo=timezone.utc)
+    else:
+        raw = str(date_value)
+        try:
+            value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            value = datetime.combine(date.fromisoformat(raw), time.min, tzinfo=timezone.utc)
+    return value.isoformat()
+
 
 def fetch_training_forecast_with_login(*, username: str, password: str) -> dict[str, Any]:
     """Fetch Xert calendar training forecast by creating a web login session."""
