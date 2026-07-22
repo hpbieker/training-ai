@@ -1,0 +1,22 @@
+{
+  "name": "strava",
+  "version": "0.1.0",
+  "description": "Safari-authenticated Strava route tooling and route-builder notes for Codex.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Strava",
+    "shortDescription": "Create and inspect Strava routes through Safari-authenticated workflows.",
+    "longDescription": "Strava captures the Safari/curl route-builder workflow learned locally: authenticated route-page fetches, in-page build-route/create-route/update-route API calls, GPX import caveats, and VT1 route scoring that penalizes footways, cycleway shortcuts, crossings, barriers, and traffic interruptions.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "Safari-authenticated Strava route API workflows",
+      "VT1 route scoring from BRouter GeoJSON",
+      "Strava route creation and update guidance"
+    ],
+    "defaultPrompt": "Use Safari-authenticated Strava workflows when working with my Strava routes."
+  }
+}
