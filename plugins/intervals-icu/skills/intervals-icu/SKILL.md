@@ -16,9 +16,12 @@ Choose the narrowest workflow that answers the request:
 - Workout analysis: resolve the activity id, run `save-activity <id>`, then pass the returned `activity_dir` to the repo analysis helper. Do not analyze metadata alone when streams are available and relevant.
 - Metadata or interval orientation only: run `activity <id> --summary-only`; use full `activity` only when the extra fields are needed.
 - Raw stream export without a package: run `streams <id> --output <file>`; never print streams to the terminal.
-- Readiness context: fetch bounded `wellness` and `events`; let the caller compose readiness. Prefer Garmin Connect for current Garmin HRV, resting HR, sleep, stress, Training Readiness, and Body Battery.
+- Readiness context: fetch bounded `wellness` and `events`; let the caller
+  resolve source priority and compose readiness.
 - Subjective follow-up: read current activity fields first; write only user-confirmed `feel` or RPE and verify afterward.
-- Any remote mutation: read `references/write-safety.md` first and perform a fresh readback.
+- Any remote mutation: read
+  [references/write-safety.md](references/write-safety.md) first and perform a
+  fresh readback.
 
 ## CLI
 
@@ -65,36 +68,25 @@ or secrets to the terminal.
 - After finding a newly completed activity, save that exact id before running repo analysis; do not assume an older local `latest` package updated itself.
 - Keep source payloads and stream artifacts as inputs. Pass normalized or packaged output to the repo helper; do not make repo helpers call Intervals.icu directly.
 - If live access fails, report which source call failed and whether the available local package predates the activity's latest sync. Do not silently present cached data as current.
-- Intervals.icu wellness can contain copied Garmin values, but it is not the preferred live source for Garmin Body Battery or other Garmin-specific readiness signals. Expose those through the Garmin source layer and let the repo-level training skill combine them with Intervals activity/load context.
+- Wellness fields may be copied from connected systems. Preserve their source
+  caveat and let the caller resolve source priority.
 
 ## Source Semantics
 
-Read `references/field-semantics.md` relative to this skill file, i.e.
-`plugins/intervals-icu/skills/intervals-icu/references/field-semantics.md`,
-before interpreting Intervals.icu activity load, stream fields, ignore flags,
-intervals, wellness, or subjective fields.
+Read [references/field-semantics.md](references/field-semantics.md) before
+interpreting activity load, stream fields, ignore flags, intervals, wellness,
+or subjective fields.
 
 ## Writes
 
 Before renaming, uploading, deleting, editing intervals, changing wellness or
 sickness, saving subjective fields, or recovering original files, read
-`references/write-safety.md`. Mutate only what the user authorized and verify
-every write with a fresh readback.
+[references/write-safety.md](references/write-safety.md). Mutate only what the
+user authorized and verify every write with a fresh readback.
 
 ## Boundaries
 
-This plugin owns:
-
-- Intervals.icu API transport and auth conventions
-- Intervals.icu field interpretation and source quirks
-- cautious Intervals.icu activity and wellness writes
-- activity, file, and wellness fetch helpers
-
-The caller owns:
-
-- deciding when to persist any explicitly requested artifacts
-- writing large JSON responses to explicit temporary input files for downstream analysis
-- activity inspection and interval/work-block analysis
-- cross-source readiness composition and final training decisions
-- plotting and report generation
-- final training recommendations
+This plugin owns Intervals.icu transport, field interpretation, source quirks,
+fetch helpers, and safe remote writes. The caller owns local persistence,
+activity/work-block analysis, source composition, plotting, reports, and final
+training decisions.
