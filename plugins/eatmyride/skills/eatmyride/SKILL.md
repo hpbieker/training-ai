@@ -65,6 +65,16 @@ python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan-replace <activity
 - Food-plan writes replace the complete server-side list. Require explicit user confirmation before replacing a food plan or editing an event.
 - After any food-plan write, trigger/read the recalculated activity state and read back the food plan before reporting success.
 - Calculate carbohydrate grams from food-plan event quantities and product serving fields.
+- The CLI normalizes `foodplan-replace` input to EatMyRide's narrower
+  mobile-app food-plan shape before POSTing. It is safe for callers to build a
+  replacement list from product-search or suggested-product rows, but each event
+  must include a `product` object plus `productId` or `product.id`.
+- For piece products such as `Laban Seigmenn (1 stk, 5 g)`, model multiple
+  pieces as separate `gram: 1` events rather than one lumped piece event.
+- For `SiS GO Elektrolyte Orange` (`productId 3111`), use the verified drink
+  scaling from prior writes: `300 ml` -> `20 g`, `700 ml` -> `47 g`, `900 ml`
+  -> `60 g`. If a write fails, suspect payload shape before blaming decimal
+  gram values.
 
 ## Products
 
@@ -110,4 +120,7 @@ This local plugin currently exposes:
 - `plugins/eatmyride/scripts/eatmyride_cli.py` for live command-line access.
 - `plugins/eatmyride/scripts/eatmyride_api.py` for API access and source-specific helpers.
 
-Read [field-semantics.md](references/field-semantics.md) when you need endpoint details, observed field behavior, or product/write payload notes.
+Read [field-semantics.md](references/field-semantics.md) relative to this skill
+file, i.e. `plugins/eatmyride/skills/eatmyride/references/field-semantics.md`,
+when you need endpoint details, observed field behavior, or product/write
+payload notes.

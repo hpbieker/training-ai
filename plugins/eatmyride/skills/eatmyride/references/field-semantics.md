@@ -50,6 +50,12 @@ should use the CLI commands from `SKILL.md`.
 ## Write Flow
 
 - `foodplan-replace <activity-id> <foodplan.json> --yes` sends the full replacement list.
+- The replacement endpoint is sensitive to payload shape. Use the CLI's
+  normalizer instead of hand-posting product search results directly. The
+  posted event shape should be the compact mobile-app/readback shape with
+  `activityId`, `distance`, `gram`, `ml`, `product`, `productId`, `source`,
+  `time`, and `userOrder`; the `product` object should contain only the
+  fields observed in food-plan readbacks, with numeric `ingredientsQty`.
 - The CLI's mobile-app-compatible flow then updates the activity document to trigger recalculation.
 - Verify by reading both the activity and the food plan back from the server.
 - Product create/update/delete endpoints affect remote account state and should require explicit confirmation.

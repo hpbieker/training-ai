@@ -1,6 +1,6 @@
 {
   "name": "eatmyride",
-  "version": "0.1.0+codex.20260619084737",
+  "version": "0.1.0+codex.20260710112030",
   "description": "EatMyRide source semantics for cycling fueling analysis.",
   "author": {
     "name": "Hans Petter Bieker"
@@ -17,6 +17,7 @@
       "Command Line"
     ],
     "composerIcon": "./assets/eatmyride-icon.png",
+    "logo": "./assets/eatmyride-icon.png",
     "defaultPrompt": [
       "What EatMyRide activities do I have today?",
       "How was fueling on my latest ride?",

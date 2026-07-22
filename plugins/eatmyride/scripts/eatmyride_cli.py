@@ -171,7 +171,8 @@ def main() -> None:
         verified = replace_foodplan(args.activity_id, foodplan, token=token)
         _print_json(
             {
-                **verified,
+                "activity": summarize_activity(verified["activity"]),
+                "foodplan": summarize_foodplan_events(verified["foodplan"]),
                 "summary": summarize_foodplan(verified["foodplan"]),
             }
         )

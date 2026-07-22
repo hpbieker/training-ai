@@ -406,11 +406,12 @@ def replace_foodplan(
     """
 
     activity = get_activity(activity_id, token=token)
+    normalized_foodplan = normalize_foodplan_for_replace(activity_id, foodplan)
     posted_foodplan = _request_json(
         f"/foodplan/{activity_id}",
         token=token,
         method="POST",
-        json_body=foodplan,
+        json_body=normalized_foodplan,
     )
     if not isinstance(posted_foodplan, list):
         raise TypeError("Expected EatMyRide foodplan update endpoint to return a list")
@@ -426,6 +427,111 @@ def replace_foodplan(
         "activity": get_activity(activity_id, token=token),
         "foodplan": get_foodplan(activity_id, token=token),
     }
+
+
+def normalize_foodplan_for_replace(
+    activity_id: str | int,
+    foodplan: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return EatMyRide's narrow food-plan replacement shape.
+
+    Product search/suggested endpoints include extra fields and string-typed
+    quantities that the food-plan endpoint may reject. Existing food-plan
+    readbacks show the smaller mobile-app shape used here.
+    """
+
+    return [
+        _normalize_foodplan_event(activity_id, event, user_order=index)
+        for index, event in enumerate(foodplan)
+    ]
+
+
+def _normalize_foodplan_event(
+    activity_id: str | int,
+    event: dict[str, Any],
+    *,
+    user_order: int,
+) -> dict[str, Any]:
+    product = event.get("product")
+    if not isinstance(product, dict):
+        raise TypeError("Each food-plan event must include a product object")
+
+    product_id = event.get("productId") or product.get("id")
+    if product_id is None:
+        raise ValueError("Each food-plan event must include productId or product.id")
+
+    normalized: dict[str, Any] = {
+        "activityId": _coerce_int(activity_id),
+        "distance": event.get("distance", 0),
+        "product": _normalize_foodplan_product(product),
+        "productId": _coerce_int(product_id),
+        "source": event.get("source"),
+        "time": event.get("time", 0),
+        "userOrder": event.get("userOrder", user_order),
+    }
+    if event.get("id") is not None:
+        normalized["id"] = _coerce_int(event["id"])
+    if "gram" in event:
+        normalized["gram"] = event["gram"]
+    if "ml" in event:
+        normalized["ml"] = event["ml"]
+    return normalized
+
+
+def _normalize_foodplan_product(product: dict[str, Any]) -> dict[str, Any]:
+    allowed_keys = [
+        "caffeine",
+        "calcium",
+        "calories",
+        "carbohydrates",
+        "category",
+        "copper",
+        "description",
+        "fat",
+        "fibers",
+        "flavour",
+        "folate",
+        "id",
+        "image",
+        "ingredientsQty",
+        "ingredientsQtyUnit",
+        "iodine",
+        "iron",
+        "label",
+        "magnesium",
+        "ofWhichSaturated",
+        "omega3",
+        "omega6",
+        "per_minute",
+        "phosphorus",
+        "potassium",
+        "protein",
+        "salt",
+        "selenium",
+        "shopId",
+        "sodium",
+        "subcategory",
+        "sugars",
+        "tags",
+        "userId",
+        "vitaminB12",
+        "vitaminB6",
+        "vitaminC",
+        "vitaminD",
+        "vitaminE",
+        "vitaminK",
+        "vitaminK1",
+        "vitaminK2",
+        "volume",
+        "weight",
+        "zinc",
+    ]
+    normalized = {key: product.get(key) for key in allowed_keys}
+    if normalized["id"] is None:
+        raise ValueError("Food-plan product must include id")
+    normalized["id"] = _coerce_int(normalized["id"])
+    normalized["ingredientsQty"] = _coerce_number(normalized["ingredientsQty"])
+    return normalized
 
 
 def _request_json(
@@ -507,3 +613,16 @@ def _grams_to_milligrams(value: float) -> int:
 
 def _round_int(value: float) -> int:
     return int(round(value))
+
+
+def _coerce_int(value: Any) -> int:
+    return int(value)
+
+
+def _coerce_number(value: Any) -> int | float | None:
+    if value is None:
+        return None
+    numeric = float(value)
+    if numeric.is_integer():
+        return int(numeric)
+    return numeric
