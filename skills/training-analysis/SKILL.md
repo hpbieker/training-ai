@@ -67,6 +67,8 @@ from actual saved activity geometry before inventing a generic route.
   which wins.
 - Separate mechanical execution/pacing from physiological cost when analysing
   a completed session.
+- Label each training-load value with its source and metric; never treat values
+  from different sources as interchangeable.
 - State missing or stale inputs and how they reduce confidence before upgrading
   intensity.
 - Ask how the session felt when useful, but not when feel/RPE is already known.
