@@ -15,9 +15,13 @@ Use the local CLI when Yr/MET Norway forecast data is needed:
 python3 -B plugins/yr/scripts/yr_cli.py
 python3 -B plugins/yr/scripts/yr_cli.py oslo
 python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000
+python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000 --hourly --from-local 2026-07-04T08:00 --to-local 2026-07-04T20:00
 ```
 
-The CLI fetches live Locationforecast data and prints JSON to stdout.
+The CLI fetches live Locationforecast data and prints JSON to stdout. Use
+`--hourly` for compact rows when a chat answer needs weather along a time
+window; for long-range forecasts the rows may be 6-hourly because MET Norway
+does not always provide hourly period details that far ahead.
 
 Known locations include:
 
@@ -27,7 +31,7 @@ For a custom point, pass both `--lat` and `--lon`. For a planned route or other 
 
 ## Source Semantics
 
-Read `references/locationforecast.md` before interpreting Yr/MET Norway Locationforecast fields, update cadence, uncertainty, or route-weather limitations.
+Read `skills/yr/references/locationforecast.md` before interpreting Yr/MET Norway Locationforecast fields, update cadence, uncertainty, or route-weather limitations.
 
 ## Boundaries
 

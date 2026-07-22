@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+from datetime import datetime
 
-from yr_weather import fetch_locationforecast
+from yr_weather import compact_hourly_forecast, fetch_locationforecast
 
 
 KNOWN_LOCATIONS = {
@@ -27,6 +28,13 @@ def main() -> None:
     parser.add_argument("--lat", type=float, help="Latitude for a custom location")
     parser.add_argument("--lon", type=float, help="Longitude for a custom location")
     parser.add_argument("--altitude", type=int, help="Altitude in meters")
+    parser.add_argument(
+        "--hourly",
+        action="store_true",
+        help="Print compact hourly forecast rows instead of raw Locationforecast JSON.",
+    )
+    parser.add_argument("--from-local", help="Start local datetime for --hourly")
+    parser.add_argument("--to-local", help="End local datetime for --hourly")
     args = parser.parse_args()
 
     if args.lat is not None or args.lon is not None:
@@ -45,7 +53,30 @@ def main() -> None:
         location = KNOWN_LOCATIONS[key]
 
     forecast = fetch_locationforecast(**location)
-    print(json.dumps(forecast, ensure_ascii=False, indent=2, sort_keys=True))
+    if args.hourly:
+        payload = {
+            "source": "yr_locationforecast",
+            "location": location,
+            "from_local": args.from_local,
+            "to_local": args.to_local,
+            "hourly": compact_hourly_forecast(
+                forecast,
+                from_local=parse_local_datetime(args.from_local),
+                to_local=parse_local_datetime(args.to_local),
+            ),
+        }
+    else:
+        payload = forecast
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+
+
+def parse_local_datetime(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    parsed = datetime.fromisoformat(raw)
+    if parsed.tzinfo is None:
+        return parsed.astimezone()
+    return parsed
 
 
 if __name__ == "__main__":
