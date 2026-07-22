@@ -1,5 +1,17 @@
 # Intervals.icu Field Semantics
 
+## Activity Metadata
+
+- `icu_intensity` is expressed as a percentage, not a fraction; for example,
+  `75` means 75% intensity.
+- `icu_training_load` is the load calculated by Intervals.icu. Treat it as a
+  source-specific load value rather than as interchangeable with other load
+  metrics.
+- `external_id` identifies the activity in its upstream source. Use it for
+  cross-source resolution; it is not the Intervals.icu activity ID.
+- `gear` identifies registered equipment. A bike identity may help constrain
+  route suitability, but it does not by itself prove the ridden surface.
+
 ## Activity And Streams
 
 - Intervals.icu respiratory stream fields use these meanings:
