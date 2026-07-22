@@ -325,6 +325,7 @@ def main() -> None:
         readiness_packet=readiness_packet,
         history_context=history_context,
     )
+    initialize_plan_trace(target_resolution)
     apply_acute_readiness_target_guardrail(target_resolution, readiness_packet)
     apply_intervals_illness_target_guardrail(
         target_resolution,
@@ -333,6 +334,7 @@ def main() -> None:
         )
         or {},
     )
+    finalize_plan_trace(target_resolution)
     target_resolution["split"] = split_session_info(
         target_resolution,
         planned_at=planned_at,
@@ -2234,6 +2236,72 @@ def practical_fueling_defaults() -> dict[str, Any]:
     return {}
 
 
+def initialize_plan_trace(target_resolution: dict[str, Any]) -> None:
+    """Preserve the unadjusted model or explicit plan before guardrails run."""
+
+    source = str(target_resolution.get("source") or "unknown")
+    target_resolution["plan_trace"] = {
+        "base_plan": {
+            "label": "xert_recommended_remaining_dose"
+            if source == "xert_training_advice_target_xss"
+            else "explicit_user_or_cli_plan"
+            if source.startswith("explicit_")
+            else "fallback_plan",
+            "source": source,
+            "minutes": number(target_resolution.get("target_minutes")),
+            "load_xss": number(target_resolution.get("target_load")),
+            "reason": target_resolution.get("reason"),
+        }
+    }
+
+
+def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
+    """Explain whether physiological guardrails changed the base plan and why."""
+
+    trace = target_resolution.setdefault("plan_trace", {})
+    base = trace.get("base_plan") or {}
+    final_minutes = number(target_resolution.get("target_minutes"))
+    final_load = number(target_resolution.get("target_load"))
+    reasons = []
+    adjustment_types = []
+
+    acute = target_resolution.get("acute_readiness_guardrail") or {}
+    if acute.get("active"):
+        adjustment_types.append("acute_readiness_guardrail")
+        reasons.append(
+            "Direct physiological domains agreed sufficiently to cap the base plan "
+            f"at {acute.get('max_minutes')} min / {acute.get('max_load')} XSS."
+        )
+
+    illness = target_resolution.get("illness_return_guardrail") or {}
+    if illness.get("active"):
+        adjustment_types.append("illness_return_guardrail")
+        reasons.append(
+            "Return-to-training day "
+            f"{illness.get('day')} capped the base plan at "
+            f"{illness.get('max_minutes')} min / {illness.get('max_load')} XSS."
+        )
+
+    base_minutes = number(base.get("minutes"))
+    base_load = number(base.get("load_xss"))
+    changed = final_minutes != base_minutes or final_load != base_load
+    trace["adjustment"] = {
+        "status": "reduced" if changed else "unchanged",
+        "types": adjustment_types,
+        "reasons": reasons
+        or [
+            "No physiological or illness guardrail changed the base plan. "
+            "Later timing, route, and session-split choices are logistical execution, "
+            "not a reduction of the training dose."
+        ],
+    }
+    trace["final_plan"] = {
+        "minutes": final_minutes,
+        "load_xss": final_load,
+        "relationship_to_base": "reduced_by_guardrail" if changed else "same_as_base",
+    }
+
+
 def apply_intervals_illness_target_guardrail(
     target_resolution: dict[str, Any],
     intervals_events: dict[str, Any],
@@ -3818,6 +3886,15 @@ def format_summary(packet: dict[str, Any]) -> str:
         "  Dose target: {dose}".format(
             dose=dose_target_line(target_resolution),
         ),
+        "  Base plan: {plan}".format(
+            plan=base_plan_line(target_resolution),
+        ),
+        "  Plan adjustment: {adjustment}".format(
+            adjustment=plan_adjustment_line(target_resolution),
+        ),
+        "  Final physiological plan: {plan}".format(
+            plan=final_plan_line(target_resolution),
+        ),
         "  Xert advice source: {source}".format(
             source=xert_advice_source_line(xert_training_advice),
         ),
@@ -4309,6 +4386,38 @@ def dose_target_line(target_resolution: dict[str, Any]) -> str:
         minutes=target_resolution.get("target_minutes"),
         load=target_resolution.get("target_load"),
         reason=target_resolution.get("reason") or "missing reason",
+    )
+
+
+def base_plan_line(target_resolution: dict[str, Any]) -> str:
+    base = ((target_resolution.get("plan_trace") or {}).get("base_plan") or {})
+    if not base:
+        return "missing"
+    return "{label}: {minutes} min / XSS {load}".format(
+        label=base.get("label"),
+        minutes=base.get("minutes"),
+        load=base.get("load_xss"),
+    )
+
+
+def plan_adjustment_line(target_resolution: dict[str, Any]) -> str:
+    adjustment = ((target_resolution.get("plan_trace") or {}).get("adjustment") or {})
+    if not adjustment:
+        return "missing"
+    return "{status}: {reasons}".format(
+        status=adjustment.get("status"),
+        reasons=" ".join(str(reason) for reason in adjustment.get("reasons") or []),
+    )
+
+
+def final_plan_line(target_resolution: dict[str, Any]) -> str:
+    final = ((target_resolution.get("plan_trace") or {}).get("final_plan") or {})
+    if not final:
+        return "missing"
+    return "{minutes} min / XSS {load} ({relationship})".format(
+        minutes=final.get("minutes"),
+        load=final.get("load_xss"),
+        relationship=final.get("relationship_to_base"),
     )
 
 

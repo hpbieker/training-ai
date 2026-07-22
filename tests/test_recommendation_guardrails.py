@@ -11,6 +11,8 @@ from recommend_today import (
     body_battery_summary_line,
     build_source_refresh_plan,
     compact_xert_workout_recommendations,
+    finalize_plan_trace,
+    initialize_plan_trace,
     parse_refresh_spec,
     presentation_requirements,
     weather_command,
@@ -63,6 +65,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
             "caution_score": 2.55,
             "rolling_7d_load_percentile_this_year": 75.0,
         }
+        initialize_plan_trace(target)
         packet = {
             "date": "2026-07-20",
             "recommendation_inputs": {
@@ -87,6 +90,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         }
 
         apply_acute_readiness_target_guardrail(target, packet)
+        finalize_plan_trace(target)
 
         self.assertEqual(target["target_minutes"], 45.0)
         self.assertEqual(target["target_load"], 30.0)
@@ -96,6 +100,49 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         )
         self.assertFalse(
             target["acute_readiness_guardrail"]["training_readiness_used_for_dose"]
+        )
+        self.assertEqual(target["plan_trace"]["base_plan"]["load_xss"], 221.3)
+        self.assertEqual(target["plan_trace"]["adjustment"]["status"], "reduced")
+        self.assertEqual(
+            target["plan_trace"]["final_plan"]["relationship_to_base"],
+            "reduced_by_guardrail",
+        )
+
+    def test_trace_says_xert_plan_is_unchanged_without_guardrail(self):
+        target = {
+            "source": "xert_training_advice_target_xss",
+            "target_minutes": 140.2,
+            "target_load": 140.2,
+            "reason": "target load from Xert's recommended XSS",
+        }
+
+        initialize_plan_trace(target)
+        apply_acute_readiness_target_guardrail(
+            target,
+            {
+                "recommendation_inputs": {
+                    "garmin_recovery_readiness": {"training_readiness_score": 3},
+                    "garmin_load_focus": {"acwr": 0.9},
+                    "wellness": {
+                        "sleep_time_seconds": 27000,
+                        "hrv_last_night_avg": 68,
+                        "hrv_balanced_low": 67,
+                        "hrv_balanced_upper": 83,
+                        "body_battery_at_wake": 84,
+                    },
+                }
+            },
+        )
+        finalize_plan_trace(target)
+
+        self.assertEqual(
+            target["plan_trace"]["base_plan"]["label"],
+            "xert_recommended_remaining_dose",
+        )
+        self.assertEqual(target["plan_trace"]["adjustment"]["status"], "unchanged")
+        self.assertEqual(
+            target["plan_trace"]["final_plan"]["relationship_to_base"],
+            "same_as_base",
         )
 
     def test_low_cumulative_load_uses_easy_endurance_cap_independent_of_yesterday(self):
