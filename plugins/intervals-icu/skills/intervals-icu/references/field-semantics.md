@@ -45,6 +45,9 @@
 
 ## Wellness
 
+- Sickness is a calendar event with `category=SICK`; it is not a wellness field. Multi-day events use an exclusive `end_date_local`.
+- Legacy wellness comments such as `Syk` may be read as fallback context, but structured `SICK` events take precedence and new writes must use calendar events.
+
 - Intervals.icu wellness fields may come from Garmin or other connected systems.
 - Use only wellness fields that are actually present in the fetched wellness data.
 - For Garmin-specific wellness and readiness fields such as Training Readiness,

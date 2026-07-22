@@ -9,18 +9,21 @@ from datetime import date
 from pathlib import Path
 
 from intervals_icu_api import (
+    create_event,
     delete_activity,
     download_activity_file,
     download_activity_streams_csv,
     get_activity,
     get_wellness,
     list_activities,
+    list_events,
     list_wellness,
     load_intervals_icu_api_key,
     save_activity_streams,
     save_latest_activity_streams,
     search_activities,
     update_activity,
+    update_event,
     update_wellness,
     upload_activity_file,
 )
@@ -197,6 +200,19 @@ def main() -> None:
     wellness.add_argument("--since", default=f"{date.today().year}-01-01")
     wellness.add_argument("--until", default=date.today().isoformat())
     _add_output_arg(wellness)
+
+    events = subparsers.add_parser("events", help="Fetch calendar events")
+    events.add_argument("--since", required=True)
+    events.add_argument("--until", required=True)
+    events.add_argument("--category", help="Comma-separated categories, e.g. SICK")
+    _add_output_arg(events)
+
+    sick_set = subparsers.add_parser(
+        "sick-set", help="Create or extend one SICK calendar event"
+    )
+    sick_set.add_argument("--since", required=True, help="First sick day")
+    sick_set.add_argument("--until", required=True, help="Last sick day, inclusive")
+    sick_set.add_argument("--confirm", required=True, help="Must equal START:END")
 
     rename = subparsers.add_parser("rename", help="Rename one activity")
     rename.add_argument("activity_id")
@@ -481,6 +497,59 @@ def main() -> None:
             {"wellness": wellness_rows, "matched_count": len(wellness_rows)},
             output=args.output,
         )
+        return
+
+    if args.command == "events":
+        rows = list_events(
+            api_key=api_key, oldest=args.since, newest=args.until,
+            categories=args.category,
+        )
+        _emit_json({"events": rows, "matched_count": len(rows)}, output=args.output)
+        return
+
+    if args.command == "sick-set":
+        if args.confirm != f"{args.since}:{args.until}":
+            parser.error("--confirm must exactly match START:END")
+        start = date.fromisoformat(args.since)
+        inclusive_end = date.fromisoformat(args.until)
+        if inclusive_end < start:
+            parser.error("--until must not be before --since")
+        exclusive_end = date.fromordinal(inclusive_end.toordinal() + 1)
+        sick_events = list_events(
+            api_key=api_key,
+            oldest=date.fromordinal(start.toordinal() - 1),
+            newest=exclusive_end,
+            categories="SICK",
+        )
+        mergeable = [
+            event for event in sick_events
+            if str(event.get("end_date_local") or "")[:10] >= start.isoformat()
+            and str(event.get("start_date_local") or "")[:10] <= exclusive_end.isoformat()
+        ]
+        if len(mergeable) > 1:
+            parser.error("multiple adjacent/overlapping SICK events require manual reconciliation")
+        payload = {
+            "category": "SICK", "name": "Syk",
+            "start_date_local": f"{start.isoformat()}T00:00:00",
+            "end_date_local": f"{exclusive_end.isoformat()}T00:00:00",
+        }
+        if mergeable:
+            existing = mergeable[0]
+            payload["start_date_local"] = min(
+                payload["start_date_local"], str(existing.get("start_date_local"))
+            )
+            payload["end_date_local"] = max(
+                payload["end_date_local"], str(existing.get("end_date_local"))
+            )
+            saved = update_event(event_id=existing["id"], updates=payload, api_key=api_key)
+            action = "updated"
+        else:
+            saved = create_event(event=payload, api_key=api_key)
+            action = "created"
+        verified = list_events(
+            api_key=api_key, oldest=start, newest=inclusive_end, categories="SICK"
+        )
+        _emit_json({"action": action, "event": saved, "verified_events": verified})
         return
 
     if args.command == "rename":

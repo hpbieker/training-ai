@@ -489,6 +489,51 @@ def update_wellness(
     return updated
 
 
+def list_events(
+    *, oldest: str | date, newest: str | date, categories: str | None = None,
+    api_key: str | None = None, bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+) -> list[dict[str, Any]]:
+    """List Intervals.icu calendar events for a local date range."""
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    params = {"oldest": _date_to_string(oldest), "newest": _date_to_string(newest)}
+    if categories:
+        params["category"] = categories
+    events = _request_json(f"/athlete/{athlete_id}/events", credentials, params=params)
+    if not isinstance(events, list):
+        raise TypeError("Expected Intervals.icu events endpoint to return a list")
+    return events
+
+
+def create_event(
+    *, event: dict[str, Any], api_key: str | None = None,
+    bearer_token: str | None = None, athlete_id: str | int = 0,
+) -> dict[str, Any]:
+    """Create one Intervals.icu calendar event."""
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    created = _request_json(
+        f"/athlete/{athlete_id}/events", credentials, method="POST", json_body=event
+    )
+    if not isinstance(created, dict):
+        raise TypeError("Expected Intervals.icu create event endpoint to return an object")
+    return created
+
+
+def update_event(
+    *, event_id: str | int, updates: dict[str, Any], api_key: str | None = None,
+    bearer_token: str | None = None, athlete_id: str | int = 0,
+) -> dict[str, Any]:
+    """Update one Intervals.icu calendar event."""
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    updated = _request_json(
+        f"/athlete/{athlete_id}/events/{event_id}", credentials,
+        method="PUT", json_body=updates,
+    )
+    if not isinstance(updated, dict):
+        raise TypeError("Expected Intervals.icu update event endpoint to return an object")
+    return updated
+
+
 def list_activities(
     *,
     api_key: str | None = None,

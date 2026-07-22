@@ -22,6 +22,7 @@ python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py streams <activity-
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py search <query> --limit 10
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py named <name-fragment> --since <YYYY-MM-DD> --until <YYYY-MM-DD>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness --since <YYYY-MM-DD> --until <YYYY-MM-DD>
+python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py events --since <YYYY-MM-DD> --until <YYYY-MM-DD> --category SICK
 ```
 
 The `activity` command fetches activity metadata and optional interval details;
@@ -72,6 +73,7 @@ python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py rename <activity-i
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py delete-activity <activity-id> --confirm <activity-id>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py subjective <activity-id> --feel <value> --rpe <value>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness-update <YYYY-MM-DD> --soreness <value> --fatigue <value> --motivation <value>
+python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py sick-set --since <YYYY-MM-DD> --until <YYYY-MM-DD> --confirm <START:END>
 ```
 
 ## Authentication
@@ -85,7 +87,10 @@ python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness-update <Y
 
 ## Source Semantics
 
-Read `references/field-semantics.md` before interpreting Intervals.icu activity load, stream fields, ignore flags, intervals, wellness, or subjective fields.
+Read `references/field-semantics.md` relative to this skill file, i.e.
+`plugins/intervals-icu/skills/intervals-icu/references/field-semantics.md`,
+before interpreting Intervals.icu activity load, stream fields, ignore flags,
+intervals, wellness, or subjective fields.
 
 ## Writes
 
@@ -95,7 +100,9 @@ Read `references/field-semantics.md` before interpreting Intervals.icu activity 
 - Activity uploads use `upload-activity <file>` and post the file as multipart form-data field `file` to Intervals.icu. FIT, FIT.GZ, GPX, TCX, and similar activity files can be accepted when Intervals supports the format.
 - Intervals.icu may deduplicate uploads and return an existing `i...` activity id instead of creating a new id. It may also reuse an id after delete+reupload. Treat the upload response id as the canonical result, then fetch that id and the date-bounded activity list to verify.
 - When repairing Strava API-unavailable stubs, direct Strava-backed activity lookups can return only a stub with `_note`/`note` such as `STRAVA activities are not available via the API`. If a local export file is available, upload it and verify whether the old stub disappears from date-bounded lists. If the export has no file, there may be nothing to repair via API upload.
-- For original-file comparisons, prefer `file <activity-id> --kind original`. `--kind fit` downloads an Intervals-generated FIT and can have different device metadata and summary fields from the original uploaded file.
+- Keep original files and Intervals-generated FIT exports separate:
+  - `file <activity-id> --kind original` downloads the original uploaded file that Intervals has stored for the activity. This can be byte-identical to a Garmin Connect download or a Strava export file after decompression, and is the right artifact for provenance, duplicate, device-metadata, and byte-hash comparisons.
+  - `file <activity-id> --kind fit` downloads an Intervals-generated FIT export. It can omit original device metadata, contain fewer FIT messages, use Intervals as the file creator, and differ in summary fields such as elevation. Do not use this artifact to decide whether two original recordings are the same file.
 - Update only fields the user has explicitly provided or confirmed.
 - When saving RPE, write `icu_rpe`; Intervals.icu derives `session_rpe` and rejects direct writes to `session_rpe`.
 - Activity interval boundaries can be read from `GET /api/v1/activity/<activity-id>/intervals`, which returns `icu_intervals` and `icu_groups`.
@@ -103,6 +110,7 @@ Read `references/field-semantics.md` before interpreting Intervals.icu activity 
 - Intervals.icu regenerates recovery intervals automatically between supplied `WORK` intervals and may regenerate interval ids. Always fetch the intervals before writing, dry-run/diff the old and new boundaries, require explicit confirmation, then fetch again to verify the result.
 - When trimming an interval boundary, adjust start and end one second/sample at a time. Trimming can shorten or lengthen an interval: remove tails that are much lower than the interval's intended steady power or average, but also extend the boundary when genuine work starts just before the current start or continues just after the current end. Check single samples as well as short rolling windows: if only the final sample is low after a genuine finishing effort, trimming exactly that one sample can be appropriate. Also check the opposite case: do not trim away genuine work after a temporary low-power patch if power returns to the interval level. Prefer preserving the whole intended effort over making the average look cleaner.
 - For daily wellness, do not overwrite an existing value with a different value without explicit confirmation. The CLI enforces this unless `--force` is supplied.
+- Record sickness as a calendar event with `category=SICK`, not as a wellness comment. The event end is exclusive; `sick-set` accepts an inclusive user-facing end date and verifies the write.
 - Refresh/read back the activity or wellness day after updating when the result matters to the user-facing answer.
 
 ## Boundaries

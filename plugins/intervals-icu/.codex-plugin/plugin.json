@@ -1,6 +1,6 @@
 {
   "name": "intervals-icu",
-  "version": "0.1.0+codex.20260619115308",
+  "version": "0.1.0+codex.20260710112029",
   "description": "Intervals.icu source semantics and API access for training activity, stream, and wellness data.",
   "author": {
     "name": "Hans Petter Bieker"
@@ -17,6 +17,7 @@
       "Command Line"
     ],
     "composerIcon": "./assets/intervals-icu-icon.png",
+    "logo": "./assets/intervals-icu-icon.png",
     "defaultPrompt": [
       "Fetch my latest Intervals.icu activity.",
       "Read Intervals.icu wellness for today.",
