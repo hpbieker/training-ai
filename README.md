@@ -162,7 +162,7 @@ age, TTL, and reason for each source under `source_refresh`. An explicit
 forced Garmin refresh.
 
 ```bash
-python3 -B scripts/recommend_today.py --date 2026-06-26 --planned-at 10:30 --target-minutes 75 --target-load 60 --summary
+python3 -B scripts/recommend_today.py --date 2026-06-26 --planned-at 10:30 --weather-timezone Europe/Oslo --target-minutes 75 --target-load 60 --summary
 ```
 
 If the user does not give a training time, omit `--planned-at`; the packet will
@@ -179,7 +179,7 @@ Use the full JSON output when debugging or when another script consumes the
 packet:
 
 ```bash
-python3 -B scripts/recommend_today.py --date 2026-06-26 --planned-at 10:30
+python3 -B scripts/recommend_today.py --date 2026-06-26 --planned-at 10:30 --weather-timezone Europe/Oslo
 ```
 
 The indoor workout ranking prefers `XMB: ` workouts. When multiple XMB workouts

@@ -11,8 +11,24 @@ from recommend_today import (
     build_source_refresh_plan,
     compact_xert_workout_recommendations,
     parse_refresh_spec,
+    weather_command,
 )
 from route_recommendations import surface_classification
+
+
+class WeatherCommandTests(unittest.TestCase):
+    def test_passes_explicit_location_timezone_to_yr(self):
+        command = weather_command(
+            None,
+            planned_at=datetime.fromisoformat("2026-07-25T08:00:00+01:00"),
+            hours=4,
+            timezone_name="Europe/Lisbon",
+            lat=37.125,
+            lon=-8.5833,
+        )
+
+        self.assertIn("--timezone", command)
+        self.assertEqual(command[command.index("--timezone") + 1], "Europe/Lisbon")
 
 
 class AcuteReadinessGuardrailTests(unittest.TestCase):

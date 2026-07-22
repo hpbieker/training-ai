@@ -7,9 +7,9 @@ non-generic User-Agent with contact information.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, tzinfo
 from typing import Any
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -26,6 +26,11 @@ def fetch_locationforecast(
     user_agent: str = DEFAULT_USER_AGENT,
 ) -> dict[str, Any]:
     """Fetch a compact Locationforecast from MET Norway / Yr."""
+
+    if not -90 <= latitude <= 90:
+        raise ValueError("latitude must be between -90 and 90")
+    if not -180 <= longitude <= 180:
+        raise ValueError("longitude must be between -180 and 180")
 
     params: dict[str, Any] = {
         "lat": f"{latitude:.4f}",
@@ -48,6 +53,10 @@ def fetch_locationforecast(
         raise RuntimeError(
             f"MET/Yr request failed: HTTP {exc.code} {exc.reason}: {message}"
         ) from exc
+    except (URLError, TimeoutError) as exc:
+        raise RuntimeError(f"MET/Yr request failed: {exc}") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("MET/Yr returned an invalid JSON response") from exc
     if not isinstance(payload, dict) or "properties" not in payload:
         raise TypeError("Expected MET/Yr locationforecast endpoint to return GeoJSON")
     return payload
@@ -56,10 +65,11 @@ def fetch_locationforecast(
 def compact_hourly_forecast(
     forecast: dict[str, Any],
     *,
+    local_timezone: tzinfo,
     from_local: datetime | None = None,
     to_local: datetime | None = None,
 ) -> list[dict[str, Any]]:
-    """Return one compact row per forecast timestamp in local time."""
+    """Return compact forecast rows in the caller-selected local timezone."""
 
     rows = []
     seen_hours: set[str] = set()
@@ -67,7 +77,7 @@ def compact_hourly_forecast(
         if not isinstance(item, dict) or not item.get("time"):
             continue
         timestamp = datetime.fromisoformat(str(item["time"]).replace("Z", "+00:00"))
-        local = timestamp.astimezone()
+        local = timestamp.astimezone(local_timezone)
         if from_local and local < from_local:
             continue
         if to_local and local > to_local:

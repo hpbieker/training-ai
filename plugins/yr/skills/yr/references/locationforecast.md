@@ -22,4 +22,11 @@ Fetch one or more relevant forecast points for the area being evaluated. Callers
 
 Use fresh live data for time-sensitive decisions.
 
-Use local timezone conversion at the presentation boundary when explaining forecast times. Keep source timestamps intact in source payloads.
+Use an explicit forecast-location timezone at the presentation boundary when
+explaining or filtering forecast times. Do not assume the computer's timezone
+matches the requested location. Keep source timestamps intact in source
+payloads.
+
+MET Norway recommends HTTP conditional requests for repeated access. This
+plugin deliberately does not persist forecasts; callers that fetch repeatedly
+own caching and freshness policy.

@@ -5,7 +5,7 @@ description: Use when working with Yr/MET Norway Locationforecast data, weather 
 
 # Yr
 
-Use this skill for Yr/MET Norway-specific source access and source semantics. The plugin fetches live forecasts, but it does not store forecasts, perform domain-specific analysis, make downstream decisions, or plan routes.
+Use this skill for Yr/MET Norway source access and field semantics.
 
 ## Start Here
 
@@ -13,36 +13,20 @@ Use the local CLI when Yr/MET Norway forecast data is needed:
 
 ```bash
 python3 -B plugins/yr/scripts/yr_cli.py
-python3 -B plugins/yr/scripts/yr_cli.py oslo
-python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000
-python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000 --hourly --from-local 2026-07-04T08:00 --to-local 2026-07-04T20:00
+python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000 --timezone Europe/Oslo --hourly --from-local YYYY-MM-DDT08:00 --to-local YYYY-MM-DDT20:00
 ```
 
-The CLI fetches live Locationforecast data and prints JSON to stdout. Use
-`--hourly` for compact rows when a chat answer needs weather along a time
-window; for long-range forecasts the rows may be 6-hourly because MET Norway
-does not always provide hourly period details that far ahead.
-
-Known locations include:
-
-- `oslo`: Oslo point forecast.
-
-For a custom point, pass both `--lat` and `--lon`. For a planned route or other multi-point scenario, fetch one forecast per relevant time/place point, then let the caller combine those point forecasts for the final use case.
+The CLI prints live Locationforecast JSON. Use `--hourly` with the forecast
+location's IANA timezone for compact time-window rows. Long-range rows may be
+6-hourly when MET Norway does not provide hourly period details.
 
 ## Source Semantics
 
-Read `skills/yr/references/locationforecast.md` before interpreting Yr/MET Norway Locationforecast fields, update cadence, uncertainty, or route-weather limitations.
+Read `skills/yr/references/locationforecast.md` before interpreting fields,
+update cadence, uncertainty, or route-weather limitations.
 
 ## Boundaries
 
-This plugin owns:
-
-- Yr/MET Norway Locationforecast API access.
-- Yr/MET Norway field interpretation and source quirks.
-- Live forecast fetching through the CLI.
-
-The caller owns:
-
-- choosing which place, coordinate, or route time/place points to fetch.
-- combining weather with domain-specific context or user preferences.
-- plotting and report generation.
+- This plugin owns live point-forecast access and Yr/MET Norway semantics.
+- The caller chooses forecast points, combines multi-point results, applies
+  domain context, and owns persistence, plotting, reports, and decisions.

@@ -127,6 +127,15 @@ def main() -> None:
         help="Longitude of the start/end anchor to pass to route recommendations.",
     )
     parser.add_argument(
+        "--weather-timezone",
+        required=True,
+        help=(
+            "IANA timezone for weather filtering and display, for example "
+            "Europe/Oslo or Europe/Lisbon. The caller must resolve this from "
+            "the current location context."
+        ),
+    )
+    parser.add_argument(
         "--start-radius-km",
         type=float,
         default=0.25,
@@ -448,6 +457,7 @@ def main() -> None:
         )
         fetch_weather_inputs(
             planned_at=planned_at,
+            weather_timezone=args.weather_timezone,
             outdoor_available=outdoor_available,
             first_route=first_route,
             home_weather_lat=home_weather_lat,
@@ -916,6 +926,7 @@ def fetch_primary_live_inputs(
 def fetch_weather_inputs(
     *,
     planned_at: datetime,
+    weather_timezone: str,
     outdoor_available: bool,
     first_route: dict[str, Any] | None,
     home_weather_lat: float,
@@ -933,6 +944,7 @@ def fetch_weather_inputs(
                 lon=home_weather_lon,
                 planned_at=planned_at,
                 hours=4,
+                timezone_name=weather_timezone,
             ),
             source_files["weather_home"],
         )
@@ -945,6 +957,7 @@ def fetch_weather_inputs(
                 lon=route_weather_lon(first_route),
                 planned_at=planned_at,
                 hours=4,
+                timezone_name=weather_timezone,
             ),
             source_files["weather_route"],
         )
@@ -1366,6 +1379,7 @@ def weather_command(
     *,
     planned_at: datetime,
     hours: int,
+    timezone_name: str,
     lat: float | None = None,
     lon: float | None = None,
 ) -> list[str]:
@@ -1382,6 +1396,8 @@ def weather_command(
         command.extend(["--lat", f"{lat:.4f}", "--lon", f"{lon:.4f}"])
     command.extend(
         [
+            "--timezone",
+            timezone_name,
             "--hourly",
             "--from-local",
             start.isoformat(timespec="seconds"),

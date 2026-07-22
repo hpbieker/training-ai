@@ -1,6 +1,6 @@
 {
   "name": "yr",
-  "version": "0.1.0+codex.20260710112030",
+  "version": "0.1.0+codex.20260722151803",
   "description": "Yr/MET Norway source semantics and live forecast access.",
   "author": {
     "name": "Hans Petter Bieker"
@@ -20,7 +20,7 @@
     "logo": "./assets/yr-icon.png",
     "defaultPrompt": [
       "Fetch a weather forecast for a place.",
-      "Check weather for a planned route with times and places.",
+      "Fetch point forecasts for the times and places along a planned route.",
       "Help me interpret a Yr Locationforecast payload."
     ]
   }
