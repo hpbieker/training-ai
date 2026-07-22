@@ -13,13 +13,14 @@ python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000 --timezone E
 ```
 
 The CLI prints live Locationforecast JSON. Use `--hourly` with the forecast
-location's IANA timezone for compact time-window rows. Long-range rows may be
-6-hourly when MET Norway does not provide hourly period details.
+location's IANA timezone for compact time-window rows. Use explicit coordinates
+for each materially different route area rather than treating one point as a
+whole-route forecast.
 
 ## Source Semantics
 
-Read `skills/yr/references/locationforecast.md` before interpreting fields,
-update cadence, uncertainty, or route-weather limitations.
+Read [references/locationforecast.md](references/locationforecast.md) before
+interpreting fields, units, periods, uncertainty, or route limitations.
 
 ## Boundaries
 
