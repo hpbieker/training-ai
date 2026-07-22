@@ -5,11 +5,7 @@ description: Use when working with Yr/MET Norway Locationforecast data, weather 
 
 # Yr
 
-Use this skill for Yr/MET Norway source access and field semantics.
-
 ## Start Here
-
-Use the local CLI when Yr/MET Norway forecast data is needed:
 
 ```bash
 python3 -B plugins/yr/scripts/yr_cli.py

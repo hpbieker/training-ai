@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 
 MET_LOCATIONFORECAST_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-DEFAULT_USER_AGENT = "codex-yr-plugin/0.1 github.com/hanspetterbieker"
+DEFAULT_USER_AGENT = "codex-yr-plugin/0.1 github.com/hpbieker"
 
 
 def fetch_locationforecast(
