@@ -88,6 +88,39 @@ def main() -> None:
         help="Also run steady VT1-style work segment detection",
     )
     parser.add_argument(
+        "--outdoor-vt1",
+        action="store_true",
+        help="Include outdoor VT1/endurance pacing analysis in brief output",
+    )
+    parser.add_argument(
+        "--no-auto-outdoor-vt1",
+        action="store_true",
+        help="Do not auto-add outdoor VT1 pacing analysis for qualifying brief ride activities",
+    )
+    parser.add_argument(
+        "--indoor-vt1",
+        action="store_true",
+        help="Include indoor VT1/endurance quality analysis in brief output",
+    )
+    parser.add_argument(
+        "--no-auto-indoor-vt1",
+        action="store_true",
+        help="Do not auto-add indoor VT1 quality analysis for qualifying brief trainer activities",
+    )
+    parser.add_argument(
+        "--vt1-watts",
+        type=float,
+        help="Working VT1 anchor for VT1 quality caps; caller should pass this from preferences",
+    )
+    parser.add_argument(
+        "--vt2-watts",
+        type=float,
+        help=(
+            "Working VT2 anchor for VT2 quality diagnostics. If omitted, brief output "
+            "still evaluates blocks that look VT2-like from activity name or power."
+        ),
+    )
+    parser.add_argument(
         "--fields",
         default=",".join(DEFAULT_FIELDS),
         help="Comma-separated stream fields to summarize",
@@ -239,6 +272,12 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
 
     if args.brief:
         result["_rows"] = rows
+        result["_outdoor_vt1_requested"] = args.outdoor_vt1
+        result["_outdoor_vt1_disabled"] = args.no_auto_outdoor_vt1
+        result["_indoor_vt1_requested"] = args.indoor_vt1
+        result["_indoor_vt1_disabled"] = args.no_auto_indoor_vt1
+        result["_vt1_watts"] = args.vt1_watts
+        result["_vt2_watts"] = args.vt2_watts
         result = brief_result(result)
     elif args.compact:
         result = compact_result(result, fields)
@@ -254,6 +293,7 @@ def activity_metadata(activity) -> dict[str, Any]:
         "name": activity.name,
         "start_date_local": activity.start_date_local,
         "type": metadata.get("type"),
+        "trainer": metadata.get("trainer"),
         "elapsed_time": metadata.get("elapsed_time"),
         "moving_time": metadata.get("moving_time"),
         "external_id": metadata.get("external_id"),
@@ -411,6 +451,19 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
     hard_block = hardest_block(work_blocks)
     beta_stability = beta_stability_debug(result["activity"], work_blocks, recoveries)
     beta_vo2 = beta_vo2_debug(result["activity"], rows, saved_work_intervals, vo2_recoveries)
+    long_pauses = detect_pause_segments(rows, min_seconds=60)
+    include_outdoor_vt1 = should_include_outdoor_vt1(
+        result["activity"],
+        rows,
+        force=bool(result.get("_outdoor_vt1_requested")),
+        disabled=bool(result.get("_outdoor_vt1_disabled")),
+    )
+    include_indoor_vt1 = should_include_indoor_vt1(
+        result["activity"],
+        rows,
+        force=bool(result.get("_indoor_vt1_requested")),
+        disabled=bool(result.get("_indoor_vt1_disabled")),
+    )
     brief = {
         "activity": brief_activity(result["activity"]),
         "streams": {
@@ -419,7 +472,7 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
             "data_quality_issues": compact_quality(result["streams"]["data_quality"]),
         },
         "total": brief_total(result["total"]),
-        "long_pauses": detect_pause_segments(rows, min_seconds=60),
+        "long_pauses": long_pauses,
         "key_efforts": key_efforts(rows),
         "peaks": peak_summary(rows),
         "hardest_block": (
@@ -447,7 +500,2450 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
     }
     if post_work_blocks:
         brief["post_work_blocks"] = post_work_blocks
+    vt1_watts = result.get("_vt1_watts")
+    outdoor_vt1_requested = bool(result.get("_outdoor_vt1_requested"))
+    indoor_vt1_requested = bool(result.get("_indoor_vt1_requested"))
+    if include_outdoor_vt1 and isinstance(vt1_watts, (int, float)):
+        brief["outdoor_vt1_pacing"] = outdoor_vt1_pacing(
+            rows,
+            vt1_watts=float(vt1_watts),
+            pauses=long_pauses,
+            auto_triggered=not outdoor_vt1_requested,
+        )
+    elif include_outdoor_vt1 and outdoor_vt1_requested:
+        brief["outdoor_vt1_pacing"] = {
+            "error": "missing_vt1_anchor_watts",
+            "message": "Pass --vt1-watts from caller-level preferences.",
+        }
+    if include_indoor_vt1 and isinstance(vt1_watts, (int, float)):
+        brief["indoor_vt1_quality"] = indoor_vt1_quality(
+            rows,
+            work_blocks=work_blocks,
+            vt1_watts=float(vt1_watts),
+            pauses=long_pauses,
+            auto_triggered=not indoor_vt1_requested,
+        )
+    elif include_indoor_vt1 and indoor_vt1_requested:
+        brief["indoor_vt1_quality"] = {
+            "error": "missing_vt1_anchor_watts",
+            "message": "Pass --vt1-watts from caller-level preferences.",
+        }
+    vt2_quality_result = vt2_quality(
+        result["activity"],
+        rows,
+        work_blocks,
+        recoveries,
+        vt2_watts=result.get("_vt2_watts"),
+        beta_stability=beta_stability,
+    )
+    if vt2_quality_result:
+        brief["vt2_quality"] = vt2_quality_result
     return brief
+
+
+def vt2_quality(
+    activity: dict[str, Any],
+    rows: list[dict[str, str]],
+    work_blocks: list[dict[str, Any]],
+    recoveries: list[dict[str, Any]],
+    *,
+    vt2_watts: Any,
+    beta_stability: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Return VT2/threshold-control diagnostics without touching VT1 scoring."""
+
+    candidates = vt2_candidate_blocks(activity, work_blocks, vt2_watts, beta_stability)
+    if not candidates:
+        return None
+
+    blocks = [
+        vt2_block_quality(
+            rows,
+            block,
+            index=index,
+            target_watts=vt2_target_watts(block, vt2_watts),
+            anchor_watts=vt2_watts,
+        )
+        for index, block in candidates
+    ]
+    blocks = [block for block in blocks if block]
+    if not blocks:
+        return None
+
+    ratings = [block.get("combined_score") for block in blocks if isinstance(block.get("combined_score"), (int, float))]
+    heat_adjusted = [
+        block.get("heat_adjusted_response_score")
+        for block in blocks
+        if isinstance(block.get("heat_adjusted_response_score"), (int, float))
+    ]
+    limiter_hints: list[str] = []
+    for block in blocks:
+        limiter_hints.extend(block.get("limiter_hints") or [])
+    best = max(blocks, key=lambda block: block.get("duration_s") or 0)
+
+    return drop_none(
+        {
+            "status": "experimental",
+            "meaning": (
+                "VT2/threshold control diagnostics. Execution and physiological cost are "
+                "scored separately so heat or respiration can explain high cost without "
+                "marking the power control itself as poor."
+            ),
+            "anchor_watts": rounded(vt2_watts, digits=0) if isinstance(vt2_watts, (int, float)) else None,
+            "mode": "trainer" if activity.get("trainer") else "outdoor_or_variable",
+            "block_count": len(blocks),
+            "best_duration_block": best,
+            "avg_combined_score": rounded(sum(ratings) / len(ratings), digits=1) if ratings else None,
+            "avg_heat_adjusted_response_score": (
+                rounded(sum(heat_adjusted) / len(heat_adjusted), digits=1) if heat_adjusted else None
+            ),
+            "limiter_hints": unique(limiter_hints),
+            "blocks": blocks,
+        }
+    )
+
+
+def vt2_candidate_blocks(
+    activity: dict[str, Any],
+    work_blocks: list[dict[str, Any]],
+    vt2_watts: Any,
+    beta_stability: dict[str, Any],
+) -> list[tuple[int, dict[str, Any]]]:
+    name = str(activity.get("name") or "").lower().replace("₂", "2")
+    assessments = beta_stability.get("blocks") or []
+    beta_by_index = {
+        int(assessment.get("n")): assessment
+        for assessment in assessments
+        if isinstance(assessment.get("n"), int)
+    }
+    candidates: list[tuple[int, dict[str, Any]]] = []
+    for index, block in enumerate(work_blocks, start=1):
+        summary = block.get("summary") or {}
+        watts = stat(summary, "watts", "avg", digits=1)
+        duration = block.get("duration_seconds") or 0
+        assessment = beta_by_index.get(index) or {}
+        zone = str(assessment.get("intended_zone") or "")
+        if vt2_candidate_power(watts, vt2_watts, activity_name=name, zone=zone, duration=duration):
+            candidates.append((index, block))
+    return candidates
+
+
+def vt2_candidate_power(
+    watts: Any,
+    vt2_watts: Any,
+    *,
+    activity_name: str,
+    zone: str,
+    duration: Any,
+) -> bool:
+    if not isinstance(watts, (int, float)) or not isinstance(duration, (int, float)):
+        return False
+    if duration < 5 * 60:
+        return False
+    if zone in {"vt2", "vt2_like"}:
+        return True
+    if "vt2" in activity_name and watts >= 250:
+        return True
+    if isinstance(vt2_watts, (int, float)):
+        return vt2_watts - 35 <= watts <= vt2_watts + 25
+    return 260 <= watts <= 320
+
+
+def vt2_target_watts(block: dict[str, Any], vt2_watts: Any) -> float | None:
+    if isinstance(vt2_watts, (int, float)):
+        return float(vt2_watts)
+    watts = stat(block.get("summary") or {}, "watts", "avg", digits=1)
+    return float(watts) if isinstance(watts, (int, float)) else None
+
+
+def vt2_block_quality(
+    rows: list[dict[str, str]],
+    block: dict[str, Any],
+    *,
+    index: int,
+    target_watts: float | None,
+    anchor_watts: Any,
+) -> dict[str, Any] | None:
+    start = block.get("start_index")
+    end = block.get("end_index")
+    if not isinstance(start, int) or not isinstance(end, int) or end <= start:
+        return None
+    segment = rows[start:end]
+    pedaling = [row for row in segment if outdoor_pedaling_row(row)]
+    if len(pedaling) < 5 * 60:
+        return None
+
+    stats = indoor_segment_stats(pedaling)
+    summary = block.get("summary") or {}
+    drift = block.get("drift") or {}
+    relative_drift = block.get("relative_to_power_drift") or {}
+    watts_avg = stat(summary, "watts", "avg", digits=1)
+    watts_max = stat(summary, "watts", "max", digits=0)
+    duration_s = rounded(block.get("duration_seconds"), digits=0)
+    stability = vt2_power_stability(segment, target_watts)
+    response = vt2_response_scores(
+        hr_per_w_drift=relative_drift.get("heartrate"),
+        ve_per_w_drift=relative_drift.get("tidal_volume_min"),
+        br_per_w_drift=relative_drift.get("respiration"),
+        smo2_min=stat(summary, "smo2", "min", digits=1),
+        smo2_drift=drift.get("smo2"),
+        core_temp_max=stat(summary, "core_temperature", "max", digits=2),
+        core_temp_drift=drift.get("core_temperature"),
+        vt_drift=drift.get("tidal_volume"),
+    )
+    recovery = hr_recovery_after_block(rows, block)
+    recovery_score = vt2_recovery_score(recovery)
+    execution_score = stability.get("execution_score")
+    response_score = response.get("response_score")
+    heat_adjusted = response.get("heat_adjusted_response_score")
+    combined_score = None
+    if isinstance(execution_score, (int, float)) and isinstance(response_score, (int, float)):
+        recovery_component = recovery_score if isinstance(recovery_score, (int, float)) else response_score
+        combined_score = clamp(execution_score * 0.45 + response_score * 0.40 + recovery_component * 0.15, 0, 100)
+
+    limiter_hints = []
+    limiter_hints.extend(stability.get("limiter_hints") or [])
+    limiter_hints.extend(response.get("limiter_hints") or [])
+    if isinstance(recovery_score, (int, float)) and recovery_score < 60:
+        limiter_hints.append("slow_hr_recovery")
+
+    return drop_none(
+        {
+            "n": index,
+            "label": brief_block_label(block, index=index),
+            "duration_s": duration_s,
+            "target_watts": rounded(target_watts, digits=0),
+            "target_source": "vt2_anchor" if isinstance(anchor_watts, (int, float)) else "block_average",
+            "watts_avg": rounded(watts_avg, digits=0),
+            "watts_max": watts_max,
+            "execution_score": execution_score,
+            "response_score": response_score,
+            "heat_adjusted_response_score": heat_adjusted,
+            "recovery_score": recovery_score,
+            "combined_score": rounded(combined_score, digits=1),
+            "rating": vt2_score_rating(combined_score) if isinstance(combined_score, (int, float)) else None,
+            "verdict": vt2_verdict(stability, response, combined_score),
+            "limiter_hints": unique(limiter_hints) or ["stable"],
+            "power_control": stability,
+            "physiology": drop_none(
+                {
+                    **response,
+                    "hr_avg": stat(summary, "heartrate", "avg", digits=0),
+                    "hr_max": stat(summary, "heartrate", "max", digits=0),
+                    "ve_avg": stat(summary, "tidal_volume_min", "avg", digits=1),
+                    "ve_max": stat(summary, "tidal_volume_min", "max", digits=1),
+                    "br_avg": stat(summary, "respiration", "avg", digits=1),
+                    "br_max": stat(summary, "respiration", "max", digits=1),
+                    "vt_avg": stat(summary, "tidal_volume", "avg", digits=0),
+                    "smo2_avg": stat(summary, "smo2", "avg", digits=1),
+                    "core_temp_avg": stat(summary, "core_temperature", "avg", digits=2),
+                }
+            ),
+            "recovery": recovery,
+            "segment_stats": stats,
+        }
+    )
+
+
+def vt2_power_stability(
+    rows: list[dict[str, str]],
+    target_watts: float | None,
+) -> dict[str, Any]:
+    watts = [sample for row in rows if (sample := value(row, "watts")) is not None]
+    if not watts:
+        return {}
+    avg_w = sum(watts) / len(watts)
+    target = target_watts if isinstance(target_watts, (int, float)) else avg_w
+    within_10 = pct_watts_between(watts, target - 10, target + 10)
+    within_20 = pct_watts_between(watts, target - 20, target + 20)
+    below_20 = pct_watts_below(watts, target - 20)
+    above_20 = pct_watts_above(watts, target + 20)
+    avg_delta = avg_w - target
+    penalty = min(30, abs(avg_delta) * 1.2)
+    if isinstance(within_20, (int, float)):
+        penalty += max(0, 75 - within_20) * 0.45
+    if isinstance(above_20, (int, float)):
+        penalty += above_20 * 0.12
+    if isinstance(below_20, (int, float)):
+        penalty += below_20 * 0.08
+    score = clamp(100 - penalty, 0, 100)
+    limiter_hints = []
+    if abs(avg_delta) > 15:
+        limiter_hints.append("target_mismatch")
+    if isinstance(within_20, (int, float)) and within_20 < 65:
+        limiter_hints.append("variable_power")
+    return drop_none(
+        {
+            "avg_w": rounded(avg_w, digits=0),
+            "target_watts": rounded(target, digits=0),
+            "avg_delta_w": rounded(avg_delta, digits=0),
+            "pct_within_target_10w": rounded(within_10, digits=1),
+            "pct_within_target_20w": rounded(within_20, digits=1),
+            "pct_below_target_minus_20w": rounded(below_20, digits=1),
+            "pct_above_target_plus_20w": rounded(above_20, digits=1),
+            "execution_score": rounded(score, digits=1),
+            "limiter_hints": limiter_hints,
+        }
+    )
+
+
+def vt2_response_scores(
+    *,
+    hr_per_w_drift: Any,
+    ve_per_w_drift: Any,
+    br_per_w_drift: Any,
+    smo2_min: Any,
+    smo2_drift: Any,
+    core_temp_max: Any,
+    core_temp_drift: Any,
+    vt_drift: Any,
+) -> dict[str, Any]:
+    penalty = 0.0
+    heat_penalty = 0.0
+    limiter_hints: list[str] = []
+    watch_notes: list[str] = []
+
+    if isinstance(hr_per_w_drift, (int, float)) and hr_per_w_drift > 4:
+        amount = min(25, (hr_per_w_drift - 4) * 2.5)
+        penalty += amount
+        limiter_hints.append("cardiac_drift" if hr_per_w_drift > 8 else "cardiac_drift_watch")
+    if isinstance(ve_per_w_drift, (int, float)) and ve_per_w_drift > 6:
+        amount = min(25, (ve_per_w_drift - 6) * 2.0)
+        penalty += amount
+        limiter_hints.append("ventilation_drift" if ve_per_w_drift > 12 else "ventilation_drift_watch")
+    if isinstance(br_per_w_drift, (int, float)) and br_per_w_drift > 8:
+        amount = min(20, (br_per_w_drift - 8) * 1.8)
+        penalty += amount
+        limiter_hints.append("breathing_rate_drift" if br_per_w_drift > 14 else "breathing_rate_drift_watch")
+    if isinstance(smo2_min, (int, float)):
+        if smo2_min < 10:
+            penalty += 12
+            limiter_hints.append("very_low_smo2")
+        elif smo2_min < 18:
+            penalty += 6
+            watch_notes.append("low_smo2")
+    if isinstance(smo2_drift, (int, float)) and smo2_drift < -4:
+        penalty += min(12, abs(smo2_drift) * 1.5)
+        limiter_hints.append("falling_smo2")
+    if isinstance(vt_drift, (int, float)) and vt_drift < -12:
+        penalty += min(10, abs(vt_drift + 12) * 0.7)
+        limiter_hints.append("falling_tidal_volume")
+    if isinstance(core_temp_max, (int, float)):
+        if core_temp_max >= 38.3:
+            heat_penalty += 14
+            limiter_hints.append("heat_cost")
+        elif core_temp_max >= 38.0:
+            heat_penalty += 8
+            watch_notes.append("heat_cost_watch")
+    if isinstance(core_temp_drift, (int, float)) and core_temp_drift > 0.4:
+        heat_penalty += min(10, (core_temp_drift - 0.4) * 20)
+        if "heat_cost" not in limiter_hints:
+            limiter_hints.append("heat_cost")
+
+    raw_penalty = penalty + heat_penalty
+    response_score = clamp(100 - raw_penalty, 0, 100)
+    heat_adjusted_score = clamp(100 - penalty - heat_penalty * 0.35, 0, 100)
+    return drop_none(
+        {
+            "response_score": rounded(response_score, digits=1),
+            "heat_adjusted_response_score": rounded(heat_adjusted_score, digits=1),
+            "heat_penalty_points": rounded(heat_penalty, digits=1),
+            "hr_per_watt_drift_pct": rounded(hr_per_w_drift, digits=1),
+            "ve_per_watt_drift_pct": rounded(ve_per_w_drift, digits=1),
+            "br_per_watt_drift_pct": rounded(br_per_w_drift, digits=1),
+            "smo2_min": rounded(smo2_min, digits=1),
+            "smo2_drift": rounded(smo2_drift, digits=1),
+            "vt_drift": rounded(vt_drift, digits=1),
+            "core_temp_max": rounded(core_temp_max, digits=2),
+            "core_temp_drift": rounded(core_temp_drift, digits=2),
+            "limiter_hints": unique(limiter_hints),
+            "watch_notes": unique(watch_notes),
+        }
+    )
+
+
+def vt2_recovery_score(recovery: dict[str, Any] | None) -> float | None:
+    if not recovery:
+        return None
+    drop = recovery.get("drop_bpm")
+    if not isinstance(drop, (int, float)):
+        return None
+    if drop >= 30:
+        return 100.0
+    if drop >= 20:
+        return 85.0
+    if drop >= 12:
+        return 65.0
+    return 45.0
+
+
+def vt2_verdict(
+    stability: dict[str, Any],
+    response: dict[str, Any],
+    combined_score: float | None,
+) -> str | None:
+    execution = stability.get("execution_score")
+    heat_penalty = response.get("heat_penalty_points")
+    heat_adjusted = response.get("heat_adjusted_response_score")
+    raw_response = response.get("response_score")
+    if not isinstance(combined_score, (int, float)):
+        return None
+    if isinstance(execution, (int, float)) and execution < 65:
+        return "variable_or_off_target_vt2"
+    if (
+        isinstance(heat_penalty, (int, float))
+        and heat_penalty >= 8
+        and isinstance(heat_adjusted, (int, float))
+        and isinstance(raw_response, (int, float))
+        and heat_adjusted - raw_response >= 5
+    ):
+        return "heat_limited_controlled_vt2"
+    if combined_score >= 82:
+        return "controlled_vt2"
+    if combined_score >= 68:
+        return "controlled_high_cost_vt2"
+    if combined_score >= 55:
+        return "near_upper_control_limit"
+    return "above_control_limit"
+
+
+def vt2_score_rating(score: float | None) -> str | None:
+    if not isinstance(score, (int, float)):
+        return None
+    if score >= 88:
+        return "A"
+    if score >= 78:
+        return "B"
+    if score >= 68:
+        return "C"
+    if score >= 58:
+        return "D"
+    return "E"
+
+
+def should_include_indoor_vt1(
+    activity: dict[str, Any],
+    rows: list[dict[str, str]],
+    *,
+    force: bool,
+    disabled: bool,
+) -> bool:
+    """Return true when a brief result should include indoor VT1 quality."""
+
+    if force:
+        return True
+    if disabled:
+        return False
+    name = str(activity.get("name") or "").lower().replace("₂", "2")
+    if "vt1" not in name:
+        return False
+    if any(token in name for token in ("vo2", "vt2", "anaerob", "sprint")):
+        return False
+    if not is_indoor_activity(activity, rows):
+        return False
+    moving_time = activity.get("moving_time")
+    elapsed_time = activity.get("elapsed_time")
+    duration = moving_time if isinstance(moving_time, (int, float)) else elapsed_time
+    if not isinstance(duration, (int, float)) or duration < 20 * 60:
+        return False
+    intensity = activity.get("icu_intensity")
+    if isinstance(intensity, (int, float)) and intensity > 75:
+        return False
+    return True
+
+
+def is_indoor_activity(activity: dict[str, Any], rows: list[dict[str, str]]) -> bool:
+    if activity.get("trainer") is True:
+        return True
+    if str(activity.get("type") or "").lower() == "virtualride" and not has_gps_like_stream(rows):
+        return True
+    return False
+
+
+def should_include_outdoor_vt1(
+    activity: dict[str, Any],
+    rows: list[dict[str, str]],
+    *,
+    force: bool,
+    disabled: bool,
+) -> bool:
+    """Return true when a brief result should include outdoor endurance pacing."""
+
+    if force:
+        return True
+    if disabled:
+        return False
+    if str(activity.get("type") or "").lower() not in {"ride", "virtualride"}:
+        return False
+    name = str(activity.get("name") or "").lower().replace("₂", "2")
+    if any(token in name for token in ("vo2", "vt2", "anaerob", "sprint")):
+        return False
+    moving_time = activity.get("moving_time")
+    if not isinstance(moving_time, (int, float)) or moving_time < 90 * 60:
+        return False
+    intensity = activity.get("icu_intensity")
+    if isinstance(intensity, (int, float)) and intensity > 78:
+        return False
+    return has_gps_like_stream(rows)
+
+
+def has_gps_like_stream(rows: list[dict[str, str]]) -> bool:
+    gps_rows = 0
+    for row in rows:
+        if value(row, "distance") is None:
+            continue
+        if value(row, "altitude") is None and value(row, "velocity_smooth") is None:
+            continue
+        gps_rows += 1
+        if gps_rows >= 60:
+            return True
+    return False
+
+
+def indoor_vt1_quality(
+    rows: list[dict[str, str]],
+    *,
+    work_blocks: list[dict[str, Any]] | None = None,
+    vt1_watts: float,
+    pauses: list[dict[str, Any]],
+    auto_triggered: bool,
+) -> dict[str, Any]:
+    """Return indoor VT1 quality diagnostics for steady trainer work."""
+
+    pause_ranges = [
+        (int(pause.get("start_s") or 0), int(pause.get("end_s") or 0))
+        for pause in pauses
+        if pause.get("start_s") is not None and pause.get("end_s") is not None
+    ]
+    moving_rows = [row for row in rows if outdoor_moving_row(row, pause_ranges)]
+    analysis_rows, analysis_window = indoor_vt1_analysis_rows(
+        rows,
+        moving_rows=moving_rows,
+        work_blocks=work_blocks or [],
+        vt1_watts=vt1_watts,
+    )
+    analysis_moving_rows = [
+        row for row in analysis_rows if outdoor_moving_row(row, pause_ranges)
+    ]
+    pedaling_rows = [row for row in analysis_moving_rows if outdoor_pedaling_row(row)]
+    vt1_stability_rows = indoor_vt1_power_window_rows(pedaling_rows, vt1_watts)
+    caps = indoor_vt1_caps(vt1_watts)
+    rolling = {
+        "30s": rolling_power_by_time(analysis_rows, 30, pause_ranges),
+        "60s": rolling_power_by_time(analysis_rows, 60, pause_ranges),
+    }
+    first, middle, final = split_rows_by_count(pedaling_rows, parts=3)
+    vt1_first, vt1_middle, vt1_final = split_rows_by_count(vt1_stability_rows, parts=3)
+    segment_stats = {
+        "first_third": indoor_segment_stats(first),
+        "middle_third": indoor_segment_stats(middle),
+        "final_third": indoor_segment_stats(final),
+    }
+    vt1_segment_stats = {
+        "first_third": indoor_segment_stats(vt1_first),
+        "middle_third": indoor_segment_stats(vt1_middle),
+        "final_third": indoor_segment_stats(vt1_final),
+    }
+    stability = indoor_stability(vt1_first, vt1_final)
+    assessment = indoor_vt1_assessment(
+        vt1_watts=vt1_watts,
+        rolling_60=rolling["60s"],
+        moving_rows=analysis_moving_rows,
+        pedaling_rows=pedaling_rows,
+        stability=stability,
+    )
+
+    return drop_none(
+        {
+            "vt1_watts": rounded(vt1_watts, digits=0),
+            "caps_watts": caps,
+            "auto_triggered": auto_triggered,
+            "analysis_window": analysis_window,
+            "duration": {
+                "moving_min": rounded(len(analysis_moving_rows) / 60, digits=1),
+                "pedaling_min": rounded(len(pedaling_rows) / 60, digits=1),
+                "vt1_stability_min": rounded(len(vt1_stability_rows) / 60, digits=1),
+            },
+            "power_control": indoor_power_control(pedaling_rows, vt1_watts),
+            "rolling_power_cap_compliance": {
+                window: {
+                    str(cap): rolling_cap_summary(
+                        series,
+                        analysis_rows,
+                        analysis_moving_rows,
+                        pedaling_rows,
+                        cap,
+                        pause_ranges,
+                    )
+                    for cap in caps
+                    if cap >= vt1_watts
+                }
+                for window, series in rolling.items()
+            },
+            "segment_stability": segment_stats,
+            "vt1_filtered_segment_stability": vt1_segment_stats,
+            "drift": stability,
+            "assessment": assessment,
+        }
+    )
+
+
+def indoor_vt1_analysis_rows(
+    rows: list[dict[str, str]],
+    *,
+    moving_rows: list[dict[str, str]],
+    work_blocks: list[dict[str, Any]],
+    vt1_watts: float,
+) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    work_rows = indoor_vt1_rows_from_work_blocks(rows, work_blocks, vt1_watts)
+    if work_rows:
+        return work_rows
+
+    detected_rows = detect_indoor_vt1_power_segment(rows, moving_rows, vt1_watts)
+    if detected_rows:
+        return detected_rows
+
+    return moving_rows, {
+        "source": "full_moving_window_fallback",
+        "start_s": rounded(row_time_value(moving_rows[0]), digits=0) if moving_rows else None,
+        "end_s": rounded(row_time_value(moving_rows[-1]), digits=0) if moving_rows else None,
+        "duration_min": rounded(len(moving_rows) / 60, digits=1),
+        "meaning": "No usable WORK interval or steady VT1 segment was found.",
+    }
+
+
+def indoor_vt1_rows_from_work_blocks(
+    rows: list[dict[str, str]],
+    work_blocks: list[dict[str, Any]],
+    vt1_watts: float,
+) -> tuple[list[dict[str, str]], dict[str, Any]] | None:
+    candidates = [
+        block
+        for block in work_blocks
+        if indoor_vt1_work_block_candidate(block, vt1_watts)
+    ]
+    if not candidates:
+        return None
+    starts = [block.get("start_index") for block in candidates]
+    ends = [block.get("end_index") for block in candidates]
+    if not all(isinstance(index, int) for index in starts + ends):
+        return None
+    start = max(0, min(starts))
+    end = min(len(rows), max(ends))
+    if end <= start:
+        return None
+    selected = rows[start:end]
+    pedaling_min = len([row for row in selected if outdoor_pedaling_row(row)]) / 60
+    if pedaling_min < 20:
+        return None
+    return selected, {
+        "source": "work_intervals",
+        "work_interval_count": len(candidates),
+        "start_s": rounded(row_time(rows, start), digits=0),
+        "end_s": rounded(row_time(rows, end - 1), digits=0),
+        "duration_min": rounded(len(selected) / 60, digits=1),
+        "meaning": "Indoor VT1 metrics are computed from matching WORK interval rows.",
+    }
+
+
+def indoor_vt1_work_block_candidate(block: dict[str, Any], vt1_watts: float) -> bool:
+    start = block.get("start_index")
+    end = block.get("end_index")
+    if not isinstance(start, int) or not isinstance(end, int) or end <= start:
+        return False
+    duration = block.get("duration_seconds")
+    if isinstance(duration, (int, float)) and duration < 10 * 60:
+        return False
+    watts = stat(block.get("summary") or {}, "watts", "avg", digits=1)
+    if not isinstance(watts, (int, float)):
+        return False
+    return vt1_watts - 20 <= watts <= vt1_watts + 15
+
+
+def detect_indoor_vt1_power_segment(
+    rows: list[dict[str, str]],
+    moving_rows: list[dict[str, str]],
+    vt1_watts: float,
+    *,
+    tolerance_watts: float = 10,
+    max_gap_seconds: int = 30,
+    min_duration_seconds: int = 20 * 60,
+) -> tuple[list[dict[str, str]], dict[str, Any]] | None:
+    moving_ids = {id(row) for row in moving_rows}
+    lower = vt1_watts - tolerance_watts
+    upper = vt1_watts + tolerance_watts
+    best: tuple[int, int, int] | None = None
+    start: int | None = None
+    last_good: int | None = None
+    gap = 0
+
+    for index, row in enumerate(rows):
+        watts = value(row, "watts")
+        good = (
+            id(row) in moving_ids
+            and watts is not None
+            and lower <= watts <= upper
+            and outdoor_pedaling_row(row)
+        )
+        if good:
+            if start is None:
+                start = index
+            last_good = index
+            gap = 0
+            continue
+        if start is None:
+            continue
+        gap += 1
+        if gap <= max_gap_seconds:
+            continue
+        if last_good is not None:
+            candidate = (last_good - start + 1, start, last_good)
+            if best is None or candidate[0] > best[0]:
+                best = candidate
+        start = None
+        last_good = None
+        gap = 0
+
+    if start is not None and last_good is not None:
+        candidate = (last_good - start + 1, start, last_good)
+        if best is None or candidate[0] > best[0]:
+            best = candidate
+
+    if best is None or best[0] < min_duration_seconds:
+        return None
+
+    _, start_index, end_index = best
+    selected = rows[start_index : end_index + 1]
+    return selected, {
+        "source": "detected_steady_vt1_power_segment",
+        "target_window_watts": [rounded(lower, digits=0), rounded(upper, digits=0)],
+        "max_gap_seconds": max_gap_seconds,
+        "start_s": rounded(row_time(rows, start_index), digits=0),
+        "end_s": rounded(row_time(rows, end_index), digits=0),
+        "duration_min": rounded(len(selected) / 60, digits=1),
+        "meaning": "Indoor VT1 metrics are computed from the longest steady power segment near the VT1 target.",
+    }
+
+
+def indoor_vt1_power_window_rows(
+    rows: list[dict[str, str]],
+    vt1_watts: float,
+) -> list[dict[str, str]]:
+    lower = vt1_watts - 20
+    upper = vt1_watts + 10
+    filtered = [
+        row
+        for row in rows
+        if (watts := value(row, "watts")) is not None and lower <= watts <= upper
+    ]
+    return filtered or rows
+
+
+def indoor_vt1_caps(vt1_watts: float) -> list[int]:
+    return [round(vt1_watts + offset) for offset in (-10, 0, 10, 20, 30, 50)]
+
+
+def indoor_power_control(rows: list[dict[str, str]], vt1_watts: float) -> dict[str, Any]:
+    watts = [sample for row in rows if (sample := value(row, "watts")) is not None]
+    if not watts:
+        return {}
+    within_10 = sum(1 for sample in watts if abs(sample - vt1_watts) <= 10)
+    below_10 = sum(1 for sample in watts if sample < vt1_watts - 10)
+    above_10 = sum(1 for sample in watts if sample > vt1_watts + 10)
+    above_20 = sum(1 for sample in watts if sample > vt1_watts + 20)
+    return {
+        "avg_w": rounded(sum(watts) / len(watts), digits=0),
+        "pct_within_vt1_10w": rounded(within_10 / len(watts) * 100, digits=1),
+        "pct_below_vt1_minus_10w": rounded(below_10 / len(watts) * 100, digits=1),
+        "pct_above_vt1_plus_10w": rounded(above_10 / len(watts) * 100, digits=1),
+        "pct_above_vt1_plus_20w": rounded(above_20 / len(watts) * 100, digits=1),
+    }
+
+
+def split_rows_by_count(
+    rows: list[dict[str, str]],
+    *,
+    parts: int,
+) -> list[list[dict[str, str]]]:
+    if parts <= 0:
+        return []
+    if not rows:
+        return [[] for _ in range(parts)]
+    size = len(rows)
+    return [
+        rows[round(size * index / parts): round(size * (index + 1) / parts)]
+        for index in range(parts)
+    ]
+
+
+def indoor_segment_stats(segment: list[dict[str, str]]) -> dict[str, Any]:
+    stats = outdoor_segment_stats(segment)
+    watts = average_field(segment, "watts")
+    hr = average_field(segment, "heartrate")
+    ve = average_field(segment, "tidal_volume_min")
+    br = average_field(segment, "respiration")
+    vt = average_field(segment, "tidal_volume")
+    return drop_none(
+        {
+            **stats,
+            "hr_per_w": rounded(hr / watts, digits=3) if hr and watts else None,
+            "ve_per_w": rounded(ve / watts, digits=3) if ve and watts else None,
+            "br_per_w": rounded(br / watts, digits=3) if br and watts else None,
+            "vt_avg": rounded(vt, digits=0),
+            "core_avg": rounded(average_field(segment, "core_temperature"), digits=2),
+        }
+    )
+
+
+def indoor_stability(
+    first: list[dict[str, str]],
+    final: list[dict[str, str]],
+) -> dict[str, Any]:
+    first_stats = indoor_segment_stats(first)
+    final_stats = indoor_segment_stats(final)
+    return drop_none(
+        {
+            "hr_per_w_delta_pct": pct_delta(
+                first_stats.get("hr_per_w"),
+                final_stats.get("hr_per_w"),
+            ),
+            "ve_per_w_delta_pct": pct_delta(
+                first_stats.get("ve_per_w"),
+                final_stats.get("ve_per_w"),
+            ),
+            "br_per_w_delta_pct": pct_delta(
+                first_stats.get("br_per_w"),
+                final_stats.get("br_per_w"),
+            ),
+            "w_per_hr_delta_pct": pct_delta(
+                first_stats.get("w_per_hr"),
+                final_stats.get("w_per_hr"),
+            ),
+            "core_temp_delta_c": rounded(
+                final_stats.get("core_avg") - first_stats.get("core_avg"),
+                digits=2,
+            )
+            if isinstance(first_stats.get("core_avg"), (int, float))
+            and isinstance(final_stats.get("core_avg"), (int, float))
+            else None,
+            "watts_delta": rounded(
+                final_stats.get("avg_w") - first_stats.get("avg_w"),
+                digits=0,
+            )
+            if isinstance(first_stats.get("avg_w"), (int, float))
+            and isinstance(final_stats.get("avg_w"), (int, float))
+            else None,
+        }
+    )
+
+
+def pct_delta(start: Any, end: Any) -> float | int | None:
+    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or start == 0:
+        return None
+    return rounded(((end / start) - 1) * 100, digits=1)
+
+
+def indoor_vt1_assessment(
+    *,
+    vt1_watts: float,
+    rolling_60: dict[int, float | None],
+    moving_rows: list[dict[str, str]],
+    pedaling_rows: list[dict[str, str]],
+    stability: dict[str, Any],
+) -> dict[str, Any]:
+    cap10 = round(vt1_watts + 10)
+    cap20 = round(vt1_watts + 20)
+    cap30 = round(vt1_watts + 30)
+    cap50 = round(vt1_watts + 50)
+    cap10_pct = rolling_time_over(rolling_60, pedaling_rows, cap10).get("pct") or 0
+    cap20_min = rolling_time_over(rolling_60, moving_rows, cap20).get("min") or 0
+    cap30_min = rolling_time_over(rolling_60, moving_rows, cap30).get("min") or 0
+    cap50_min = rolling_time_over(rolling_60, moving_rows, cap50).get("min") or 0
+    duration_min = len(pedaling_rows) / 60
+    hr_drift = stability.get("hr_per_w_delta_pct")
+    ve_drift = stability.get("ve_per_w_delta_pct")
+    br_drift = stability.get("br_per_w_delta_pct")
+    core_delta = stability.get("core_temp_delta_c")
+    core_max = max_field(pedaling_rows, "core_temperature")
+
+    score = 0
+    limiter_hints: list[str] = []
+    watch_notes: list[str] = []
+    notes: list[str] = []
+
+    if cap50_min > 1 or cap30_min > max(3, duration_min * 0.03):
+        score += 2
+        limiter_hints.append("power_above_vt1")
+    elif cap20_min > max(5, duration_min * 0.08) or cap10_pct > 30:
+        score += 1
+        limiter_hints.append("upper_vt1_power")
+
+    if isinstance(hr_drift, (int, float)):
+        if hr_drift > 6:
+            score += 2
+            limiter_hints.append("cardiac_drift")
+        elif hr_drift > 3:
+            score += 1
+            watch_notes.append("cardiac_drift_watch")
+        notes.append(f"HR/W drift {hr_drift:.1f}%")
+
+    if isinstance(ve_drift, (int, float)):
+        if ve_drift > 12:
+            score += 2
+            limiter_hints.append("ventilation_drift")
+        elif ve_drift > 6:
+            score += 1
+            watch_notes.append("ventilation_drift_watch")
+        notes.append(f"VE/W drift {ve_drift:.1f}%")
+
+    if isinstance(br_drift, (int, float)):
+        if br_drift > 10:
+            if not any("ventilation" in hint for hint in limiter_hints):
+                score += 1
+                limiter_hints.append("breathing_rate_drift")
+            else:
+                watch_notes.append("breathing_rate_drift_watch")
+        notes.append(f"BR/W drift {br_drift:.1f}%")
+
+    if isinstance(core_max, (int, float)):
+        if core_max >= 38.3:
+            score += 2
+            limiter_hints.append("heat_cost")
+        elif core_max >= 38.0 or (
+            core_max >= 37.9
+            and isinstance(core_delta, (int, float))
+            and core_delta > 0.5
+        ):
+            score += 1
+            watch_notes.append("heat_cost_watch")
+        notes.append(f"core max {core_max:.2f} C")
+
+    if cap10_pct:
+        notes.append(f"60s power over VT1+10 for {cap10_pct:.1f}% of pedaling time")
+    if cap30_min:
+        notes.append(f"60s power over VT1+30 for {cap30_min:.1f} min")
+
+    if duration_min >= 150 and score == 1:
+        score = 0
+        notes.append("duration-adjusted: small drift accepted for long VT1")
+
+    if score <= 0:
+        rating = "A"
+        verdict = "controlled_indoor_vt1"
+    elif score == 1:
+        rating = "A-"
+        verdict = "controlled_with_minor_cost"
+    elif score == 2:
+        rating = "B"
+        verdict = "controlled_but_costly"
+    elif score <= 4:
+        rating = "C"
+        verdict = "too_costly_for_clean_vt1"
+    else:
+        rating = "D"
+        verdict = "likely_above_vt1_or_poorly_controlled"
+
+    if not limiter_hints and score > 0:
+        limiter_hints.append("combined_sensor_drift")
+    elif not limiter_hints:
+        limiter_hints.append("stable")
+
+    return {
+        "rating": rating,
+        "verdict": verdict,
+        "limiter_hints": unique(limiter_hints),
+        "watch_notes": unique(watch_notes),
+        "score": score,
+        "notes": notes,
+    }
+
+
+def unique(values: list[str]) -> list[str]:
+    seen = set()
+    result = []
+    for value_ in values:
+        if value_ in seen:
+            continue
+        seen.add(value_)
+        result.append(value_)
+    return result
+
+
+def outdoor_vt1_pacing(
+    rows: list[dict[str, str]],
+    *,
+    vt1_watts: float,
+    pauses: list[dict[str, Any]],
+    auto_triggered: bool,
+) -> dict[str, Any]:
+    """Return outdoor VT1/endurance pacing diagnostics for variable terrain."""
+
+    pause_ranges = [
+        (int(pause.get("start_s") or 0), int(pause.get("end_s") or 0))
+        for pause in pauses
+        if pause.get("start_s") is not None and pause.get("end_s") is not None
+    ]
+    moving_rows = [row for row in rows if outdoor_moving_row(row, pause_ranges)]
+    pedaling_rows = [row for row in moving_rows if outdoor_pedaling_row(row)]
+    caps = outdoor_vt1_caps(vt1_watts)
+    rolling = {
+        "30s": rolling_power_by_time(rows, 30, pause_ranges),
+        "60s": rolling_power_by_time(rows, 60, pause_ranges),
+    }
+    rolling_compliance = {
+        window: {
+            str(cap): rolling_cap_summary(
+                series,
+                rows,
+                moving_rows,
+                pedaling_rows,
+                cap,
+                pause_ranges,
+            )
+            for cap in caps
+        }
+        for window, series in rolling.items()
+    }
+    climbs = detect_outdoor_climbs(rows, pause_ranges)
+    climb_times = {
+        second
+        for climb in climbs
+        for second in range(int(climb["start_s"]), int(climb["end_s"]) + 1)
+    }
+    climb_rows = [row for row in moving_rows if int(row_time_value(row) or -1) in climb_times]
+    nonclimb_rows = [row for row in moving_rows if int(row_time_value(row) or -1) not in climb_times]
+    post_pause = post_pause_reset(rows, pause_ranges)
+    matched_drift = matched_power_drift(pedaling_rows, vt1_watts=vt1_watts)
+    experimental_metrics = outdoor_vt1_experimental_metrics(
+        rows=rows,
+        pedaling_rows=pedaling_rows,
+        rolling_30=rolling["30s"],
+        rolling_60=rolling["60s"],
+        pause_ranges=pause_ranges,
+        vt1_watts=vt1_watts,
+    )
+    quality_scores = outdoor_vt1_quality_scores(
+        pedaling_rows=pedaling_rows,
+        moving_rows=moving_rows,
+        rolling_60_compliance=rolling_compliance.get("60s") or {},
+        vt1_watts=vt1_watts,
+        matched_drift=matched_drift,
+    )
+    assessment = outdoor_vt1_assessment(
+        vt1_watts=vt1_watts,
+        rolling_60=rolling["60s"],
+        moving_rows=moving_rows,
+        pedaling_rows=pedaling_rows,
+        post_pause=post_pause,
+    )
+
+    return drop_none(
+        {
+            "vt1_watts": rounded(vt1_watts, digits=0),
+            "caps_watts": caps,
+            "auto_triggered": auto_triggered,
+            "duration": {
+                "moving_min": rounded(len(moving_rows) / 60, digits=1),
+                "pedaling_min": rounded(len(pedaling_rows) / 60, digits=1),
+            },
+            "pedaling_normalized": outdoor_pedaling_normalized(moving_rows, pedaling_rows, vt1_watts),
+            "rolling_power_cap_compliance": rolling_compliance,
+            "climbs": {
+                "count": len(climbs),
+                "total_moving_min": rounded(
+                    sum((climb["end_s"] - climb["start_s"] + 1) for climb in climbs) / 60,
+                    digits=1,
+                ),
+                "total_gain_m": rounded(
+                    sum(climb.get("pos_gain_m") or 0 for climb in climbs),
+                    digits=0,
+                ),
+                "top_by_duration": sorted(
+                    climbs,
+                    key=lambda climb: climb.get("duration_s") or 0,
+                    reverse=True,
+                )[:10],
+            },
+            "climb_vs_nonclimb": {
+                "climb": outdoor_segment_stats(climb_rows),
+                "nonclimb": outdoor_segment_stats(nonclimb_rows),
+            },
+            "post_pause_reset": post_pause,
+            "matched_power_drift": matched_drift,
+            "experimental_metrics": experimental_metrics,
+            "quality_scores": quality_scores,
+            "training_characterization": outdoor_endurance_characterization(
+                assessment=assessment,
+                quality_scores=quality_scores,
+                rolling_60_compliance=rolling_compliance.get("60s") or {},
+                climbs=climbs,
+                pedaling_rows=pedaling_rows,
+                moving_rows=moving_rows,
+                vt1_watts=vt1_watts,
+                matched_drift=matched_drift,
+            ),
+            "assessment": assessment,
+        }
+    )
+
+
+def outdoor_vt1_experimental_metrics(
+    *,
+    rows: list[dict[str, str]],
+    pedaling_rows: list[dict[str, str]],
+    rolling_30: dict[int, float | None],
+    rolling_60: dict[int, float | None],
+    pause_ranges: list[tuple[int, int]],
+    vt1_watts: float,
+) -> dict[str, Any]:
+    return drop_none(
+        {
+            "best_continuous_vt1_blocks": outdoor_best_continuous_vt1_blocks(
+                rows,
+                pause_ranges=pause_ranges,
+                vt1_watts=vt1_watts,
+            ),
+            "power_bin_physiology": outdoor_power_bin_physiology(pedaling_rows, vt1_watts),
+            "late_session_control": outdoor_late_session_control(
+                pedaling_rows,
+                rolling_60=rolling_60,
+                vt1_watts=vt1_watts,
+            ),
+            "traffic_restart_spikes": outdoor_traffic_restart_spikes(
+                rows,
+                rolling_30=rolling_30,
+                pause_ranges=pause_ranges,
+                vt1_watts=vt1_watts,
+            ),
+            "smo2_response": outdoor_smo2_response(pedaling_rows, vt1_watts),
+            "spike_aftereffects": outdoor_spike_aftereffects(
+                rows,
+                rolling_60=rolling_60,
+                pause_ranges=pause_ranges,
+                vt1_watts=vt1_watts,
+            ),
+        }
+    )
+
+
+def outdoor_best_continuous_vt1_blocks(
+    rows: list[dict[str, str]],
+    *,
+    pause_ranges: list[tuple[int, int]],
+    vt1_watts: float,
+    durations_min: tuple[int, ...] = (60, 90, 120, 150),
+    step_seconds: int = 60,
+) -> dict[str, Any]:
+    moving_rows = [row for row in rows if outdoor_moving_row(row, pause_ranges)]
+    if not moving_rows:
+        return {}
+    rolling_60 = rolling_power_by_time(rows, 60, pause_ranges)
+    by_duration = []
+    for duration_min in durations_min:
+        duration_seconds = duration_min * 60
+        if len(moving_rows) < duration_seconds:
+            continue
+        best = best_continuous_vt1_block_for_duration(
+            rows,
+            moving_rows=moving_rows,
+            rolling_60=rolling_60,
+            duration_seconds=duration_seconds,
+            step_seconds=step_seconds,
+            vt1_watts=vt1_watts,
+        )
+        if best:
+            by_duration.append(best)
+    return drop_none(
+        {
+            "duration_options_min": list(durations_min),
+            "step_seconds": step_seconds,
+            "best_by_duration": by_duration,
+        }
+    )
+
+
+def best_continuous_vt1_block_for_duration(
+    rows: list[dict[str, str]],
+    *,
+    moving_rows: list[dict[str, str]],
+    rolling_60: dict[int, float | None],
+    duration_seconds: int,
+    step_seconds: int,
+    vt1_watts: float,
+) -> dict[str, Any] | None:
+    candidates: list[tuple[float, int, int]] = []
+    step = max(1, step_seconds)
+    for start_index in range(0, len(moving_rows) - duration_seconds + 1, step):
+        window_rows = moving_rows[start_index: start_index + duration_seconds]
+        if not window_rows:
+            continue
+        start = row_time_value(window_rows[0])
+        end = row_time_value(window_rows[-1])
+        if start is None or end is None:
+            continue
+        prescore = outdoor_vt1_block_prescore(
+            window_rows,
+            rolling_60=rolling_60,
+            vt1_watts=vt1_watts,
+        )
+        candidates.append((prescore, start, end))
+
+    best: dict[str, Any] | None = None
+    for _, start, end in sorted(candidates, reverse=True)[:5]:
+        segment_rows = rows_in_elapsed_range(rows, start, end)
+        moving_segment = [
+            row
+            for row in moving_rows
+            if (time := row_time_value(row)) is not None and start <= time <= end
+        ]
+        candidate = outdoor_vt1_block_quality(
+            segment_rows,
+            moving_rows=moving_segment,
+            vt1_watts=vt1_watts,
+            duration_seconds=duration_seconds,
+        )
+        if not candidate:
+            continue
+        if best is None or vt1_block_sort_key(candidate) > vt1_block_sort_key(best):
+            best = candidate
+    return best
+
+
+def outdoor_vt1_block_prescore(
+    moving_rows: list[dict[str, str]],
+    *,
+    rolling_60: dict[int, float | None],
+    vt1_watts: float,
+) -> float:
+    pedaling_rows = [row for row in moving_rows if outdoor_pedaling_row(row)]
+    if not pedaling_rows:
+        return -1.0
+    cap10 = round(vt1_watts + 10)
+    cap30 = round(vt1_watts + 30)
+    cap50 = round(vt1_watts + 50)
+    cap10_pct = rolling_time_over(rolling_60, pedaling_rows, cap10).get("pct") or 0
+    cap30_min = rolling_time_over(rolling_60, moving_rows, cap30).get("min") or 0
+    cap50_min = rolling_time_over(rolling_60, moving_rows, cap50).get("min") or 0
+    pedaling_pct = len(pedaling_rows) / len(moving_rows) * 100 if moving_rows else 0
+    watts = [sample for row in pedaling_rows if (sample := value(row, "watts")) is not None]
+    avg_w = sum(watts) / len(watts) if watts else 0
+    avg_penalty = abs(avg_w - vt1_watts) * 0.3
+    cap_penalty = cap10_pct * 0.45 + cap30_min * 2.0 + cap50_min * 4.0
+    continuity_bonus = min(10.0, pedaling_pct / 10)
+    return 100 - cap_penalty - avg_penalty + continuity_bonus
+
+
+def outdoor_vt1_block_quality(
+    rows: list[dict[str, str]],
+    *,
+    moving_rows: list[dict[str, str]],
+    vt1_watts: float,
+    duration_seconds: int,
+) -> dict[str, Any] | None:
+    pedaling_rows = [row for row in moving_rows if outdoor_pedaling_row(row)]
+    if len(pedaling_rows) < duration_seconds * 0.75:
+        return None
+    rolling_60 = rolling_power_by_time(rows, 60, [])
+    caps = outdoor_vt1_caps(vt1_watts)
+    compliance = {
+        str(cap): rolling_cap_summary(
+            rolling_60,
+            rows,
+            moving_rows,
+            pedaling_rows,
+            cap,
+            [],
+        )
+        for cap in caps
+    }
+    matched = matched_power_drift(pedaling_rows, vt1_watts=vt1_watts)
+    quality = outdoor_vt1_quality_scores(
+        pedaling_rows=pedaling_rows,
+        moving_rows=moving_rows,
+        rolling_60_compliance=compliance,
+        vt1_watts=vt1_watts,
+        matched_drift=matched,
+    )
+    start_row = moving_rows[0]
+    end_row = moving_rows[-1]
+    start = row_time_value(start_row)
+    end = row_time_value(end_row)
+    pedaling = outdoor_pedaling_normalized(moving_rows, pedaling_rows, vt1_watts)
+    components = quality.get("components") or {}
+    return drop_none(
+        {
+            "duration_min": rounded(duration_seconds / 60, digits=0),
+            "start_s": start,
+            "end_s": end,
+            "start_min": rounded(start / 60, digits=1) if start is not None else None,
+            "end_min": rounded(end / 60, digits=1) if end is not None else None,
+            "distance_start_km": rounded(value(start_row, "distance") / 1000, digits=2)
+            if value(start_row, "distance") is not None
+            else None,
+            "distance_end_km": rounded(value(end_row, "distance") / 1000, digits=2)
+            if value(end_row, "distance") is not None
+            else None,
+            "lat_start": rounded(value(start_row, "lat"), digits=5),
+            "lng_start": rounded(value(start_row, "lng"), digits=5),
+            "lat_end": rounded(value(end_row, "lat"), digits=5),
+            "lng_end": rounded(value(end_row, "lng"), digits=5),
+            "rating": quality.get("rating"),
+            "combined_score": quality.get("combined_score"),
+            "control_score": quality.get("control_score"),
+            "session_value_score": quality.get("session_value_score"),
+            "pedaling_avg_w": pedaling.get("pedaling_avg_w"),
+            "pct_in_180_210w": pedaling.get("pct_in_endurance_window"),
+            "pct_above_210w": pedaling.get("pct_above_target_window"),
+            "cap_vt1_plus_10_pct": components.get("cap_vt1_plus_10_pct"),
+            "cap_vt1_plus_30_min": components.get("cap_vt1_plus_30_min"),
+            "cap_vt1_plus_50_min": components.get("cap_vt1_plus_50_min"),
+            "matched_hr_per_w_delta_pct": components.get("matched_hr_per_w_delta_pct"),
+            "matched_ve_per_w_delta_pct": components.get("matched_ve_per_w_delta_pct"),
+        }
+    )
+
+
+def vt1_block_sort_key(block: dict[str, Any]) -> tuple[float, float, float]:
+    combined = block.get("combined_score")
+    control = block.get("control_score")
+    value_ = block.get("session_value_score")
+    return (
+        float(combined) if isinstance(combined, (int, float)) else -1.0,
+        float(control) if isinstance(control, (int, float)) else -1.0,
+        float(value_) if isinstance(value_, (int, float)) else -1.0,
+    )
+
+
+def rows_in_elapsed_range(
+    rows: list[dict[str, str]],
+    start: int,
+    end: int,
+) -> list[dict[str, str]]:
+    return [
+        row
+        for row in rows
+        if (time := row_time_value(row)) is not None and start <= time <= end
+    ]
+
+
+def outdoor_power_bin_physiology(
+    pedaling_rows: list[dict[str, str]],
+    vt1_watts: float,
+) -> list[dict[str, Any]]:
+    bins = [
+        ("below_vt1_minus_20", None, vt1_watts - 20),
+        ("vt1_minus_20_to_vt1", vt1_watts - 20, vt1_watts),
+        ("vt1_to_vt1_plus_10", vt1_watts, vt1_watts + 10),
+        ("vt1_plus_10_to_30", vt1_watts + 10, vt1_watts + 30),
+        ("above_vt1_plus_30", vt1_watts + 30, None),
+    ]
+    total = len(pedaling_rows)
+    result = []
+    for label, low, high in bins:
+        segment = [
+            row
+            for row in pedaling_rows
+            if power_in_bin(value(row, "watts"), low, high)
+        ]
+        if not segment:
+            continue
+        stats = outdoor_segment_stats(segment)
+        result.append(
+            drop_none(
+                {
+                    "bin": label,
+                    "watts": [
+                        rounded(low, digits=0) if low is not None else None,
+                        rounded(high, digits=0) if high is not None else None,
+                    ],
+                    "pedaling_min": rounded(len(segment) / 60, digits=1),
+                    "pct_pedaling": rounded(len(segment) / total * 100, digits=1) if total else None,
+                    **stats,
+                }
+            )
+        )
+    return result
+
+
+def power_in_bin(
+    watts: float | None,
+    low: float | None,
+    high: float | None,
+) -> bool:
+    if watts is None:
+        return False
+    if low is not None and watts < low:
+        return False
+    if high is not None and watts >= high:
+        return False
+    return True
+
+
+def outdoor_late_session_control(
+    pedaling_rows: list[dict[str, str]],
+    *,
+    rolling_60: dict[int, float | None],
+    vt1_watts: float,
+) -> dict[str, Any]:
+    first, middle, final = split_rows_by_count(pedaling_rows, parts=3)
+    cap10 = round(vt1_watts + 10)
+    cap30 = round(vt1_watts + 30)
+    cap50 = round(vt1_watts + 50)
+    segments = {
+        "first_third": first,
+        "middle_third": middle,
+        "final_third": final,
+    }
+    summary = {
+        name: drop_none(
+            {
+                **outdoor_segment_stats(segment),
+                "cap_vt1_plus_10_pct": rolling_time_over(rolling_60, segment, cap10).get("pct"),
+                "cap_vt1_plus_30_min": rolling_time_over(rolling_60, segment, cap30).get("min"),
+                "cap_vt1_plus_50_min": rolling_time_over(rolling_60, segment, cap50).get("min"),
+            }
+        )
+        for name, segment in segments.items()
+    }
+    first_stats = summary["first_third"]
+    final_stats = summary["final_third"]
+    summary["final_vs_first"] = drop_none(
+        {
+            "avg_w_delta": numeric_delta(first_stats.get("avg_w"), final_stats.get("avg_w")),
+            "hr_per_w_delta_pct": pct_delta(
+                first_stats.get("hr_per_w"),
+                final_stats.get("hr_per_w"),
+            ),
+            "ve_per_w_delta_pct": pct_delta(
+                first_stats.get("ve_per_w"),
+                final_stats.get("ve_per_w"),
+            ),
+            "cap_vt1_plus_10_pct_delta": numeric_delta(
+                first_stats.get("cap_vt1_plus_10_pct"),
+                final_stats.get("cap_vt1_plus_10_pct"),
+            ),
+            "cap_vt1_plus_30_min_delta": numeric_delta(
+                first_stats.get("cap_vt1_plus_30_min"),
+                final_stats.get("cap_vt1_plus_30_min"),
+            ),
+        }
+    )
+    return summary
+
+
+def outdoor_traffic_restart_spikes(
+    rows: list[dict[str, str]],
+    *,
+    rolling_30: dict[int, float | None],
+    pause_ranges: list[tuple[int, int]],
+    vt1_watts: float,
+) -> dict[str, Any]:
+    stop_segments = detect_traffic_stop_segments(rows, pause_ranges)
+    spikes = [
+        restart_spike_after_stop(rows, stop, rolling_30, vt1_watts)
+        for stop in stop_segments
+    ]
+    spikes = [spike for spike in spikes if spike is not None]
+    spike_cap = vt1_watts + 50
+    return {
+        "stop_count": len(stop_segments),
+        "stop_time_min": rounded(
+            sum(stop["end_s"] - stop["start_s"] + 1 for stop in stop_segments) / 60,
+            digits=1,
+        ),
+        "restart_spike_threshold_w": rounded(spike_cap, digits=0),
+        "restart_spike_count": len(spikes),
+        "restart_spike_max_30s_w": rounded(
+            max((spike.get("max_30s_w") or 0 for spike in spikes), default=0),
+            digits=0,
+        ),
+        "top_restart_spikes": sorted(
+            spikes,
+            key=lambda spike: spike.get("max_30s_w") or 0,
+            reverse=True,
+        )[:8],
+    }
+
+
+def outdoor_smo2_response(
+    pedaling_rows: list[dict[str, str]],
+    vt1_watts: float,
+) -> dict[str, Any] | None:
+    if sum(1 for row in pedaling_rows if value(row, "smo2") is not None) < 10 * 60:
+        return None
+    low = vt1_watts - 20
+    high = vt1_watts + 10
+    matched = [
+        row
+        for row in pedaling_rows
+        if (watts := value(row, "watts")) is not None
+        and low <= watts <= high
+        and value(row, "smo2") is not None
+    ]
+    if len(matched) < 10 * 60:
+        return None
+    early, late = split_rows_by_count(matched, parts=2)
+    early_smo2 = average_field(early, "smo2")
+    late_smo2 = average_field(late, "smo2")
+    all_smo2 = [sample for row in pedaling_rows if (sample := value(row, "smo2")) is not None]
+    low_smo2 = sum(1 for sample in all_smo2 if sample < 20)
+    return drop_none(
+        {
+            "power_window_watts": [round(low), round(high)],
+            "matched_min": rounded(len(matched) / 60, digits=1),
+            "early_avg_smo2": rounded(early_smo2, digits=1),
+            "late_avg_smo2": rounded(late_smo2, digits=1),
+            "smo2_delta": numeric_delta(early_smo2, late_smo2),
+            "min_smo2": rounded(min(all_smo2), digits=1) if all_smo2 else None,
+            "pct_pedaling_below_20_smo2": rounded(low_smo2 / len(all_smo2) * 100, digits=1)
+            if all_smo2
+            else None,
+        }
+    )
+
+
+def outdoor_spike_aftereffects(
+    rows: list[dict[str, str]],
+    *,
+    rolling_60: dict[int, float | None],
+    pause_ranges: list[tuple[int, int]],
+    vt1_watts: float,
+) -> dict[str, Any]:
+    cap = round(vt1_watts + 30)
+    bouts = rolling_bouts_over(
+        rolling_60,
+        rows,
+        cap,
+        pause_ranges,
+        min_seconds=30,
+        max_gap_seconds=10,
+    )
+    effects = [
+        spike_aftereffect(rows, start, end)
+        for start, end in bouts
+    ]
+    effects = [effect for effect in effects if effect is not None]
+    response_scores = [
+        effect["response_score"]
+        for effect in effects
+        if isinstance(effect.get("response_score"), (int, float))
+    ]
+    return {
+        "cap_watts": cap,
+        "bout_count": len(bouts),
+        "scored_bout_count": len(effects),
+        "avg_response_score": rounded(sum(response_scores) / len(response_scores), digits=1)
+        if response_scores
+        else None,
+        "max_response_score": rounded(max(response_scores), digits=1) if response_scores else None,
+        "top_aftereffects": sorted(
+            effects,
+            key=lambda effect: effect.get("response_score") or 0,
+            reverse=True,
+        )[:8],
+    }
+
+
+def spike_aftereffect(
+    rows: list[dict[str, str]],
+    start: int,
+    end: int,
+) -> dict[str, Any] | None:
+    before = rows_in_elapsed_range(rows, max(0, start - 180), start - 1)
+    during = rows_in_elapsed_range(rows, start, end)
+    after = rows_in_elapsed_range(rows, end + 1, end + 300)
+    if len(during) < 20 or len(after) < 60:
+        return None
+    before_stats = outdoor_segment_stats(before)
+    during_stats = outdoor_segment_stats(during)
+    after_stats = outdoor_segment_stats(after)
+    ve_delta = pct_delta(before_stats.get("ve_per_w"), after_stats.get("ve_per_w"))
+    br_delta = pct_delta(before_stats.get("br_per_w"), after_stats.get("br_per_w"))
+    hr_delta = pct_delta(before_stats.get("hr_per_w"), after_stats.get("hr_per_w"))
+    smo2_delta = numeric_delta(
+        average_field(before, "smo2"),
+        average_field(after, "smo2"),
+    )
+    score = 0.0
+    if isinstance(ve_delta, (int, float)) and ve_delta > 0:
+        score += min(20, ve_delta)
+    if isinstance(br_delta, (int, float)) and br_delta > 0:
+        score += min(15, br_delta)
+    if isinstance(hr_delta, (int, float)) and hr_delta > 0:
+        score += min(15, hr_delta)
+    if isinstance(smo2_delta, (int, float)) and smo2_delta < 0:
+        score += min(10, abs(smo2_delta) * 2)
+    return drop_none(
+        {
+            "start_s": start,
+            "end_s": end,
+            "duration_s": end - start + 1,
+            "duration_min": rounded((end - start + 1) / 60, digits=1),
+            "avg_w": during_stats.get("avg_w"),
+            "response_score": rounded(score, digits=1),
+            "after_ve_per_w_delta_pct": rounded(ve_delta, digits=1),
+            "after_br_per_w_delta_pct": rounded(br_delta, digits=1),
+            "after_hr_per_w_delta_pct": rounded(hr_delta, digits=1),
+            "after_smo2_delta": rounded(smo2_delta, digits=1),
+        }
+    )
+
+
+def detect_traffic_stop_segments(
+    rows: list[dict[str, str]],
+    pause_ranges: list[tuple[int, int]],
+    *,
+    min_seconds: int = 8,
+    max_seconds: int = 180,
+) -> list[dict[str, Any]]:
+    stops: list[dict[str, Any]] = []
+    start: int | None = None
+    last: int | None = None
+    for row in rows:
+        time = row_time_value(row)
+        if time is None:
+            continue
+        stopped = is_traffic_stop_row(row, pause_ranges)
+        if stopped:
+            if start is None:
+                start = time
+            last = time
+            continue
+        if start is not None and last is not None:
+            append_traffic_stop(stops, rows, start, last, min_seconds, max_seconds)
+        start = None
+        last = None
+    if start is not None and last is not None:
+        append_traffic_stop(stops, rows, start, last, min_seconds, max_seconds)
+    return stops
+
+
+def is_traffic_stop_row(row: dict[str, str], pause_ranges: list[tuple[int, int]]) -> bool:
+    time = row_time_value(row)
+    if time is None:
+        return False
+    if any(start <= time <= end for start, end in pause_ranges):
+        return False
+    speed = value(row, "velocity_smooth")
+    watts = value(row, "watts")
+    return (
+        speed is not None
+        and speed < 1.2
+        and (watts is None or watts < 40)
+    )
+
+
+def append_traffic_stop(
+    stops: list[dict[str, Any]],
+    rows: list[dict[str, str]],
+    start: int,
+    end: int,
+    min_seconds: int,
+    max_seconds: int,
+) -> None:
+    duration = end - start + 1
+    if duration < min_seconds or duration > max_seconds:
+        return
+    stats = outdoor_range_stats(rows, start, end)
+    stops.append(
+        {
+            "start_s": start,
+            "end_s": end,
+            "duration_s": duration,
+            "duration_min": rounded(duration / 60, digits=1),
+            "distance_km": stats.get("distance_km"),
+        }
+    )
+
+
+def restart_spike_after_stop(
+    rows: list[dict[str, str]],
+    stop: dict[str, Any],
+    rolling_30: dict[int, float | None],
+    vt1_watts: float,
+    *,
+    lookahead_seconds: int = 90,
+) -> dict[str, Any] | None:
+    start = int(stop["end_s"]) + 1
+    end = start + lookahead_seconds - 1
+    segment = [
+        row
+        for row in rows
+        if (time := row_time_value(row)) is not None and start <= time <= end
+    ]
+    if not segment:
+        return None
+    best_time: int | None = None
+    best_power: float | None = None
+    for row in segment:
+        time = row_time_value(row)
+        if time is None:
+            continue
+        power = rolling_30.get(time)
+        if not isinstance(power, (int, float)):
+            continue
+        if best_power is None or power > best_power:
+            best_power = power
+            best_time = time
+    if best_power is None or best_power < vt1_watts + 50:
+        return None
+    best_row = row_at_time(rows, best_time)
+    return drop_none(
+        {
+            "stop_start_s": stop.get("start_s"),
+            "stop_end_s": stop.get("end_s"),
+            "stop_duration_s": stop.get("duration_s"),
+            "restart_peak_time_s": best_time,
+            "max_30s_w": rounded(best_power, digits=0),
+            "distance_km": rounded(value(best_row, "distance") / 1000, digits=2)
+            if best_row and value(best_row, "distance") is not None
+            else None,
+            "lat": rounded(value(best_row, "lat"), digits=5) if best_row else None,
+            "lng": rounded(value(best_row, "lng"), digits=5) if best_row else None,
+        }
+    )
+
+
+def row_at_time(rows: list[dict[str, str]], time: int | None) -> dict[str, str] | None:
+    if time is None:
+        return None
+    for row in rows:
+        if row_time_value(row) == time:
+            return row
+    return None
+
+
+def numeric_delta(start: Any, end: Any) -> float | int | None:
+    if not isinstance(start, (int, float)) or not isinstance(end, (int, float)):
+        return None
+    return rounded(end - start, digits=1)
+
+
+def outdoor_vt1_caps(vt1_watts: float) -> list[int]:
+    return [round(vt1_watts + offset) for offset in (10, 20, 30, 50, 90)]
+
+
+def outdoor_pedaling_normalized(
+    moving_rows: list[dict[str, str]],
+    pedaling_rows: list[dict[str, str]],
+    vt1_watts: float,
+) -> dict[str, Any]:
+    moving_count = len(moving_rows)
+    pedaling_count = len(pedaling_rows)
+    coasting_count = max(0, moving_count - pedaling_count)
+    watts = [sample for row in pedaling_rows if (sample := value(row, "watts")) is not None]
+    low = vt1_watts - 20
+    high = vt1_watts + 10
+    target_low = vt1_watts - 10
+    target_high = vt1_watts + 10
+
+    return drop_none(
+        {
+            "pedaling_avg_w": rounded(sum(watts) / len(watts), digits=0) if watts else None,
+            "pedaling_time_pct_of_moving": (
+                rounded(pedaling_count / moving_count * 100, digits=1) if moving_count else None
+            ),
+            "coasting_or_soft_pedaling_min": rounded(coasting_count / 60, digits=1),
+            "coasting_or_soft_pedaling_pct": (
+                rounded(coasting_count / moving_count * 100, digits=1) if moving_count else None
+            ),
+            "endurance_window_watts": [round(low), round(high)],
+            "pct_in_endurance_window": pct_watts_between(watts, low, high),
+            "target_window_watts": [round(target_low), round(target_high)],
+            "pct_in_target_window": pct_watts_between(watts, target_low, target_high),
+            "pct_below_endurance_window": pct_watts_below(watts, low),
+            "pct_above_target_window": pct_watts_above(watts, target_high),
+        }
+    )
+
+
+def pct_watts_between(watts: list[float], low: float, high: float) -> float | int | None:
+    if not watts:
+        return None
+    return rounded(sum(1 for sample in watts if low <= sample <= high) / len(watts) * 100, digits=1)
+
+
+def pct_watts_below(watts: list[float], low: float) -> float | int | None:
+    if not watts:
+        return None
+    return rounded(sum(1 for sample in watts if sample < low) / len(watts) * 100, digits=1)
+
+
+def pct_watts_above(watts: list[float], high: float) -> float | int | None:
+    if not watts:
+        return None
+    return rounded(sum(1 for sample in watts if sample > high) / len(watts) * 100, digits=1)
+
+
+def matched_power_drift(
+    pedaling_rows: list[dict[str, str]],
+    *,
+    vt1_watts: float,
+) -> dict[str, Any] | None:
+    low = vt1_watts - 20
+    high = vt1_watts + 10
+    matched = [
+        row
+        for row in pedaling_rows
+        if (watts := value(row, "watts")) is not None and low <= watts <= high
+    ]
+    if len(matched) < 10 * 60:
+        return None
+    midpoint = len(matched) // 2
+    early = matched[:midpoint]
+    late = matched[midpoint:]
+    early_stats = outdoor_segment_stats(early)
+    late_stats = outdoor_segment_stats(late)
+    return drop_none(
+        {
+            "power_window_watts": [round(low), round(high)],
+            "matched_min": rounded(len(matched) / 60, digits=1),
+            "early": early_stats,
+            "late": late_stats,
+            "hr_per_w_delta_pct": pct_delta(
+                early_stats.get("hr_per_w"),
+                late_stats.get("hr_per_w"),
+            ),
+            "w_per_hr_delta_pct": pct_delta(
+                early_stats.get("w_per_hr"),
+                late_stats.get("w_per_hr"),
+            ),
+            "ve_per_w_delta_pct": pct_delta(
+                early_stats.get("ve_per_w"),
+                late_stats.get("ve_per_w"),
+            ),
+            "br_per_w_delta_pct": pct_delta(
+                early_stats.get("br_per_w"),
+                late_stats.get("br_per_w"),
+            ),
+        }
+    )
+
+
+def outdoor_vt1_quality_scores(
+    *,
+    pedaling_rows: list[dict[str, str]],
+    moving_rows: list[dict[str, str]],
+    rolling_60_compliance: dict[str, Any],
+    vt1_watts: float,
+    matched_drift: dict[str, Any] | None,
+) -> dict[str, Any]:
+    pedaling_min = len(pedaling_rows) / 60
+    moving_min = len(moving_rows) / 60
+    cap10 = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 10), "pct")
+    cap30 = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 30), "min")
+    cap50 = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 50), "min")
+    cap30_longest = rolling_cap_longest(rolling_60_compliance, round(vt1_watts + 30))
+    cap50_longest = rolling_cap_longest(rolling_60_compliance, round(vt1_watts + 50))
+    hr_drift = (matched_drift or {}).get("hr_per_w_delta_pct")
+    ve_drift = (matched_drift or {}).get("ve_per_w_delta_pct")
+    br_drift = (matched_drift or {}).get("br_per_w_delta_pct")
+
+    execution_penalty = (
+        cap10 * 0.45
+        + cap30 * 2.0
+        + cap50 * 4.0
+        + cap30_longest * 1.5
+        + cap50_longest * 3.0
+    )
+    execution_score = clamp(100 - execution_penalty, 0, 100)
+
+    duration_score = clamp(pedaling_min / 150 * 45, 0, 45)
+    continuity_score = clamp((pedaling_min / moving_min * 100) / 100 * 15, 0, 15) if moving_min else 0
+    response_penalty = 0.0
+    if isinstance(hr_drift, (int, float)) and hr_drift > 3:
+        response_penalty += min(35, (hr_drift - 3) * 4.0)
+    if isinstance(ve_drift, (int, float)) and ve_drift > 6:
+        response_penalty += min(35, (ve_drift - 6) * 2.5)
+    if isinstance(br_drift, (int, float)) and br_drift > 8:
+        response_penalty += min(20, (br_drift - 8) * 2.0)
+    response_score = clamp(100 - response_penalty, 0, 100)
+    stability_score = response_score * 0.25
+    execution_value_score = execution_score * 0.15
+    session_value_score = clamp(
+        duration_score + continuity_score + stability_score + execution_value_score,
+        0,
+        100,
+    )
+    combined_score = clamp(execution_score * 0.45 + response_score * 0.30 + session_value_score * 0.25, 0, 100)
+
+    return {
+        "execution_score": rounded(execution_score, digits=1),
+        "response_score": rounded(response_score, digits=1),
+        "control_score": rounded(execution_score, digits=1),
+        "session_value_score": rounded(session_value_score, digits=1),
+        "combined_score": rounded(combined_score, digits=1),
+        "rating": outdoor_score_rating(combined_score),
+        "components": {
+            "pedaling_min": rounded(pedaling_min, digits=1),
+            "cap_vt1_plus_10_pct": rounded(cap10, digits=1),
+            "cap_vt1_plus_30_min": rounded(cap30, digits=1),
+            "cap_vt1_plus_50_min": rounded(cap50, digits=1),
+            "longest_vt1_plus_30_bout_min": rounded(cap30_longest, digits=1),
+            "longest_vt1_plus_50_bout_min": rounded(cap50_longest, digits=1),
+            "matched_hr_per_w_delta_pct": rounded(hr_drift, digits=1),
+            "matched_ve_per_w_delta_pct": rounded(ve_drift, digits=1),
+            "matched_br_per_w_delta_pct": rounded(br_drift, digits=1),
+        },
+    }
+
+
+def outdoor_endurance_characterization(
+    *,
+    assessment: dict[str, Any],
+    quality_scores: dict[str, Any],
+    rolling_60_compliance: dict[str, Any],
+    climbs: list[dict[str, Any]],
+    pedaling_rows: list[dict[str, str]],
+    moving_rows: list[dict[str, str]],
+    vt1_watts: float,
+    matched_drift: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Classify outdoor endurance rides separately from strict VT1 execution."""
+
+    pedaling_min = len(pedaling_rows) / 60
+    moving_min = len(moving_rows) / 60
+    climb_min = sum((climb["end_s"] - climb["start_s"] + 1) for climb in climbs) / 60
+    cap10_pct = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 10), "pct")
+    cap30_min = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 30), "min")
+    cap50_min = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 50), "min")
+    cap90_min = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 90), "min")
+    execution_score = quality_scores.get("execution_score")
+    response_score = quality_scores.get("response_score")
+    session_value_score = quality_scores.get("session_value_score")
+
+    strict_vt1_fit = "controlled"
+    if assessment.get("verdict") == "too_hard_for_strict_vt1":
+        strict_vt1_fit = "poor"
+    elif assessment.get("verdict") == "upper_endurance":
+        strict_vt1_fit = "partial"
+
+    if cap90_min > 1 or cap50_min > 10 or cap30_min > 20:
+        stimulus = "hilly_endurance_with_surges"
+    elif cap30_min > 10 or cap10_pct > 20:
+        stimulus = "upper_endurance"
+    else:
+        stimulus = "controlled_endurance"
+
+    physiological_response = "unknown"
+    if isinstance(response_score, (int, float)):
+        if response_score >= 85:
+            physiological_response = "controlled"
+        elif response_score >= 65:
+            physiological_response = "moderate_drift"
+        else:
+            physiological_response = "high_cost"
+
+    summary = stimulus
+    if strict_vt1_fit == "controlled" and physiological_response == "high_cost":
+        summary = "controlled_high_cost_endurance"
+    if (
+        strict_vt1_fit in {"poor", "partial"}
+        and physiological_response in {"controlled", "moderate_drift"}
+        and isinstance(session_value_score, (int, float))
+        and session_value_score >= 68
+    ):
+        summary = "not_strict_vt1_but_useful_endurance"
+
+    notes = []
+    if strict_vt1_fit == "poor":
+        notes.append("strict VT1 execution is poor; do not use the VT1 rating as the whole ride verdict")
+    if physiological_response == "controlled":
+        notes.append("matched-power physiological response stayed controlled")
+    if physiological_response == "high_cost":
+        notes.append("power control was acceptable but physiological response was high-cost")
+    if cap50_min > 10:
+        notes.append(f"substantial time above VT1+50: {cap50_min:.1f} min")
+    if climb_min > 30:
+        notes.append(f"hilly route: {climb_min:.1f} moving min detected as climbs")
+
+    return drop_none(
+        {
+            "summary": summary,
+            "stimulus": stimulus,
+            "strict_vt1_fit": strict_vt1_fit,
+            "physiological_response": physiological_response,
+            "climb_moving_min": rounded(climb_min, digits=1),
+            "climb_moving_pct": rounded((climb_min / moving_min) * 100, digits=1) if moving_min else None,
+            "pedaling_min": rounded(pedaling_min, digits=1),
+            "cap_vt1_plus_10_pct": rounded(cap10_pct, digits=1),
+            "cap_vt1_plus_30_min": rounded(cap30_min, digits=1),
+            "cap_vt1_plus_50_min": rounded(cap50_min, digits=1),
+            "cap_vt1_plus_90_min": rounded(cap90_min, digits=1),
+            "execution_score": rounded(execution_score, digits=1),
+            "response_score": rounded(response_score, digits=1),
+            "session_value_score": rounded(session_value_score, digits=1),
+            "matched_hr_per_w_delta_pct": rounded((matched_drift or {}).get("hr_per_w_delta_pct"), digits=1),
+            "matched_ve_per_w_delta_pct": rounded((matched_drift or {}).get("ve_per_w_delta_pct"), digits=1),
+            "matched_br_per_w_delta_pct": rounded((matched_drift or {}).get("br_per_w_delta_pct"), digits=1),
+            "notes": notes,
+        }
+    )
+
+
+def rolling_cap_metric(compliance: dict[str, Any], cap: int, metric: str) -> float:
+    data = compliance.get(str(cap)) or {}
+    time_over = data.get("time_over_pedaling") or data.get("time_over_moving") or {}
+    value_ = time_over.get(metric)
+    return float(value_) if isinstance(value_, (int, float)) else 0.0
+
+
+def rolling_cap_longest(compliance: dict[str, Any], cap: int) -> float:
+    data = compliance.get(str(cap)) or {}
+    value_ = data.get("longest_bout_min")
+    return float(value_) if isinstance(value_, (int, float)) else 0.0
+
+
+def clamp(value_: float, low: float, high: float) -> float:
+    return max(low, min(high, value_))
+
+
+def outdoor_score_rating(score: float) -> str:
+    if score >= 88:
+        return "A"
+    if score >= 78:
+        return "B"
+    if score >= 68:
+        return "C"
+    if score >= 58:
+        return "D"
+    return "E"
+
+
+def outdoor_moving_row(row: dict[str, str], pauses: list[tuple[int, int]]) -> bool:
+    time = row_time_value(row)
+    if time is None:
+        return False
+    return not any(start <= time <= end for start, end in pauses)
+
+
+def outdoor_pedaling_row(row: dict[str, str]) -> bool:
+    watts = value(row, "watts") or 0
+    return watts >= 20
+
+
+def row_time_value(row: dict[str, str]) -> int | None:
+    parsed = value(row, "time")
+    return int(parsed) if isinstance(parsed, (int, float)) else None
+
+
+def rolling_power_by_time(
+    rows: list[dict[str, str]],
+    window_seconds: int,
+    pauses: list[tuple[int, int]],
+) -> dict[int, float | None]:
+    queue: list[tuple[int, float]] = []
+    running_sum = 0.0
+    rolled: dict[int, float | None] = {}
+    min_samples = max(5, window_seconds // 2)
+    for row in rows:
+        time = row_time_value(row)
+        if time is None:
+            continue
+        watts = value(row, "watts")
+        if not outdoor_moving_row(row, pauses):
+            queue.clear()
+            running_sum = 0.0
+        elif watts is not None:
+            queue.append((time, watts))
+            running_sum += watts
+        while queue and queue[0][0] < time - window_seconds + 1:
+            _, old = queue.pop(0)
+            running_sum -= old
+        rolled[time] = running_sum / len(queue) if len(queue) >= min_samples else None
+    return rolled
+
+
+def rolling_cap_summary(
+    series: dict[int, float | None],
+    rows: list[dict[str, str]],
+    moving_rows: list[dict[str, str]],
+    pedaling_rows: list[dict[str, str]],
+    cap: int,
+    pauses: list[tuple[int, int]],
+) -> dict[str, Any]:
+    bouts = rolling_bouts_over(series, rows, cap, pauses)
+    bout_stats = [outdoor_range_stats(rows, start, end) for start, end in bouts]
+    return {
+        "time_over_moving": rolling_time_over(series, moving_rows, cap),
+        "time_over_pedaling": rolling_time_over(series, pedaling_rows, cap),
+        "bout_count": len(bouts),
+        "total_bout_min": rounded(sum(end - start + 1 for start, end in bouts) / 60, digits=1),
+        "longest_bout_min": rounded(
+            max((end - start + 1 for start, end in bouts), default=0) / 60,
+            digits=1,
+        ),
+        "top_bouts": sorted(
+            bout_stats,
+            key=lambda bout: bout.get("duration_s") or 0,
+            reverse=True,
+        )[:5],
+    }
+
+
+def rolling_time_over(
+    series: dict[int, float | None],
+    rows: list[dict[str, str]],
+    cap: int,
+) -> dict[str, Any]:
+    times = [row_time_value(row) for row in rows]
+    values = [series.get(time) for time in times if time is not None and series.get(time) is not None]
+    count = sum(1 for sample in values if isinstance(sample, (int, float)) and sample >= cap)
+    return {
+        "min": rounded(count / 60, digits=1),
+        "pct": rounded(count / len(values) * 100, digits=1) if values else None,
+    }
+
+
+def rolling_bouts_over(
+    series: dict[int, float | None],
+    rows: list[dict[str, str]],
+    cap: int,
+    pauses: list[tuple[int, int]],
+    *,
+    min_seconds: int = 20,
+    max_gap_seconds: int = 10,
+) -> list[tuple[int, int]]:
+    bouts: list[tuple[int, int]] = []
+    start: int | None = None
+    last: int | None = None
+    gap = 0
+    for row in rows:
+        time = row_time_value(row)
+        if time is None:
+            continue
+        sample = series.get(time)
+        over = (
+            outdoor_moving_row(row, pauses)
+            and isinstance(sample, (int, float))
+            and sample >= cap
+        )
+        if over:
+            if start is None:
+                start = time
+            last = time
+            gap = 0
+            continue
+        if start is None:
+            continue
+        gap += 1
+        if gap > max_gap_seconds:
+            if last is not None and last - start + 1 >= min_seconds:
+                bouts.append((start, last))
+            start = None
+            last = None
+            gap = 0
+    if start is not None and last is not None and last - start + 1 >= min_seconds:
+        bouts.append((start, last))
+    return bouts
+
+
+def detect_outdoor_climbs(
+    rows: list[dict[str, str]],
+    pauses: list[tuple[int, int]],
+    *,
+    min_seconds: int = 90,
+    min_distance_m: float = 250,
+    min_grade_pct: float = 2.0,
+    max_gap_seconds: int = 20,
+) -> list[dict[str, Any]]:
+    by_time = {row_time_value(row): row for row in rows if row_time_value(row) is not None}
+    climbs: list[dict[str, Any]] = []
+    start: int | None = None
+    last: int | None = None
+    gap = 0
+    for row in rows:
+        time = row_time_value(row)
+        if time is None:
+            continue
+        previous = by_time.get(time - 60)
+        uphill = False
+        if previous and outdoor_moving_row(row, pauses):
+            distance = value(row, "distance")
+            previous_distance = value(previous, "distance")
+            altitude = value(row, "altitude")
+            previous_altitude = value(previous, "altitude")
+            if None not in (distance, previous_distance, altitude, previous_altitude):
+                delta_distance = distance - previous_distance
+                delta_altitude = altitude - previous_altitude
+                grade = 100 * delta_altitude / delta_distance if delta_distance > 0 else 0
+                uphill = (
+                    delta_distance >= 80
+                    and grade >= min_grade_pct
+                    and (value(row, "velocity_smooth") or 0) >= 1.2
+                )
+        if uphill:
+            if start is None:
+                start = max(0, time - 60)
+            last = time
+            gap = 0
+            continue
+        if start is None:
+            continue
+        gap += 1
+        if gap > max_gap_seconds:
+            append_outdoor_climb(
+                climbs,
+                rows,
+                start=start,
+                end=last,
+                min_seconds=min_seconds,
+                min_distance_m=min_distance_m,
+                min_grade_pct=min_grade_pct,
+            )
+            start = None
+            last = None
+            gap = 0
+    if start is not None:
+        append_outdoor_climb(
+            climbs,
+            rows,
+            start=start,
+            end=last,
+            min_seconds=min_seconds,
+            min_distance_m=min_distance_m,
+            min_grade_pct=min_grade_pct,
+        )
+    return merge_nearby_climbs(climbs, rows, max_gap_seconds=45)
+
+
+def append_outdoor_climb(
+    climbs: list[dict[str, Any]],
+    rows: list[dict[str, str]],
+    *,
+    start: int,
+    end: int | None,
+    min_seconds: int,
+    min_distance_m: float,
+    min_grade_pct: float,
+) -> None:
+    if end is None:
+        return
+    stats = outdoor_range_stats(rows, start, end)
+    if (stats.get("duration_s") or 0) < min_seconds:
+        return
+    if (stats.get("distance_km") or 0) * 1000 < min_distance_m:
+        return
+    if (stats.get("net_grade_pct") or 0) < min_grade_pct:
+        return
+    climbs.append(stats)
+
+
+def merge_nearby_climbs(
+    climbs: list[dict[str, Any]],
+    rows: list[dict[str, str]],
+    *,
+    max_gap_seconds: int,
+) -> list[dict[str, Any]]:
+    merged: list[dict[str, Any]] = []
+    for climb in climbs:
+        if merged and climb["start_s"] - merged[-1]["end_s"] <= max_gap_seconds:
+            merged[-1] = outdoor_range_stats(rows, merged[-1]["start_s"], climb["end_s"])
+        else:
+            merged.append(climb)
+    return merged
+
+
+def outdoor_range_stats(rows: list[dict[str, str]], start: int, end: int) -> dict[str, Any]:
+    segment = [
+        row
+        for row in rows
+        if (time := row_time_value(row)) is not None and start <= time <= end
+    ]
+    stats = outdoor_segment_stats(segment)
+    distance_start = first_numeric(segment, "distance")
+    distance_end = last_numeric(segment, "distance")
+    altitude_start = first_numeric(segment, "altitude")
+    altitude_end = last_numeric(segment, "altitude")
+    distance_m = (
+        distance_end - distance_start
+        if distance_start is not None and distance_end is not None
+        else None
+    )
+    net_altitude = (
+        altitude_end - altitude_start
+        if altitude_start is not None and altitude_end is not None
+        else None
+    )
+    positive_gain = positive_altitude_gain(segment)
+    grade = (
+        100 * net_altitude / distance_m
+        if distance_m and distance_m > 0 and net_altitude is not None
+        else None
+    )
+    return drop_none(
+        {
+            "start_s": start,
+            "end_s": end,
+            "duration_s": end - start + 1,
+            "duration_min": rounded((end - start + 1) / 60, digits=1),
+            "distance_km": rounded(distance_m / 1000, digits=2) if distance_m is not None else None,
+            "net_alt_m": rounded(net_altitude, digits=1),
+            "pos_gain_m": rounded(positive_gain, digits=1),
+            "net_grade_pct": rounded(grade, digits=1),
+            **stats,
+        }
+    )
+
+
+def outdoor_segment_stats(segment: list[dict[str, str]]) -> dict[str, Any]:
+    pedaling = [row for row in segment if outdoor_pedaling_row(row)]
+    watts = average_field(pedaling, "watts")
+    hr = average_field(pedaling, "heartrate")
+    ve = average_field(pedaling, "tidal_volume_min")
+    br = average_field(pedaling, "respiration")
+    return drop_none(
+        {
+            "moving_min": rounded(len(segment) / 60, digits=1),
+            "pedaling_min": rounded(len(pedaling) / 60, digits=1),
+            "avg_w": rounded(watts, digits=0),
+            "avg_hr": rounded(hr, digits=0),
+            "w_per_hr": rounded(watts / hr, digits=3) if watts and hr else None,
+            "hr_per_w": rounded(hr / watts, digits=3) if watts and hr else None,
+            "ve_per_w": rounded(ve / watts, digits=3) if ve and watts else None,
+            "br_per_w": rounded(br / watts, digits=3) if br and watts else None,
+            "smo2_min": rounded(min_field(pedaling, "smo2"), digits=1),
+            "core_max": rounded(max_field(pedaling, "core_temperature"), digits=2),
+        }
+    )
+
+
+def post_pause_reset(
+    rows: list[dict[str, str]],
+    pauses: list[tuple[int, int]],
+) -> dict[str, Any] | None:
+    if not pauses:
+        return None
+    long_pause = max(pauses, key=lambda pause: pause[1] - pause[0])
+    if long_pause[1] - long_pause[0] < 10 * 60:
+        return None
+    start = long_pause[1] + 1
+    first_end = time_after_moving_seconds(rows, start, 20 * 60, pauses)
+    second_end = time_after_moving_seconds(rows, first_end + 1, 60 * 60, pauses)
+    return {
+        "first_20min_after_pause": outdoor_segment_stats(
+            rows_in_time_range(rows, start, first_end, pauses)
+        ),
+        "next_60min_after_that": outdoor_segment_stats(
+            rows_in_time_range(rows, first_end + 1, second_end, pauses)
+        ),
+    }
+
+
+def time_after_moving_seconds(
+    rows: list[dict[str, str]],
+    start: int,
+    seconds: int,
+    pauses: list[tuple[int, int]],
+) -> int:
+    count = 0
+    last = start
+    for row in rows:
+        time = row_time_value(row)
+        if time is None or time < start:
+            continue
+        last = time
+        if outdoor_moving_row(row, pauses):
+            count += 1
+        if count >= seconds:
+            return time
+    return last
+
+
+def rows_in_time_range(
+    rows: list[dict[str, str]],
+    start: int,
+    end: int,
+    pauses: list[tuple[int, int]],
+) -> list[dict[str, str]]:
+    return [
+        row
+        for row in rows
+        if (time := row_time_value(row)) is not None
+        and start <= time <= end
+        and outdoor_moving_row(row, pauses)
+    ]
+
+
+def outdoor_vt1_assessment(
+    *,
+    vt1_watts: float,
+    rolling_60: dict[int, float | None],
+    moving_rows: list[dict[str, str]],
+    pedaling_rows: list[dict[str, str]],
+    post_pause: dict[str, Any] | None,
+) -> dict[str, Any]:
+    cap10 = round(vt1_watts + 10)
+    cap30 = round(vt1_watts + 30)
+    cap50 = round(vt1_watts + 50)
+    cap10_pct = rolling_time_over(rolling_60, pedaling_rows, cap10).get("pct") or 0
+    cap30_min = rolling_time_over(rolling_60, moving_rows, cap30).get("min") or 0
+    cap50_min = rolling_time_over(rolling_60, moving_rows, cap50).get("min") or 0
+    verdict = "controlled_outdoor_vt1"
+    if cap50_min > 3 or cap30_min > 10:
+        verdict = "upper_endurance"
+    if cap10_pct > 20 and cap30_min > 5:
+        verdict = "upper_endurance"
+    if cap50_min > 10:
+        verdict = "too_hard_for_strict_vt1"
+
+    notes = []
+    if cap10_pct:
+        notes.append(f"60s power over VT1+10 for {cap10_pct:.1f}% of pedaling time")
+    if cap30_min:
+        notes.append(f"60s power over VT1+30 for {cap30_min:.1f} min")
+    if cap50_min:
+        notes.append(f"60s power over VT1+50 for {cap50_min:.1f} min")
+    if post_pause:
+        first = (post_pause.get("first_20min_after_pause") or {}).get("w_per_hr")
+        second = (post_pause.get("next_60min_after_that") or {}).get("w_per_hr")
+        if isinstance(first, (int, float)) and isinstance(second, (int, float)) and first:
+            notes.append(f"post-pause W/HR changed {((second / first) - 1) * 100:.1f}%")
+    return {"verdict": verdict, "notes": notes}
+
+
+def first_numeric(rows: list[dict[str, str]], field: str) -> float | None:
+    for row in rows:
+        parsed = value(row, field)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def last_numeric(rows: list[dict[str, str]], field: str) -> float | None:
+    for row in reversed(rows):
+        parsed = value(row, field)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def average_field(rows: list[dict[str, str]], field: str) -> float | None:
+    values = [parsed for row in rows if (parsed := value(row, field)) is not None]
+    return sum(values) / len(values) if values else None
+
+
+def min_field(rows: list[dict[str, str]], field: str) -> float | None:
+    values = [parsed for row in rows if (parsed := value(row, field)) is not None]
+    return min(values) if values else None
+
+
+def max_field(rows: list[dict[str, str]], field: str) -> float | None:
+    values = [parsed for row in rows if (parsed := value(row, field)) is not None]
+    return max(values) if values else None
+
+
+def positive_altitude_gain(rows: list[dict[str, str]]) -> float:
+    gain = 0.0
+    previous: float | None = None
+    for row in rows:
+        altitude = value(row, "altitude")
+        if altitude is None:
+            continue
+        if previous is not None and altitude > previous:
+            gain += altitude - previous
+        previous = altitude
+    return gain
 
 
 def beta_summary(

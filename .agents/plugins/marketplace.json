@@ -1,0 +1,20 @@
+{
+  "name": "training-ai",
+  "interface": {
+    "displayName": "Training AI"
+  },
+  "plugins": [
+    {
+      "name": "strava",
+      "source": {
+        "source": "local",
+        "path": "./plugins/strava"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Health & Fitness"
+    }
+  ]
+}

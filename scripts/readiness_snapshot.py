@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -22,17 +23,23 @@ def main() -> None:
     parser.add_argument("--artifacts-dir", default=str(ARTIFACTS_DIR))
     parser.add_argument(
         "--now",
-        help="Current local time for freshness/projection, e.g. 2026-05-20T08:15",
+        help=(
+            "Current local time for freshness/projection, e.g. 2026-05-20T08:15 "
+            "or 08:15 for --date."
+        ),
     )
     parser.add_argument(
         "--planned-at",
-        help="Planned workout local time, e.g. 2026-05-21T10:00",
+        help=(
+            "Planned workout local time, e.g. 2026-05-21T10:00 "
+            "or 19:30 for --date."
+        ),
     )
     parser.add_argument(
         "--xert-json",
         help=(
             "Path to a normalized readiness-input JSON payload with selected Xert fields. "
-            "The payload should contain recovery and optional activity_loads objects."
+            "The payload should contain training_advice, recovery, and optional activity_loads objects."
         ),
     )
     parser.add_argument(
@@ -42,10 +49,29 @@ def main() -> None:
             "plugins/garmin-connect/scripts/garmin_connect_cli.py day."
         ),
     )
+    parser.add_argument(
+        "--intervals-wellness-json",
+        help=(
+            "Path to an Intervals.icu wellness payload covering today and recent days. "
+            "Used for explicit events/comments such as sickness."
+        ),
+    )
+    parser.add_argument(
+        "--intervals-events-json",
+        help="Path to Intervals.icu calendar events covering today and recent days.",
+    )
     args = parser.parse_args()
 
-    now = parse_local_datetime(args.now) if args.now else datetime.now(LOCAL_TIMEZONE)
-    planned_at = parse_local_datetime(args.planned_at) if args.planned_at else None
+    now = (
+        parse_cli_local_datetime(args.now, default_day=args.date)
+        if args.now
+        else datetime.now(LOCAL_TIMEZONE)
+    )
+    planned_at = (
+        parse_cli_local_datetime(args.planned_at, default_day=args.date)
+        if args.planned_at
+        else None
+    )
     snapshot = build_readiness_snapshot(
         args.date,
         artifacts_dir=Path(args.artifacts_dir),
@@ -53,6 +79,8 @@ def main() -> None:
         planned_at=planned_at,
         xert_input=load_xert_input(args.xert_json),
         garmin_input=load_garmin_input(args.garmin_json),
+        intervals_wellness_input=load_json_input(args.intervals_wellness_json),
+        intervals_events_input=load_json_input(args.intervals_events_json),
     )
     print(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True))
 
@@ -65,6 +93,8 @@ def build_readiness_snapshot(
     planned_at: datetime | None = None,
     xert_input: dict[str, Any] | None = None,
     garmin_input: dict[str, Any] | None = None,
+    intervals_wellness_input: dict[str, Any] | list[Any] | None = None,
+    intervals_events_input: dict[str, Any] | list[Any] | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now(LOCAL_TIMEZONE)
     activity = latest_activity_on_or_before(day, artifacts_dir=artifacts_dir)
@@ -82,6 +112,9 @@ def build_readiness_snapshot(
         xert_input=xert_input,
     )
     freshness = input_freshness(garmin=garmin, xert=xert, now=now)
+    intervals_wellness = intervals_wellness_context(
+        day, intervals_wellness_input, events_payload=intervals_events_input
+    )
     return {
         "date": day,
         "snapshot_time_local": format_local(now),
@@ -97,6 +130,7 @@ def build_readiness_snapshot(
             freshness=freshness,
             now=now,
             planned_at=planned_at,
+            intervals_wellness=intervals_wellness,
         ),
         "notes": availability_notes(
             day,
@@ -275,6 +309,7 @@ def garmin_snapshot(
     post_end_ms = post_activity_end_ms(post_start_ms=post_start_ms, sleep=sleep)
 
     return {
+        "source_errors": garmin_source_errors(sources),
         "summary": compact_summary(summary),
         "hrv": compact_hrv(hrv),
         "sleep": compact_sleep(sleep),
@@ -296,6 +331,14 @@ def garmin_snapshot(
             body_battery=body_battery,
         ),
     }
+
+
+def garmin_source_errors(sources: dict[str, Any]) -> dict[str, Any]:
+    errors = {}
+    for name, payload in sources.items():
+        if isinstance(payload, dict) and isinstance(payload.get("error"), dict):
+            errors[name] = payload["error"]
+    return errors
 
 
 def garmin_sources_for_day(day: str, garmin_input: dict[str, Any] | None) -> dict[str, Any]:
@@ -415,6 +458,9 @@ def compact_training_status(status: dict[str, Any] | None) -> dict[str, Any] | N
     )
     latest_load_balance = first_mapping_value(load_balance)
     vo2max = status.get("mostRecentVO2Max") or {}
+    acute_training_load = (
+        latest_device_status.get("acuteTrainingLoadDTO", {}) if latest_device_status else {}
+    )
     return {
         "training_status": latest_device_status.get("trainingStatus")
         if latest_device_status
@@ -422,32 +468,56 @@ def compact_training_status(status: dict[str, Any] | None) -> dict[str, Any] | N
         "feedback": latest_device_status.get("trainingStatusFeedbackPhrase")
         if latest_device_status
         else None,
+        "since_date": latest_device_status.get("sinceDate") if latest_device_status else None,
         "fitness_trend": latest_device_status.get("fitnessTrend")
         if latest_device_status
         else None,
+        "fitness_trend_sport": latest_device_status.get("fitnessTrendSport")
+        if latest_device_status
+        else None,
         "sport": latest_device_status.get("sport") if latest_device_status else None,
-        "acute_load": (
-            latest_device_status.get("acuteTrainingLoadDTO", {}).get("dailyTrainingLoadAcute")
-            if latest_device_status
-            else None
-        ),
-        "chronic_load": (
-            latest_device_status.get("acuteTrainingLoadDTO", {}).get("dailyTrainingLoadChronic")
-            if latest_device_status
-            else None
-        ),
-        "acwr_status": (
-            latest_device_status.get("acuteTrainingLoadDTO", {}).get("acwrStatus")
-            if latest_device_status
-            else None
-        ),
+        "acute_load": acute_training_load.get("dailyTrainingLoadAcute"),
+        "chronic_load": acute_training_load.get("dailyTrainingLoadChronic"),
+        "acwr": acute_training_load.get("dailyAcuteChronicWorkloadRatio"),
+        "acwr_percent": acute_training_load.get("acwrPercent"),
+        "acwr_status": acute_training_load.get("acwrStatus"),
         "monthly_load_aerobic_low": latest_load_balance.get("monthlyLoadAerobicLow")
+        if latest_load_balance
+        else None,
+        "monthly_load_aerobic_low_target_min": latest_load_balance.get(
+            "monthlyLoadAerobicLowTargetMin"
+        )
+        if latest_load_balance
+        else None,
+        "monthly_load_aerobic_low_target_max": latest_load_balance.get(
+            "monthlyLoadAerobicLowTargetMax"
+        )
         if latest_load_balance
         else None,
         "monthly_load_aerobic_high": latest_load_balance.get("monthlyLoadAerobicHigh")
         if latest_load_balance
         else None,
+        "monthly_load_aerobic_high_target_min": latest_load_balance.get(
+            "monthlyLoadAerobicHighTargetMin"
+        )
+        if latest_load_balance
+        else None,
+        "monthly_load_aerobic_high_target_max": latest_load_balance.get(
+            "monthlyLoadAerobicHighTargetMax"
+        )
+        if latest_load_balance
+        else None,
         "monthly_load_anaerobic": latest_load_balance.get("monthlyLoadAnaerobic")
+        if latest_load_balance
+        else None,
+        "monthly_load_anaerobic_target_min": latest_load_balance.get(
+            "monthlyLoadAnaerobicTargetMin"
+        )
+        if latest_load_balance
+        else None,
+        "monthly_load_anaerobic_target_max": latest_load_balance.get(
+            "monthlyLoadAnaerobicTargetMax"
+        )
         if latest_load_balance
         else None,
         "load_balance_feedback": latest_load_balance.get("trainingBalanceFeedbackPhrase")
@@ -635,10 +705,15 @@ def latest_xert_advice(
     if not xert_input:
         return None
     recovery = xert_input.get("recovery")
+    training_advice = xert_input.get("training_advice")
     if not isinstance(recovery, dict):
         return None
-    return compact_xert_recovery(
+    if not isinstance(training_advice, dict):
+        training_advice = {}
+    return compact_xert_advice(
         recovery,
+        training_advice=training_advice,
+        training_advice_debug=xert_input.get("training_advice_debug"),
         now=now,
         planned_at=planned_at,
         source_time_local=xert_input.get("source_time_local"),
@@ -646,9 +721,11 @@ def latest_xert_advice(
     )
 
 
-def compact_xert_recovery(
+def compact_xert_advice(
     recovery: dict[str, Any],
     *,
+    training_advice: dict[str, Any],
+    training_advice_debug: Any,
     now: datetime,
     planned_at: datetime | None,
     source_time_local: Any,
@@ -670,8 +747,33 @@ def compact_xert_recovery(
         "source_time_local": format_local(parse_local_datetime(str(source_time_local)))
         if source_time_local
         else None,
-        "training_status": recovery.get("training_status"),
-        "target_xss": recovery.get("target_xss"),
+        "training_advice": {
+            "source": training_advice.get("source") or recovery.get("source") or "xert_readiness_json",
+            "source_endpoint": training_advice.get("source_endpoint"),
+            "source_scope": training_advice.get("source_scope"),
+            "date": training_advice.get("date"),
+            "training_status": training_advice.get("training_status"),
+            "target_xss": training_advice.get("target_xss"),
+            "remaining_xss": training_advice.get("remaining_xss"),
+            "completed_xss": training_advice.get("completed_xss"),
+            "original_target_xss": training_advice.get("original_target_xss"),
+            "training_advice_as_of": training_advice.get("training_advice_as_of"),
+            "training_advice_as_of_val": training_advice.get("training_advice_as_of_val"),
+            "daily_goal_complete": training_advice.get("daily_goal_complete"),
+            "recovery_needed": training_advice.get("recovery_needed"),
+            "availability": training_advice.get("availability"),
+            "is_availability_restricted": training_advice.get("is_availability_restricted"),
+            "meaning": training_advice.get("meaning")
+            or (
+                "Xert trainingAdvice fields. target_xss is Xert's current target "
+                "or recommended XSS dose for the training advice context. "
+                "High/peak XSS primarily reflects over-TP work; low high/peak "
+                "does not by itself rule out controlled subthreshold VT2."
+            ),
+        },
+        "training_advice_debug": training_advice_debug
+        if isinstance(training_advice_debug, dict)
+        else None,
         "recovery_offset": recovery.get("recovery_offset"),
         "next_workout_days": recovery.get("next_workout_days"),
         "recovery_hours": {
@@ -717,10 +819,17 @@ def availability_notes(
     if not activity:
         notes.append("No saved Intervals activity artifact found on or before this date.")
     for key, value in garmin.items():
+        if key == "source_errors":
+            continue
         if value is None:
             notes.append(f"Missing Garmin {key} input for {day}.")
+    source_errors = garmin.get("source_errors") or {}
+    if source_errors:
+        notes.append(
+            "Garmin source fetch errors: " + ", ".join(sorted(source_errors)) + "."
+        )
     if xert is None:
-        notes.append("No Xert recovery JSON input provided.")
+        notes.append("No Xert readiness JSON input provided.")
     stale = [
         key
         for key, value in freshness.items()
@@ -743,6 +852,7 @@ def recommendation_inputs(
     freshness: dict[str, Any],
     now: datetime,
     planned_at: datetime | None,
+    intervals_wellness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Collect decision inputs without making a training recommendation."""
 
@@ -752,7 +862,9 @@ def recommendation_inputs(
     body_battery = garmin.get("body_battery") or {}
     summary = garmin.get("summary") or {}
     hrv = garmin.get("hrv") or {}
+    hrv_baseline = hrv.get("baseline") or {}
     sleep = garmin.get("sleep") or {}
+    training_status = garmin.get("training_status") or {}
 
     readiness_age_hours = hours_since_local(training_readiness.get("timestampLocal"), now)
     garmin_recovery_hours = training_readiness.get("recovery_time_hours")
@@ -772,12 +884,19 @@ def recommendation_inputs(
         },
         "input_freshness": freshness,
         "latest_activity_load": latest_activity_load_input(activity),
+        "intervals_wellness_events": intervals_wellness,
+        "xert_training_advice": xert_training_advice_input(xert),
         "xert_recovery": xert_recovery_input(xert),
         "garmin_recovery_readiness": {
             "training_readiness_score": training_readiness.get("score"),
             "training_readiness_level": training_readiness.get("level"),
+            "training_readiness_feedback_short": training_readiness.get("feedbackShort"),
+            "training_readiness_feedback_long": training_readiness.get("feedbackLong"),
             "recovery_time_timestamp_local": training_readiness.get("timestampLocal"),
             "recovery_time_hours_at_timestamp": garmin_recovery_hours,
+            "recovery_time_factor_feedback": training_readiness.get(
+                "recoveryTimeFactorFeedback"
+            ),
             "projected_recovery_time_hours_now": project_hours(
                 garmin_recovery_hours,
                 readiness_age_hours,
@@ -791,13 +910,59 @@ def recommendation_inputs(
                 ),
             ),
             "acute_load": training_readiness.get("acuteLoad"),
-            "training_status": (garmin.get("training_status") or {}).get("training_status"),
-            "training_status_feedback": (garmin.get("training_status") or {}).get("feedback"),
+            "acwr_factor_feedback": training_readiness.get("acwrFactorFeedback"),
+            "hrv_factor_feedback": training_readiness.get("hrvFactorFeedback"),
+            "sleep_score_factor_feedback": training_readiness.get("sleepScoreFactorFeedback"),
+            "stress_history_factor_feedback": training_readiness.get(
+                "stressHistoryFactorFeedback"
+            ),
+            "training_status": training_status.get("training_status"),
+            "training_status_feedback": training_status.get("feedback"),
+            "training_status_since_date": training_status.get("since_date"),
+            "training_status_sport": training_status.get("fitness_trend_sport")
+            or training_status.get("sport"),
+        },
+        "garmin_load_focus": {
+            "meaning": (
+                "Garmin's load-focus balance is a recent-load mix signal, not an acute "
+                "instruction. Use it to choose the next useful stimulus only after weighing "
+                "readiness, recovery time, HRV, post-activity response, Xert recovery, and "
+                "the session goal."
+            ),
+            "feedback": training_status.get("load_balance_feedback"),
+            "acwr": training_status.get("acwr"),
+            "acwr_percent": training_status.get("acwr_percent"),
+            "acwr_status": training_status.get("acwr_status"),
+            "acute_load": training_status.get("acute_load"),
+            "chronic_load": training_status.get("chronic_load"),
+            "monthly_load": {
+                "aerobic_low": training_status.get("monthly_load_aerobic_low"),
+                "aerobic_high": training_status.get("monthly_load_aerobic_high"),
+                "anaerobic": training_status.get("monthly_load_anaerobic"),
+            },
+            "target_ranges": {
+                "aerobic_low": {
+                    "min": training_status.get("monthly_load_aerobic_low_target_min"),
+                    "max": training_status.get("monthly_load_aerobic_low_target_max"),
+                },
+                "aerobic_high": {
+                    "min": training_status.get("monthly_load_aerobic_high_target_min"),
+                    "max": training_status.get("monthly_load_aerobic_high_target_max"),
+                },
+                "anaerobic": {
+                    "min": training_status.get("monthly_load_anaerobic_target_min"),
+                    "max": training_status.get("monthly_load_anaerobic_target_max"),
+                },
+            },
         },
         "wellness": {
             "hrv_status": hrv.get("status"),
             "hrv_last_night_avg": hrv.get("lastNightAvg"),
             "hrv_weekly_avg": hrv.get("weeklyAvg"),
+            "hrv_baseline": hrv_baseline,
+            "hrv_balanced_low": hrv_baseline.get("balancedLow"),
+            "hrv_balanced_upper": hrv_baseline.get("balancedUpper"),
+            "hrv_low_upper": hrv_baseline.get("lowUpper"),
             "resting_hr": summary.get("restingHeartRate") or heart_rate.get("restingHeartRate"),
             "resting_hr_7day": summary.get("lastSevenDaysAvgRestingHeartRate")
             or heart_rate.get("lastSevenDaysAvgRestingHeartRate"),
@@ -829,6 +994,167 @@ def recommendation_inputs(
     }
 
 
+ILLNESS_COMMENT_PATTERN = re.compile(
+    r"(?:^|\W)(?:syk|sykdom|forkjølet|influensa|feber|sick|ill|illness|flu|fever)(?:$|\W)",
+    re.IGNORECASE,
+)
+
+
+def intervals_wellness_context(
+    day: str,
+    payload: dict[str, Any] | list[Any] | None,
+    *,
+    lookback_days: int = 14,
+    events_payload: dict[str, Any] | list[Any] | None = None,
+) -> dict[str, Any]:
+    """Normalize structured calendar events and legacy wellness annotations."""
+
+    rows: list[Any]
+    if isinstance(payload, dict):
+        rows = payload.get("wellness") or []
+    elif isinstance(payload, list):
+        rows = payload
+    else:
+        rows = []
+    end = date.fromisoformat(day)
+    start = end - timedelta(days=max(0, lookback_days - 1))
+    events = []
+    calendar_rows = (
+        events_payload.get("events") or []
+        if isinstance(events_payload, dict)
+        else events_payload or []
+    )
+    for event in calendar_rows:
+        if not isinstance(event, dict) or event.get("category") != "SICK":
+            continue
+        try:
+            event_start = date.fromisoformat(str(event.get("start_date_local"))[:10])
+            event_end = date.fromisoformat(str(event.get("end_date_local"))[:10])
+        except ValueError:
+            continue
+        cursor = max(start, event_start)
+        while cursor < min(end + timedelta(days=1), event_end):
+            events.append({
+                "date": cursor.isoformat(),
+                "comments": event.get("description") or event.get("name"),
+                "illness": True,
+                "source": "calendar_event",
+                "event_id": event.get("id"),
+            })
+            cursor += timedelta(days=1)
+    current_wellness = None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row_day = str(row.get("id") or "")[:10]
+        try:
+            parsed_day = date.fromisoformat(row_day)
+        except ValueError:
+            continue
+        if parsed_day < start or parsed_day > end:
+            continue
+        if row_day == day:
+            current_wellness = row
+        comments = str(row.get("comments") or "").strip()
+        illness = bool(ILLNESS_COMMENT_PATTERN.search(comments))
+        subjective = {
+            key: row.get(key)
+            for key in ("injury", "fatigue", "soreness", "motivation")
+            if row.get(key) is not None
+        }
+        if not comments and not subjective:
+            continue
+        events.append(
+            {
+                "date": row_day,
+                "comments": comments or None,
+                "illness": illness,
+                "source": "wellness",
+                **subjective,
+            }
+        )
+    by_date = {}
+    for event in events:
+        previous = by_date.get(event["date"])
+        if previous is None or event.get("source") == "calendar_event":
+            by_date[event["date"]] = event
+    events = sorted(by_date.values(), key=lambda row: row["date"])
+    current = next((row for row in events if row["date"] == day), None)
+    current_day_soreness = (
+        current_wellness.get("soreness") if isinstance(current_wellness, dict) else None
+    )
+    soreness_status_missing = current_day_soreness is None
+    illness_events = [row for row in events if row.get("illness")]
+    latest_illness = illness_events[-1] if illness_events else None
+    days_since_latest_illness = (
+        (end - date.fromisoformat(latest_illness["date"])).days
+        if latest_illness is not None
+        else None
+    )
+    illness_followup_needed = bool(
+        not (current and current.get("illness")) and days_since_latest_illness == 1
+    )
+    return_to_training_day = (
+        days_since_latest_illness
+        if not (current and current.get("illness"))
+        and days_since_latest_illness is not None
+        and 1 <= days_since_latest_illness <= 2
+        else None
+    )
+    return_to_training_guidance = {
+        1: {
+            "phase": "first_unmarked_day",
+            "duration_minutes": "20-45",
+            "intensity": "rest_or_very_easy_recovery",
+        },
+        2: {
+            "phase": "return_day_2",
+            "duration_minutes": "30-60",
+            "intensity": "easy_endurance_only",
+        },
+    }.get(return_to_training_day)
+    return {
+        "window_start": start.isoformat(),
+        "window_end": day,
+        "lookback_days": lookback_days,
+        "current_day": current,
+        "current_day_soreness": current_day_soreness,
+        "soreness_status_missing": soreness_status_missing,
+        "soreness_assumed_ok_when_missing": soreness_status_missing,
+        "soreness_update_requested_for_vt2_plus": soreness_status_missing,
+        "soreness_update_request": (
+            "Jeg antar at sårhet ikke begrenser økten; sett dagens soreness-verdi i "
+            "Intervals.icu når VT2 eller hardere anbefales."
+            if soreness_status_missing
+            else None
+        ),
+        "current_day_illness": bool(current and current.get("illness")),
+        "recent_events": events,
+        "recent_illness_events": illness_events,
+        "latest_illness_event": latest_illness,
+        "days_since_latest_illness": days_since_latest_illness,
+        "illness_followup_needed": illness_followup_needed,
+        "return_to_training_active": return_to_training_day is not None,
+        "return_to_training_day": return_to_training_day,
+        "return_to_training_guidance": return_to_training_guidance,
+        "followup_question": (
+            "Hvordan er formen i dag: er du fortsatt syk, eller er dette første friske dag?"
+            if illness_followup_needed
+            else None
+        ),
+        "source_present": payload is not None,
+        "meaning": (
+            "Structured Intervals.icu calendar events and legacy wellness annotations supplement Garmin and training load. "
+            "A current-day SICK event should override model readiness and block training. "
+            "If yesterday was marked sick but today is unmarked, ask whether illness continues or "
+            "this is the first healthy day before finalizing training. Keep the first two "
+            "unmarked days on a gradual return-to-training ramp. When today's Intervals soreness "
+            "is missing, assume it is non-limiting and still provide the appropriate recommendation; "
+            "if recommending VT2 or harder, ask the user to set today's soreness value."
+        ),
+    }
+
+
 def latest_activity_load_input(activity: dict[str, Any] | None) -> dict[str, Any] | None:
     if not activity:
         return None
@@ -854,7 +1180,6 @@ def xert_recovery_input(xert: dict[str, Any] | None) -> dict[str, Any] | None:
     if not xert:
         return None
     return {
-        "training_status": xert.get("training_status"),
         "recovery_hours": xert.get("recovery_hours"),
         "projected_recovery_hours_at_planned_time": xert.get(
             "projected_recovery_hours_at_planned_time"
@@ -862,6 +1187,33 @@ def xert_recovery_input(xert: dict[str, Any] | None) -> dict[str, Any] | None:
         "workout_capacity": xert.get("workout_capacity"),
         "training_load": xert.get("training_load"),
         "recovery_load": xert.get("recovery_load"),
+    }
+
+
+def xert_training_advice_input(xert: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not xert:
+        return None
+    training_advice = xert.get("training_advice") or {}
+    if not isinstance(training_advice, dict):
+        return None
+    return {
+        "source": training_advice.get("source"),
+        "source_endpoint": training_advice.get("source_endpoint"),
+        "source_scope": training_advice.get("source_scope"),
+        "date": training_advice.get("date"),
+        "training_status": training_advice.get("training_status"),
+        "target_xss": training_advice.get("target_xss"),
+        "remaining_xss": training_advice.get("remaining_xss"),
+        "completed_xss": training_advice.get("completed_xss"),
+        "original_target_xss": training_advice.get("original_target_xss"),
+        "training_advice_as_of": training_advice.get("training_advice_as_of"),
+        "training_advice_as_of_val": training_advice.get("training_advice_as_of_val"),
+        "daily_goal_complete": training_advice.get("daily_goal_complete"),
+        "recovery_needed": training_advice.get("recovery_needed"),
+        "availability": training_advice.get("availability"),
+        "is_availability_restricted": training_advice.get("is_availability_restricted"),
+        "debug": xert.get("training_advice_debug"),
+        "meaning": training_advice.get("meaning"),
     }
 
 
@@ -884,7 +1236,7 @@ def input_freshness(
             latest_nested(garmin, "body_battery", "latest"),
             now=now,
         ),
-        "xert_recovery_data": freshness_from_local_time(
+        "xert_readiness_data": freshness_from_local_time(
             xert.get("source_time_local") if xert else None,
             now=now,
         ),
@@ -936,6 +1288,12 @@ def pick(source: dict[str, Any], keys: list[str]) -> dict[str, Any]:
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_json_input(raw_path: str | None) -> Any:
+    if not raw_path:
+        return None
+    return load_json(Path(raw_path))
 
 
 def load_xert_input(raw_path: str | None) -> dict[str, Any] | None:
@@ -1006,6 +1364,26 @@ def parse_local_datetime(raw: str) -> datetime:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=LOCAL_TIMEZONE)
     return parsed.astimezone(LOCAL_TIMEZONE)
+
+
+def parse_cli_local_datetime(raw: str, *, default_day: str) -> datetime:
+    """Parse CLI local datetime, accepting HH:MM as a same-day shorthand."""
+
+    if looks_like_clock_time(raw):
+        raw = f"{default_day}T{raw}"
+    return parse_local_datetime(raw)
+
+
+def looks_like_clock_time(raw: str) -> bool:
+    parts = raw.split(":")
+    if len(parts) not in {2, 3}:
+        return False
+    if not all(part.isdigit() for part in parts):
+        return False
+    hour = int(parts[0])
+    minute = int(parts[1])
+    second = int(parts[2]) if len(parts) == 3 else 0
+    return 0 <= hour <= 23 and 0 <= minute <= 59 and 0 <= second <= 59
 
 
 def format_local(value: datetime | None) -> str | None:

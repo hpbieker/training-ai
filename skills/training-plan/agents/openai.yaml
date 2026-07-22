@@ -1,0 +1,7 @@
+interface:
+  display_name: "Training Plan"
+  short_description: "Create and maintain training plans."
+  default_prompt: "Use $training-plan to create, update, or apply a medium-term training plan before choosing daily workouts."
+
+policy:
+  allow_implicit_invocation: true
