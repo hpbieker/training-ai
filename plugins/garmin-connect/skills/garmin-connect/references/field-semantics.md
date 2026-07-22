@@ -5,6 +5,14 @@ Garmin Connect data is useful as extra physiological and activity context, but i
 ## Readiness and Recovery
 
 - Training Readiness is Garmin's aggregate readiness estimate. Use it as a second opinion alongside Xert, Intervals.icu, recent load, and user-provided feel.
+- Treat Garmin enum/code fields as labels for numeric context, not as
+  standalone decision inputs. If numeric context is missing, do not convert the
+  enum into a decision weight; treat that signal as unknown and surface the
+  missing numeric data. For example, show
+  Training Readiness level with score, recovery-factor feedback with recovery
+  hours, sleep-factor feedback with sleep score and duration, ACWR feedback with
+  acute/chronic load or ACWR, and load-focus feedback with actual monthly loads
+  and target ranges.
 - Recovery time estimates readiness for the next hard workout. It is not a blanket ban on easy or moderate training.
 - Recovery time is sync-sensitive and can change after sleep, stress, HRV changes, watch sync, or new activities.
 - When recovery time is used for a future planned session, project the remaining hours forward to the planned local time assuming no intervening training unless one is known.
@@ -21,6 +29,12 @@ Garmin Connect data is useful as extra physiological and activity context, but i
 ## HRV and Sleep
 
 - Use HRV status/baseline, resting HR, sleep duration and sleep score only when those fields are actually present.
+- When HRV status is shown, include the numeric HRV values and Garmin baseline
+  range when available, for example last-night average, weekly average, and
+  balanced lower/upper bounds. The enum can change abruptly when the numeric
+  value crosses a threshold, so recommendations should prefer a graded
+  interpretation of the distance from the balanced range instead of treating
+  `BALANCED` vs `UNBALANCED` as a hard discontinuity.
 - Garmin sleep fields are normally preferable to manually asking for routine sleep quality. Do not invent missing fields from Intervals.icu wellness.
 
 ## Activity Metadata

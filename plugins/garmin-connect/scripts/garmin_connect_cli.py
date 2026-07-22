@@ -8,6 +8,7 @@ import json
 from datetime import date
 
 from garmin_connect_api import (
+    DAILY_PROFILE_SPECS,
     DAILY_SPEC_CHOICES,
     fetch_activity,
     fetch_day,
@@ -31,6 +32,17 @@ def main() -> None:
         action="append",
         choices=DAILY_SPEC_CHOICES,
         help="Fetch only one daily source. Can be repeated.",
+    )
+    day.add_argument(
+        "--profile",
+        choices=sorted(DAILY_PROFILE_SPECS),
+        default="full",
+        help="Fetch a predefined source set.",
+    )
+    day.add_argument(
+        "--tolerate-errors",
+        action="store_true",
+        help="Return per-source error objects instead of aborting on the first gccli failure.",
     )
 
     recent = subparsers.add_parser("recent", help="Fetch Garmin Connect health data for recent days")
@@ -68,7 +80,15 @@ def main() -> None:
         return
 
     if args.command == "day":
-        _print_json(fetch_day(args.date, gccli=gccli, only=args.only))
+        _print_json(
+            fetch_day(
+                args.date,
+                gccli=gccli,
+                only=args.only,
+                profile=args.profile,
+                tolerate_errors=args.tolerate_errors,
+            )
+        )
         return
 
     if args.command == "recent":

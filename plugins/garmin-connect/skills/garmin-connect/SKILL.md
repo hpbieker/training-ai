@@ -46,7 +46,11 @@ The plugin prefers `/opt/homebrew/bin/gccli` and falls back to `gccli` on `PATH`
 
 ## Source Semantics
 
-Read `references/field-semantics.md` before interpreting Garmin readiness, Body Battery, HRV, stress, recovery time, Training Status, activity Training Effect, stamina, load, or performance condition.
+Read `references/field-semantics.md` relative to this skill file, i.e.
+`plugins/garmin-connect/skills/garmin-connect/references/field-semantics.md`,
+before interpreting Garmin readiness, Body Battery, HRV, stress, recovery time,
+Training Status, activity Training Effect, stamina, load, or performance
+condition.
 
 ## Writes
 

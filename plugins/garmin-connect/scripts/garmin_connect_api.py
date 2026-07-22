@@ -27,6 +27,18 @@ DAILY_SPEC_CHOICES = [
     "training-readiness",
     "training-status",
 ]
+DAILY_PROFILE_SPECS = {
+    "full": DAILY_SPEC_CHOICES,
+    "readiness": [
+        "heart-rate",
+        "hrv",
+        "sleep",
+        "stress",
+        "summary",
+        "training-readiness",
+        "training-status",
+    ],
+}
 
 
 def resolve_gccli() -> str:
@@ -51,19 +63,22 @@ def fetch_day(
     *,
     gccli: str,
     only: Iterable[str] | None = None,
+    profile: str = "full",
+    tolerate_errors: bool = False,
 ) -> dict[str, Any]:
     """Fetch useful Garmin daily health endpoints for one date."""
 
     specs = daily_specs(day)
+    wanted = {daily_spec_key(name) for name in DAILY_PROFILE_SPECS[profile]}
     if only:
-        wanted = {daily_spec_key(name) for name in only}
-        specs = {name: command for name, command in specs.items() if name in wanted}
+        wanted &= {daily_spec_key(name) for name in only}
+    specs = {name: command for name, command in specs.items() if name in wanted}
     return {
         "source": "garmin_connect_gccli",
         "source_time_local": local_now(),
         "date": day,
         "sources": {
-            name: run_gccli_json(gccli, command)
+            name: run_gccli_json(gccli, command, tolerate_errors=tolerate_errors)
             for name, command in specs.items()
         },
     }
@@ -296,14 +311,36 @@ def load_activity_metadata(metadata_path: Path) -> dict[str, Any]:
     raise SystemExit(f"Expected JSON object in {metadata_path}")
 
 
-def run_gccli_json(gccli: str, args: list[str]) -> Any:
+def run_gccli_json(
+    gccli: str,
+    args: list[str],
+    *,
+    tolerate_errors: bool = False,
+) -> Any:
     result = subprocess.run(
         [gccli, "--json", *args],
-        check=True,
+        check=False,
         capture_output=True,
         text=True,
     )
-    return json.loads(result.stdout)
+    if result.returncode == 0:
+        return json.loads(result.stdout)
+    if not tolerate_errors:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            result.args,
+            output=result.stdout,
+            stderr=result.stderr,
+        )
+    return {
+        "error": {
+            "type": "gccli_failed",
+            "returncode": result.returncode,
+            "command": [gccli, "--json", *args],
+            "stderr": result.stderr.strip(),
+            "stdout": result.stdout.strip(),
+        }
+    }
 
 
 def local_now() -> str:
