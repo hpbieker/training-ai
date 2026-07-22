@@ -8,9 +8,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from recommend_today import (
     apply_acute_readiness_target_guardrail,
+    body_battery_summary_line,
     build_source_refresh_plan,
     compact_xert_workout_recommendations,
     parse_refresh_spec,
+    presentation_requirements,
     weather_command,
 )
 from route_recommendations import surface_classification
@@ -29,6 +31,27 @@ class WeatherCommandTests(unittest.TestCase):
 
         self.assertIn("--timezone", command)
         self.assertEqual(command[command.index("--timezone") + 1], "Europe/Lisbon")
+
+
+class BodyBatteryPresentationTests(unittest.TestCase):
+    def test_summary_exposes_wake_and_current_values(self):
+        self.assertEqual(
+            body_battery_summary_line(
+                {
+                    "body_battery_at_wake": 84,
+                    "body_battery_most_recent": 72,
+                }
+            ),
+            "at wake=84, now=72",
+        )
+
+    def test_presentation_contract_requires_both_values_when_present(self):
+        requirement = presentation_requirements()["body_battery"]
+        self.assertEqual(
+            requirement["required_when_present"],
+            ["body_battery_at_wake", "body_battery_most_recent"],
+        )
+        self.assertIn("holistic", requirement["meaning"])
 
 
 class AcuteReadinessGuardrailTests(unittest.TestCase):

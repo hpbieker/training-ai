@@ -2597,6 +2597,24 @@ def build_llm_context(
 
 def presentation_requirements() -> dict[str, Any]:
     return {
+        "body_battery": {
+            "required_when_present": [
+                "body_battery_at_wake",
+                "body_battery_most_recent",
+            ],
+            "meaning": (
+                "For same-day recommendations, explicitly show Body Battery at "
+                "wake and the most recent current value when present. Use both as "
+                "part of the holistic readiness assessment alongside HRV, resting "
+                "heart rate, sleep, stress, cumulative load, Xert, and body feel."
+            ),
+            "interpretation_rule": (
+                "Treat the wake value as overnight recovery context and the current "
+                "value as time-of-day energy context. Do not let either value decide "
+                "the recommendation alone, and mention staleness when the latest "
+                "Body Battery datapoint is not fresh enough for the decision."
+            ),
+        },
         "target_watts": {
             "required": ["recovery", "vt1", "vt2", "vo2max"],
             "meaning": (
@@ -2895,11 +2913,11 @@ def body_battery_summary_line(wellness: dict[str, Any]) -> str:
     at_wake = wellness.get("body_battery_at_wake")
     most_recent = wellness.get("body_battery_most_recent")
     if at_wake is not None and most_recent is not None:
-        return f"{most_recent} now, {at_wake} at wake"
+        return f"at wake={at_wake}, now={most_recent}"
     if most_recent is not None:
-        return str(most_recent)
+        return f"now={most_recent}"
     if at_wake is not None:
-        return f"{at_wake} at wake"
+        return f"at wake={at_wake}"
     return "missing"
 
 

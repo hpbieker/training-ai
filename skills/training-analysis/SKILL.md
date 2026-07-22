@@ -153,6 +153,13 @@ a new script input contract. Typical fields are `planned_at`, `available_window`
   from existing local artifacts.
 - For narrower "can/should I train?" questions, prefer `python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD>` after refreshing relevant inputs when appropriate.
 - Before same-day or next-morning training recommendations, refresh volatile inputs when possible, including live Garmin Connect day/recent data for Body Battery, stress, readiness, and current Xert recovery data.
+- In every same-day recommendation, explicitly show both Garmin Body Battery at
+  wake and the most recent current Body Battery value when they are present.
+  Treat the wake value as overnight-recovery context and the current value as
+  time-of-day energy context. Use them as part of the holistic assessment with
+  HRV, resting HR, sleep, stress, cumulative load, Xert, recent workout response,
+  and body feel; neither Body Battery value should decide the recommendation by
+  itself. If the current datapoint is stale, say so next to the values.
 - Treat Garmin Training Readiness and Garmin recovery time as composite
   diagnostics, not independent dose inputs. `recommend_today.py` derives dose
   caution from direct physiological domains (HRV/resting-HR autonomic response,
