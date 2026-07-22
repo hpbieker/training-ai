@@ -23,7 +23,6 @@
 ## Wellness
 
 - Sickness is a calendar event with `category=SICK`; it is not a wellness field. Multi-day events use an exclusive `end_date_local`.
-- Legacy wellness comments such as `Syk` may be read as fallback context, but structured `SICK` events take precedence and new writes must use calendar events.
 
 - Wellness fields can be copied from connected systems. Use only fields present
   in the payload and do not assume Intervals.icu is their original or freshest
