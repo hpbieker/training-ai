@@ -25,9 +25,10 @@ not a helper input contract.
 - Use direct physiological domains—HRV relative to baseline, resting HR,
   sleep, Body Battery, stress, and body feel—plus cumulative load and recent
   workout response.
-- Show both Body Battery at wake and most recent when present. The first is
-  overnight recovery context; the second is current energy context. Neither is
-  decisive alone, and stale current data must be labelled.
+- Interpret Body Battery by time of day. Use the wake value as overnight
+  recovery context and the current value as remaining energy at its timestamp.
+  A value concerning at wake may be normal later. Consider change since wake
+  and intervening training; do not adjust the Xert dose from either value alone.
 - Keep aggregate Training Readiness diagnostic-only. Do not separately weight
   it or yesterday's workout on top of the underlying direct signals.
 - Project timestamped recovery estimates to the planned start when appropriate,
