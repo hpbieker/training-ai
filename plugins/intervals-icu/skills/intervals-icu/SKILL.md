@@ -42,12 +42,10 @@ python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py events --since <YY
 ```
 
 The `activity` command fetches metadata and intervals, not stream samples.
-`save-activity <activity-id>` saves `activity.json` and `streams.csv` under
-`outputs/intervals/activities/<date>_<activity-id>/` and returns the canonical
-`activity_dir` for repo helpers. Prefer it over separate metadata and stream
-calls for normal workout analysis. Refresh the selected activity package when
-the live activity has just synced or changed; do not blindly rewrite unrelated
-cached packages because their mtimes can invalidate route-analysis caches.
+`save-activity <activity-id>` returns the canonical `activity_dir` for repo
+helpers. Prefer it over separate metadata and stream calls for normal workout
+analysis. Refresh the selected activity package when the live activity has just
+synced or changed; do not rewrite unrelated cached packages.
 
 Use `activities --since ... --until ...` for date-bounded lists and recent-load
 checks. Treat `latest` as a source-selection convenience, not proof that an
