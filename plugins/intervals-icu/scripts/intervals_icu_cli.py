@@ -146,14 +146,16 @@ def main() -> None:
         help="Search activities by query text",
     )
     search.add_argument("query")
-    search.add_argument("--limit", type=int, default=10)
+    search.add_argument("--limit", type=_positive_int, default=10)
     search.add_argument(
         "--since",
-        help="Optional start date used to report activities whose metadata cannot be searched",
+        type=_iso_date,
+        help="Optional inclusive start date formatted YYYY-MM-DD",
     )
     search.add_argument(
         "--until",
-        help="Optional end date used to report activities whose metadata cannot be searched",
+        type=_iso_date,
+        help="Optional inclusive end date formatted YYYY-MM-DD",
     )
     _add_output_arg(search)
 
@@ -386,16 +388,17 @@ def main() -> None:
             limit=args.limit,
             api_key=api_key,
         )
-        source_activities = None
         if args.since or args.until:
             if not args.since or not args.until:
                 parser.error("search requires both --since and --until when date bounds are used")
-            source_activities = list_activities(
-                api_key=api_key,
-                oldest=args.since,
-                newest=args.until,
+            if args.until < args.since:
+                parser.error("search --until must not be before --since")
+            activities = _filter_activity_dates(
+                activities,
+                since=args.since,
+                until=args.until,
             )
-        _print_activity_matches(activities, source_activities=source_activities, output=args.output)
+        _print_activity_matches(activities, output=args.output)
         return
 
     if args.command == "named":
@@ -713,6 +716,27 @@ def _activity_metadata_unavailable(activity: dict[str, object]) -> bool:
     return str(activity.get("source") or "").upper() == "STRAVA" and not has_searchable_metadata
 
 
+def _filter_activity_dates(
+    activities: list[dict[str, object]],
+    *,
+    since: date,
+    until: date,
+) -> list[dict[str, object]]:
+    """Keep Intervals search results inside an inclusive local-date range."""
+
+    matches = []
+    for activity in activities:
+        try:
+            activity_date = date.fromisoformat(
+                str(activity.get("start_date_local") or "")[:10]
+            )
+        except ValueError:
+            continue
+        if since <= activity_date <= until:
+            matches.append(activity)
+    return matches
+
+
 def _metadata_unavailable_summary(activity: dict[str, object]) -> dict[str, object]:
     summary = {
         "id": activity.get("id"),
@@ -745,6 +769,20 @@ def _add_output_arg(parser: argparse.ArgumentParser) -> None:
         type=Path,
         help="Write JSON payload to this explicit file instead of stdout",
     )
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("must use YYYY-MM-DD") from exc
 
 
 def _emit_json(payload: object, *, output: Path | None = None) -> None:

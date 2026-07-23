@@ -7,10 +7,22 @@
 - `icu_training_load` is the load calculated by Intervals.icu. Treat it as a
   source-specific load value rather than as interchangeable with other load
   metrics.
+- `icu_ctl` and `icu_atl` are Intervals.icu fitness and fatigue values attached
+  to the activity. Preserve their source and timestamp, and do not substitute
+  them for similarly named values from another platform. For day-level fitness
+  and fatigue context, prefer the selected day's wellness `ctl` and `atl`
+  values rather than inferring the current state from an arbitrary activity.
 - `external_id` identifies the activity in its upstream source. Use it for
   cross-source resolution; it is not the Intervals.icu activity ID.
 - `gear` identifies registered equipment. A bike identity may help constrain
-  route suitability, but it does not by itself prove the ridden surface.
+  route suitability and distinguish road, gravel, and indoor setups. It does
+  not by itself prove the ridden surface; corroborate it with route geometry,
+  activity context, or other surface evidence when that distinction matters.
+- `decoupling`, `icu_variability_index`, and `icu_efficiency_factor` are
+  Intervals.icu-calculated whole-activity summaries. Use them for orientation
+  and comparison, but do not let them replace stream inspection when pauses,
+  terrain, intervals, warmup/cooldown, or changing power make the whole-ride
+  value unrepresentative.
 
 ## Activity And Streams
 
@@ -32,6 +44,17 @@
 - Respect Intervals.icu ignore flags in activity metadata:
   - If `icu_ignore_hr` is true, do not use heart rate, W/HR, or HR drift for that activity.
   - If `icu_ignore_power` is true, do not use power or torque-derived metrics unless the user explicitly asks to inspect the raw stream.
+  - If `icu_ignore_time` is true, exclude the activity from time and distance
+    totals or comparisons that are intended to match Intervals.icu totals. It
+    does not mean that the activity's elapsed-time stream is unusable for a
+    deliberate inspection of that activity.
+  - Treat `ignore_velocity` and `ignore_pace` as source instructions not to use
+    the corresponding velocity or pace data in aggregate analysis.
+  - `ignore_parts` is structured, partial-ignore metadata. Do not interpret a
+    non-empty value as permission to discard the whole activity. Preserve it
+    in normalized handoffs, and avoid the affected portions or metrics only
+    when their scope can be resolved from the payload.
+
 ## Wellness
 
 - Sickness is a calendar event with `category=SICK`; it is not a wellness field. Multi-day events use an exclusive `end_date_local`.
@@ -56,6 +79,18 @@
 - Treat `soreness` primarily as local leg or muscle soreness/heaviness before training. Leg ache that disrupts sleep after hard training is an important recovery signal and should reduce next-day training ambition even if model-based readiness looks acceptable.
 - Treat `fatigue` as general/systemic tiredness that may not be fully captured by objective source data.
 - Treat `motivation` as mental readiness/drive to do the session.
+- Treat `injury` as a safety and modality constraint, not merely as another
+  readiness-score input. A niggle or worse should trigger location- and
+  movement-specific follow-up before recommending intensity.
+- Treat `stress` as perceived non-training or systemic strain. It can reduce
+  training tolerance even when HRV, resting heart rate, and sleep look normal.
+- Treat `mood` as contextual subjective evidence. Use it alongside fatigue,
+  stress, and motivation; do not downgrade training from mood alone.
+- Treat `hydration` as the user's daily subjective hydration status, not a
+  measured fluid balance and not proof of adequate on-bike drinking.
+- Treat `sleepQuality` as subjective sleep quality. Keep it distinct from
+  objective duration and source-specific `sleepScore`, and investigate a
+  disagreement instead of silently averaging the values.
 
 ## Subjective Activity Fields
 

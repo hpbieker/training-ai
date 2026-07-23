@@ -51,9 +51,11 @@ cached packages because their mtimes can invalidate route-analysis caches.
 
 Use `activities --since ... --until ...` for date-bounded lists and recent-load
 checks. Treat `latest` as a source-selection convenience, not proof that an
-activity belongs to the user's requested local day. Use `search <query>` for
-Intervals.icu's search endpoint, and `named <fragment> --since ... --until ...`
-only for a deliberate date-bounded name filter.
+activity belongs to the user's requested local day. `search <query>` uses
+Intervals.icu name search by default. Prefix the query with `#` for an exact
+tag search. When both `--since` and `--until` are provided, the returned
+results are inclusively bounded by those dates. Use `named <fragment> --since
+... --until ...` only for a deliberate date-bounded name filter.
 When the API payload has an activity `id` but no URL field, build the web link
 as `https://intervals.icu/activities/<activity-id>`, for example
 `https://intervals.icu/activities/i158694373`.
