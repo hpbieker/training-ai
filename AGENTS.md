@@ -33,6 +33,8 @@
 - In daily training recommendations, show the training alternatives that are
   available at the resolved destination/location. Do not force both indoor and
   outdoor alternatives when personal context says one modality is unavailable.
+- For training recommendations, justify the intensity domain using readiness,
+  recent stimulus, progression goals, and source load targets.
 - For workout analyses, activity comparisons, readiness or "can/should I train?"
   questions, outdoor ride recommendations, weather-informed training decisions,
   planned workout summaries, cross-source endurance analysis, or saved activity
