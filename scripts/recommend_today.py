@@ -84,7 +84,7 @@ def main() -> None:
     parser.add_argument(
         "--intensity-goal",
         choices=("recovery", "vt1", "vt2", "vo2max", "sprint", "mixed"),
-        default="vt1",
+        required=True,
         help=(
             "Resolved training goal for intensity selection. Readiness remains "
             "the ceiling; progression and recent same-family stimulus can make "

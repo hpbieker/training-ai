@@ -12,8 +12,9 @@ Pass these choices explicitly to `recommend_today.py`. Its default
 `--refresh auto` reuses source snapshots within their TTL. Use `--refresh all`,
 a comma-separated source list, or `--refresh none` only deliberately. An
 explicit normalized `--garmin-json` cannot be combined with forced Garmin
-refresh. Pass the resolved intensity goal with `--intensity-goal`; readiness
-still determines the highest intensity the recommendation may select.
+refresh. Always pass the resolved intensity goal with the required
+`--intensity-goal`; the helper has no default training goal. Readiness still
+determines the highest intensity the recommendation may select.
 
 Use `planning-context.json` beside the recommendation packet only when an
 auditable trace of resolved logistics is useful. It is LLM-authored context,
