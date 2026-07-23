@@ -81,6 +81,16 @@ def main() -> None:
             "the target from readiness, recent history, and session goal."
         ),
     )
+    parser.add_argument(
+        "--intensity-goal",
+        choices=("recovery", "vt1", "vt2", "vo2max", "sprint", "mixed"),
+        default="vt1",
+        help=(
+            "Resolved training goal for intensity selection. Readiness remains "
+            "the ceiling; progression and recent same-family stimulus can make "
+            "the selected domain easier."
+        ),
+    )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
         "--garmin-json",
@@ -355,7 +365,6 @@ def main() -> None:
     workout_bias = recommendation_bias_from_readiness_packet(
         readiness_packet,
     )
-
     recommended_training_raw = (
         None if not indoor_available else load_json_if_exists(source_files["xert_recommended_training"])
     )
@@ -404,6 +413,17 @@ def main() -> None:
             source_files=source_files,
             recommendations_dir=args.output_dir,
         )
+    )
+    intensity_decision = select_intensity_domain(
+        day=args.date,
+        readiness_ceiling=workout_bias,
+        intensity_goal=args.intensity_goal,
+        progression_advice=progression_advice,
+    )
+    primary_decision = build_primary_decision(
+        readiness_packet=readiness_packet,
+        target_resolution=target_resolution,
+        intensity_decision=intensity_decision,
     )
 
     if not outdoor_available:
@@ -503,6 +523,7 @@ def main() -> None:
         planned_at_source=planned_at_source,
         available_windows=available_windows,
     )
+    llm_context["primary_decision"] = primary_decision
 
     packet = {
         "source": "training-ai-recommend-today",
@@ -517,6 +538,7 @@ def main() -> None:
         "source_refresh": source_refresh,
         "intervals_cache_refresh": intervals_cache_refresh,
         "readiness": readiness_packet,
+        "primary_decision": primary_decision,
         "target_resolution": target_resolution,
         "training_history_context": history_context,
         "routes": route_packet,
@@ -1567,16 +1589,8 @@ def training_history_context(
     current_minutes = sum(row["moving_minutes"] for row in current_rows)
     current_count = len(current_rows)
 
-    rolling_loads: list[float] = []
-    if rows:
-        anchor = min(row["date"] for row in rows)
-        while anchor <= target_day:
-            start = anchor - timedelta(days=6)
-            rolling_loads.append(
-                sum(row["load"] for row in rows if start <= row["date"] <= anchor)
-            )
-            anchor += timedelta(days=1)
-    load_percentile = percentile_rank(current_load, rolling_loads)
+    xss_history_start = min((row["date"] for row in rows), default=None)
+    xss_history_end = max((row["date"] for row in rows), default=None)
     daily_duration_totals: dict[date, dict[str, float]] = {}
     for row in duration_rows:
         if row["date"].year != target_day.year:
@@ -1607,8 +1621,14 @@ def training_history_context(
             "xss": round(current_load, 1),
             "training_load": round(current_load, 1),
             "moving_hours": round(current_minutes / 60, 1),
-            "xss_percentile_in_available_window": load_percentile,
-            "load_percentile_this_year": load_percentile,
+            "xss_percentile": None,
+            "percentile_status": "insufficient_history",
+            "percentile_meaning": (
+                "The recent Xert activity-load fetch is suitable for the current "
+                "seven-day XSS total, but not for a historical percentile."
+            ),
+            "xss_history_start": xss_history_start.isoformat() if xss_history_start else None,
+            "xss_history_end": xss_history_end.isoformat() if xss_history_end else None,
         },
         "typical_training_day_baseline": {
             "day_count": len(baseline_days),
@@ -1765,7 +1785,7 @@ def resolve_training_targets(
         or history_context.get("typical_session_baseline")
         or {}
     )
-    load_pct = number(rolling.get("load_percentile_this_year"))
+    load_pct = number(rolling.get("xss_percentile"))
     day_baseline_minutes = number(day_baseline.get("median_minutes")) or 90.0
     xss_per_min = number(day_baseline.get("xss_per_min_from_available_xert_window")) or 0.85
     caution = numeric_caution_score(
@@ -1855,7 +1875,8 @@ def resolve_training_targets(
         "dose_position_vs_typical": dose_position,
         "rolling_7d_xss": rolling.get("xss"),
         "rolling_7d_load": rolling.get("xss"),
-        "rolling_7d_load_percentile_this_year": rolling.get("load_percentile_this_year"),
+        "rolling_7d_xss_percentile": rolling.get("xss_percentile"),
+        "rolling_7d_xss_percentile_status": rolling.get("percentile_status"),
         "goal_assumption": "general endurance/VT1 support unless an explicit event or intensity goal is supplied",
         "reason": "; ".join(reasons),
         "xert_intensity_semantics": (
@@ -1983,17 +2004,186 @@ def split_session_info(
         )
         return result
 
-    next_label = (
-        available_window_label(next_window, include_note=True)
-        if next_window
-        else "the next available window"
-    )
+    if next_window is None:
+        result["unscheduled_minutes"] = round(remaining, 1)
+        result["guidance"] = (
+            f"Do about {round(first)} min now from {planned_at.strftime('%H:%M')}. "
+            f"The remaining {round(remaining)} min is unscheduled; do not invent or "
+            "assume another session without an actual available window."
+        )
+        return result
+
+    next_label = available_window_label(next_window, include_note=True)
     result["guidance"] = (
         f"Calendar/logistics split: do about {round(first)} min now from "
         f"{planned_at.strftime('%H:%M')}, then about {round(remaining)} min after "
         f"{next_label}. Keep both parts easy VT1."
     )
     return result
+
+
+def select_intensity_domain(
+    *,
+    day: str,
+    readiness_ceiling: str,
+    intensity_goal: str,
+    progression_advice: dict[str, Any],
+) -> dict[str, Any]:
+    """Select an intensity within the readiness ceiling."""
+
+    ceiling_domains = {
+        "rest": {"rest"},
+        "active_recovery_only": {"active_recovery"},
+        "easy_vt1": {"easy_vt1"},
+        "normal_vt1": {"vt1"},
+        "intensity_ok": {
+            "active_recovery",
+            "vt1",
+            "vt2",
+            "vo2max",
+            "sprint",
+            "mixed",
+        },
+    }
+    allowed = ceiling_domains.get(readiness_ceiling, {"easy_vt1"})
+    goal_domain = {
+        "recovery": "active_recovery",
+        "vt1": "vt1",
+        "vt2": "vt2",
+        "vo2max": "vo2max",
+        "sprint": "sprint",
+        "mixed": "mixed",
+    }.get(intensity_goal, "vt1")
+
+    if readiness_ceiling == "rest":
+        selected = "rest"
+        reason = "readiness_requires_rest"
+    elif goal_domain not in allowed:
+        selected = {
+            "active_recovery_only": "active_recovery",
+            "easy_vt1": "easy_vt1",
+            "normal_vt1": "vt1",
+        }.get(readiness_ceiling, "easy_vt1")
+        reason = "goal_reduced_to_readiness_ceiling"
+    else:
+        selected = goal_domain
+        reason = "goal_within_readiness_ceiling"
+
+    progression = (
+        progression_advice.get(intensity_goal) or {}
+        if intensity_goal in {"vt2", "vo2max"}
+        else {}
+    )
+    latest_same_family_date = latest_progression_session_date(progression)
+    days_since_same_family = None
+    if latest_same_family_date is not None:
+        days_since_same_family = (date.fromisoformat(day) - latest_same_family_date).days
+    if (
+        selected in {"vt2", "vo2max"}
+        and days_since_same_family is not None
+        and days_since_same_family < 2
+    ):
+        selected = "vt1"
+        reason = "recent_same_family_stimulus"
+
+    return {
+        "readiness_ceiling": readiness_ceiling,
+        "requested_goal": intensity_goal,
+        "selected_domain": selected,
+        "selection_reason": reason,
+        "latest_same_family_date": (
+            latest_same_family_date.isoformat() if latest_same_family_date else None
+        ),
+        "days_since_same_family": days_since_same_family,
+        "progression_status": progression.get("status"),
+        "progression_next_step": (progression.get("next_step") or {}).get("prescription"),
+    }
+
+
+def latest_progression_session_date(advice: dict[str, Any]) -> date | None:
+    dates = []
+    for session in advice.get("sessions_considered") or []:
+        try:
+            dates.append(date.fromisoformat(str(session.get("date"))))
+        except (TypeError, ValueError):
+            continue
+    return max(dates) if dates else None
+
+
+def build_primary_decision(
+    *,
+    readiness_packet: dict[str, Any],
+    target_resolution: dict[str, Any],
+    intensity_decision: dict[str, Any],
+) -> dict[str, Any]:
+    """Expose the physiological plan as an explicit LLM decision contract."""
+    inputs = readiness_packet.get("recommendation_inputs") or {}
+    events = inputs.get("intervals_wellness_events") or {}
+    split = target_resolution.get("split") or {}
+    target_minutes = number(target_resolution.get("target_minutes")) or 0.0
+    target_load = number(target_resolution.get("target_load")) or 0.0
+
+    selected_intensity = str(intensity_decision.get("selected_domain") or "easy_vt1")
+    if events.get("current_day_illness") or selected_intensity == "rest" or target_minutes <= 0:
+        action = "rest"
+    elif events.get("illness_followup_needed"):
+        action = "form_check"
+    else:
+        action = "train"
+
+    intensity = selected_intensity
+    if action != "train":
+        intensity = "none" if action == "rest" else "pending_form_check"
+
+    xert_remaining = str(target_resolution.get("source") or "").startswith(
+        "xert_training_advice"
+    )
+    executable_minutes = (
+        number(split.get("first_session_minutes"))
+        if split.get("available")
+        else target_minutes
+    )
+    unscheduled_minutes = number(split.get("unscheduled_minutes")) or 0.0
+    if action != "train":
+        executable_minutes = 0.0
+
+    return {
+        "action": action,
+        "selected_intensity": intensity,
+        "intensity_decision": intensity_decision,
+        "physiological_remaining_dose": {
+            "minutes": round(target_minutes, 1),
+            "load_xss": round(target_load, 1),
+        },
+        "executable_now": {
+            "minutes": round(executable_minutes or 0.0, 1),
+            "intensity": intensity,
+        },
+        "unscheduled_remainder": {
+            "minutes": round(unscheduled_minutes, 1),
+            "schedule_automatically": False,
+        },
+        "dose_semantics": (
+            "remaining_after_completed_activities"
+            if xert_remaining
+            else "explicit_or_guardrailed_target"
+        ),
+        "completed_activities_already_accounted_for": xert_remaining,
+        "decision_basis": [
+            "illness_and_return_to_training_rules",
+            "readiness_intensity_ceiling",
+            "resolved_intensity_goal",
+            "recent_same_family_stimulus",
+            "progression_next_step",
+            "xert_recovery_vs_training",
+            "available_time_and_modalities_for_execution",
+        ],
+        "llm_rule": (
+            "Use this action and executable_now as the default recommendation. "
+            "Any different recommendation must be labelled as a coaching override "
+            "and justified by information not already represented in this packet."
+        ),
+    }
 
 
 def split_session_guidance(split_info: dict[str, Any]) -> str:
@@ -2354,6 +2544,7 @@ def apply_acute_readiness_target_guardrail(
     readiness = inputs.get("garmin_recovery_readiness") or {}
     wellness = inputs.get("wellness") or {}
     load_focus = inputs.get("garmin_load_focus") or {}
+    xert = inputs.get("xert_recovery") or {}
     sleep_hours = seconds_to_hours(wellness.get("sleep_time_seconds"))
     hrv_risk = hrv_readiness_risk(wellness)
     resting_hr_risk = resting_hr_readiness_risk(wellness)
@@ -2366,14 +2557,62 @@ def apply_acute_readiness_target_guardrail(
     caution = sum(value for value in direct_domains.values() if value is not None)
 
     acwr = number(load_focus.get("acwr"))
-    rolling_percentile = number(target_resolution.get("rolling_7d_load_percentile_this_year"))
-    load_components = {
-        "acwr": linear_risk_optional(acwr, good=0.8, bad=1.4),
-        "rolling_7d_percentile": linear_risk_optional(rolling_percentile, good=50.0, bad=80.0),
-    }
-    cumulative_load_risk = max_present(
-        load_components["acwr"], load_components["rolling_7d_percentile"]
+    recovery_load = xert.get("recovery_load") or {}
+    training_load = xert.get("training_load") or {}
+    recovery_hours = xert.get("projected_recovery_hours_at_planned_time") or xert.get("recovery_hours") or {}
+    low_recovery_load = number(recovery_load.get("low"))
+    low_training_load = number(training_load.get("low"))
+    low_training_to_recovery_ratio = (
+        low_training_load / low_recovery_load
+        if low_training_load is not None
+        and low_recovery_load is not None
+        and low_recovery_load > 0
+        else None
     )
+    low_recovery_hours = number(recovery_hours.get("low"))
+    xert_recovery_components = {
+        "low_training_to_recovery_ratio": linear_risk_optional(
+            low_training_to_recovery_ratio, good=1.0, bad=1.15
+        ),
+        "low_recovery_hours": linear_risk_optional(
+            low_recovery_hours, good=0.0, bad=24.0
+        ),
+    }
+    xert_modeled_recovery_risk = max_present(*xert_recovery_components.values())
+    acwr_risk = linear_risk_optional(acwr, good=0.8, bad=1.4)
+    cumulative_load_risk = (
+        xert_modeled_recovery_risk
+        if xert_modeled_recovery_risk is not None
+        else acwr_risk
+    )
+    cumulative_load_source = (
+        "xert_recovery_vs_training"
+        if xert_modeled_recovery_risk is not None
+        else "garmin_acwr_fallback"
+        if acwr_risk is not None
+        else None
+    )
+    target_resolution["xert_recovery_training_diagnostic"] = {
+        "source": cumulative_load_source,
+        "modeled_recovery_risk": round(cumulative_load_risk, 3)
+        if cumulative_load_risk is not None
+        else None,
+        "low_recovery_load": low_recovery_load,
+        "low_training_load": low_training_load,
+        "low_training_to_recovery_ratio": round(low_training_to_recovery_ratio, 3)
+        if low_training_to_recovery_ratio is not None
+        else None,
+        "low_recovery_hours": low_recovery_hours,
+        "garmin_acwr": acwr,
+        "garmin_acwr_risk_fallback": round(acwr_risk, 3)
+        if acwr_risk is not None
+        else None,
+        "meaning": (
+            "Xert low-system recovery hours and Recovery Load versus Training Load "
+            "are the primary modeled-load gate. Garmin ACWR is retained only as a "
+            "fallback when Xert recovery context is unavailable."
+        ),
+    }
     strong_domains = [
         key for key, value in direct_domains.items() if value is not None and value >= 0.6
     ]
@@ -2453,19 +2692,30 @@ def apply_acute_readiness_target_guardrail(
         "max_minutes": cap["minutes"],
         "max_load": cap["load"],
         "caution_score": round(caution, 2),
-        "decision_input": "direct_readiness_domains_and_cumulative_load_context",
+        "decision_input": "direct_readiness_domains_and_xert_recovery_training_context",
         "training_readiness_used_for_dose": False,
         "direct_domains": rounded_optional_map(direct_domains),
         "strong_domains": strong_domains,
         "cumulative_load_risk": round(cumulative_load_risk, 3)
         if cumulative_load_risk is not None
         else None,
-        "load_components": rounded_optional_map(load_components),
+        "cumulative_load_source": cumulative_load_source,
+        "xert_recovery_components": rounded_optional_map(xert_recovery_components),
+        "xert_low_recovery_load": low_recovery_load,
+        "xert_low_training_load": low_training_load,
+        "xert_low_training_to_recovery_ratio": round(low_training_to_recovery_ratio, 3)
+        if low_training_to_recovery_ratio is not None
+        else None,
+        "xert_low_recovery_hours": low_recovery_hours,
+        "garmin_acwr_risk_fallback": round(acwr_risk, 3)
+        if acwr_risk is not None
+        else None,
         "acwr": acwr,
-        "rolling_7d_load_percentile_this_year": rolling_percentile,
         "meaning": (
             "The practical dose is derived from independent physiological domains "
-            "and cumulative load context. The previous day's individual workout is "
+            "and Xert recovery-versus-training context, with Garmin ACWR used only "
+            "as a fallback when Xert recovery context is unavailable. The previous "
+            "day's individual workout is "
             "not a separate dose input. Garmin's composite Training "
             "Readiness score is retained for diagnostics but is not a dose input."
         ),
@@ -2599,8 +2849,9 @@ def build_llm_context(
 
     return {
         "purpose": (
-            "Data context for an LLM-authored training recommendation. This object "
-            "intentionally does not choose intensity, bias, or a primary workout."
+            "Authoritative decision contract plus supporting data for an LLM-authored "
+            "training recommendation. Follow primary_decision by default; use the "
+            "remaining context to explain and execute it."
         ),
         "time_context": {
             "now_local": now.isoformat(timespec="seconds"),
@@ -3851,12 +4102,29 @@ def format_summary(packet: dict[str, Any]) -> str:
     no_training_today = bool(health_constraints.get("no_training_today"))
     form_check_needed = bool(health_constraints.get("form_check_needed"))
     return_to_training_active = bool(health_constraints.get("return_to_training_active"))
+    primary = packet.get("primary_decision") or context.get("primary_decision") or {}
 
     lines = [
+        "PRIMARY DECISION: {action}".format(
+            action=str(primary.get("action") or "missing").upper()
+        ),
+        "DO NOW: {minutes} min {intensity}".format(
+            minutes=(primary.get("executable_now") or {}).get("minutes"),
+            intensity=(primary.get("executable_now") or {}).get("intensity"),
+        ),
+        "DOSE SEMANTICS: {semantics}; completed activities already accounted for={accounted}".format(
+            semantics=primary.get("dose_semantics"),
+            accounted=primary.get("completed_activities_already_accounted_for"),
+        ),
+        "UNSCHEDULED REMAINDER: {minutes} min; do not schedule automatically".format(
+            minutes=(primary.get("unscheduled_remainder") or {}).get("minutes")
+        ),
+        "LLM DEFAULT: follow PRIMARY DECISION; deviations require a labelled coaching override.",
+        "",
         f"Recommendation context packet: {packet.get('date')} planned {packet.get('planned_at')}",
         "",
         "LLM context:",
-        "  Purpose: data collection only; LLM should choose the training recommendation.",
+        "  Purpose: PRIMARY DECISION is the default recommendation; supporting data explains and executes it.",
         "  Freshness: {freshness}".format(
             freshness=freshness.get("guidance"),
         ),

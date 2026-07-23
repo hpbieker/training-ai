@@ -1059,7 +1059,15 @@ def intervals_wellness_context(
         illness = bool(ILLNESS_COMMENT_PATTERN.search(comments))
         subjective = {
             key: row.get(key)
-            for key in ("injury", "fatigue", "soreness", "motivation")
+            for key in (
+                "injury",
+                "fatigue",
+                "soreness",
+                "stress",
+                "mood",
+                "motivation",
+                "hydration",
+            )
             if row.get(key) is not None
         }
         if not comments and not subjective:

@@ -12,7 +12,8 @@ Pass these choices explicitly to `recommend_today.py`. Its default
 `--refresh auto` reuses source snapshots within their TTL. Use `--refresh all`,
 a comma-separated source list, or `--refresh none` only deliberately. An
 explicit normalized `--garmin-json` cannot be combined with forced Garmin
-refresh.
+refresh. Pass the resolved intensity goal with `--intensity-goal`; readiness
+still determines the highest intensity the recommendation may select.
 
 Use `planning-context.json` beside the recommendation packet only when an
 auditable trace of resolved logistics is useful. It is LLM-authored context,
@@ -33,9 +34,12 @@ not a helper input contract.
   it or yesterday's workout on top of the underlying direct signals.
 - Project timestamped recovery estimates to the planned start when appropriate,
   assuming no intervening training and stating that assumption.
-- Interpret load relative to the athlete's history. Check rolling seven-day and
-  calendar-week distributions before calling load high or low, especially when
-  challenged or when it changes the recommendation.
+- Use Xert recovery hours as the first model gate for low/high/peak load, then
+  compare the corresponding Xert Recovery Load with Training Load. Use Xert
+  target XSS as the remaining recommended dose when available.
+- Treat rolling seven-day totals as descriptive context. Do not use a historical
+  percentile unless its metric, coverage period, complete-window count, and
+  validation status are explicit. Never mix XSS with Intervals or Garmin load.
 - Separate historical/cumulative load from acute physiological response. A
   normal load does not make mixed acute signals disappear.
 
@@ -53,6 +57,9 @@ normal logic from day three only if the athlete feels healthy.
 
 ## Dose And Intensity
 
+- Use readiness to set the intensity ceiling. Within that ceiling, use the
+  resolved goal and progression history to select the concrete domain; recent
+  same-family hard work can reduce the selection to VT1.
 - Treat the recommendation packet as evidence. The final coaching decision must
   also account for goals, future sessions, logistics, weather, and body feel.
 - A hard session requires agreement across the important direct signals; stale
@@ -80,6 +87,12 @@ Do not add warm-up outside a workout whose total already includes it.
 
 ## Final Answer Contract
 
+- Follow `primary_decision.action` and `primary_decision.executable_now` as the
+  default recommendation. Treat `remaining_after_completed_activities` as a
+  remaining dose whose same-day activities are already accounted for; never
+  subtract them again. Do not schedule an `unscheduled_remainder` without a real
+  available window. If new information justifies a different recommendation,
+  label it as a coaching override and state which packet input did not cover it.
 - Start with the recommended session and best time.
 - If both cycling modalities are available, provide one concrete indoor and one
   concrete outdoor option with duration, warm-up, watts/intensity, setup/route,
