@@ -16,8 +16,18 @@ from this repo's persistence, orchestration and cross-source analysis.
 
 ## Use Intervals.icu
 
-Intervals.icu source semantics, API access and write-safety rules live in the
+Intervals.icu source semantics, MCP access and write-safety rules live in the
 local plugin. Start with `plugins/intervals-icu/skills/intervals-icu/SKILL.md`.
+
+For first-time MCP setup, store the Intervals.icu API key in the user-owned
+`~/.intervals_icu_mcp.json` file:
+
+```json
+{"apiKey":"..."}
+```
+
+`INTERVALS_ICU_API_KEY` can override the file. The MCP server loads the key at
+startup; it is not passed as a tool argument.
 
 ## Use Xert
 

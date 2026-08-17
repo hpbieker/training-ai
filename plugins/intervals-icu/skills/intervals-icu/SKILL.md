@@ -1,43 +1,26 @@
 ---
 name: intervals-icu
-description: Use for Intervals.icu live activity lookup, date-bounded activity lists, local activity packages and streams, intervals, wellness and sickness events, subjective feel/RPE, ignore flags, original-file recovery, uploads, metadata updates, or other Intervals.icu write-safety workflows.
+description: Use for Intervals.icu live activity lookup, date-bounded activity lists, streams, intervals, wellness and sickness events, subjective feel/RPE, ignore flags, original-file recovery, uploads, metadata updates, or other Intervals.icu write-safety workflows.
 ---
 
 # Intervals.icu
 
 Use this skill for Intervals.icu-specific source access, source semantics, and write safety. The plugin can fetch live data and perform cautious remote updates, but it does not own repo-level training analysis, plotting, readiness composition, or long-term storage.
 
-## Network Execution
-
-Live Intervals.icu reads and writes require external network access. Run live
-`intervals_icu_cli.py` commands with escalated network permission on the first
-attempt; do not first try them in a network-isolated sandbox. Offline help,
-local artifact inspection, and cache-only workflows do not require escalation.
-
 ## Task Routing
 
 Choose the narrowest workflow that answers the request:
 
 - Today's or a bounded period's activities: call MCP `list_activities` first. Verify local date and activity identity before analysis.
-- Latest activity when no date is implied: run `latest`; use `save-latest` only when a downstream helper needs a local package.
-- Workout analysis: resolve the activity id, then call MCP `get_activity` and `get_activity_streams`. Do not analyze metadata alone when streams are available and relevant.
+- Latest activity when no date is implied: use MCP `list_activities` over an explicit lookback range and select the newest result.
+- Text or tag search: call MCP `search_activities`; use `list_activities`
+  instead when complete date-range coverage is required.
 - Metadata or interval orientation only: call MCP `get_activity`; omit intervals only when they are not needed.
-- Raw stream access: call MCP `get_activity_streams`; it returns a private temporary CSV path and never prints streams to the terminal.
 - Readiness context: call MCP `list_wellness` and `list_events`; let the caller
   resolve source priority and compose readiness.
-- Wellness updates: call MCP `update_wellness` with `date`, a non-empty `updates`
-  object, and `confirm_overwrite=true` only after the user explicitly confirms
-  replacing an existing different value. The tool reads first and verifies by
-  readback.
 - Calendar events: call MCP `list_events` first, then use `create_event`,
-  `update_event`, or `delete_event` on the exact event. These tools accept
-  inclusive all-day `since`/`until` dates and convert the end to Intervals.icu's
-  exclusive boundary. Record sickness with `category=SICK`, never as a wellness
-  comment. Verify every event write through the tool's readback.
-- Subjective follow-up: read current activity fields first; write only user-confirmed `feel` or RPE and verify afterward.
-- Any remote mutation: read
-  [references/write-safety.md](references/write-safety.md) first and perform a
-  fresh readback.
+  `update_event`, or `delete_event` on the exact event. Record sickness with
+  `category=SICK`, never as a wellness comment.
 
 For a completed-activity analysis through MCP, use exactly this sequence:
 
@@ -46,54 +29,15 @@ For a completed-activity analysis through MCP, use exactly this sequence:
 3. Call `get_activity` and `get_activity_streams` for that id. These two calls
    may run concurrently after identity is resolved.
 
-`get_activity_streams` returns a private temporary CSV path rather than placing
-large stream samples in model context.
-
-Use `search_activities` for Intervals.icu's own text or tag search. It takes
-only `query` and an optional positive `limit`, performs exactly one source
-search call, and preserves source order and duplicates. Use `list_activities`
-instead when complete coverage of a local-date range is required.
-
-## Authentication
-
-The MCP server discovers authentication once at process startup and reuses it
-for every tool call, matching the Xert service pattern. It reads authentication
-from the user-owned `~/.intervals_icu_mcp.json`, which survives plugin reinstalls:
-
-```json
-{"apiKey":"..."}
-```
-
-`INTERVALS_ICU_API_KEY` overrides the file. Tests and controlled deployments
-may select another JSON file with `INTERVALS_ICU_MCP_CONFIG`. Never pass or
-print the API key as a tool argument.
-
-## CLI-Only Workflows
-
-Use the local CLI only for operations not exposed through MCP:
-
-```bash
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py latest
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py save-latest
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py named <name-fragment> --since <YYYY-MM-DD> --until <YYYY-MM-DD>
-```
-
-Treat `latest` as a source-selection convenience, not proof that an activity
-belongs to the user's requested local day. Use `named <fragment> --since ...
---until ...` only for a deliberate date-bounded local name filter; prefer MCP
-`search_activities` for Intervals.icu's source search.
-When the API payload has an activity `id` but no URL field, build the web link
+When an activity has an `id` but no URL field, build the web link
 as `https://intervals.icu/activities/<activity-id>`, for example
 `https://intervals.icu/activities/i158694373`.
 
-Normal commands print JSON. Write large activity, wellness, stream, or original
-file payloads to explicit temporary paths with `--output`; never print streams
-or secrets to the terminal.
-
-## Freshness And Handoff
+## Freshness And Data Handoff
 
 - Fetch live data for same-day analysis, readiness, or post-workout evaluation unless the caller explicitly requests offline/cache-only work.
-- After finding a newly completed activity, save that exact id before running repo analysis; do not assume an older local `latest` package updated itself.
+- After finding a newly completed activity, fetch that exact id and its streams
+  through MCP, then let the caller persist the package before repo analysis.
 - Keep source payloads and stream artifacts as inputs. Pass normalized or packaged output to the repo helper; do not make repo helpers call Intervals.icu directly.
 - If live access fails, report which source call failed and whether the available local package predates the activity's latest sync. Do not silently present cached data as current.
 - Wellness fields may be copied from connected systems. Preserve their source
@@ -105,14 +49,14 @@ Read [references/field-semantics.md](references/field-semantics.md) before
 interpreting activity load, stream fields, ignore flags, intervals, wellness,
 or subjective fields.
 
-## Writes
+## Remote Writes
 
-Before renaming, uploading, deleting, editing intervals, changing wellness or
-sickness, saving subjective fields, or recovering original files, read
+Before renaming, uploading, deleting, changing wellness or sickness, or saving
+subjective fields, read
 [references/write-safety.md](references/write-safety.md). Mutate only what the
 user authorized and verify every write with a fresh readback.
 
-## Boundaries
+## Scope And Responsibilities
 
 This plugin owns Intervals.icu transport, field interpretation, source quirks,
 fetch helpers, and safe remote writes. The caller owns local persistence,

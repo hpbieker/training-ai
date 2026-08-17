@@ -2,6 +2,9 @@
 
 ## Activity Metadata
 
+- `feel` is Intervals.icu's integer subjective-feel scale from 1 through 5:
+  `1` means strong and `5` means weak. Do not translate the labels into strings
+  when writing the field.
 - `icu_intensity` is expressed as a percentage, not a fraction; for example,
   `75` means 75% intensity.
 - `icu_training_load` is the load calculated by Intervals.icu. Treat it as a

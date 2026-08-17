@@ -19,6 +19,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from intervals_icu_api import (  # noqa: E402
     IntervalsIcuCredentials,
+    delete_activity,
+    download_activity_file,
     download_activity_streams_csv,
     create_event,
     delete_event,
@@ -29,8 +31,10 @@ from intervals_icu_api import (  # noqa: E402
     list_wellness,
     discover_intervals_icu_credentials,
     search_activities,
+    update_activity,
     update_wellness,
     update_event,
+    upload_activity_file,
 )
 
 
@@ -59,6 +63,22 @@ ANNOTATIONS = {
     },
     "get_activity_streams": {
         "title": "Get Intervals.icu Activity Streams", "readOnlyHint": False,
+        "destructiveHint": False, "idempotentHint": False, "openWorldHint": True,
+    },
+    "get_activity_file": {
+        "title": "Get Intervals.icu Activity File", "readOnlyHint": False,
+        "destructiveHint": False, "idempotentHint": False, "openWorldHint": True,
+    },
+    "update_activity": {
+        "title": "Update Intervals.icu Activity", "readOnlyHint": False,
+        "destructiveHint": True, "idempotentHint": True, "openWorldHint": True,
+    },
+    "delete_activity": {
+        "title": "Delete Intervals.icu Activity", "readOnlyHint": False,
+        "destructiveHint": True, "idempotentHint": False, "openWorldHint": True,
+    },
+    "upload_activity": {
+        "title": "Upload Intervals.icu Activity", "readOnlyHint": False,
         "destructiveHint": False, "idempotentHint": False, "openWorldHint": True,
     },
     "list_wellness": {
@@ -210,6 +230,131 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["get_activity_streams"],
+    },
+    "get_activity_file": {
+        "name": "get_activity_file",
+        "description": (
+            "Download the original uploaded activity file or an Intervals.icu-generated "
+            "FIT file to a private temporary directory and return its path."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string", "minLength": 1},
+                "kind": {"type": "string", "enum": ["original", "fit"], "default": "original"},
+            },
+            "required": ["activity_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string"}, "kind": {"type": "string"},
+                "file_path": {"type": "string"}, "byte_size": {"type": "integer"},
+            },
+            "required": ["activity_id", "kind", "file_path", "byte_size"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["get_activity_file"],
+    },
+    "update_activity": {
+        "name": "update_activity",
+        "description": (
+            "Patch supported fields on one exact activity. Reads first, requires "
+            "confirmation before replacing non-empty values, and verifies by readback."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string", "minLength": 1},
+                "updates": {
+                    "type": "object", "minProperties": 1, "additionalProperties": False,
+                    "properties": {
+                        "name": {"type": "string", "minLength": 1},
+                        "feel": {
+                            "type": ["integer", "null"],
+                            "minimum": 1,
+                            "maximum": 5,
+                            "description": "Subjective feel: 1 is strong and 5 is weak.",
+                        },
+                        "icu_rpe": {"type": ["number", "null"], "minimum": 0, "maximum": 10},
+                    },
+                },
+                "confirm_overwrite": {"type": "boolean", "default": False},
+            },
+            "required": ["activity_id", "updates"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string"},
+                "updates": _object("Requested activity field changes."),
+                "before": _object("Activity before the patch."),
+                "after": _object("Fresh activity readback."),
+                "overwritten_fields": {"type": "array", "items": {"type": "string"}},
+                "verified": {"type": "boolean"},
+            },
+            "required": ["activity_id", "updates", "before", "after", "overwritten_fields", "verified"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["update_activity"],
+    },
+    "delete_activity": {
+        "name": "delete_activity",
+        "description": (
+            "Delete one exact activity after reading it, then verify absence by direct "
+            "lookup and from its local-date activity list."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string", "minLength": 1},
+                "confirm": {"type": "string", "description": "Must exactly match activity_id."},
+            },
+            "required": ["activity_id", "confirm"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string"},
+                "before": _object("Activity read immediately before deletion."),
+                "deleted_response": _object("Intervals.icu deletion response."),
+                "verified_deleted": {"type": "boolean"},
+            },
+            "required": ["activity_id", "before", "deleted_response", "verified_deleted"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["delete_activity"],
+    },
+    "upload_activity": {
+        "name": "upload_activity",
+        "description": (
+            "Upload one explicit local activity file and verify the canonical returned "
+            "activity id with a fresh direct readback and date-bounded list."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "minLength": 1},
+                "athlete_id": {"type": ["string", "integer"], "default": 0},
+            },
+            "required": ["file_path"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string"},
+                "uploaded_activity": _object("Intervals.icu upload response."),
+                "verified_activity": _object("Fresh canonical activity readback."),
+                "verified": {"type": "boolean"},
+            },
+            "required": ["activity_id", "uploaded_activity", "verified_activity", "verified"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["upload_activity"],
     },
     "list_wellness": {
         "name": "list_wellness",
@@ -438,11 +583,6 @@ class IntervalsIcuAuthSession:
     def api_kwargs(self) -> dict[str, str]:
         return self.credentials.api_kwargs()
 
-    @property
-    def cookie(self) -> str | None:
-        return self.credentials.cookie
-
-
 class IntervalsIcuToolService:
     def __init__(
         self,
@@ -451,6 +591,10 @@ class IntervalsIcuToolService:
         activity_searcher: Callable[..., list[dict[str, Any]]] = search_activities,
         activity_getter: Callable[..., dict[str, Any]] = get_activity,
         streams_downloader: Callable[..., Path] = download_activity_streams_csv,
+        activity_file_downloader: Callable[..., Path] = download_activity_file,
+        activity_updater: Callable[..., dict[str, Any]] = update_activity,
+        activity_deleter: Callable[..., dict[str, Any]] = delete_activity,
+        activity_uploader: Callable[..., dict[str, Any]] = upload_activity_file,
         wellness_lister: Callable[..., list[dict[str, Any]]] = list_wellness,
         wellness_getter: Callable[..., dict[str, Any]] = get_wellness,
         wellness_updater: Callable[..., dict[str, Any]] = update_wellness,
@@ -464,6 +608,10 @@ class IntervalsIcuToolService:
         self._activity_searcher = activity_searcher
         self._activity_getter = activity_getter
         self._streams_downloader = streams_downloader
+        self._activity_file_downloader = activity_file_downloader
+        self._activity_updater = activity_updater
+        self._activity_deleter = activity_deleter
+        self._activity_uploader = activity_uploader
         self._wellness_lister = wellness_lister
         self._wellness_getter = wellness_getter
         self._wellness_updater = wellness_updater
@@ -525,6 +673,124 @@ class IntervalsIcuToolService:
                 return {
                     "query": query, "limit": limit,
                     "count": len(activities), "activities": activities,
+                }
+            if name == "get_activity_file":
+                activity_id = _required_string(arguments, "activity_id")
+                kind = arguments.get("kind", "original")
+                if kind not in {"original", "fit"}:
+                    raise ToolFailure("kind must be 'original' or 'fit'", "invalid_arguments")
+                temporary_dir = Path(tempfile.mkdtemp(prefix=f"intervals-{activity_id}-file-"))
+                os.chmod(temporary_dir, 0o700)
+                try:
+                    path = self._activity_file_downloader(
+                        activity_id=activity_id, kind=kind,
+                        output_path=temporary_dir, **auth,
+                    )
+                    os.chmod(path, 0o600)
+                except Exception:
+                    for child in temporary_dir.iterdir():
+                        child.unlink(missing_ok=True)
+                    temporary_dir.rmdir()
+                    raise
+                return {
+                    "activity_id": activity_id, "kind": kind,
+                    "file_path": str(path), "byte_size": path.stat().st_size,
+                }
+            if name == "update_activity":
+                activity_id = _required_string(arguments, "activity_id")
+                updates = _activity_updates(arguments.get("updates"))
+                confirm_overwrite = arguments.get("confirm_overwrite", False)
+                if not isinstance(confirm_overwrite, bool):
+                    raise ToolFailure("confirm_overwrite must be a boolean", "invalid_arguments")
+                before = self._activity_getter(
+                    activity_id=activity_id, include_intervals=False, **auth,
+                )
+                overwritten_fields = [
+                    field for field, requested in updates.items()
+                    if _has_value(before.get(field)) and before.get(field) != requested
+                ]
+                if overwritten_fields and not confirm_overwrite:
+                    details = {
+                        field: {"current": before.get(field), "requested": updates[field]}
+                        for field in overwritten_fields
+                    }
+                    raise ToolFailure(
+                        f"Refusing to overwrite existing activity values without confirmation: {details}",
+                        "overwrite_confirmation_required",
+                    )
+                self._activity_updater(activity_id=activity_id, updates=updates, **auth)
+                after = self._activity_getter(
+                    activity_id=activity_id, include_intervals=False, **auth,
+                )
+                mismatches = {
+                    field: {"requested": requested, "readback": after.get(field)}
+                    for field, requested in updates.items() if after.get(field) != requested
+                }
+                if mismatches:
+                    raise ToolFailure(
+                        f"Activity update did not verify: {mismatches}", "verification_error"
+                    )
+                return {
+                    "activity_id": activity_id, "updates": updates,
+                    "before": before, "after": after,
+                    "overwritten_fields": overwritten_fields, "verified": True,
+                }
+            if name == "delete_activity":
+                activity_id = _required_string(arguments, "activity_id")
+                if arguments.get("confirm") != activity_id:
+                    raise ToolFailure("confirm must exactly match activity_id", "confirmation_required")
+                before = self._activity_getter(
+                    activity_id=activity_id, include_intervals=False, **auth,
+                )
+                activity_day = _activity_local_date(before)
+                deleted_response = self._activity_deleter(activity_id=activity_id, **auth)
+                direct_absent = False
+                try:
+                    self._activity_getter(
+                        activity_id=activity_id, include_intervals=False, **auth,
+                    )
+                except RuntimeError as exc:
+                    direct_absent = _is_not_found(exc)
+                    if not direct_absent:
+                        raise
+                listed = self._activity_lister(
+                    oldest=activity_day, newest=activity_day, **auth,
+                )
+                list_absent = not any(
+                    str(activity.get("id")) == activity_id for activity in listed
+                )
+                if not direct_absent or not list_absent:
+                    raise ToolFailure("Activity did not verify as deleted", "verification_error")
+                return {
+                    "activity_id": activity_id, "before": before,
+                    "deleted_response": deleted_response, "verified_deleted": True,
+                }
+            if name == "upload_activity":
+                file_path = Path(_required_string(arguments, "file_path")).expanduser()
+                if not file_path.is_file():
+                    raise ToolFailure("file_path must reference an existing file", "invalid_arguments")
+                athlete_id = arguments.get("athlete_id", 0)
+                if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
+                    raise ToolFailure("athlete_id must be a string or integer", "invalid_arguments")
+                uploaded = self._activity_uploader(
+                    file_path=file_path, athlete_id=athlete_id, **auth,
+                )
+                uploaded_id = uploaded.get("id")
+                if uploaded_id is None or isinstance(uploaded_id, bool):
+                    raise ToolFailure("Upload response did not contain an activity id", "verification_error")
+                activity_id = str(uploaded_id)
+                verified_activity = self._activity_getter(
+                    activity_id=activity_id, include_intervals=False, **auth,
+                )
+                activity_day = _activity_local_date(verified_activity)
+                listed = self._activity_lister(
+                    oldest=activity_day, newest=activity_day, athlete_id=athlete_id, **auth,
+                )
+                if not any(str(activity.get("id")) == activity_id for activity in listed):
+                    raise ToolFailure("Uploaded activity did not verify in date list", "verification_error")
+                return {
+                    "activity_id": activity_id, "uploaded_activity": uploaded,
+                    "verified_activity": verified_activity, "verified": True,
                 }
             if name == "list_wellness":
                 since = _required_date(arguments, "since")
@@ -718,6 +984,46 @@ def _required_date(arguments: dict[str, Any], key: str) -> date:
 
 
 WELLNESS_FIELDS = {"soreness", "fatigue", "motivation", "comments"}
+ACTIVITY_FIELDS = {"name", "feel", "icu_rpe"}
+
+
+def _activity_updates(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict) or not value:
+        raise ToolFailure("updates must be a non-empty object", "invalid_arguments")
+    unknown = set(value) - ACTIVITY_FIELDS
+    if unknown:
+        raise ToolFailure(f"Unsupported activity field: {sorted(unknown)[0]}", "invalid_arguments")
+    updates = dict(value)
+    name = updates.get("name")
+    if "name" in updates and (not isinstance(name, str) or not name.strip()):
+        raise ToolFailure("updates.name must be a non-empty string", "invalid_arguments")
+    feel = updates.get("feel")
+    if "feel" in updates and feel is not None and (
+        isinstance(feel, bool) or not isinstance(feel, int) or not 1 <= feel <= 5
+    ):
+        raise ToolFailure("updates.feel must be an integer from 1 to 5 or null", "invalid_arguments")
+    rpe = updates.get("icu_rpe")
+    if "icu_rpe" in updates and rpe is not None and (
+        isinstance(rpe, bool) or not isinstance(rpe, (int, float)) or not 0 <= rpe <= 10
+    ):
+        raise ToolFailure("updates.icu_rpe must be a number from 0 to 10 or null", "invalid_arguments")
+    return updates
+
+
+def _activity_local_date(activity: dict[str, Any]) -> date:
+    value = str(activity.get("start_date_local") or "")[:10]
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ToolFailure(
+            "Activity is missing a valid start_date_local for verification",
+            "verification_error",
+        ) from exc
+
+
+def _is_not_found(exc: Exception) -> bool:
+    message = str(exc)
+    return "HTTP 404" in message or "Not Found" in message
 
 
 def _wellness_updates(value: Any) -> dict[str, Any]:
@@ -791,9 +1097,9 @@ def create_sdk_server(service: IntervalsIcuToolService) -> Any:
     server = Server(
         "intervals-icu", version="0.1.0",
         instructions=(
-            "List and search activities, fetch one activity and its streams, list "
-            "and update wellness, list calendar events, and safely record sickness "
-            "as a verified SICK calendar event."
+            "List and search activities; fetch activity details, streams, and files; "
+            "safely update, delete, and upload activities; manage wellness and "
+            "calendar events with verified writes."
         ),
     )
 

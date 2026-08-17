@@ -27,11 +27,12 @@ live access, field semantics, and remote write safety.
 
 ### Activity or workout analysis
 
-Read [references/activity-analysis.md](references/activity-analysis.md), then
-start with:
+Read [references/activity-analysis.md](references/activity-analysis.md). Fetch
+the exact activity metadata and streams through the source MCP, persist them
+with the repo helper, then inspect the resulting directory:
 
 ```bash
-python3 -B scripts/fetch_latest_activity.py
+python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json> --streams-file <mcp-streams-file>
 python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
 ```
 

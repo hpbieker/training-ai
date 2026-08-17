@@ -13,7 +13,7 @@ import json
 import mimetypes
 import os
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Any, Iterable, Literal
 from urllib.error import HTTPError
@@ -147,99 +147,6 @@ def download_intervals_icu_data(
     return artifacts
 
 
-def save_latest_activity_streams(
-    *,
-    api_key: str | None = None,
-    bearer_token: str | None = None,
-    athlete_id: str | int = 0,
-    output_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
-    lookback_days: int = 365,
-    stream_types: list[str] | None = None,
-) -> dict[str, Path]:
-    """Save streams for the newest Intervals.icu activity not older than lookback.
-
-    The activity list endpoint is queried over ``lookback_days`` ending today.
-    CSV stream exports and activity metadata are saved under
-    ``outputs/intervals/activities/<date>_<activity_id>/`` by default.
-    """
-
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    today = date.today()
-    activities = list_activities(
-        api_key=api_key,
-        bearer_token=bearer_token,
-        athlete_id=athlete_id,
-        oldest=today - timedelta(days=lookback_days),
-        newest=today,
-    )
-    if not activities:
-        raise RuntimeError(f"No Intervals.icu activities found in last {lookback_days} days")
-
-    latest_activity = max(
-        activities,
-        key=lambda activity: str(activity.get("start_date_local") or ""),
-    )
-    return save_activity_streams(
-        activity_id=_activity_id(latest_activity),
-        activity_summary=latest_activity,
-        api_key=api_key,
-        bearer_token=bearer_token,
-        output_dir=output_dir,
-        stream_types=stream_types,
-    )
-
-
-def save_activity_streams(
-    *,
-    activity_id: str,
-    activity_summary: dict[str, Any] | None = None,
-    api_key: str | None = None,
-    bearer_token: str | None = None,
-    output_dir: str | Path = DEFAULT_ARTIFACTS_DIR,
-    stream_types: list[str] | None = None,
-) -> dict[str, Path]:
-    """Save activity metadata and stream CSV for one Intervals.icu activity."""
-
-    credentials = IntervalsIcuCredentials(
-        api_key=api_key,
-        bearer_token=bearer_token,
-    )
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    detail = _request_json(
-        f"/activity/{activity_id}",
-        credentials,
-        params={"intervals": "true"},
-    )
-
-    stream_params = None
-    if stream_types:
-        stream_params = {"types": ",".join(stream_types)}
-
-    streams_csv = _request_bytes(
-        f"/activity/{activity_id}/streams.csv",
-        credentials,
-        params=stream_params,
-    )
-
-    activity_dir = _activity_artifact_dir(output_path, activity_summary or detail)
-    activity_dir.mkdir(parents=True, exist_ok=True)
-    metadata_path = activity_dir / "activity.json"
-    streams_csv_path = activity_dir / "streams.csv"
-
-    _write_json(metadata_path, detail)
-    streams_csv_path.write_bytes(streams_csv)
-
-    return {
-        "activity_dir": activity_dir,
-        "activity_metadata": metadata_path,
-        "streams_csv": streams_csv_path,
-    }
-
-
 def save_activity_file(
     *,
     activity_id: str,
@@ -371,12 +278,6 @@ def download_activity_file(
 
     _write_maybe_gzip(output_file, body)
     return output_file
-
-
-def download_latest_activity_streams(**kwargs: Any) -> dict[str, Path]:
-    """Download and save streams for the newest Intervals.icu activity."""
-
-    return save_latest_activity_streams(**kwargs)
 
 
 def save_wellness(
@@ -719,7 +620,7 @@ def upload_activity_file(
 def discover_intervals_icu_credentials(
     config_path: str | Path | None = None,
 ) -> IntervalsIcuCredentials:
-    """Discover all authentication state without exposing it through tool arguments.
+    """Discover the API key without exposing it through tool arguments.
 
     An explicit environment variable wins. Otherwise read the user-owned
     ``~/.intervals_icu_mcp.json`` file, matching the Xert and OmniFocus MCP
@@ -741,20 +642,13 @@ def discover_intervals_icu_credentials(
         if not isinstance(loaded, dict):
             raise ValueError(f"Intervals.icu MCP config must contain one JSON object: {selected_path}")
         payload = loaded
-    unknown = set(payload) - {"apiKey", "bearerToken", "cookie"}
+    unknown = set(payload) - {"apiKey"}
     if unknown:
         raise ValueError(f"Unknown setting in {selected_path}: {sorted(unknown)[0]}")
     api_key = os.environ.get("INTERVALS_ICU_API_KEY") or payload.get("apiKey")
-    bearer_token = os.environ.get("INTERVALS_ICU_BEARER_TOKEN") or payload.get("bearerToken")
-    cookie = os.environ.get("INTERVALS_ICU_COOKIE") or payload.get("cookie")
-    for key, value in (("apiKey", api_key), ("bearerToken", bearer_token), ("cookie", cookie)):
-        if value is not None and (not isinstance(value, str) or not value):
-            raise ValueError(f"{key} in {selected_path} must be a non-empty string")
-    credentials = IntervalsIcuCredentials(
-        api_key=api_key,
-        bearer_token=bearer_token,
-        cookie=cookie,
-    )
+    if api_key is not None and (not isinstance(api_key, str) or not api_key):
+        raise ValueError(f"apiKey in {selected_path} must be a non-empty string")
+    credentials = IntervalsIcuCredentials(api_key=api_key)
     credentials.auth_header()
     return credentials
 

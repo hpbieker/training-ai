@@ -2,8 +2,10 @@
 
 ## Selection And Inspection
 
-- Treat “latest” as a discovery request. Fetch and save the newest source
-  activity before passing its directory to `activity_inspect.py`.
+- Treat “latest” as a discovery request. Resolve the newest source activity
+  explicitly, fetch its metadata and streams through the source MCP, then save
+  the package with `scripts/save_intervals_activity.py` before passing its
+  directory to `activity_inspect.py`.
 - If an activity identifier has no local package, create it through the source
   workflow first. Repo analysis helpers must not call source APIs directly.
 - Prefer `scripts/analysis.py` and `scripts/activity_inspect.py` over one-off

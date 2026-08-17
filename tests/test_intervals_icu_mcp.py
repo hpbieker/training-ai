@@ -24,6 +24,10 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             "activity_searcher": lambda **kwargs: [{"id": "i1"}, {"id": "i1"}],
             "activity_getter": lambda **kwargs: {"id": kwargs["activity_id"]},
             "streams_downloader": self._write_streams,
+            "activity_file_downloader": self._write_activity_file,
+            "activity_updater": lambda **kwargs: kwargs["updates"],
+            "activity_deleter": lambda **kwargs: {"id": kwargs["activity_id"]},
+            "activity_uploader": lambda **kwargs: {"id": "i-uploaded"},
             "wellness_lister": lambda **kwargs: [{"id": "2026-08-17", "soreness": 2}],
             "wellness_getter": lambda **kwargs: {},
             "wellness_updater": lambda **kwargs: kwargs["updates"],
@@ -41,12 +45,20 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         path.write_text("secs,watts\n0,200\n", encoding="utf-8")
         return path
 
-    def test_advertises_exactly_ten_tools(self):
+    @staticmethod
+    def _write_activity_file(**kwargs):
+        directory = Path(kwargs["output_path"])
+        path = directory / f"{kwargs['activity_id']}.{('fit' if kwargs['kind'] == 'fit' else 'bin')}"
+        path.write_bytes(b"activity-file")
+        return path
+
+    def test_advertises_exactly_fourteen_tools(self):
         self.assertEqual(
             [tool["name"] for tool in self.service().list_tools()],
             [
                 "list_activities", "search_activities", "get_activity",
-                "get_activity_streams", "list_wellness", "update_wellness",
+                "get_activity_streams", "get_activity_file", "update_activity",
+                "delete_activity", "upload_activity", "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
             ],
         )
@@ -67,7 +79,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
 
         def discover():
             discoveries.append(True)
-            return MCP.IntervalsIcuCredentials(bearer_token="cached-token", cookie="cached-cookie")
+            return MCP.IntervalsIcuCredentials(api_key="cached-key")
 
         service = self.service(
             credential_factory=discover,
@@ -77,8 +89,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         service.call_tool("list_activities", {"since": "2026-08-17", "until": "2026-08-17"})
 
         self.assertEqual(len(discoveries), 1)
-        self.assertEqual([call["bearer_token"] for call in calls], ["cached-token", "cached-token"])
-        self.assertEqual(service._auth.cookie, "cached-cookie")
+        self.assertEqual([call["api_key"] for call in calls], ["cached-key", "cached-key"])
 
     def test_get_activity_defaults_to_intervals(self):
         calls = []
@@ -120,6 +131,107 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             self.assertNotIn("streams", result)
         finally:
             path.unlink(missing_ok=True)
+
+    def test_activity_file_is_private_and_excludes_web_original(self):
+        result = self.service().call_tool(
+            "get_activity_file", {"activity_id": "i1", "kind": "fit"}
+        )
+        path = Path(result["file_path"])
+        try:
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(result["byte_size"], len(b"activity-file"))
+        finally:
+            path.unlink(missing_ok=True)
+            path.parent.rmdir()
+        with self.assertRaisesRegex(MCP.ToolFailure, "original.*fit"):
+            self.service().call_tool(
+                "get_activity_file", {"activity_id": "i1", "kind": "web-original"}
+            )
+
+    def test_update_activity_is_patch_based_and_verified(self):
+        reads = [
+            {"id": "i1", "name": "Old", "feel": None},
+            {"id": "i1", "name": "New", "feel": None},
+        ]
+        writes = []
+        service = self.service(
+            activity_getter=lambda **kwargs: reads.pop(0),
+            activity_updater=lambda **kwargs: writes.append(kwargs) or {},
+        )
+        result = service.call_tool(
+            "update_activity",
+            {"activity_id": "i1", "updates": {"name": "New"}, "confirm_overwrite": True},
+        )
+        self.assertEqual(writes[0]["updates"], {"name": "New"})
+        self.assertEqual(result["overwritten_fields"], ["name"])
+        self.assertTrue(result["verified"])
+
+    def test_update_activity_requires_confirmation_and_rejects_unknown_fields(self):
+        service = self.service(activity_getter=lambda **kwargs: {"name": "Old"})
+        with self.assertRaisesRegex(MCP.ToolFailure, "without confirmation"):
+            service.call_tool(
+                "update_activity", {"activity_id": "i1", "updates": {"name": "New"}}
+            )
+        with self.assertRaisesRegex(MCP.ToolFailure, "Unsupported activity field"):
+            service.call_tool(
+                "update_activity", {"activity_id": "i1", "updates": {"description": "x"}}
+            )
+
+    def test_update_activity_accepts_numeric_feel_scale_only(self):
+        reads = [
+            {"id": "i1", "feel": None},
+            {"id": "i1", "feel": 1},
+        ]
+        service = self.service(
+            activity_getter=lambda **kwargs: reads.pop(0),
+            activity_updater=lambda **kwargs: {},
+        )
+        result = service.call_tool(
+            "update_activity", {"activity_id": "i1", "updates": {"feel": 1}}
+        )
+        self.assertEqual(result["after"]["feel"], 1)
+        for invalid in (0, 6, "strong", True):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                MCP.ToolFailure, "integer from 1 to 5"
+            ):
+                self.service().call_tool(
+                    "update_activity", {"activity_id": "i1", "updates": {"feel": invalid}}
+                )
+
+    def test_delete_activity_confirms_and_verifies_direct_and_list_absence(self):
+        reads = [
+            {"id": "i1", "start_date_local": "2026-08-17T10:00:00"},
+            RuntimeError("Intervals.icu request failed: HTTP 404 Not Found"),
+        ]
+
+        def getter(**kwargs):
+            value = reads.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return value
+
+        service = self.service(
+            activity_getter=getter,
+            activity_lister=lambda **kwargs: [],
+        )
+        result = service.call_tool(
+            "delete_activity", {"activity_id": "i1", "confirm": "i1"}
+        )
+        self.assertTrue(result["verified_deleted"])
+
+    def test_upload_activity_verifies_returned_id_and_date_list(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            file_path = Path(temporary) / "ride.fit"
+            file_path.write_bytes(b"fit")
+            service = self.service(
+                activity_getter=lambda **kwargs: {
+                    "id": "i-uploaded", "start_date_local": "2026-08-17T10:00:00"
+                },
+                activity_lister=lambda **kwargs: [{"id": "i-uploaded"}],
+            )
+            result = service.call_tool("upload_activity", {"file_path": str(file_path)})
+        self.assertEqual(result["activity_id"], "i-uploaded")
+        self.assertTrue(result["verified"])
 
     def test_list_wellness_uses_inclusive_date_bounds(self):
         calls = []
@@ -307,7 +419,8 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
             [tool.name for tool in result.tools],
             [
                 "list_activities", "search_activities", "get_activity",
-                "get_activity_streams", "list_wellness", "update_wellness",
+                "get_activity_streams", "get_activity_file", "update_activity",
+                "delete_activity", "upload_activity", "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
             ],
         )
@@ -317,11 +430,7 @@ class IntervalsIcuConfigTests(unittest.TestCase):
     def setUp(self):
         self.original_environment = {
             name: os.environ.pop(name, None)
-            for name in (
-                "INTERVALS_ICU_API_KEY",
-                "INTERVALS_ICU_BEARER_TOKEN",
-                "INTERVALS_ICU_COOKIE",
-            )
+            for name in ("INTERVALS_ICU_API_KEY",)
         }
 
     def tearDown(self):
@@ -343,16 +452,15 @@ class IntervalsIcuConfigTests(unittest.TestCase):
         credentials = MCP.discover_intervals_icu_credentials("/missing/config.json")
         self.assertEqual(credentials.api_key, "from-environment")
 
-    def test_supports_bearer_token_and_cookie(self):
+    def test_rejects_non_api_key_config(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "config.json"
             path.write_text(
                 json.dumps({"bearerToken": "token", "cookie": "session-cookie"}),
                 encoding="utf-8",
             )
-            credentials = MCP.discover_intervals_icu_credentials(path)
-            self.assertEqual(credentials.api_kwargs(), {"bearer_token": "token"})
-            self.assertEqual(credentials.cookie, "session-cookie")
+            with self.assertRaisesRegex(ValueError, "Unknown setting"):
+                MCP.discover_intervals_icu_credentials(path)
 
     def test_delete_event_uses_documented_delete_endpoint(self):
         globals_dict = MCP.delete_event.__globals__
