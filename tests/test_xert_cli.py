@@ -296,7 +296,7 @@ class WorkoutCalculateRowsTests(unittest.TestCase):
                 patch.object(sys, "argv", argv),
                 patch.object(
                     CLI,
-                    "load_xert_credentials",
+                    "discover_xert_credentials",
                     return_value=SimpleNamespace(username="user", password="secret"),
                 ),
                 patch.object(CLI, "calculate_new_workout", return_value=calculated),
@@ -337,7 +337,7 @@ class WorkoutCalculateRowsTests(unittest.TestCase):
             patch.object(sys, "argv", argv),
             patch.object(
                 CLI,
-                "load_xert_credentials",
+                "discover_xert_credentials",
                 return_value=SimpleNamespace(username="user", password="secret"),
             ),
             patch.object(

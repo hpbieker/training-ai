@@ -33,7 +33,6 @@ from xert_common import (  # noqa: E402
     DEFAULT_XERT_OAUTH_CLIENT_SECRET,
     XertCredentials,
     _request_json,
-    load_xert_credentials,
     xert_web_login,
 )
 from xert_recovery import fetch_recovery_model_with_login  # noqa: E402
@@ -68,32 +67,20 @@ def discover_xert_credentials() -> XertCredentials:
             raise ValueError(f"Xert MCP config must contain one JSON object: {config_path}")
         config = payload
 
-    source_env = _source_env_path()
-    dotenv = load_xert_credentials(source_env) if source_env is not None else XertCredentials()
     return XertCredentials(
-        username=os.environ.get("XERT_USERNAME") or _config_string(config, "username") or dotenv.username,
-        password=os.environ.get("XERT_PASSWORD") or _config_string(config, "password") or dotenv.password,
+        username=os.environ.get("XERT_USERNAME") or _config_string(config, "username"),
+        password=os.environ.get("XERT_PASSWORD") or _config_string(config, "password"),
         oauth_client_id=(
             os.environ.get("XERT_OAUTH_CLIENT_ID")
             or _config_string(config, "oauthClientId")
-            or dotenv.oauth_client_id
             or DEFAULT_XERT_OAUTH_CLIENT_ID
         ),
         oauth_client_secret=(
             os.environ.get("XERT_OAUTH_CLIENT_SECRET")
             or _config_string(config, "oauthClientSecret")
-            or dotenv.oauth_client_secret
             or DEFAULT_XERT_OAUTH_CLIENT_SECRET
         ),
     )
-
-
-def _source_env_path() -> Path | None:
-    explicit = os.environ.get("XERT_ENV_PATH")
-    if explicit:
-        return Path(explicit).expanduser()
-    candidates = [Path.cwd() / ".env", PLUGIN_ROOT.parent.parent / ".env"]
-    return next((path for path in candidates if path.is_file()), None)
 
 
 def _config_string(config: dict[str, Any], key: str) -> str | None:

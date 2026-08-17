@@ -21,7 +21,12 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from xert_service import XertService, compact_activity_load, filter_workouts
+from xert_service import (
+    XertService,
+    compact_activity_load,
+    discover_xert_credentials,
+    filter_workouts,
+)
 
 from xert_api import (
     LOCAL_TIMEZONE,
@@ -46,7 +51,6 @@ from xert_api import (
     list_activities,
     list_activity_details,
     list_workouts,
-    load_xert_credentials,
     mutate_workout_row,
     replace_workout,
     set_calendar_note,
@@ -510,7 +514,7 @@ def main() -> None:
     workout_delete.add_argument("--yes", action="store_true", help="Confirm destructive deletion")
 
     args = parser.parse_args()
-    credentials = load_xert_credentials()
+    credentials = discover_xert_credentials()
     service = XertService(lambda: credentials)
 
     if args.command == "activities":

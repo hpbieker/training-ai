@@ -209,7 +209,9 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   default output is the analysis-ready summary; add `--detailed` only when
   segment diagnostics or model limitations are needed.
 
-Credentials come from `XERT_USERNAME` and `XERT_PASSWORD` in `.env`.
+Credentials come from `username` and `password` in the user-owned
+`~/.xert_mcp.json`. Explicit `XERT_USERNAME` and `XERT_PASSWORD` environment
+variables override the config file for both the CLI and MCP transports.
 
 ## Load Reasoning Defaults
 
