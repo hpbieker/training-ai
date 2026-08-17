@@ -24,6 +24,7 @@ from xert_activities import (  # noqa: E402
 from xert_calendar import (  # noqa: E402
     fetch_calendar_notes_with_opener,
     fetch_recommended_training_with_login,
+    fetch_training_forecast_with_login,
     set_calendar_note,
 )
 from xert_common import (  # noqa: E402
@@ -323,19 +324,43 @@ class XertService:
         return compact_training_state(training_info, recovery_model)
 
     def get_training_advice(
-        self, *, at: str | None = None, view: str = "summary"
+        self,
+        *,
+        at: str | None = None,
+        view: str = "summary",
+        include_recommendations: bool = False,
     ) -> dict[str, Any]:
         if view not in {"summary", "full"}:
             raise ValueError("view must be 'summary' or 'full'")
         credentials = self._credentials()
+        if not isinstance(include_recommendations, bool):
+            raise ValueError("include_recommendations must be a boolean")
         if at is None:
             payload = fetch_recovery_model_with_login(
                 username=_required_credential(credentials.username, "XERT_USERNAME"),
                 password=_required_credential(credentials.password, "XERT_PASSWORD"),
             )
+            recommendations_payload = None
+            if include_recommendations:
+                recommendations_payload = fetch_recommended_training_with_login(
+                    username=_required_credential(credentials.username, "XERT_USERNAME"),
+                    password=_required_credential(credentials.password, "XERT_PASSWORD"),
+                    date_value=_planned_advice_value(datetime.now(LOCAL_TIMEZONE).isoformat()),
+                    recent=True,
+                    additional=False,
+                    sport=None,
+                )
             if view == "full":
-                return {"source_scope": "current", "at": None, "payload": payload}
-            return compact_current_training_advice(payload)
+                result = {"source_scope": "current", "at": None, "payload": payload}
+                if recommendations_payload is not None:
+                    result["recommendations_payload"] = recommendations_payload
+                return result
+            result = compact_current_training_advice(payload)
+            if recommendations_payload is not None:
+                result["recommendations"] = compact_workout_recommendations(
+                    recommendations_payload
+                )
+            return result
 
         advice_value = _planned_advice_value(at)
         payload = fetch_recommended_training_with_login(
@@ -348,7 +373,28 @@ class XertService:
         )
         if view == "full":
             return {"source_scope": "planned_time", "at": at, "payload": payload}
-        return compact_planned_training_advice(payload, at=at)
+        result = compact_planned_training_advice(payload, at=at)
+        if include_recommendations:
+            result["recommendations"] = compact_workout_recommendations(payload)
+        return result
+
+    def get_training_forecast(
+        self, start_date: str, end_date: str, *, view: str = "summary"
+    ) -> dict[str, Any]:
+        start, end = _validate_date_range(start_date, end_date)
+        if view not in {"summary", "full"}:
+            raise ValueError("view must be 'summary' or 'full'")
+        credentials = self._credentials()
+        payload = fetch_training_forecast_with_login(
+            username=_required_credential(credentials.username, "XERT_USERNAME"),
+            password=_required_credential(credentials.password, "XERT_PASSWORD"),
+        )
+        days = _forecast_days_in_range(payload, start, end)
+        if view == "full":
+            full = dict(payload) if isinstance(payload, dict) else {}
+            full["days"] = days
+            return full
+        return {"days": [compact_forecast_day(day) for day in days]}
 
     def _calendar_notes(self) -> dict[str, Any]:
         credentials = self._credentials()
@@ -539,6 +585,72 @@ def compact_planned_training_advice(payload: dict[str, Any], *, at: str) -> dict
         "training_advice_as_of": advice.get("training_advice_as_of"),
         "targets_source": advice.get("targets_source"),
         "based_on_day": advice.get("based_on_day"),
+    }
+
+
+def compact_workout_recommendations(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    exercises = payload.get("exercises") if isinstance(payload, dict) else []
+    if not isinstance(exercises, list):
+        return []
+    return [
+        {
+            "path": exercise.get("path"),
+            "name": exercise.get("name"),
+            "duration_seconds": exercise.get("duration"),
+            "xss": {
+                "total": exercise.get("xss"),
+                "low": exercise.get("xlss"),
+                "high": exercise.get("xhss"),
+                "peak": exercise.get("xpss"),
+            },
+            "focus": exercise.get("focus"),
+            "specificity": exercise.get("specificity"),
+            "difficulty": exercise.get("difficulty"),
+            "rating": exercise.get("rating"),
+            "suitability": exercise.get("suitability"),
+        }
+        for exercise in exercises
+        if isinstance(exercise, dict) and exercise.get("exerciseType") == "Workout"
+    ]
+
+
+def _forecast_days_in_range(
+    payload: Any, start: date, end: date
+) -> list[dict[str, Any]]:
+    source_days = payload.get("days") if isinstance(payload, dict) else []
+    if not isinstance(source_days, list):
+        return []
+    result = []
+    for day in source_days:
+        if not isinstance(day, dict):
+            continue
+        timestamp = day.get("t")
+        if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+            continue
+        local_at = datetime.fromtimestamp(float(timestamp), tz=timezone.utc).astimezone(
+            LOCAL_TIMEZONE
+        )
+        if start <= local_at.date() <= end:
+            normalized = dict(day)
+            normalized["date"] = local_at.date().isoformat()
+            normalized["at"] = local_at.isoformat(timespec="seconds")
+            result.append(normalized)
+    return result
+
+
+def compact_forecast_day(day: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "date": day.get("date"),
+        "at": day.get("at"),
+        "name": day.get("name") or day.get("title"),
+        "focus": day.get("focus"),
+        "high_intensity": day.get("high_intensity"),
+        "xss": {
+            "total": day.get("xss"),
+            "low": day.get("xlss"),
+            "high": day.get("xhss"),
+            "peak": day.get("xpss"),
+        },
     }
 
 

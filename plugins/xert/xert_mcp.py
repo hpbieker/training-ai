@@ -28,6 +28,7 @@ ALL_TOOL_NAMES = (
     "create_workout",
     "delete_workout",
     "update_workout",
+    "get_training_forecast",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -112,6 +113,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "title": "Update Xert Workout",
         "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_training_forecast": {
+        "title": "Get Xert Training Forecast",
+        "readOnlyHint": True,
+        "destructiveHint": False,
         "idempotentHint": True,
         "openWorldHint": True,
     },
@@ -520,6 +528,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": "summary",
                     "description": "summary returns normalized advice; full returns the selected source payload.",
                 },
+                "include_recommendations": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Include normalized recommended workouts. This performs the "
+                        "additional recommended-training read when advice is for now."
+                    ),
+                },
             },
             "additionalProperties": False,
         },
@@ -533,6 +549,48 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["get_training_advice"],
+    },
+    "get_training_forecast": {
+        "name": "get_training_forecast",
+        "description": (
+            "Get Xert's calendar training forecast for an inclusive local-date range. "
+            "This is forecast state, not the mixed activity/Planner calendar feed."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Inclusive local start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Inclusive local end date in YYYY-MM-DD format.",
+                },
+                "view": {
+                    "type": "string",
+                    "enum": ["summary", "full"],
+                    "default": "summary",
+                    "description": "summary returns normalized days; full retains source day fields.",
+                },
+            },
+            "required": ["start_date", "end_date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "Requested inclusive start date."},
+                "end_date": {"type": "string", "description": "Requested inclusive end date."},
+                "view": {"type": "string", "description": "Returned forecast representation."},
+                "forecast": _object("Filtered normalized or source-native forecast."),
+            },
+            "required": ["start_date", "end_date", "view", "forecast"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["get_training_forecast"],
     },
     "create_workout": {
         "name": "create_workout",
@@ -803,7 +861,21 @@ class XertToolService:
             view = arguments.get("view", "summary")
             return {
                 "view": view,
-                "advice": service.get_training_advice(at=arguments.get("at"), view=view),
+                "advice": service.get_training_advice(
+                    at=arguments.get("at"),
+                    view=view,
+                    include_recommendations=arguments.get("include_recommendations", False),
+                ),
+            }
+        if name == "get_training_forecast":
+            start = arguments["start_date"]
+            end = arguments["end_date"]
+            view = arguments.get("view", "summary")
+            return {
+                "start_date": start,
+                "end_date": end,
+                "view": view,
+                "forecast": service.get_training_forecast(start, end, view=view),
             }
         if name == "create_workout":
             return {

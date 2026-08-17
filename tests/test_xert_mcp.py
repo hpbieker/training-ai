@@ -52,9 +52,17 @@ class FakeXertService:
         self.calls.append(("get_training_state", view))
         return {"as_of": "2026-08-17T09:00:00+02:00"} if view == "summary" else {"training_info": {}}
 
-    def get_training_advice(self, *, at=None, view="summary"):
-        self.calls.append(("get_training_advice", at, view))
-        return {"source_scope": "planned_time" if at else "current", "at": at}
+    def get_training_advice(self, *, at=None, view="summary", include_recommendations=False):
+        self.calls.append(("get_training_advice", at, view, include_recommendations))
+        return {
+            "source_scope": "planned_time" if at else "current",
+            "at": at,
+            "recommendations": [] if include_recommendations else None,
+        }
+
+    def get_training_forecast(self, start_date, end_date, *, view="summary"):
+        self.calls.append(("get_training_forecast", start_date, end_date, view))
+        return {"days": []}
 
     def create_workout(self, *, name, rows, description=""):
         self.calls.append(("create_workout", name, rows, description))
@@ -86,6 +94,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "create_workout",
                 "delete_workout",
                 "update_workout",
+                "get_training_forecast",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -200,10 +209,22 @@ class XertMcpDispatchTests(unittest.TestCase):
     def test_training_advice_dispatches_optional_time_and_view(self) -> None:
         result = self.tools.call_tool(
             "get_training_advice",
-            {"at": "2026-08-18T09:00:00+02:00", "view": "full"},
+            {
+                "at": "2026-08-18T09:00:00+02:00",
+                "view": "full",
+                "include_recommendations": True,
+            },
         )
         self.assertEqual(result["view"], "full")
         self.assertEqual(result["advice"]["source_scope"], "planned_time")
+        self.assertEqual(result["advice"]["recommendations"], [])
+
+    def test_training_forecast_dispatches_range_and_view(self) -> None:
+        result = self.tools.call_tool(
+            "get_training_forecast",
+            {"start_date": "2026-08-17", "end_date": "2026-08-24"},
+        )
+        self.assertEqual(result["forecast"], {"days": []})
 
     def test_create_workout_dispatches_complete_rows(self) -> None:
         result = self.tools.call_tool(
@@ -376,6 +397,45 @@ class XertServiceTests(unittest.TestCase):
             additional=False,
             sport=None,
         )
+
+    def test_training_advice_filters_recommendations_to_workouts(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        payload = {
+            "training_advice": {},
+            "exercises": [
+                {"exerciseType": "Workout", "path": "w1", "name": "Workout", "xss": 40},
+                {"exerciseType": "Activity", "path": "a1", "name": "Activity"},
+            ],
+        }
+        with patch.object(
+            SERVICE, "fetch_recommended_training_with_login", return_value=payload
+        ):
+            result = service.get_training_advice(
+                at="2026-08-18T09:00:00+02:00",
+                include_recommendations=True,
+            )
+        self.assertEqual([row["path"] for row in result["recommendations"]], ["w1"])
+
+    def test_training_forecast_filters_epoch_days_by_local_date(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        inside = SERVICE.datetime(2026, 8, 18, 8, tzinfo=SERVICE.timezone.utc).timestamp()
+        outside = SERVICE.datetime(2026, 8, 25, 8, tzinfo=SERVICE.timezone.utc).timestamp()
+        payload = {
+            "days": [
+                {"t": inside, "xss": 40, "xlss": 35, "xhss": 5, "xpss": 0},
+                {"t": outside, "xss": 50},
+            ],
+            "other": "preserved",
+        }
+        with patch.object(SERVICE, "fetch_training_forecast_with_login", return_value=payload):
+            summary = service.get_training_forecast("2026-08-17", "2026-08-24")
+            full = service.get_training_forecast("2026-08-17", "2026-08-24", view="full")
+        self.assertEqual(len(summary["days"]), 1)
+        self.assertEqual(summary["days"][0]["xss"]["low"], 35)
+        self.assertEqual(len(full["days"]), 1)
+        self.assertEqual(full["other"], "preserved")
 
     def test_create_workout_normalizes_public_rows_and_calls_saved_create(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")

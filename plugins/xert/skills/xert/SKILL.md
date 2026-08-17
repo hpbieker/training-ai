@@ -45,7 +45,12 @@ Prefer the Xert MCP tools when they are available:
   `/my-fitness`; supply an ISO date-time for planned-time advice from
   `/recommended-training`, resolved immediately before that planned start.
   Use `view=summary` normally and `view=full` only for the selected raw source
-  payload. This tool does not add activity load or cross-source readiness.
+  payload. Set `include_recommendations=true` only when candidate workouts are
+  needed; summary output filters candidates to `exerciseType == "Workout"`.
+  This tool does not add activity load or cross-source readiness.
+- `get_training_forecast` returns Xert forecast days in an inclusive local-date
+  range. Use `view=summary` normally and `view=full` when source day fields are
+  needed. It reads the forecast endpoint, not the mixed activity/Planner feed.
 - `create_workout` saves a new Xert workout from complete, structured Designer
   rows. Each row uses duration values in seconds, and repeat-row
   `rib_duration_seconds` is applied after every repetition, including the
