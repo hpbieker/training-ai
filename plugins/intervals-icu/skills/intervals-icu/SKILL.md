@@ -7,6 +7,13 @@ description: Use for Intervals.icu live activity lookup, date-bounded activity l
 
 Use this skill for Intervals.icu-specific source access, source semantics, and write safety. The plugin can fetch live data and perform cautious remote updates, but it does not own repo-level training analysis, plotting, readiness composition, or long-term storage.
 
+## Network Execution
+
+Live Intervals.icu reads and writes require external network access. Run live
+`intervals_icu_cli.py` commands with escalated network permission on the first
+attempt; do not first try them in a network-isolated sandbox. Offline help,
+local artifact inspection, and cache-only workflows do not require escalation.
+
 ## Task Routing
 
 Choose the narrowest workflow that answers the request:

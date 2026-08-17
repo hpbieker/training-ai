@@ -28,19 +28,43 @@
 
 - Intervals.icu respiratory stream fields use these meanings:
   - `respiration`: BR, breathing rate in breaths per minute.
-  - `tidal_volume`: VT, Tyme Wear-reported breathing volume in centiliters per breath, inferred from exported stream values.
-  - `tidal_volume_min`: VE, Tyme Wear-reported breathing volume in liters per minute, inferred from exported stream values.
-  - For Tyme Wear streams, `tidal_volume_min` should be consistent with `tidal_volume / 100 * respiration`.
+  - `tidal_volume`: VT, the Tyme Wear-reported per-breath volume or breathing-
+    depth value. Existing exports appear scaled as centiliters per breath, but
+    preserve the source value and do not assume laboratory-calibrated liters
+    without verifying the device generation and export contract.
+  - `tidal_volume_min`: VE, the Tyme Wear-reported minute-ventilation value.
+    Existing exports appear scaled as liters per minute, but treat the absolute
+    unit as source-reported unless independently verified for the exact device
+    and processing path.
+  - For current normalized Tyme Wear streams, `tidal_volume_min` should be
+    arithmetically consistent with `tidal_volume / 100 * respiration`. This
+    consistency check validates the mapping, not the absolute volume accuracy.
 - Intervals.icu CORE sensor stream fields use these meanings:
-  - `heat_strain_index`: HSI from the CORE 2 sensor, on a 0 to 5.0 scale.
-  - `core_temperature`: CORE sensor core temperature in degrees C.
-  - `skin_temperature`: CORE sensor skin temperature in degrees C.
+  - `heat_strain_index`: HSI from the CORE 2 sensor, ranging from 0 to around
+    10. It is CORE's proprietary composite derived from its estimated core
+    temperature and local skin temperature. Preserve it as a product-derived
+    index; do not reinterpret it as a direct physiological measurement or a
+    medical heat-risk classification.
+  - `core_temperature`: CORE-estimated body-core temperature in degrees C. The
+    wearable estimates this value from thermal inputs and, in applicable
+    operating modes, heart rate; it does not directly measure temperature at an
+    invasive core site.
+  - `skin_temperature`: local skin temperature in degrees C at the CORE sensor.
+    Airflow, clothing, sweat, placement, ambient conditions, and peripheral
+    blood flow can affect it.
+  - Older or incomplete FIT exports can omit `heat_strain_index` even when
+    `core_temperature` and `skin_temperature` are present. Treat absent or
+    incomplete HSI as a coverage/export limitation, not as zero heat strain.
 - Custom environmental fields use these meanings:
   - `Humidity` and `RuuviHumidity`: relative humidity percentage.
   - `RuuviTemperature`: ambient temperature in degrees C from Ruuvi.
 - Intervals.icu muscle oxygen sensor stream fields use these meanings:
   - `smo2`: muscle oxygen saturation percentage from a Moxy or similar muscle oxygen sensor.
-  - `thb`: total hemoglobin in g/dL from a Moxy or similar muscle oxygen sensor; use primarily for trend analysis.
+  - `thb`: the total-heme/total-hemoglobin value delivered by a Moxy or similar
+    muscle oxygen sensor. Preserve the source value and unit when available,
+    but do not interpret Moxy's absolute THb as a clinical blood-hemoglobin
+    concentration. Use it primarily as a relative trend or delta within the
+    same session and stable measurement setup.
 - Respect Intervals.icu ignore flags in activity metadata:
   - If `icu_ignore_hr` is true, do not use heart rate, W/HR, or HR drift for that activity.
   - If `icu_ignore_power` is true, do not use power or torque-derived metrics unless the user explicitly asks to inspect the raw stream.
@@ -68,7 +92,9 @@
 ## Wellness UI Scales
 
 - `sleepQuality`: `1 = great`, `2 = good`, `3 = avg`, `4 = poor`
-- `soreness`, `fatigue`, and `stress`: `1 = low`, `2 = avg`, `3 = high`, `4 = extreme`
+- `soreness`, `fatigue`, and `stress`: `0 = none`, `1 = low`, `2 = avg`,
+  `3 = high`, `4 = extreme`; `null` means no value has been recorded and is
+  not equivalent to `0`
 - `mood`: `1 = great`, `2 = good`, `3 = ok`, `4 = grumpy`
 - `motivation`: `1 = extreme`, `2 = high`, `3 = avg`, `4 = low`
 - `injury`: `1 = none`, `2 = niggle`, `3 = poor`, `4 = injured`
