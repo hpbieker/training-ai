@@ -1,0 +1,7 @@
+interface:
+  display_name: "Strava"
+  short_description: "Inspect and update Strava activities and routes"
+  icon_small: "./assets/strava-small.png"
+  icon_large: "./assets/strava.png"
+  brand_color: "#FC5200"
+  default_prompt: "Use $strava to inspect, create, or update my Strava activities and routes."

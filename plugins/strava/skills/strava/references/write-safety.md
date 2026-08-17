@@ -5,13 +5,10 @@ material ephemeral and verify the saved state afterward.
 
 ## Activity Changes
 
-Preferred helper:
-
-```bash
-python3 -B plugins/strava/scripts/strava_activity_tags.py <activity-id> \
-  --tag Workout --trainer true --visibility only_me --start-time-hidden true
-python3 -B plugins/strava/scripts/strava_activity_tags.py <activity-id> --read
-```
+Use `strava_session_from_safari.py` to obtain the live Safari cookies through
+curl-safari. Put them in a mode-0600 temporary file and pass the file through
+`--cookie-file`; never put cookie values in command arguments. Read the
+activity back after each change.
 
 Supported primary tag form values include `Race`, `Workout`, `Commute`,
 `ForACause`, `Recovery`, `WithKid`, and `WithPet`.
@@ -20,16 +17,14 @@ Indoor cycling is not a normal primary tag. It is controlled by the trainer
 flag and may appear as tag id 6 in the training API. Strava can refuse to unset
 trainer for an indoor activity, so verify the resulting state.
 
-The helper keeps the edit-page CSRF token and `_strava4_session` cookie in the
-same temporary jar. Do not split the edit GET and form POST across unrelated
-cookie state; a mismatch can redirect to the dashboard without applying the
-change.
+Keep the edit-page CSRF token and `_strava4_session` cookie from the same live
+session. Do not split the edit GET and form POST across unrelated cookie state;
+a mismatch can redirect to the dashboard without applying the change.
 
 ## Route Creation And Updates
 
-Use `strava_route_api.py build` first and inspect the actual geometry before a
-create or update. Build is non-persistent; create and update mutate the user's
-Strava account.
+Build first and inspect the actual geometry before creation. Build is
+non-persistent; create/update mutates the user's Strava account.
 
 Keep new route visibility `OnlyMe` unless the user explicitly requests another
 setting. Resolve the exact route ID before updating an existing route.
@@ -39,6 +34,13 @@ Create success returns a route ID. Update has been observed to return
 page and metadata through the authenticated Strava state rather than relying
 only on the POST response.
 
-Never use a create/update body copied from a browser with persisted Cookie or
-CSRF headers. Retain only the reviewed JSON body and obtain fresh session state
-at runtime.
+Never retain Cookie or CSRF headers. Obtain fresh session state through
+curl-safari, use the private cookie file with the shared Python HTTP session
+for the active workflow, and delete the file afterward. Use browser-curl-replay
+only if curl-safari cannot provide the required session cookie.
+
+Resolve activity IDs with a date-bounded `strava_activities.py` query before a
+batch write. Do not select duplicate activity names without checking ID and
+local start date. For a multi-activity update, require one readback result per
+requested ID and report the saved tag, trainer flag, visibility, bike, and
+hidden-start-time state.

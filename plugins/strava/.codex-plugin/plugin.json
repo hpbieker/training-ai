@@ -1,19 +1,22 @@
 {
   "name": "strava",
   "version": "0.1.0",
-  "description": "Safari-authenticated Strava route tooling and route-builder notes for Codex.",
+  "description": "Browser-authenticated Strava activity and route tooling using Python HTTP.",
   "author": {
     "name": "Hans Petter Bieker"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Strava",
-    "shortDescription": "Create and inspect Strava routes through Safari-authenticated workflows.",
-    "longDescription": "Strava captures the Safari/curl route-builder workflow learned locally: authenticated route-page fetches, in-page build-route/create-route/update-route API calls, GPX import caveats, and VT1 route scoring that penalizes footways, cycleway shortcuts, crossings, barriers, and traffic interruptions.",
+    "shortDescription": "Inspect and update Strava activities and routes through Python HTTP.",
+    "longDescription": "Strava provides browser-authenticated activity reads and writes, route building and creation from start location and target distance, geometry inspection, and route-quality checks using Python HTTP and a private temporary cookie file.",
     "developerName": "Hans Petter Bieker",
     "category": "Health & Fitness",
     "capabilities": [
-      "Safari-authenticated Strava route API workflows",
+      "Browser-authenticated Python HTTP Strava workflows",
+      "Date-bounded activity discovery and visibility filtering",
+      "Verified activity metadata updates, including bike and start-time privacy",
+      "Route creation from start location and target distance",
       "VT1 route scoring from BRouter GeoJSON",
       "Strava route creation and update guidance"
     ],

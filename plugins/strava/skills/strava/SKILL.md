@@ -1,68 +1,126 @@
 ---
 name: strava
-description: Use when reading or changing Strava activities, tags, visibility, routes, Route Builder state, GPX imports, or Safari-authenticated Strava data.
+description: Read and change Strava activities, tags, visibility, routes, Route Builder state, and authenticated Strava data with Python HTTP after a curl-safari session bootstrap. Use for activity or route inspection and mutation, or when creating a cycling route from a start location, target distance, route shape, direction, surface, elevation, popularity, and optional via points.
 ---
 
 # Strava
 
-Use this skill for authenticated Strava activity and route workflows. Prefer
-the bundled helpers, keep authentication material ephemeral, and verify every
-write from Strava's current state.
+Use `strava_session_from_safari.py` to visit the Strava training page through
+`curl-safari`, export the reconstructed live cookie jar, and write a temporary
+mode-0600 `Cookie:` header file. Pass its path through `--cookie-file`. The
+remaining scripts use Python's standard HTTP client.
 
-## Choose The Workflow
+## Network Execution
 
-- For an activity's tag, trainer, visibility, or hidden-start state, use
-  `plugins/strava/scripts/strava_activity_tags.py`.
-- For a known Route Builder JSON body, use
-  `plugins/strava/scripts/strava_route_api.py`.
-- For a browser-copied build request, use
-  `plugins/strava/scripts/replay_copied_build_route.py` so Cookie and CSRF data
-  remain in memory.
-- For response inspection and GeoJSON export, use
-  `plugins/strava/scripts/analyze_strava_build.py`.
-- For BRouter/OSM candidate checks, use
-  `plugins/strava/scripts/score_brouter_vt1.py`.
-- Use Safari in-page JavaScript only when a helper cannot express the required
-  Route Builder request.
+Live Strava reads and writes require external network access. Run the live
+`plugins/strava/scripts/` commands with escalated
+network permission on the first attempt; do not first try them in a
+network-isolated sandbox. The bootstrap depends on the local curl-safari server
+and its Safari cookie access. Offline help
+and local response or artifact inspection do not require network escalation.
 
 ## Authentication
 
-Use `curl-safari` for pages that require the user's logged-in Safari session.
-Route-builder requests must originate from Strava state, and activity form
-writes must keep the edit-page CSRF token and its resulting session cookie
-together.
+Follow the `curl-safari` skill completely. Safari must already be logged in.
 
-Never expose or persist Cookie, CSRF, or session headers. It is safe to persist
-reviewed request bodies, redacted logs, and responses in temporary files.
+Never store or print Cookie, Authorization, CSRF, or copied full cURL content.
+The cookie file must contain exactly one `Cookie: name=value; ...` line, live
+under `/private/tmp`, and be deleted when the workflow finishes. Its value must
+not appear in command arguments. An optional `--header-file` may contain
+non-secret browser headers, but never Cookie, Authorization, or CSRF. Keep
+response bodies and redacted verbose logs in `/private/tmp`.
+
+Verify authentication before other calls:
+
+```bash
+python3 -B plugins/strava/scripts/strava_route_api.py auth \
+  --cookie-file /private/tmp/strava-cookie.headers
+```
+
+Create the required private cookie file:
+
+```bash
+python3 -B plugins/strava/scripts/strava_session_from_safari.py
+```
+
+### Why Not Curl Safari
+
+Do not use Curl Safari for Strava authentication unless its open cookie-
+completeness investigation proves the behavior fixed. On 2026-07-28, an
+authenticated Safari request contained Strava session cookies including
+`_strava4_session` and `_strava_idcf`, while Curl Safari's parsed disk-backed
+jar omitted them and the same dashboard URL redirected to `/login`.
+
+The root cause may be cookie-file/profile selection, binarycookies parsing, or
+filtering rather than non-persistence. Do not encode a speculative fallback.
+The live curl-safari jar is the source of truth for the active session; Python
+HTTP is the transport after bootstrap. If curl-safari cannot provide
+`_strava4_session` that Strava accepts for the training page, use
+`browser-curl-replay` and
+`strava_cookie_from_curl.py` as the fallback.
+
+This is not credential login. Safari must already be logged in, and the Mac
+must be unlocked for a new Web Inspector capture when the session expires.
 
 ## Activities
 
-Read one activity's editable state with:
+Read [references/write-safety.md](references/write-safety.md) before writes.
+Use `strava_activities.py` for date-bounded discovery and visibility filtering:
 
 ```bash
-python3 -B plugins/strava/scripts/strava_activity_tags.py <activity-id> --read
+python3 -B plugins/strava/scripts/strava_activities.py \
+  --cookie-file /private/tmp/strava-cookie.headers \
+  --since 2026-08-01 --visibility only_me
 ```
 
-Read [references/write-safety.md](references/write-safety.md) before changing
-an activity tag, trainer flag, visibility, hidden start time, or any route.
+Use the returned activity IDs for exact reads or writes. Pass one or more IDs
+to `strava_activity_tags.py`. It supports activity name, primary tag, trainer flag,
+visibility, hidden start time, and bike by exact ID or exact edit-form name.
+Omitted fields are preserved; use `--tag none` only for an explicit tag clear.
+Every operation reads back API state plus edit-page-only bike and start-time
+state.
+
+```bash
+python3 -B plugins/strava/scripts/strava_activity_tags.py 123 456 \
+  --cookie-file /private/tmp/strava-cookie.headers \
+  --tag Workout --visibility everyone --start-time-hidden true \
+  --bike-name "Kickr Bike v2 (hjeme)"
+```
 
 ## Routes
 
-Read [references/route-builder.md](references/route-builder.md) before building,
-importing, creating, or updating a route. Inspect Strava's returned geometry;
-waypoints and a successful HTTP status are not sufficient verification.
+Read [references/route-builder.md](references/route-builder.md) for endpoint and
+payload semantics. Use `analyze_strava_build.py` to inspect returned geometry.
 
-Read [references/route-quality.md](references/route-quality.md) when assessing a
-cycling route for surface, interruptions, road suitability, or steady pacing.
-Apply caller-provided location, surface, and route preferences rather than
-embedding personal route history in this skill.
+For a route from a start place and target distance, resolve:
 
-Keep new routes private by default unless the user explicitly requests another
-visibility.
+- start name, latitude, and longitude;
+- target kilometres and `loop` or `out-and-back`;
+- preferred direction or bearing;
+- `Paved`, `Any`, or `Dirt`;
+- `flat` or `hilly`, and direct versus popular routing;
+- optional deliberate via points;
+- route name and visibility.
+
+Prefer explicit user choices, current-location context, actual saved activity
+geometry, and map-backed anchors. A generated bearing is only a candidate;
+inspect it because it can point across water or unsuitable roads.
+
+Use repeatable `--via LAT,LNG,NAME` arguments for deliberate anchors. Inspect
+`analysis.json` and `route.geojson`, then read
+[references/route-quality.md](references/route-quality.md). Revise poor
+candidates instead of suppressing the 15 percent distance guardrail.
+
+Run `strava_create_route.py` with `--cookie-file`, the resolved start,
+distance, shape, routing choices, and an output directory. Omit `--yes` to
+build and inspect only. Creating a route is a Strava write; add `--yes` only
+when the user explicitly asked to create or save it. New routes default to
+`OnlyMe`; use `Everyone` only when explicitly requested. Report the verified
+route URL, distance, elevation, surface uncertainty, shape, and material road
+or traffic caveats.
 
 ## Boundaries
 
-This plugin owns Strava session mechanics, route-builder payload semantics,
-Strava activity mutations, and their verification. The caller owns personal
-route preferences, saved-activity selection, cross-source analysis,
-persistence, maps/reports, and final route or training decisions.
+This plugin owns Strava session mechanics, route-builder payloads, activity
+mutations, and readback verification. The caller owns personal route
+preferences, candidate selection, maps, and final route or training decisions.

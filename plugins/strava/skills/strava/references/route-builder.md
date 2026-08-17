@@ -1,18 +1,31 @@
 # Strava Route Builder
 
-## Known Endpoints
+## Transport
 
-- `POST /frontend/routes/file` imports GPX as multipart form data with `file`,
-  `data_type=gpx`, and `route_type`.
-- `POST /api/next/data/routes/build-route` builds legs from a JSON `requests`
-  array containing waypoint elements and `routePrefs`.
-- `POST /api/next/data/routes/create-route` creates a route from `props` with
-  name, description, visibility, starred state, elements, legs, preferences,
-  and athlete ID.
-- `POST /api/next/data/routes/update-route` updates a route from equivalent
-  props plus `routeId`.
+Use `strava_session_from_safari.py` to fetch Strava's authenticated training page through
+curl-safari and create a mode-0600 `Cookie:` header file. Pass that path as
+`--cookie-file`. Use the shared Python HTTP session for:
 
-A waypoint element has this shape:
+1. authenticated training-page read and athlete-ID discovery;
+2. Route Builder GET with the same live browser session cookie;
+3. fresh CSRF extraction;
+4. API POST with the same runtime cookie and CSRF;
+5. HTTP and JSON validation.
+
+Do not store full copied cURL, Authorization, or CSRF values. Keep the temporary
+cookie file only for the active workflow, then delete it. Keep only sanitized
+templates, response bodies, and redacted logs. Do not use Curl Safari for
+Strava until its cookie-completeness issue is resolved; its
+disk-backed jar omitted `_strava4_session` from a session Safari demonstrably
+used.
+
+## Endpoints
+
+- `POST /api/next/data/routes/build-route`
+- `POST /api/next/data/routes/create-route`
+- `POST /api/next/data/routes/update-route`
+
+Build requests contain pairs of waypoint elements and `routePrefs`. A waypoint:
 
 ```json
 {
@@ -24,7 +37,7 @@ A waypoint element has this shape:
 }
 ```
 
-Common road-cycling preferences are:
+Road defaults:
 
 ```json
 {
@@ -36,52 +49,16 @@ Common road-cycling preferences are:
 }
 ```
 
-`surfaceType: "Paved"` is a preference, not a guarantee. `popularity: 0` is
-more direct while higher values favour popular routing. Add `startElement` with
-the zero-based leg index to each returned leg before create/update.
+`Paved` is a preference, not proof. Inspect returned
+`surfaceTypeOffsets`, polylines, directions, distance, elevation, and leg count.
+Add zero-based `startElement` to built legs before create/update.
 
-## Build And Inspect
-
-```bash
-python3 -B plugins/strava/scripts/strava_route_api.py build /tmp/body.json \
-  --out /tmp/strava-build.json --verbose-log /tmp/strava-build.log
-python3 -B plugins/strava/scripts/analyze_strava_build.py /tmp/strava-build.json \
-  --geojson-out /tmp/strava-build.geojson
-```
-
-Before accepting the candidate, verify:
-
-- HTTP success and one returned leg per waypoint gap.
-- plausible total distance and no odd out-and-back legs.
-- low `snapUncertainty` and sensible generated points.
-- actual `paths[].polyline`, directions, and `surfaceTypeOffsets`.
-- exported geometry against the required surface and road constraints.
-
-Do not densify a bad baseline route: extra waypoints can preserve an unwanted
-shortcut. Prefer a few deliberate, named anchors and rebuild.
-
-GPX import can return a server error for files Strava rejects even when
-authentication succeeded. Treat that as possible parser/schema sensitivity and
-inspect the file before diagnosing login failure.
-
-## Browser-Copied Requests
-
-Do not save pasted Cookie or CSRF headers. Keep the copied request in the
-clipboard and replay it through:
+## Analysis
 
 ```bash
-python3 -B plugins/strava/scripts/replay_copied_build_route.py \
-  --out /tmp/strava-build.json \
-  --verbose-log /tmp/strava-build.log \
-  --body-out /tmp/strava-build-body.json
+python3 -B plugins/strava/scripts/analyze_strava_build.py <response.json> \
+  --geojson-out <route.geojson> --json
 ```
 
-The helper stores only the cookie-free body, redacted log, and response.
-
-## Safari Fallback
-
-When in-page JavaScript is required, first verify that the active tab is on
-`https://www.strava.com/maps/create`. Relative API paths must run from the
-Strava origin. Generate JavaScript with `make_strava_route_js.py`, save it to a
-temporary file, and read that file from AppleScript rather than shell-quoting a
-large script.
+Build before writing, apply distance and surface gates, default to private, and
+verify the created route page.
