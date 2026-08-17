@@ -56,6 +56,10 @@ class FakeXertService:
         self.calls.append(("get_training_advice", at, view))
         return {"source_scope": "planned_time" if at else "current", "at": at}
 
+    def create_workout(self, *, name, rows, description=""):
+        self.calls.append(("create_workout", name, rows, description))
+        return {"path": "new-workout", "saved": True}
+
 
 class XertMcpSchemaTests(unittest.TestCase):
     def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
@@ -71,6 +75,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "set_note",
                 "get_training_state",
                 "get_training_advice",
+                "create_workout",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -83,13 +88,14 @@ class XertMcpSchemaTests(unittest.TestCase):
                 self.assertTrue(schema.get("description"), f"{name}.{field}")
             writes_session_file = name == "get_activity"
             writes_note = name == "set_note"
+            creates_workout = name == "create_workout"
             self.assertEqual(
                 definition["annotations"],
                 {
                     "title": MCP.TOOL_ANNOTATIONS[name]["title"],
-                    "readOnlyHint": not (writes_session_file or writes_note),
+                    "readOnlyHint": not (writes_session_file or writes_note or creates_workout),
                     "destructiveHint": writes_note,
-                    "idempotentHint": not writes_session_file,
+                    "idempotentHint": not (writes_session_file or creates_workout),
                     "openWorldHint": True,
                 },
             )
@@ -178,6 +184,17 @@ class XertMcpDispatchTests(unittest.TestCase):
         )
         self.assertEqual(result["view"], "full")
         self.assertEqual(result["advice"]["source_scope"], "planned_time")
+
+    def test_create_workout_dispatches_complete_rows(self) -> None:
+        result = self.tools.call_tool(
+            "create_workout",
+            {
+                "name": "Endurance",
+                "description": "Steady",
+                "rows": [{"duration_seconds": 600, "power": 200}],
+            },
+        )
+        self.assertEqual(result["workout"]["path"], "new-workout")
 
 
 class XertServiceTests(unittest.TestCase):
@@ -322,6 +339,35 @@ class XertServiceTests(unittest.TestCase):
             additional=False,
             sport=None,
         )
+
+    def test_create_workout_normalizes_public_rows_and_calls_saved_create(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        with patch.object(
+            SERVICE,
+            "create_saved_workout",
+            return_value={"path": "created", "saved": True},
+        ) as create:
+            result = service.create_workout(
+                name="  4 x 4  ",
+                description="Quality",
+                rows=[
+                    {
+                        "name": "Intervals",
+                        "duration_seconds": 240,
+                        "power": 340,
+                        "interval_count": 4,
+                        "rib_duration_seconds": 180,
+                        "rib_power": 120,
+                    }
+                ],
+            )
+        self.assertEqual(result["path"], "created")
+        row = create.call_args.kwargs["rows"][0]
+        self.assertEqual(row["duration"]["value"], "04:00")
+        self.assertEqual(row["interval_count"], "4")
+        self.assertEqual(row["rib_duration"]["value"], "03:00")
+        self.assertEqual(create.call_args.kwargs["name"], "4 x 4")
 
 
 if __name__ == "__main__":

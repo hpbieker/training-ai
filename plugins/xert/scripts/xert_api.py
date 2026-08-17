@@ -57,6 +57,7 @@ from xert_load_model import (
 )
 from xert_workouts import (
     calculate_new_workout,
+    create_workout,
     delete_workout,
     fetch_workout,
     fetch_workout_designer_rows,

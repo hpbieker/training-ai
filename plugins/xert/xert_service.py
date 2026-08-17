@@ -37,6 +37,7 @@ from xert_common import (  # noqa: E402
 )
 from xert_recovery import fetch_recovery_model_with_login  # noqa: E402
 from xert_workouts import (  # noqa: E402
+    create_workout as create_saved_workout,
     fetch_workout,
     fetch_workout_designer_rows,
     list_workouts as fetch_workouts,
@@ -186,6 +187,32 @@ class XertService:
         )
         return fetch_workout_designer_rows(opener, path)
 
+    def create_workout(
+        self,
+        *,
+        name: str,
+        rows: list[dict[str, Any]],
+        description: str = "",
+    ) -> dict[str, Any]:
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("name must be a non-empty string")
+        if not isinstance(description, str):
+            raise ValueError("description must be a string")
+        designer_rows = [
+            _designer_row_from_input(row, sequence=index)
+            for index, row in enumerate(rows)
+        ] if isinstance(rows, list) else []
+        if not designer_rows:
+            raise ValueError("rows must be a non-empty array")
+        credentials = self._credentials()
+        return create_saved_workout(
+            username=credentials.username,
+            password=credentials.password,
+            name=name.strip(),
+            description=description,
+            rows=designer_rows,
+        )
+
     def list_notes(self, start_date: str, end_date: str) -> list[dict[str, str]]:
         start, end = _validate_date_range(start_date, end_date)
         notes = self._calendar_notes()
@@ -331,6 +358,68 @@ def filter_workouts(
         for row in workouts
         if all(keyword in str(row.get("name") or "").casefold() for keyword in keywords)
     ]
+
+
+def _designer_row_from_input(row: Any, *, sequence: int) -> dict[str, Any]:
+    if not isinstance(row, dict):
+        raise ValueError(f"rows[{sequence}] must be an object")
+    duration = _nonnegative_int(row.get("duration_seconds"), f"rows[{sequence}].duration_seconds")
+    if duration == 0:
+        raise ValueError(f"rows[{sequence}].duration_seconds must be positive")
+    power = _number_field(row.get("power"), f"rows[{sequence}].power")
+    interval_count = _nonnegative_int(row.get("interval_count", 1), f"rows[{sequence}].interval_count")
+    if interval_count == 0:
+        raise ValueError(f"rows[{sequence}].interval_count must be positive")
+    rib_duration = _nonnegative_int(
+        row.get("rib_duration_seconds", 0), f"rows[{sequence}].rib_duration_seconds"
+    )
+    power_type = str(row.get("power_type") or "absolute")
+    if power_type not in {"absolute", "relative_ftp", "ramp_ftp", "ramp_ltp", "ramp_absolute"}:
+        raise ValueError(f"rows[{sequence}].power_type is unsupported")
+    rib_power_type = str(row.get("rib_power_type") or "absolute")
+    if rib_power_type not in {"absolute", "relative_ftp"}:
+        raise ValueError(f"rows[{sequence}].rib_power_type is unsupported")
+    power_object: dict[str, Any] = {
+        "type": power_type,
+        "value": power,
+    }
+    if row.get("power_second_value") is not None:
+        power_object["second_value"] = _number_field(
+            row["power_second_value"], f"rows[{sequence}].power_second_value"
+        )
+    if power_type.startswith("ramp_") and "second_value" not in power_object:
+        raise ValueError(f"rows[{sequence}].power_second_value is required for a ramp")
+    return {
+        "sequence": sequence,
+        "DT_RowId": "",
+        "name": str(row.get("name") or f"Row {sequence + 1}"),
+        "duration": {"type": "absolute", "value": _duration_text(duration)},
+        "power": power_object,
+        "interval_count": str(interval_count),
+        "rib_duration": {"type": "absolute", "value": _duration_text(rib_duration)},
+        "rib_power": {
+            "type": rib_power_type,
+            "value": _number_field(row.get("rib_power", 0), f"rows[{sequence}].rib_power"),
+        },
+    }
+
+
+def _nonnegative_int(value: Any, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{label} must be a non-negative integer")
+    return value
+
+
+def _number_field(value: Any, label: str) -> int | float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{label} must be a number")
+    return value
+
+
+def _duration_text(seconds: int) -> str:
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
 
 
 def compact_training_state(

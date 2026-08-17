@@ -25,6 +25,7 @@ ALL_TOOL_NAMES = (
     "set_note",
     "get_training_state",
     "get_training_advice",
+    "create_workout",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -89,6 +90,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "create_workout": {
+        "title": "Create Xert Workout",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
         "openWorldHint": True,
     },
 }
@@ -455,6 +463,92 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["get_training_advice"],
     },
+    "create_workout": {
+        "name": "create_workout",
+        "description": (
+            "Create and save a new Xert workout from complete Workout Designer rows. "
+            "The saved metadata and rows are read back and verified. Repeated calls "
+            "create additional workouts; use only when creation is explicitly requested."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Name for the new workout.",
+                },
+                "description": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Optional workout description.",
+                },
+                "rows": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "Complete Workout Designer rows in execution order.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Optional row name."},
+                            "duration_seconds": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "description": "Work duration for each repetition in seconds.",
+                            },
+                            "power": {"type": "number", "description": "Primary power value."},
+                            "power_type": {
+                                "type": "string",
+                                "enum": ["absolute", "relative_ftp", "ramp_ftp", "ramp_ltp", "ramp_absolute"],
+                                "default": "absolute",
+                                "description": "Interpretation of power; relative and ramp values are percentages.",
+                            },
+                            "power_second_value": {
+                                "type": "number",
+                                "description": "Required ending power for ramp power types.",
+                            },
+                            "interval_count": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "default": 1,
+                                "description": "Number of work repetitions represented by this row.",
+                            },
+                            "rib_duration_seconds": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "default": 0,
+                                "description": "Rest-in-between duration after every repetition, including the final one.",
+                            },
+                            "rib_power": {
+                                "type": "number",
+                                "default": 0,
+                                "description": "Rest-in-between power value.",
+                            },
+                            "rib_power_type": {
+                                "type": "string",
+                                "enum": ["absolute", "relative_ftp"],
+                                "default": "absolute",
+                                "description": "Interpretation of rest-in-between power.",
+                            },
+                        },
+                        "required": ["duration_seconds", "power"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["name", "rows"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "workout": _object("Created workout path, verified metadata, and timeline summary."),
+            },
+            "required": ["workout"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["create_workout"],
+    },
 }
 
 
@@ -569,6 +663,14 @@ class XertToolService:
                 "view": view,
                 "advice": service.get_training_advice(at=arguments.get("at"), view=view),
             }
+        if name == "create_workout":
+            return {
+                "workout": service.create_workout(
+                    name=arguments["name"],
+                    description=arguments.get("description", ""),
+                    rows=arguments["rows"],
+                )
+            }
         path = arguments["workout_path"]
         view = arguments.get("view", "resolved")
         workout = service.get_workout(path, view=view)
@@ -602,8 +704,9 @@ def create_sdk_server(service: XertToolService) -> Any:
         version="0.1.0",
         instructions=(
             "Read Xert cycling activities, workouts, calendar notes, current training "
-            "state, and current or planned-time training advice, and set calendar-note "
-            "text. Inclusive dates use the user's local calendar."
+            "state, and current or planned-time training advice, set calendar-note "
+            "text, and create verified Workout Designer workouts. Inclusive dates "
+            "use the user's local calendar."
         ),
     )
 

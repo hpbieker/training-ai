@@ -46,10 +46,15 @@ Prefer the Xert MCP tools when they are available:
   `/recommended-training`, resolved immediately before that planned start.
   Use `view=summary` normally and `view=full` only for the selected raw source
   payload. This tool does not add activity load or cross-source readiness.
+- `create_workout` saves a new Xert workout from complete, structured Designer
+  rows. Each row uses duration values in seconds, and repeat-row
+  `rib_duration_seconds` is applied after every repetition, including the
+  final one. Use it only when creation is explicitly requested; inspect its
+  verified metadata and `timeline_summary` after the write.
 
 The CLI remains the development/fallback interface and exposes Xert operations
 that have not yet been added to MCP. Both transports call the same Python
-service for activities, workouts, and calendar notes.
+service for activities, workouts, calendar notes, state, and advice.
 
 ## Choose The Narrowest Command
 

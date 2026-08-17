@@ -814,6 +814,42 @@ class WorkoutReplacementTests(unittest.TestCase):
                     submit="save",
                 )
 
+    def test_create_workout_saves_blank_designer_and_verifies_readback(self) -> None:
+        rows = [self.row("Endurance")]
+        verification = {
+            "path": "created-path",
+            "name": "Created workout",
+            "description": "Description",
+            "row_count": 1,
+            "rows_match": True,
+            "rows": rows,
+        }
+        with (
+            patch.object(WORKOUTS, "xert_web_login", return_value=object()),
+            patch.object(
+                WORKOUTS,
+                "fetch_workout_designer_page",
+                return_value={"token": "t", "name": "", "description": "", "pp": "", "atc": "", "ftp": ""},
+            ),
+            patch.object(
+                WORKOUTS,
+                "post_workout_designer_form",
+                return_value={"redirect": "/workout/created-path"},
+            ) as post,
+            patch.object(WORKOUTS, "verify_saved_workout", return_value=verification),
+        ):
+            result = WORKOUTS.create_workout(
+                username="user",
+                password="secret",
+                name="Created workout",
+                description="Description",
+                rows=rows,
+            )
+        self.assertEqual(result["path"], "created-path")
+        self.assertTrue(result["saved"])
+        self.assertEqual(post.call_args.args[1], "")
+        self.assertEqual(post.call_args.args[2]["submit"], "save")
+
     def test_adds_one_row_at_one_based_position(self) -> None:
         rows = [self.row("Warmup"), self.row("Cooldown")]
         added = self.row("Work")

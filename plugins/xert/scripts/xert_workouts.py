@@ -450,6 +450,57 @@ def calculate_new_workout(
     return output
 
 
+def create_workout(
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    name: str,
+    description: str = "",
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Create a new workout through the blank Workout Designer and verify it."""
+
+    if not username or not password:
+        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("Workout name must be a non-empty string")
+    normalized_rows = normalize_workout_rows(rows)
+    opener = xert_web_login(username=username, password=password)
+    page = fetch_workout_designer_page(opener, "")
+    form = workout_designer_form_payload(
+        page,
+        rows=normalized_rows,
+        name=name.strip(),
+        description=description,
+        submit="save",
+    )
+    result = post_workout_designer_form(opener, "", form)
+    created_path = workout_path_from_redirect(result.get("redirect"))
+    if not created_path:
+        raise RuntimeError("Xert did not return a path for the created workout")
+    verification = verify_saved_workout(
+        opener,
+        created_path,
+        expected_rows=normalized_rows,
+    )
+    if verification is None or not verification.get("rows_match"):
+        raise RuntimeError("Created Xert workout rows did not match the requested structure")
+    if verification.get("name") != name.strip():
+        raise RuntimeError("Created Xert workout name did not match the requested name")
+    if verification.get("description") != description:
+        raise RuntimeError("Created Xert workout description did not match the requested description")
+    verified_rows = verification.get("rows")
+    return {
+        "path": created_path,
+        "saved": True,
+        "result": summarize_workout_update_result(result),
+        "verification": compact_workout_verification(verification),
+        "timeline_summary": workout_timeline_summary(
+            verified_rows if isinstance(verified_rows, list) else normalized_rows
+        ),
+    }
+
+
 def delete_workout(
     path: str,
     *,
