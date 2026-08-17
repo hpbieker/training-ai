@@ -5,6 +5,13 @@ description: Use when working with Yr/MET Norway Locationforecast data, weather 
 
 # Yr
 
+## Network Execution
+
+Live Yr/MET Norway forecast reads require external network access. Run live
+`yr_cli.py` commands with escalated network permission on the first attempt; do
+not first try them in a network-isolated sandbox. Offline help and local
+forecast-artifact inspection do not require escalation.
+
 ## Start Here
 
 ```bash
