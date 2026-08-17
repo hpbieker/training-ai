@@ -48,6 +48,10 @@ class FakeXertService:
         self.calls.append(("set_note", note_date, text))
         return {"date": note_date, "exists": bool(text), "text": text or None, "success": True}
 
+    def get_training_state(self, *, view="summary"):
+        self.calls.append(("get_training_state", view))
+        return {"as_of": "2026-08-17T09:00:00+02:00"} if view == "summary" else {"training_info": {}}
+
 
 class XertMcpSchemaTests(unittest.TestCase):
     def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
@@ -61,6 +65,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "list_notes",
                 "get_note",
                 "set_note",
+                "get_training_state",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -156,6 +161,11 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertFalse(missing["exists"])
         self.assertEqual(saved["text"], "Recovery day")
 
+    def test_training_state_dispatches_requested_view(self) -> None:
+        result = self.tools.call_tool("get_training_state", {"view": "full"})
+        self.assertEqual(result["view"], "full")
+        self.assertEqual(result["state"], {"training_info": {}})
+
 
 class XertServiceTests(unittest.TestCase):
     def test_service_routes_activity_and_workout_views(self) -> None:
@@ -229,6 +239,36 @@ class XertServiceTests(unittest.TestCase):
             username="user",
             password="secret",
         )
+
+    def test_training_state_combines_oauth_and_recovery_sources(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        training_info = {
+            "signature": {"ftp": 300, "ltp": 265, "hie": 14.2, "pp": 800},
+            "status": "Fresh",
+        }
+        recovery_model = {
+            "at_state": {
+                "start_date": "2026-08-17T09:00:00+02:00",
+                "tl": {"ftp": 70, "hie": 8, "pp": 2},
+                "rl": {"ftp": 65, "hie": 7, "pp": 1},
+                "form": {"ftp": 5, "hie": 1, "pp": 1},
+            },
+            "training_status": "Fresh",
+            "recovery_hours": {"lo": 0, "hi": 4, "pk": 0},
+            "targetXSS": {"xlss": 50, "xhss": 0, "xpss": 0},
+        }
+        with (
+            patch.object(SERVICE.XertCredentials, "bearer_token", return_value="token"),
+            patch.object(SERVICE, "_request_json", return_value=training_info),
+            patch.object(SERVICE, "fetch_recovery_model_with_login", return_value=recovery_model),
+        ):
+            summary = service.get_training_state()
+            full = service.get_training_state(view="full")
+        self.assertEqual(summary["signature"]["tp_watts"], 300)
+        self.assertEqual(summary["training_load"], {"low": 70, "high": 8, "peak": 2})
+        self.assertEqual(summary["recovery_hours"]["high"], 4)
+        self.assertEqual(full["training_info"], training_info)
 
 
 if __name__ == "__main__":

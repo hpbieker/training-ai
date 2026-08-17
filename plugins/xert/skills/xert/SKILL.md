@@ -36,6 +36,11 @@ Prefer the Xert MCP tools when they are available:
   it back. It overwrites existing text; an empty string clears the note. Use it
   only when the user explicitly asks for that write. It does not update weight,
   freshness, program, forecast, or training-plan fields.
+- `get_training_state` returns current Xert state. Use `view=summary` for the
+  normalized Fitness Signature, Training Load, Recovery Load, form, recovery
+  hours, training status, and target XSS. Use `view=full` only when both source
+  payloads or model parameters are required. It does not project a future state,
+  fetch planned-time advice, or add activity-specific readiness context.
 
 The CLI remains the development/fallback interface and exposes Xert operations
 that have not yet been added to MCP. Both transports call the same Python

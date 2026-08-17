@@ -23,6 +23,7 @@ ALL_TOOL_NAMES = (
     "list_notes",
     "get_note",
     "set_note",
+    "get_training_state",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -72,6 +73,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "title": "Set Xert Calendar Note",
         "readOnlyHint": False,
         "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_training_state": {
+        "title": "Get Xert Training State",
+        "readOnlyHint": True,
+        "destructiveHint": False,
         "idempotentHint": True,
         "openWorldHint": True,
     },
@@ -370,6 +378,36 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["set_note"],
     },
+    "get_training_state": {
+        "name": "get_training_state",
+        "description": (
+            "Get current Xert Fitness Signature, Training and Recovery Load, form, "
+            "recovery hours, training status, and target XSS. This is current state, "
+            "not a future projection or activity-specific readiness calculation."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "view": {
+                    "type": "string",
+                    "enum": ["summary", "full"],
+                    "default": "summary",
+                    "description": "summary returns normalized state; full returns both source payloads.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "view": {"type": "string", "description": "Returned state representation."},
+                "state": _object("Normalized current state or complete source payloads."),
+            },
+            "required": ["view", "state"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["get_training_state"],
+    },
 }
 
 
@@ -475,6 +513,9 @@ class XertToolService:
             return service.get_note(arguments["date"])
         if name == "set_note":
             return service.set_note(arguments["date"], arguments["text"])
+        if name == "get_training_state":
+            view = arguments.get("view", "summary")
+            return {"view": view, "state": service.get_training_state(view=view)}
         path = arguments["workout_path"]
         view = arguments.get("view", "resolved")
         workout = service.get_workout(path, view=view)
@@ -507,9 +548,10 @@ def create_sdk_server(service: XertToolService) -> Any:
         "xert",
         version="0.1.0",
         instructions=(
-            "Read Xert cycling activities, workouts, and calendar notes, and set "
-            "calendar-note text. Inclusive dates use the user's local calendar. Use "
-            "editable workout view when complete Workout Designer rows are required."
+            "Read Xert cycling activities, workouts, calendar notes, and current "
+            "training state, and set calendar-note text. Inclusive dates use the "
+            "user's local calendar. Use editable workout view when complete Workout "
+            "Designer rows are required."
         ),
     )
 

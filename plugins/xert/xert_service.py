@@ -27,9 +27,11 @@ from xert_common import (  # noqa: E402
     DEFAULT_XERT_OAUTH_CLIENT_ID,
     DEFAULT_XERT_OAUTH_CLIENT_SECRET,
     XertCredentials,
+    _request_json,
     load_xert_credentials,
     xert_web_login,
 )
+from xert_recovery import fetch_recovery_model_with_login  # noqa: E402
 from xert_workouts import (  # noqa: E402
     fetch_workout,
     fetch_workout_designer_rows,
@@ -219,6 +221,22 @@ class XertService:
             "success": bool(result.get("success")),
         }
 
+    def get_training_state(self, *, view: str = "summary") -> dict[str, Any]:
+        if view not in {"summary", "full"}:
+            raise ValueError("view must be 'summary' or 'full'")
+        credentials = self._credentials()
+        token = credentials.bearer_token()
+        training_info = _request_json("/oauth/training_info", token)
+        if not isinstance(training_info, dict):
+            raise TypeError("Expected Xert training_info endpoint to return an object")
+        recovery_model = fetch_recovery_model_with_login(
+            username=_required_credential(credentials.username, "XERT_USERNAME"),
+            password=_required_credential(credentials.password, "XERT_PASSWORD"),
+        )
+        if view == "full":
+            return {"training_info": training_info, "recovery_model": recovery_model}
+        return compact_training_state(training_info, recovery_model)
+
     def _calendar_notes(self) -> dict[str, Any]:
         credentials = self._credentials()
         opener = xert_web_login(
@@ -281,6 +299,39 @@ def filter_workouts(
         for row in workouts
         if all(keyword in str(row.get("name") or "").casefold() for keyword in keywords)
     ]
+
+
+def compact_training_state(
+    training_info: dict[str, Any], recovery_model: dict[str, Any]
+) -> dict[str, Any]:
+    signature = training_info.get("signature") if isinstance(training_info.get("signature"), dict) else {}
+    at_state = recovery_model.get("at_state") if isinstance(recovery_model.get("at_state"), dict) else {}
+    return {
+        "source": "xert_plugin_training_state",
+        "as_of": at_state.get("start_date"),
+        "signature": {
+            "tp_watts": signature.get("ftp"),
+            "ltp_watts": signature.get("ltp"),
+            "hie_kj": signature.get("hie"),
+            "pp_watts": signature.get("pp"),
+        },
+        "training_status": recovery_model.get("training_status") or training_info.get("status"),
+        "training_load": _system_triplet(at_state.get("tl"), "ftp", "hie", "pp"),
+        "recovery_load": _system_triplet(at_state.get("rl"), "ftp", "hie", "pp"),
+        "form": at_state.get("form"),
+        "recovery_hours": _system_triplet(recovery_model.get("recovery_hours"), "lo", "hi", "pk"),
+        "target_xss": _system_triplet(recovery_model.get("targetXSS"), "xlss", "xhss", "xpss"),
+    }
+
+
+def _system_triplet(source: Any, low_key: str, high_key: str, peak_key: str) -> dict[str, Any]:
+    if not isinstance(source, dict):
+        source = {}
+    return {
+        "low": source.get(low_key),
+        "high": source.get(high_key),
+        "peak": source.get(peak_key),
+    }
 
 
 def _validate_date_range(start_date: str, end_date: str) -> tuple[date, date]:
