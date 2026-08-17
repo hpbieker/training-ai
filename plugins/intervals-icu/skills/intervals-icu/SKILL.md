@@ -25,6 +25,26 @@ Choose the narrowest workflow that answers the request:
   `update_event`, or `delete_event` on the exact event. Record sickness with
   `category=SICK`, never as a wellness comment.
 
+## MCP Tools
+
+- `list_activities` lists every activity in an inclusive local-date range;
+  `search_activities` performs source text or tag search.
+- `get_activity` reads metadata and optional intervals;
+  `get_activity_streams` saves selected streams to a private temporary file;
+  `get_activity_file` saves the original upload or reconstructed FIT file to a
+  private temporary file.
+- `update_activity` patches supported metadata and requires
+  `confirm_overwrite=true` before replacing an existing non-empty value;
+  `delete_activity` requires `confirm` to equal the exact activity id;
+  `upload_activity` uploads one local activity file. Every completed write is
+  verified with fresh source data.
+- `list_wellness` reads wellness rows; `update_wellness` patches supported
+  fields and requires `confirm_overwrite=true` for conflicting values.
+- `list_events` reads calendar events; `create_event` creates an all-day event;
+  `update_event` replaces its supported all-day state; `delete_event` requires
+  `confirm` to equal the exact event id. Event writes use inclusive user dates,
+  convert the stored end boundary to exclusive, and verify the result.
+
 For a completed-activity analysis through MCP, use exactly this sequence:
 
 1. `list_activities` with the requested inclusive local date.
