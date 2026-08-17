@@ -107,10 +107,10 @@ Use `--summary-only` when the chart details are not needed.
 
 ## Build readiness context
 
-Build a compact readiness context for chat. The script reads local Intervals.icu
-inputs when present, accepts a Garmin Connect day JSON with `--garmin-json`,
-and accepts a normalized Xert readiness JSON with only the selected fields this
-repo needs:
+Build a compact readiness context for chat. The script receives optional
+Garmin, Xert, and Intervals.icu files through one `--source-inputs-json`
+object. The normalized Xert readiness JSON contains only the selected fields
+this repo needs:
 
 ```json
 {
@@ -136,36 +136,44 @@ repo needs:
 
 ```bash
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day 2026-05-14 > /tmp/garmin-connect-day.json
-python3 -B scripts/readiness_snapshot.py --date 2026-05-14 --garmin-json /tmp/garmin-connect-day.json --xert-json /tmp/xert-readiness.json
+python3 -B scripts/readiness_snapshot.py \
+  --time-context-json '{"date":"2026-05-14","local_timezone":"Europe/Oslo","now":"2026-05-14T08:15:00+02:00"}' \
+  --source-inputs-json '{"garmin":"/tmp/garmin-connect-day.json","xert":"/tmp/xert-readiness.json","intervals":{"wellness":"/tmp/intervals-wellness.json","events":"/tmp/intervals-events.json"}}'
 ```
 
 The readiness script does not call source plugins itself and does not parse raw
 Xert API payloads; source-specific field interpretation belongs to the source
 plugin or the orchestration layer above this script. The repo-level contracts
-are the Garmin Connect day JSON passed with `--garmin-json` and the normalized
-Xert JSON passed with `--xert-json`.
+are the Garmin Connect day JSON, normalized Xert JSON, and Intervals payloads
+referenced by `--source-inputs-json`.
 
 ## Same-day training recommendation
 
-For "what should I train today?" use `recommend_today.py` as the primary
+For daily or future-date training recommendations, use `recommend_training.py` as the primary
 orchestrator. It fetches the standard live inputs, writes the full source packet
 under `outputs/recommendations/<date>/`, ranks indoor XMB workouts, selects a
 saved-history outdoor route, adds timing guidance, and prints a compact
 chat-oriented summary with `--summary`.
 
-Source refresh is cache-aware by default. `--refresh auto` reuses snapshots
-within source-specific TTLs; `--refresh all` forces every source;
-`--refresh garmin,xert` forces selected source groups; and `--refresh none`
-uses existing files without network calls. The packet records the decision,
+Source refresh is cache-aware by default. `--refresh-json '{"mode":"auto"}'`
+reuses snapshots within source-specific TTLs. Modes `all` and `none` force all
+sources or use existing files without network calls. Selected groups use, for
+example, `{"mode":"selected","sources":["garmin","xert"]}`. The packet records the decision,
 age, TTL, and reason for each source under `source_refresh`. An explicit
-`--garmin-json <path>` overrides Garmin input and cannot be combined with a
-forced Garmin refresh.
+`--source-overrides-json` maps normalized source names to JSON file paths. An
+overridden source cannot be combined with a refresh policy that forces its
+source group.
 
 ```bash
-python3 -B scripts/recommend_today.py --date 2026-06-26 --planned-at 10:30 --weather-timezone Europe/Oslo --target-minutes 75 --target-load 60 --summary
+python3 -B scripts/recommend_training.py \
+  --planning-context-json '{"date":"2026-06-26","local_timezone":"Europe/Oslo","now":"2026-06-26T08:00:00+02:00","planned_at":"2026-06-26T10:30:00+02:00","availability":{"windows":[]},"cycling":{"available_modalities":["indoor_cycling","outdoor_cycling"],"unavailable_reasons":{}},"route":{"surface_preference":"road","start_anchor":{"display_name":"Dagaliveien 17B, Oslo","lat":59.95581576954476,"lng":10.688188956334665,"radius_km":0.25}}}' \
+  --plan-selection-json '{"intensity_goal":"vt1"}' \
+  --training-target-json '{"minutes":75,"load":60}' \
+  --summary
 ```
 
-If the user does not give a training time, omit `--planned-at`; the packet will
+If the user does not give a training time, omit `planned_at` from the planning
+context; the packet will
 mark the planned time as an assumed planning anchor and include
 `coach_summary.timing_guidance`. Chat answers should mention that timing
 guidance, including whether the time was assumed, the evaluated weather window,
@@ -179,7 +187,9 @@ Use the full JSON output when debugging or when another script consumes the
 packet:
 
 ```bash
-python3 -B scripts/recommend_today.py --date 2026-06-26 --planned-at 10:30 --weather-timezone Europe/Oslo
+python3 -B scripts/recommend_training.py \
+  --planning-context-json '{"date":"2026-06-26","local_timezone":"Europe/Oslo","now":"2026-06-26T08:00:00+02:00","planned_at":"2026-06-26T10:30:00+02:00","availability":{"windows":[]},"cycling":{"available_modalities":[],"unavailable_reasons":{"indoor_cycling":"not_available","outdoor_cycling":"not_available"}}}' \
+  --plan-selection-json '{"intensity_goal":"vt1"}'
 ```
 
 The indoor workout ranking prefers `XMB: ` workouts. When multiple XMB workouts
@@ -212,14 +222,17 @@ from saved Intervals.icu activity history instead of generic geography. The
 route helper reads local `outputs/intervals/activities/*` packages, filters to
 GPS-backed outdoor rides from the last five years, uses the caller-provided or
 profile-resolved start/end anchor, and ranks candidates by fit to the planned
-duration, load and distance.
+duration and distance.
 
 ```bash
-python3 -B scripts/route_recommendations.py --date 2026-06-26 --years 5 --target-minutes 120 --target-load 100
+python3 -B scripts/route_recommendations.py \
+  --date 2026-06-26 \
+  --years 5 \
+  --route-context-json '{"start_anchor":{"display_name":"Dagaliveien 17B, Oslo","lat":59.95581576954476,"lng":10.688188956334665,"radius_km":0.25},"surface_preference":"road","target_distance_km":80}'
 ```
 
 Use `--query Sørkedalen` or another fragment only when the user asks for that
-route family. Use `--allow-away` only when non-Oslo travel routes should be
+route family. Set `allow_away` to `true` inside `--route-context-json` only when routes away from the selected anchor should be
 eligible. In chat recommendations, cite the selected prior activity by route
 name, date and activity id. The route helper's `url` field is the Intervals.icu
 activity URL for the saved route reference; it is not a map image. When a route
