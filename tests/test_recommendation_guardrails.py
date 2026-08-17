@@ -928,7 +928,7 @@ class RecommendationSummaryTests(unittest.TestCase):
 
     def test_shows_persistent_plan_role_provenance(self):
         state = {
-            "schema": "training-ai-plan-state-v1",
+            "schema": "training-ai-plan-state-v2",
             "updated_at": "2026-07-28T20:00:00Z",
             "active_plan": {
                 "id": "vt2-kapasitet-ut-2026",
@@ -940,14 +940,18 @@ class RecommendationSummaryTests(unittest.TestCase):
             },
             "next_role": "vo2max",
             "quality_queue": {
-                "sequence": ["vt2", "vo2max"],
+                "steps": [
+                    {"id": "vt2_primary", "intensity_goal": "vt2"},
+                    {"id": "vt2_secondary", "intensity_goal": "vt2"},
+                    {"id": "vo2max", "intensity_goal": "vo2max"},
+                ],
                 "minimum_aerobic_days_after_quality": 1,
                 "last_completed_quality": {
                     "activity_id": "i168713772",
                     "date": "2026-07-24",
                     "role": "vt2",
                 },
-                "next_quality_role": "vo2max",
+                "next_quality_step": "vo2max",
                 "aerobic_dates_since_quality": ["2026-07-25"],
                 "aerobic_days_since_quality": 1,
             },

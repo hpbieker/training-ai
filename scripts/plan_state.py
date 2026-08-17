@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA = "training-ai-plan-state-v1"
+SCHEMA = "training-ai-plan-state-v2"
 DEFAULT_STATE_PATH = Path("config/plan-state.json")
 DEFAULT_ARTIFACTS_DIR = Path("outputs/intervals/activities")
 QUALITY_ROLES = {"vt2", "vo2max", "sprint", "mixed"}
@@ -150,17 +150,27 @@ def validate_plan_state(state: dict[str, Any]) -> None:
     queue = state.get("quality_queue")
     if not isinstance(queue, dict):
         raise PlanStateError("quality_queue is required.")
-    sequence = queue.get("sequence")
-    if (
-        not isinstance(sequence, list)
-        or len(sequence) < 2
-        or any(role not in QUALITY_ROLES for role in sequence)
-        or len(set(sequence)) != len(sequence)
-    ):
-        raise PlanStateError("quality_queue.sequence must contain unique quality roles.")
-    next_quality_role = queue.get("next_quality_role")
-    if next_quality_role not in sequence:
-        raise PlanStateError("quality_queue.next_quality_role must occur in sequence.")
+    steps = queue.get("steps")
+    if not isinstance(steps, list) or len(steps) < 2:
+        raise PlanStateError("quality_queue.steps must contain at least two queue steps.")
+    step_ids = []
+    for step in steps:
+        if (
+            not isinstance(step, dict)
+            or set(step) != {"id", "intensity_goal"}
+            or not isinstance(step.get("id"), str)
+            or not step["id"].strip()
+            or step.get("intensity_goal") not in QUALITY_ROLES
+        ):
+            raise PlanStateError(
+                "Each quality_queue step must contain a non-empty id and a supported intensity_goal."
+            )
+        step_ids.append(step["id"])
+    if len(set(step_ids)) != len(step_ids):
+        raise PlanStateError("quality_queue step ids must be unique.")
+    next_quality_step = queue.get("next_quality_step")
+    if next_quality_step not in step_ids:
+        raise PlanStateError("quality_queue.next_quality_step must identify one queue step.")
     minimum_aerobic_days = queue.get("minimum_aerobic_days_after_quality")
     if not isinstance(minimum_aerobic_days, int) or minimum_aerobic_days < 0:
         raise PlanStateError("minimum_aerobic_days_after_quality must be a non-negative integer.")
@@ -170,7 +180,7 @@ def validate_plan_state(state: dict[str, Any]) -> None:
     if len(set(aerobic_dates)) != len(aerobic_dates):
         raise PlanStateError("aerobic_dates_since_quality must not contain duplicates.")
     expected_next_role = (
-        next_quality_role
+        quality_step_goal(steps, next_quality_step)
         if len(aerobic_dates) >= minimum_aerobic_days
         else "easy_aerobic"
     )
@@ -293,10 +303,12 @@ def apply_activity_classification(
             "date": event_started_at.date().isoformat(),
             "role": completed_role,
         }
-        if completed_role == queue["next_quality_role"]:
-            queue["next_quality_role"] = next_in_sequence(
-                queue["sequence"],
-                completed_role,
+        current_step_goal = quality_step_goal(
+            queue["steps"], queue["next_quality_step"]
+        )
+        if completed_role == current_step_goal:
+            queue["next_quality_step"] = next_step_id(
+                queue["steps"], queue["next_quality_step"]
             )
         queue["aerobic_dates_since_quality"] = []
     elif completed_role in AEROBIC_ROLES:
@@ -317,7 +329,7 @@ def apply_activity_classification(
 
     queue["aerobic_days_since_quality"] = len(queue["aerobic_dates_since_quality"])
     updated["next_role"] = (
-        queue["next_quality_role"]
+        quality_step_goal(queue["steps"], queue["next_quality_step"])
         if queue["aerobic_days_since_quality"]
         >= queue["minimum_aerobic_days_after_quality"]
         else "easy_aerobic"
@@ -404,7 +416,11 @@ def recommendation_plan_context(
         "state_updated_at": state["updated_at"],
         "activity_cursor": deepcopy(state["activity_cursor"]),
         "next_role": state["next_role"],
-        "next_quality_role": state["quality_queue"]["next_quality_role"],
+        "next_quality_step": state["quality_queue"]["next_quality_step"],
+        "next_quality_role": quality_step_goal(
+            state["quality_queue"]["steps"],
+            state["quality_queue"]["next_quality_step"],
+        ),
         "last_completed_quality": deepcopy(
             state["quality_queue"]["last_completed_quality"]
         ),
@@ -444,12 +460,20 @@ def write_plan_state(path: Path | str, state: dict[str, Any]) -> None:
         raise
 
 
-def next_in_sequence(sequence: list[str], role: str) -> str:
+def quality_step_goal(steps: list[dict[str, str]], step_id: str) -> str:
+    for step in steps:
+        if step["id"] == step_id:
+            return step["intensity_goal"]
+    raise PlanStateError(f"Quality step {step_id!r} is not in the queue.")
+
+
+def next_step_id(steps: list[dict[str, str]], step_id: str) -> str:
+    step_ids = [step["id"] for step in steps]
     try:
-        index = sequence.index(role)
+        index = step_ids.index(step_id)
     except ValueError as exc:
-        raise PlanStateError(f"Role {role!r} is not in the quality sequence.") from exc
-    return sequence[(index + 1) % len(sequence)]
+        raise PlanStateError(f"Quality step {step_id!r} is not in the queue.") from exc
+    return step_ids[(index + 1) % len(step_ids)]
 
 
 def parse_datetime(value: str) -> datetime:

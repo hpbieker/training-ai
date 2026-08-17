@@ -21,7 +21,7 @@ from plan_state import (  # noqa: E402
 
 def base_state() -> dict:
     return {
-        "schema": "training-ai-plan-state-v1",
+        "schema": "training-ai-plan-state-v2",
         "updated_at": "2026-07-24T12:00:00Z",
         "active_plan": {
             "id": "test-plan",
@@ -33,14 +33,18 @@ def base_state() -> dict:
         },
         "next_role": "easy_aerobic",
         "quality_queue": {
-            "sequence": ["vt2", "vo2max"],
+            "steps": [
+                {"id": "vt2_primary", "intensity_goal": "vt2"},
+                {"id": "vt2_secondary", "intensity_goal": "vt2"},
+                {"id": "vo2max", "intensity_goal": "vo2max"},
+            ],
             "minimum_aerobic_days_after_quality": 1,
             "last_completed_quality": {
                 "activity_id": "quality-1",
                 "date": "2026-07-24",
                 "role": "vt2",
             },
-            "next_quality_role": "vo2max",
+            "next_quality_step": "vo2max",
             "aerobic_dates_since_quality": [],
             "aerobic_days_since_quality": 0,
         },
@@ -97,7 +101,7 @@ class PlanStateTransitionTests(unittest.TestCase):
         )
 
         self.assertEqual(updated["next_role"], "vo2max")
-        self.assertEqual(updated["quality_queue"]["next_quality_role"], "vo2max")
+        self.assertEqual(updated["quality_queue"]["next_quality_step"], "vo2max")
         self.assertEqual(updated["quality_queue"]["aerobic_days_since_quality"], 1)
 
     def test_extra_aerobic_activity_does_not_advance_quality_queue(self):
@@ -119,7 +123,7 @@ class PlanStateTransitionTests(unittest.TestCase):
         )
 
         self.assertEqual(twice["next_role"], "vo2max")
-        self.assertEqual(twice["quality_queue"]["next_quality_role"], "vo2max")
+        self.assertEqual(twice["quality_queue"]["next_quality_step"], "vo2max")
         self.assertEqual(twice["quality_queue"]["aerobic_days_since_quality"], 2)
 
     def test_completed_queued_quality_advances_and_requires_aerobic_day(self):
@@ -146,13 +150,86 @@ class PlanStateTransitionTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(quality["quality_queue"]["next_quality_role"], "vt2")
+        self.assertEqual(quality["quality_queue"]["next_quality_step"], "vt2_primary")
         self.assertEqual(quality["next_role"], "easy_aerobic")
         self.assertEqual(quality["quality_queue"]["aerobic_days_since_quality"], 0)
         self.assertEqual(
             quality["progression"]["vo2max"]["next_step"],
             "2 x 9 x 60 sec",
         )
+
+    def test_repeated_vt2_goals_advance_by_step_identity(self):
+        state = base_state()
+        state["next_role"] = "vt2"
+        state["quality_queue"]["next_quality_step"] = "vt2_primary"
+        state["quality_queue"]["aerobic_dates_since_quality"] = ["2026-07-25"]
+        state["quality_queue"]["aerobic_days_since_quality"] = 1
+
+        first = apply_activity_classification(
+            state,
+            event(
+                activity_id="vt2-primary",
+                started_at="2026-07-26T08:00:00+02:00",
+                completed_role="vt2",
+                quality_completed=True,
+                progression_effect="advance",
+            ),
+        )
+        self.assertEqual(first["quality_queue"]["next_quality_step"], "vt2_secondary")
+        self.assertEqual(first["next_role"], "easy_aerobic")
+
+        aerobic = apply_activity_classification(
+            first,
+            event(
+                activity_id="aerobic-between-vt2",
+                started_at="2026-07-27T08:00:00+02:00",
+                completed_role="easy_aerobic",
+            ),
+        )
+        self.assertEqual(aerobic["next_role"], "vt2")
+
+        second = apply_activity_classification(
+            aerobic,
+            event(
+                activity_id="vt2-secondary",
+                started_at="2026-07-28T08:00:00+02:00",
+                completed_role="vt2",
+                quality_completed=True,
+                progression_effect="advance",
+            ),
+        )
+        self.assertEqual(second["quality_queue"]["next_quality_step"], "vo2max")
+
+    def test_repeated_vo2max_goals_are_supported_without_special_cases(self):
+        state = base_state()
+        state["quality_queue"]["steps"] = [
+            {"id": "vt2", "intensity_goal": "vt2"},
+            {"id": "vo2max_primary", "intensity_goal": "vo2max"},
+            {"id": "vo2max_secondary", "intensity_goal": "vo2max"},
+        ]
+        state["quality_queue"]["next_quality_step"] = "vo2max_primary"
+
+        aerobic = apply_activity_classification(
+            state,
+            event(
+                activity_id="aerobic-before-vo2",
+                started_at="2026-07-25T08:00:00+02:00",
+                completed_role="easy_aerobic",
+            ),
+        )
+        first = apply_activity_classification(
+            aerobic,
+            event(
+                activity_id="vo2-primary",
+                started_at="2026-07-26T08:00:00+02:00",
+                completed_role="vo2max",
+                quality_completed=True,
+                progression_effect="advance",
+            ),
+        )
+
+        self.assertEqual(first["quality_queue"]["next_quality_step"], "vo2max_secondary")
+        self.assertEqual(first["next_role"], "easy_aerobic")
 
     def test_completed_out_of_queue_quality_updates_own_progression(self):
         quality = apply_activity_classification(
@@ -170,7 +247,7 @@ class PlanStateTransitionTests(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(quality["quality_queue"]["next_quality_role"], "vo2max")
+        self.assertEqual(quality["quality_queue"]["next_quality_step"], "vo2max")
         self.assertEqual(quality["quality_queue"]["last_completed_quality"]["role"], "vt2")
         self.assertEqual(quality["next_role"], "easy_aerobic")
         self.assertEqual(quality["quality_queue"]["aerobic_days_since_quality"], 0)
@@ -270,6 +347,7 @@ class PlanStateTransitionTests(unittest.TestCase):
             mismatch_reason="Deliberate long-ride placement before the next quality opportunity.",
         )
         self.assertFalse(context["goal_matches_state"])
+        self.assertEqual(context["next_quality_step"], "vo2max")
         self.assertEqual(context["next_quality_role"], "vo2max")
 
 
