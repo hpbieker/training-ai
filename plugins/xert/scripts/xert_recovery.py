@@ -46,6 +46,12 @@ def fetch_recovery_model_with_login(*, username: str, password: str) -> dict[str
     """Fetch Xert model inputs directly and calculate recovery days locally."""
 
     opener = xert_web_login(username=username, password=password)
+    return fetch_recovery_model_with_opener(opener)
+
+
+def fetch_recovery_model_with_opener(opener) -> dict[str, Any]:
+    """Fetch Xert model inputs using an existing authenticated session."""
+
     training_advice, training_plan = fetch_my_fitness_model(opener)
     ir_params = fetch_ir_params(opener)
     forecast = fetch_training_forecast_with_opener(opener)

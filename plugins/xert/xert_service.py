@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -23,8 +25,8 @@ from xert_activities import (  # noqa: E402
 )
 from xert_calendar import (  # noqa: E402
     fetch_calendar_notes_with_opener,
-    fetch_recommended_training_with_login,
-    fetch_training_forecast_with_login,
+    fetch_recommended_training_with_opener,
+    fetch_training_forecast_with_opener,
     set_calendar_note,
 )
 from xert_common import (  # noqa: E402
@@ -33,9 +35,10 @@ from xert_common import (  # noqa: E402
     DEFAULT_XERT_OAUTH_CLIENT_SECRET,
     XertCredentials,
     _request_json,
+    request_xert_token,
     xert_web_login,
 )
-from xert_recovery import fetch_recovery_model_with_login  # noqa: E402
+from xert_recovery import fetch_recovery_model_with_opener  # noqa: E402
 from xert_workouts import (  # noqa: E402
     create_workout as create_saved_workout,
     delete_workout as delete_saved_workout,
@@ -88,11 +91,53 @@ def _config_string(config: dict[str, Any], key: str) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
+class XertAuthSession:
+    """Authentication state owned by one CLI or MCP service instance."""
+
+    def __init__(self, credentials: XertCredentials) -> None:
+        self.credentials = credentials
+        self._lock = threading.Lock()
+        self._token: str | None = None
+        self._token_expires_at = 0.0
+        self._opener: Any = None
+
+    def bearer_token(self) -> str:
+        with self._lock:
+            now = time.monotonic()
+            if self._token is not None and now < self._token_expires_at:
+                return self._token
+            credentials = self.credentials
+            payload = request_xert_token(
+                _required_credential(credentials.username, "XERT_USERNAME"),
+                _required_credential(credentials.password, "XERT_PASSWORD"),
+                client_id=credentials.oauth_client_id,
+                client_secret=credentials.oauth_client_secret,
+            )
+            lifetime = payload.get("expires_in", 3600)
+            try:
+                lifetime_seconds = float(lifetime)
+            except (TypeError, ValueError):
+                lifetime_seconds = 3600.0
+            self._token = str(payload["access_token"])
+            self._token_expires_at = now + max(1.0, lifetime_seconds - 60.0)
+            return self._token
+
+    def web_opener(self) -> Any:
+        with self._lock:
+            if self._opener is None:
+                credentials = self.credentials
+                self._opener = xert_web_login(
+                    username=_required_credential(credentials.username, "XERT_USERNAME"),
+                    password=_required_credential(credentials.password, "XERT_PASSWORD"),
+                )
+            return self._opener
+
+
 class XertService:
     """Stable Python call boundary shared by the CLI and MCP transports."""
 
     def __init__(self, credential_factory: CredentialFactory = discover_xert_credentials) -> None:
-        self._credential_factory = credential_factory
+        self._auth = XertAuthSession(credential_factory())
 
     def list_activities(
         self,
@@ -111,6 +156,7 @@ class XertService:
                 password=credentials.password,
                 oldest=start_date,
                 newest=end_date,
+                access_token=self._auth.bearer_token(),
             )
         details = list_activity_details(
             username=credentials.username,
@@ -118,6 +164,7 @@ class XertService:
             oldest=start_date,
             newest=end_date,
             include_session_data=False,
+            access_token=self._auth.bearer_token(),
         )
         return {
             "source": "xert_plugin_activity_loads",
@@ -137,6 +184,7 @@ class XertService:
             username=credentials.username,
             password=credentials.password,
             include_session_data=view == "session",
+            access_token=self._auth.bearer_token(),
         )
         if view == "summary":
             result = compact_activity_load(payload)
@@ -156,6 +204,7 @@ class XertService:
         workouts = fetch_workouts(
             username=credentials.username,
             password=credentials.password,
+            access_token=self._auth.bearer_token(),
         )
         if view == "summary":
             return summarize_workout_library(workouts, name_filter=name_keywords)
@@ -171,12 +220,9 @@ class XertService:
                 path,
                 username=credentials.username,
                 password=credentials.password,
+                access_token=self._auth.bearer_token(),
             )
-        opener = xert_web_login(
-            username=_required_credential(credentials.username, "XERT_USERNAME"),
-            password=_required_credential(credentials.password, "XERT_PASSWORD"),
-        )
-        return fetch_workout_designer_rows(opener, path)
+        return fetch_workout_designer_rows(self._auth.web_opener(), path)
 
     def create_workout(
         self,
@@ -202,6 +248,7 @@ class XertService:
             name=name.strip(),
             description=description,
             rows=designer_rows,
+            opener=self._auth.web_opener(),
         )
 
     def delete_workout(self, path: str) -> dict[str, Any]:
@@ -211,6 +258,8 @@ class XertService:
             path,
             username=credentials.username,
             password=credentials.password,
+            opener=self._auth.web_opener(),
+            access_token=self._auth.bearer_token(),
         )
 
     def update_workout(
@@ -245,6 +294,7 @@ class XertService:
                 name=normalized_name,
                 description=description,
                 submit="save",
+                opener=self._auth.web_opener(),
             )
         return update_saved_workout(
             path,
@@ -253,6 +303,7 @@ class XertService:
             name=normalized_name,
             description=description,
             submit="save",
+            opener=self._auth.web_opener(),
         )
 
     def list_notes(self, start_date: str, end_date: str) -> list[dict[str, str]]:
@@ -286,6 +337,7 @@ class XertService:
             text,
             username=credentials.username,
             password=credentials.password,
+            opener=self._auth.web_opener(),
         )
         return {
             "date": day.isoformat(),
@@ -298,14 +350,11 @@ class XertService:
         if view not in {"summary", "full"}:
             raise ValueError("view must be 'summary' or 'full'")
         credentials = self._credentials()
-        token = credentials.bearer_token()
+        token = self._auth.bearer_token()
         training_info = _request_json("/oauth/training_info", token)
         if not isinstance(training_info, dict):
             raise TypeError("Expected Xert training_info endpoint to return an object")
-        recovery_model = fetch_recovery_model_with_login(
-            username=_required_credential(credentials.username, "XERT_USERNAME"),
-            password=_required_credential(credentials.password, "XERT_PASSWORD"),
-        )
+        recovery_model = fetch_recovery_model_with_opener(self._auth.web_opener())
         if view == "full":
             return {"training_info": training_info, "recovery_model": recovery_model}
         return compact_training_state(training_info, recovery_model)
@@ -323,15 +372,11 @@ class XertService:
         if not isinstance(include_recommendations, bool):
             raise ValueError("include_recommendations must be a boolean")
         if at is None:
-            payload = fetch_recovery_model_with_login(
-                username=_required_credential(credentials.username, "XERT_USERNAME"),
-                password=_required_credential(credentials.password, "XERT_PASSWORD"),
-            )
+            payload = fetch_recovery_model_with_opener(self._auth.web_opener())
             recommendations_payload = None
             if include_recommendations:
-                recommendations_payload = fetch_recommended_training_with_login(
-                    username=_required_credential(credentials.username, "XERT_USERNAME"),
-                    password=_required_credential(credentials.password, "XERT_PASSWORD"),
+                recommendations_payload = fetch_recommended_training_with_opener(
+                    self._auth.web_opener(),
                     date_value=_planned_advice_value(datetime.now(LOCAL_TIMEZONE).isoformat()),
                     recent=True,
                     additional=False,
@@ -350,9 +395,8 @@ class XertService:
             return result
 
         advice_value = _planned_advice_value(at)
-        payload = fetch_recommended_training_with_login(
-            username=_required_credential(credentials.username, "XERT_USERNAME"),
-            password=_required_credential(credentials.password, "XERT_PASSWORD"),
+        payload = fetch_recommended_training_with_opener(
+            self._auth.web_opener(),
             date_value=advice_value,
             recent=True,
             additional=False,
@@ -372,10 +416,7 @@ class XertService:
         if view not in {"summary", "full"}:
             raise ValueError("view must be 'summary' or 'full'")
         credentials = self._credentials()
-        payload = fetch_training_forecast_with_login(
-            username=_required_credential(credentials.username, "XERT_USERNAME"),
-            password=_required_credential(credentials.password, "XERT_PASSWORD"),
-        )
+        payload = fetch_training_forecast_with_opener(self._auth.web_opener())
         days = _forecast_days_in_range(payload, start, end)
         if view == "full":
             full = dict(payload) if isinstance(payload, dict) else {}
@@ -384,15 +425,10 @@ class XertService:
         return {"days": [compact_forecast_day(day) for day in days]}
 
     def _calendar_notes(self) -> dict[str, Any]:
-        credentials = self._credentials()
-        opener = xert_web_login(
-            username=_required_credential(credentials.username, "XERT_USERNAME"),
-            password=_required_credential(credentials.password, "XERT_PASSWORD"),
-        )
-        return fetch_calendar_notes_with_opener(opener)
+        return fetch_calendar_notes_with_opener(self._auth.web_opener())
 
     def _credentials(self) -> XertCredentials:
-        credentials = self._credential_factory()
+        credentials = self._auth.credentials
         _required_credential(credentials.username, "XERT_USERNAME")
         _required_credential(credentials.password, "XERT_PASSWORD")
         return credentials

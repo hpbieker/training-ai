@@ -23,6 +23,7 @@ def list_activities(
     password: str | None = None,
     oldest: str | date,
     newest: str | date,
+    access_token: str | None = None,
 ) -> list[dict[str, Any]]:
     """List Xert activities for a date range."""
 
@@ -32,7 +33,7 @@ def list_activities(
     )
     activities = _request_json(
         "/oauth/activity",
-        credentials.bearer_token(),
+        access_token or credentials.bearer_token(),
         params={
             "from": _date_to_unix(oldest),
             "to": _date_to_unix(newest, end_of_day=True),
@@ -48,6 +49,7 @@ def fetch_activity_detail(
     username: str | None = None,
     password: str | None = None,
     include_session_data: bool = False,
+    access_token: str | None = None,
 ) -> dict[str, Any]:
     """Fetch one Xert activity detail document."""
 
@@ -57,7 +59,7 @@ def fetch_activity_detail(
     )
     detail = _request_json(
         f"/oauth/activity/{path}",
-        credentials.bearer_token(),
+        access_token or credentials.bearer_token(),
         params={"include_session_data": 1 if include_session_data else 0},
     )
     if not isinstance(detail, dict):
@@ -72,6 +74,7 @@ def list_activity_details(
     oldest: str | date,
     newest: str | date,
     include_session_data: bool = False,
+    access_token: str | None = None,
 ) -> list[dict[str, Any]]:
     """List activities and fetch compact detail documents using one token."""
 
@@ -79,7 +82,7 @@ def list_activity_details(
         username=username,
         password=password,
     )
-    token = credentials.bearer_token()
+    token = access_token or credentials.bearer_token()
     activities = _request_json(
         "/oauth/activity",
         token,

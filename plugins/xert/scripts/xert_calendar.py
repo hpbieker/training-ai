@@ -207,13 +207,15 @@ def set_calendar_note(
     update_weight: bool = False,
     weight: float | None = None,
     weight_units: str = "kg",
+    opener=None,
 ) -> dict[str, Any]:
     """Set one Xert calendar note and verify it through get-notes."""
 
-    if not username or not password:
+    if opener is None and (not username or not password):
         raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
     day = _coerce_date(note_date)
-    opener = xert_web_login(username=username, password=password)
+    if opener is None:
+        opener = xert_web_login(username=username, password=password)
     csrf_token = fetch_my_fitness_csrf_token(opener)
     payload = {
         "notes": notes,

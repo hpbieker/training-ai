@@ -1,4 +1,5 @@
 import argparse
+import concurrent.futures
 import contextlib
 import importlib.util
 import io
@@ -22,6 +23,40 @@ CLI = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CLI)
 
 import xert_workouts as WORKOUTS
+import xert_common as COMMON
+import xert_service as SERVICE
+
+
+class AuthenticationCacheTests(unittest.TestCase):
+    def test_bearer_token_is_reused_within_one_service_session(self) -> None:
+        auth = SERVICE.XertAuthSession(
+            COMMON.XertCredentials(username="cache-user", password="cache-pass")
+        )
+        with patch.object(
+            SERVICE,
+            "request_xert_token",
+            return_value={"access_token": "cached-token", "expires_in": 3600},
+        ) as request_token:
+            self.assertEqual(auth.bearer_token(), "cached-token")
+            self.assertEqual(auth.bearer_token(), "cached-token")
+
+        request_token.assert_called_once()
+
+    def test_parallel_web_session_requests_share_one_login(self) -> None:
+        opener = object()
+        auth = SERVICE.XertAuthSession(
+            COMMON.XertCredentials(username="parallel-user", password="parallel-pass")
+        )
+        with patch.object(
+            SERVICE,
+            "xert_web_login",
+            return_value=opener,
+        ) as login:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                sessions = list(executor.map(lambda _: auth.web_opener(), range(8)))
+
+        self.assertTrue(all(session is opener for session in sessions))
+        login.assert_called_once()
 
 
 class WorkoutNameFilterTests(unittest.TestCase):

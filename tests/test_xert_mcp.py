@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
@@ -256,9 +256,17 @@ class XertMcpDispatchTests(unittest.TestCase):
 
 
 class XertServiceTests(unittest.TestCase):
+    @staticmethod
+    def _service(credentials):
+        service = SERVICE.XertService(lambda: credentials)
+        service._auth._token = "token"
+        service._auth._token_expires_at = float("inf")
+        service._auth._opener = object()
+        return service
+
     def test_service_routes_activity_and_workout_views(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         with (
             patch.object(SERVICE, "fetch_activities", return_value=[{"path": "a1"}]),
             patch.object(SERVICE, "fetch_activity_detail", return_value={"summary": {"xss": 4}}),
@@ -294,7 +302,7 @@ class XertServiceTests(unittest.TestCase):
 
     def test_note_service_filters_normalizes_and_sets_without_weight(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         notes = {
             "2026-08-01": {"notes": "First", "weight": 80},
             "2026-08-02": {"notes": ""},
@@ -326,11 +334,12 @@ class XertServiceTests(unittest.TestCase):
             "Changed",
             username="user",
             password="secret",
+            opener=ANY,
         )
 
     def test_training_state_combines_oauth_and_recovery_sources(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         training_info = {
             "signature": {"ftp": 300, "ltp": 265, "hie": 14.2, "pp": 800},
             "status": "Fresh",
@@ -347,9 +356,8 @@ class XertServiceTests(unittest.TestCase):
             "targetXSS": {"xlss": 50, "xhss": 0, "xpss": 0},
         }
         with (
-            patch.object(SERVICE.XertCredentials, "bearer_token", return_value="token"),
             patch.object(SERVICE, "_request_json", return_value=training_info),
-            patch.object(SERVICE, "fetch_recovery_model_with_login", return_value=recovery_model),
+            patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value=recovery_model),
         ):
             summary = service.get_training_state()
             full = service.get_training_state(view="full")
@@ -360,7 +368,7 @@ class XertServiceTests(unittest.TestCase):
 
     def test_training_advice_selects_current_or_planned_source(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         current = {
             "source": "xert_web_direct",
             "training_status": "Fresh",
@@ -376,10 +384,10 @@ class XertServiceTests(unittest.TestCase):
             }
         }
         with (
-            patch.object(SERVICE, "fetch_recovery_model_with_login", return_value=current),
+            patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value=current),
             patch.object(
                 SERVICE,
-                "fetch_recommended_training_with_login",
+                "fetch_recommended_training_with_opener",
                 return_value=planned,
             ) as fetch_planned,
         ):
@@ -390,8 +398,7 @@ class XertServiceTests(unittest.TestCase):
         self.assertEqual(planned_summary["source_scope"], "planned_time")
         self.assertEqual(planned_summary["remaining_xss"]["low"], 10)
         fetch_planned.assert_called_once_with(
-            username="user",
-            password="secret",
+            ANY,
             date_value="2026-08-18T06:59:59+00:00",
             recent=True,
             additional=False,
@@ -400,7 +407,7 @@ class XertServiceTests(unittest.TestCase):
 
     def test_training_advice_filters_recommendations_to_workouts(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         payload = {
             "training_advice": {},
             "exercises": [
@@ -409,7 +416,7 @@ class XertServiceTests(unittest.TestCase):
             ],
         }
         with patch.object(
-            SERVICE, "fetch_recommended_training_with_login", return_value=payload
+            SERVICE, "fetch_recommended_training_with_opener", return_value=payload
         ):
             result = service.get_training_advice(
                 at="2026-08-18T09:00:00+02:00",
@@ -419,7 +426,7 @@ class XertServiceTests(unittest.TestCase):
 
     def test_training_forecast_filters_epoch_days_by_local_date(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         inside = SERVICE.datetime(2026, 8, 18, 8, tzinfo=SERVICE.timezone.utc).timestamp()
         outside = SERVICE.datetime(2026, 8, 25, 8, tzinfo=SERVICE.timezone.utc).timestamp()
         payload = {
@@ -429,7 +436,7 @@ class XertServiceTests(unittest.TestCase):
             ],
             "other": "preserved",
         }
-        with patch.object(SERVICE, "fetch_training_forecast_with_login", return_value=payload):
+        with patch.object(SERVICE, "fetch_training_forecast_with_opener", return_value=payload):
             summary = service.get_training_forecast("2026-08-17", "2026-08-24")
             full = service.get_training_forecast("2026-08-17", "2026-08-24", view="full")
         self.assertEqual(len(summary["days"]), 1)
@@ -439,7 +446,7 @@ class XertServiceTests(unittest.TestCase):
 
     def test_create_workout_normalizes_public_rows_and_calls_saved_create(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         with patch.object(
             SERVICE,
             "create_saved_workout",
@@ -468,7 +475,7 @@ class XertServiceTests(unittest.TestCase):
 
     def test_delete_workout_uses_existing_verified_delete(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         with patch.object(
             SERVICE,
             "delete_saved_workout",
@@ -476,11 +483,17 @@ class XertServiceTests(unittest.TestCase):
         ) as delete:
             result = service.delete_workout(" old ")
         self.assertTrue(result["verified_absent"])
-        delete.assert_called_once_with("old", username="user", password="secret")
+        delete.assert_called_once_with(
+            "old",
+            username="user",
+            password="secret",
+            opener=ANY,
+            access_token="token",
+        )
 
     def test_update_workout_uses_atomic_replace_for_rows(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         with patch.object(
             SERVICE,
             "replace_saved_workout",
@@ -497,7 +510,7 @@ class XertServiceTests(unittest.TestCase):
 
     def test_update_workout_uses_metadata_patch_without_rows(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
-        service = SERVICE.XertService(lambda: credentials)
+        service = self._service(credentials)
         with patch.object(
             SERVICE,
             "update_saved_workout",
@@ -511,6 +524,7 @@ class XertServiceTests(unittest.TestCase):
             name=None,
             description="",
             submit="save",
+            opener=ANY,
         )
 
 

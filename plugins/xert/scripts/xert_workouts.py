@@ -28,6 +28,7 @@ def list_workouts(
     *,
     username: str | None = None,
     password: str | None = None,
+    access_token: str | None = None,
 ) -> list[dict[str, Any]]:
     """List the user's Xert workout library."""
 
@@ -35,7 +36,7 @@ def list_workouts(
         username=username,
         password=password,
     )
-    payload = _request_json("/oauth/workouts", credentials.bearer_token())
+    payload = _request_json("/oauth/workouts", access_token or credentials.bearer_token())
     if not isinstance(payload, dict) or not isinstance(payload.get("workouts"), list):
         raise TypeError("Expected Xert workouts endpoint to return a workouts list")
     return payload["workouts"]
@@ -74,6 +75,7 @@ def fetch_workout(
     *,
     username: str | None = None,
     password: str | None = None,
+    access_token: str | None = None,
 ) -> dict[str, Any]:
     """Fetch one resolved Xert workout using the user's fitness signature."""
 
@@ -81,7 +83,9 @@ def fetch_workout(
         username=username,
         password=password,
     )
-    payload = _request_json(f"/oauth/workout/{path}", credentials.bearer_token())
+    payload = _request_json(
+        f"/oauth/workout/{path}", access_token or credentials.bearer_token()
+    )
     if not isinstance(payload, dict):
         raise TypeError("Expected Xert workout endpoint to return an object")
     return payload
@@ -123,12 +127,13 @@ def update_workout(
     set_rib_power: float | None = None,
     set_rib_power_type: str | None = None,
     submit: str = "save",
+    opener=None,
 ) -> dict[str, Any]:
     """Update a Xert workout through the authenticated Workout Designer flow."""
 
     if submit not in {"calculate", "save", "copy"}:
         raise ValueError("submit must be 'calculate', 'save', or 'copy'")
-    if not username or not password:
+    if opener is None and (not username or not password):
         raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
     if not any(
         [
@@ -164,7 +169,8 @@ def update_workout(
         raise ValueError("Workout row updates require --match-name or --match-power")
     if expected_matches < 1:
         raise ValueError("expected_matches must be positive")
-    opener = xert_web_login(username=username, password=password)
+    if opener is None:
+        opener = xert_web_login(username=username, password=password)
     page = fetch_workout_designer_page(opener, path)
     rows = fetch_workout_designer_rows(opener, path)
     changed_rows = update_workout_rows(
@@ -231,15 +237,17 @@ def replace_workout(
     name: str | None = None,
     description: str | None = None,
     submit: str = "calculate",
+    opener=None,
 ) -> dict[str, Any]:
     """Atomically calculate or replace every Workout Designer row."""
 
     if submit not in {"calculate", "save"}:
         raise ValueError("submit must be 'calculate' or 'save'")
-    if not username or not password:
+    if opener is None and (not username or not password):
         raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
     normalized_rows = normalize_workout_rows(rows)
-    opener = xert_web_login(username=username, password=password)
+    if opener is None:
+        opener = xert_web_login(username=username, password=password)
     page = fetch_workout_designer_page(opener, path)
     form = workout_designer_form_payload(
         page,
@@ -457,15 +465,17 @@ def create_workout(
     name: str,
     description: str = "",
     rows: list[dict[str, Any]],
+    opener=None,
 ) -> dict[str, Any]:
     """Create a new workout through the blank Workout Designer and verify it."""
 
-    if not username or not password:
+    if opener is None and (not username or not password):
         raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
     if not isinstance(name, str) or not name.strip():
         raise ValueError("Workout name must be a non-empty string")
     normalized_rows = normalize_workout_rows(rows)
-    opener = xert_web_login(username=username, password=password)
+    if opener is None:
+        opener = xert_web_login(username=username, password=password)
     page = fetch_workout_designer_page(opener, "")
     form = workout_designer_form_payload(
         page,
@@ -506,12 +516,15 @@ def delete_workout(
     *,
     username: str | None = None,
     password: str | None = None,
+    opener=None,
+    access_token: str | None = None,
 ) -> dict[str, Any]:
     """Delete a Xert workout through the authenticated web flow."""
 
-    if not username or not password:
+    if opener is None and (not username or not password):
         raise ValueError("Set XERT_USERNAME and XERT_PASSWORD for Xert web login")
-    opener = xert_web_login(username=username, password=password)
+    if opener is None:
+        opener = xert_web_login(username=username, password=password)
     target = verify_workout_page(opener, path)
     request = Request(
         f"{XERT_API_BASE_URL}/workout/{path}",
@@ -526,7 +539,11 @@ def delete_workout(
     payload = json.loads(body) if body else {}
     if not isinstance(payload, dict):
         raise TypeError("Expected Xert workout delete endpoint to return an object")
-    remaining = list_workouts(username=username, password=password)
+    remaining = list_workouts(
+        username=username,
+        password=password,
+        access_token=access_token,
+    )
     verified_absent = all(str(row.get("path")) != path for row in remaining)
     if not verified_absent:
         raise RuntimeError(f"Xert workout {path} still exists after delete")
