@@ -30,6 +30,12 @@ ALL_TOOL_NAMES = (
     "delete_workout",
     "update_workout",
     "get_training_forecast",
+    "calculate_workout_capacity",
+    "calculate_strain",
+    "solve_endurance_duration",
+    "project_load_model",
+    "calculate_workout",
+    "get_readiness_input",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -131,6 +137,12 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "idempotentHint": True,
         "openWorldHint": True,
     },
+    "calculate_workout_capacity": {"title": "Calculate Xert Workout Capacity", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+    "calculate_strain": {"title": "Calculate Xert Strain", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    "solve_endurance_duration": {"title": "Solve Xert Endurance Duration", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    "project_load_model": {"title": "Project Xert Load Model", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+    "calculate_workout": {"title": "Calculate Xert Workout", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+    "get_readiness_input": {"title": "Get Xert Readiness Input", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 }
 
 
@@ -827,6 +839,82 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["update_workout"],
     },
+    "calculate_workout_capacity": {
+        "name": "calculate_workout_capacity",
+        "description": "Calculate independent Low, High, and Peak XSS capacity at one time while arriving at Xert's fresh boundary at another.",
+        "inputSchema": {"type": "object", "properties": {
+            "as_of": {"type": "string", "format": "date-time", "description": "ISO date-time when the proposed workout starts."},
+            "fresh_at": {"type": "string", "format": "date-time", "description": "ISO date-time when Xert freshness must be restored."}},
+            "required": ["as_of", "fresh_at"], "additionalProperties": False},
+        "outputSchema": _object("Explicit Xert workout-capacity calculation."),
+        "annotations": TOOL_ANNOTATIONS["calculate_workout_capacity"],
+    },
+    "calculate_strain": {
+        "name": "calculate_strain",
+        "description": "Calculate local Xert Low, High, and Peak XSS, Difficulty, MPA feasibility, and focus for explicit power segments.",
+        "inputSchema": {"type": "object", "properties": {
+            "signature": _object("Fitness Signature with tp, hie in joules, and pp."),
+            "segments": _array("Ordered segments with duration_seconds and power, optionally end_power.")},
+            "required": ["signature", "segments"], "additionalProperties": False},
+        "outputSchema": _object("Local Xert strain calculation."),
+        "annotations": TOOL_ANNOTATIONS["calculate_strain"],
+    },
+    "solve_endurance_duration": {
+        "name": "solve_endurance_duration",
+        "description": "Solve exactly one adjustable sub-TP segment duration to match a target Low XSS for the complete structure.",
+        "inputSchema": {"type": "object", "properties": {
+            "signature": _object("Fitness Signature with tp, hie in joules, and pp."),
+            "segments": _array("Complete ordered workout segments."),
+            "adjustable_segment_index": {"type": "integer", "minimum": 0, "description": "Zero-based adjustable segment index."},
+            "target_low_xss": {"type": "number", "exclusiveMinimum": 0, "description": "Target Low XSS for the complete workout."},
+            "minimum_duration_seconds": {"type": "integer", "minimum": 1, "default": 1, "description": "Minimum adjustable duration."},
+            "maximum_duration_seconds": {"type": "integer", "minimum": 1, "default": 28800, "description": "Maximum adjustable duration."},
+            "tolerance_xss": {"type": "number", "exclusiveMinimum": 0, "default": 0.05, "description": "Accepted Low XSS error."}},
+            "required": ["signature", "segments", "adjustable_segment_index", "target_low_xss"], "additionalProperties": False},
+        "outputSchema": _object("Solved endurance duration and complete strain result."),
+        "annotations": TOOL_ANNOTATIONS["solve_endurance_duration"],
+    },
+    "project_load_model": {
+        "name": "project_load_model",
+        "description": "Project Xert Training Load, Recovery Load, Form, readiness, and marginal Fitness Signature response for a planned XSS impulse.",
+        "inputSchema": {"type": "object", "properties": {
+            "target_at": {"type": "string", "format": "date-time", "description": "ISO projection target."},
+            "workout_after_hours": {"type": "number", "minimum": 0, "default": 0, "description": "Hours from current state to the workout impulse."},
+            "low_xss": {"type": "number", "minimum": 0, "default": 0, "description": "Planned Low XSS."},
+            "high_xss": {"type": "number", "minimum": 0, "default": 0, "description": "Planned High XSS."},
+            "peak_xss": {"type": "number", "minimum": 0, "default": 0, "description": "Planned Peak XSS."},
+            "build_tp": {"type": "number", "minimum": 0, "default": 0, "description": "Desired TP gain in watts."},
+            "build_hie": {"type": "number", "minimum": 0, "default": 0, "description": "Desired HIE gain in kJ."},
+            "build_pp": {"type": "number", "minimum": 0, "default": 0, "description": "Desired PP gain in watts."}},
+            "required": ["target_at"], "additionalProperties": False},
+        "outputSchema": _object("Projected Xert load model."),
+        "annotations": TOOL_ANNOTATIONS["project_load_model"],
+    },
+    "calculate_workout": {
+        "name": "calculate_workout",
+        "description": "Calculate an unsaved Workout Designer structure, optionally with a complete Fitness Signature override.",
+        "inputSchema": {"type": "object", "properties": {
+            "name": {"type": "string", "default": "Xert calculate probe", "description": "Unsaved calculation name."},
+            "description": {"type": "string", "default": "Calculated by training-ai; not saved.", "description": "Unsaved calculation description."},
+            "rows": _workout_rows_schema("Complete Designer rows to calculate."),
+            "include_series": {"type": "boolean", "default": False, "description": "Include second-by-second calculation series."},
+            "signature_tp": {"type": "number", "description": "Optional TP override; provide all signature fields together."},
+            "signature_hie": {"type": "number", "description": "Optional HIE override in joules."},
+            "signature_pp": {"type": "number", "description": "Optional Peak Power override."}},
+            "required": ["rows"], "additionalProperties": False},
+        "outputSchema": _object("Unsaved Workout Designer calculation."),
+        "annotations": TOOL_ANNOTATIONS["calculate_workout"],
+    },
+    "get_readiness_input": {
+        "name": "get_readiness_input",
+        "description": "Get normalized Xert recovery and current or planned-time training advice, optionally including compact loads for selected activities.",
+        "inputSchema": {"type": "object", "properties": {
+            "advice_at": {"type": "string", "format": "date-time", "description": "Optional planned advice time; omit for current advice."},
+            "activity_paths": {"type": "array", "items": {"type": "string"}, "default": [], "description": "Optional Xert activity paths to include as compact loads."}},
+            "additionalProperties": False},
+        "outputSchema": _object("Normalized Xert readiness input."),
+        "annotations": TOOL_ANNOTATIONS["get_readiness_input"],
+    },
 }
 
 
@@ -998,6 +1086,33 @@ class XertToolService:
                 "view": view,
                 "forecast": service.get_training_forecast(start, end, view=view),
             }
+        if name == "calculate_workout_capacity":
+            return service.calculate_workout_capacity(
+                as_of=arguments["as_of"], fresh_at=arguments["fresh_at"]
+            )
+        if name == "calculate_strain":
+            return service.calculate_strain(
+                signature=arguments["signature"], segments=arguments["segments"]
+            )
+        if name == "solve_endurance_duration":
+            return service.solve_endurance_duration(**arguments)
+        if name == "project_load_model":
+            return service.project_load_model(**arguments)
+        if name == "calculate_workout":
+            return service.calculate_workout(
+                name=arguments.get("name", "Xert calculate probe"),
+                description=arguments.get("description", "Calculated by training-ai; not saved."),
+                rows=arguments["rows"],
+                include_series=arguments.get("include_series", False),
+                signature_tp=arguments.get("signature_tp"),
+                signature_hie=arguments.get("signature_hie"),
+                signature_pp=arguments.get("signature_pp"),
+            )
+        if name == "get_readiness_input":
+            return service.get_readiness_input(
+                advice_at=arguments.get("advice_at"),
+                activity_paths=arguments.get("activity_paths", []),
+            )
         if name == "create_workout":
             return {
                 "workout": service.create_workout(

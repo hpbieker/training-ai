@@ -89,6 +89,30 @@ class FakeXertService:
         self.calls.append(("update_workout", path, name, description, rows))
         return {"path": path, "submit": "save"}
 
+    def calculate_workout_capacity(self, **kwargs):
+        self.calls.append(("calculate_workout_capacity", kwargs))
+        return {"workout_capacity_xss": {"low": 100, "high": 10, "peak": 1}}
+
+    def calculate_strain(self, **kwargs):
+        self.calls.append(("calculate_strain", kwargs))
+        return {"xss": {"low": 50, "high": 0, "peak": 0}}
+
+    def solve_endurance_duration(self, **kwargs):
+        self.calls.append(("solve_endurance_duration", kwargs))
+        return {"adjustable_duration_seconds": 3600}
+
+    def project_load_model(self, **kwargs):
+        self.calls.append(("project_load_model", kwargs))
+        return {"target_at": kwargs["target_at"]}
+
+    def calculate_workout(self, **kwargs):
+        self.calls.append(("calculate_workout", kwargs))
+        return {"saved": False}
+
+    def get_readiness_input(self, **kwargs):
+        self.calls.append(("get_readiness_input", kwargs))
+        return {"source": "xert_plugin"}
+
 
 class XertMcpSchemaTests(unittest.TestCase):
     def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
@@ -109,6 +133,12 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "delete_workout",
                 "update_workout",
                 "get_training_forecast",
+                "calculate_workout_capacity",
+                "calculate_strain",
+                "solve_endurance_duration",
+                "project_load_model",
+                "calculate_workout",
+                "get_readiness_input",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -139,7 +169,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                     "idempotentHint": not (
                         writes_session_file or creates_workout or deletes_workout
                     ),
-                    "openWorldHint": True,
+                    "openWorldHint": name not in {"calculate_strain", "solve_endurance_duration"},
                 },
             )
 
@@ -384,6 +414,31 @@ class XertMcpDispatchTests(unittest.TestCase):
             },
         )
         self.assertEqual(result["workout"]["submit"], "save")
+
+    def test_model_and_calculation_tools_dispatch(self) -> None:
+        self.assertEqual(
+            self.tools.call_tool("calculate_workout_capacity", {
+                "as_of": "2026-08-18T09:00:00+02:00",
+                "fresh_at": "2026-08-19T09:00:00+02:00",
+            })["workout_capacity_xss"]["low"],
+            100,
+        )
+        self.assertEqual(self.tools.call_tool("calculate_strain", {
+            "signature": {"tp": 300, "hie": 14000, "pp": 800},
+            "segments": [{"duration_seconds": 600, "power": 200}],
+        })["xss"]["low"], 50)
+        self.assertEqual(self.tools.call_tool("solve_endurance_duration", {
+            "signature": {"tp": 300, "hie": 14000, "pp": 800},
+            "segments": [{"duration_seconds": 600, "power": 200}],
+            "adjustable_segment_index": 0, "target_low_xss": 50,
+        })["adjustable_duration_seconds"], 3600)
+        self.assertEqual(self.tools.call_tool("project_load_model", {
+            "target_at": "2026-08-19T09:00:00+02:00",
+        })["target_at"], "2026-08-19T09:00:00+02:00")
+        self.assertFalse(self.tools.call_tool("calculate_workout", {
+            "rows": [{"duration_seconds": 600, "power": 200}],
+        })["saved"])
+        self.assertEqual(self.tools.call_tool("get_readiness_input", {})["source"], "xert_plugin")
 
 
 class XertServiceTests(unittest.TestCase):

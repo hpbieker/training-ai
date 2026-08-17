@@ -1,6 +1,6 @@
 {
   "name": "xert",
-  "version": "0.1.0+codex.20260817195953",
+  "version": "0.1.0+codex.20260817223000",
   "description": "Xert source semantics and live access for cycling training data.",
   "author": {
     "name": "Hans Petter Bieker"
@@ -9,8 +9,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Xert",
-    "shortDescription": "Understand Xert activities, recovery, workouts, and calendar data.",
-    "longDescription": "Xert provides source-specific guidance for interpreting Xert training, recovery, activity, workout, and calendar payloads. It is intentionally stateless: local persistence and cross-source training analysis live outside the plugin.",
+    "shortDescription": "Read and calculate Xert training, recovery, and workouts.",
+    "longDescription": "Xert provides source-specific access and calculations for training, recovery, activity, workout, and calendar payloads. It is intentionally stateless: local persistence and cross-source training analysis live outside the plugin.",
     "developerName": "Hans Petter Bieker",
     "category": "Health & Fitness",
     "capabilities": [

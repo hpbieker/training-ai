@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 import threading
@@ -38,9 +39,12 @@ from xert_common import (  # noqa: E402
     request_xert_token,
     xert_web_login,
 )
-from xert_recovery import fetch_recovery_model_with_opener  # noqa: E402
+from xert_recovery import calculate_workout_capacity, fetch_recovery_model_with_opener  # noqa: E402
+from xert_load_model import calculate_load_projection  # noqa: E402
+from xert_strain_model import calculate_workout as calculate_strain_workout, solve_endurance_duration  # noqa: E402
 from xert_workouts import (  # noqa: E402
     create_workout as create_saved_workout,
+    calculate_new_workout,
     delete_workout as delete_saved_workout,
     fetch_workout,
     fetch_workout_designer_rows,
@@ -411,6 +415,99 @@ class XertService:
         )
         return compact_workout_recommendations(payload)[:limit]
 
+    def calculate_workout_capacity(self, *, as_of: str, fresh_at: str) -> dict[str, Any]:
+        model = fetch_recovery_model_with_opener(self._auth.web_opener())
+        at_state = model.get("at_state") or {}
+        source_at = _aware_datetime(at_state.get("start_date"), "Xert state time")
+        capacity_at = _aware_datetime(as_of, "as_of")
+        fresh = _aware_datetime(fresh_at, "fresh_at")
+        if capacity_at < source_at or fresh < capacity_at:
+            raise ValueError("require Xert state <= as_of <= fresh_at")
+        projected = _project_at_state_without_training(
+            at_state=at_state,
+            ir_params=model["ir_params"],
+            days=(capacity_at - source_at).total_seconds() / 86400,
+            start_date=capacity_at.isoformat(),
+        )
+        capacity = calculate_workout_capacity(
+            next_workout_days=(fresh - capacity_at).total_seconds() / 86400,
+            ir_params=model["ir_params"],
+            recovery_offset=float(model["recovery_offset"]),
+            at_state=projected,
+        )
+        return {
+            "source": "xert_plugin_explicit_workout_capacity",
+            "source_state_as_of": source_at.isoformat(),
+            "state_as_of": capacity_at.isoformat(),
+            "fresh_at": fresh.isoformat(),
+            "workout_capacity_xss": {"low": capacity["lo"], "high": capacity["hi"], "peak": capacity["pk"]},
+            "assumption": "no_intervening_training_before_or_after_the_modeled_impulse",
+        }
+
+    def calculate_strain(self, *, signature: dict[str, Any], segments: list[dict[str, Any]]) -> dict[str, Any]:
+        return calculate_strain_workout(signature=signature, segments=segments, include_series=False)
+
+    def solve_endurance_duration(self, **arguments: Any) -> dict[str, Any]:
+        return solve_endurance_duration(**arguments)
+
+    def project_load_model(
+        self, *, target_at: str, workout_after_hours: float = 0.0,
+        low_xss: float = 0.0, high_xss: float = 0.0, peak_xss: float = 0.0,
+        build_tp: float = 0.0, build_hie: float = 0.0, build_pp: float = 0.0,
+    ) -> dict[str, Any]:
+        token = self._auth.bearer_token()
+        training_info = _request_json("/oauth/training_info", token)
+        model = fetch_recovery_model_with_opener(self._auth.web_opener())
+        at_state = dict(model["at_state"])
+        at_state["recovery_offset"] = model["recovery_offset"]
+        source_at = _aware_datetime(at_state.get("start_date"), "Xert state time")
+        target = _aware_datetime(target_at, "target_at")
+        horizon_days = (target - source_at).total_seconds() / 86400
+        if horizon_days < 0:
+            raise ValueError("target_at must not precede the current Xert state")
+        payload = calculate_load_projection(
+            at_state=at_state,
+            ir_params=model["ir_params"],
+            current_signature=training_info["signature"],
+            planned_xss={"low": low_xss, "high": high_xss, "peak": peak_xss},
+            horizon_days=horizon_days,
+            workout_after_days=workout_after_hours / 24,
+            desired_signature_gain={"ftp": build_tp, "hie": build_hie, "pp": build_pp},
+        )
+        payload["target_at"] = target.isoformat()
+        return payload
+
+    def calculate_workout(self, *, name: str, description: str, rows: list[dict[str, Any]],
+                          include_series: bool = False, signature_tp: float | None = None,
+                          signature_hie: float | None = None, signature_pp: float | None = None) -> dict[str, Any]:
+        credentials = self._credentials()
+        return calculate_new_workout(
+            username=credentials.username, password=credentials.password,
+            name=name, description=description, rows=[_designer_row_from_input(row, sequence=i) for i, row in enumerate(rows)],
+            include_series=include_series, signature_tp=signature_tp,
+            signature_hie=signature_hie, signature_pp=signature_pp,
+        )
+
+    def get_readiness_input(self, *, advice_at: str | None = None, activity_paths: list[str] | None = None) -> dict[str, Any]:
+        model = fetch_recovery_model_with_opener(self._auth.web_opener())
+        now = datetime.now(LOCAL_TIMEZONE)
+        advice = self.get_training_advice(at=advice_at)
+        recovery = compact_recovery_input(model)
+        if advice_at:
+            elapsed_hours = max(
+                0.0,
+                (_aware_datetime(advice_at, "advice_at") - now).total_seconds() / 3600,
+            )
+            recovery["recovery_hours_at_advice_time"] = {
+                key: max(0.0, float(value) - elapsed_hours) if value is not None else None
+                for key, value in recovery["recovery_hours"].items()
+            }
+        return {
+            "source": "xert_plugin", "source_time_local": now.isoformat(timespec="seconds"),
+            "training_advice": advice, "recovery": recovery,
+            "activity_loads": [self.get_activity(path, view="summary") for path in (activity_paths or [])],
+        }
+
     def get_training_forecast(
         self, start_date: str, end_date: str, *, view: str = "summary"
     ) -> dict[str, Any]:
@@ -591,6 +688,48 @@ def compact_current_training_advice(model: dict[str, Any]) -> dict[str, Any]:
         "targets_source": None,
         "based_on_day": None,
     }
+
+
+def compact_recovery_input(model: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "recovery_hours": _system_triplet(model.get("recovery_hours"), "lo", "hi", "pk"),
+        "training_load": _system_triplet((model.get("at_state") or {}).get("tl"), "ftp", "hie", "pp"),
+        "recovery_load": _system_triplet((model.get("at_state") or {}).get("rl"), "ftp", "hie", "pp"),
+        "training_status": model.get("training_status"),
+    }
+
+
+def _aware_datetime(value: Any, label: str) -> datetime:
+    if not value:
+        raise ValueError(f"{label} must be an ISO date-time")
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be an ISO date-time") from exc
+    return parsed.astimezone() if parsed.tzinfo is None else parsed
+
+
+def _project_at_state_without_training(
+    *, at_state: dict[str, Any], ir_params: dict[str, Any], days: float, start_date: str
+) -> dict[str, Any]:
+    if days < 0:
+        raise ValueError("projection days must not be negative")
+    training_load, recovery_load = at_state.get("tl"), at_state.get("rl")
+    if not isinstance(training_load, dict) or not isinstance(recovery_load, dict):
+        raise TypeError("Expected at_state with tl and rl objects")
+    projected_tl, projected_rl = dict(training_load), dict(recovery_load)
+    for key in ("ftp", "hie", "pp"):
+        params = ir_params.get(key)
+        if not isinstance(params, dict):
+            raise TypeError(f"Expected ir_params.{key}")
+        tau1, tau2 = float(params["tau1"]), float(params["tau2"])
+        tl = float(training_load[key]) * math.exp(-days / tau1)
+        classic_rl = float(recovery_load[key]) * math.exp(-days / tau2)
+        rl_cap = tl * math.exp(-1.0 / tau2)
+        projected_tl[key] = tl
+        projected_rl[key] = max(classic_rl, rl_cap)
+        projected_rl[f"{key}-cap"] = rl_cap
+    return {**at_state, "start_date": start_date, "tl": projected_tl, "rl": projected_rl}
 
 
 def compact_planned_training_advice(payload: dict[str, Any], *, at: str) -> dict[str, Any]:

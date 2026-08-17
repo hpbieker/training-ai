@@ -10,10 +10,10 @@ writes. The plugin is stateless and returns normalized data to callers.
 
 ## Network Execution
 
-Use MCP for the live operations listed below. The remaining model and Planner
-CLI commands require external network access; run them with escalated network
-permission on the first attempt. Offline help and local artifact inspection do
-not require escalation.
+Use MCP for the live operations and model calculations listed below. The
+remaining mixed Planner CLI commands require external network access; run them
+with escalated network permission on the first attempt. Offline help and local
+artifact inspection do not require escalation.
 
 ## MCP Read Access
 
@@ -72,10 +72,23 @@ Prefer the Xert MCP tools when they are available:
   `get_workout(view=editable)`, construct the complete desired rows, then pass
   all rows to `update_workout`; omitted metadata is preserved. Saved changes
   are read back and verified. There are no separate MCP row-edit tools.
+- `calculate_workout_capacity` calculates independent Low, High, and Peak XSS
+  capacity at `as_of` while requiring recovery to Xert's fresh boundary at
+  `fresh_at`. Both timestamps are mandatory.
+- `calculate_strain` performs the local Xert strain calculation for an explicit
+  Fitness Signature and ordered power segments; it does not call Xert.
+- `solve_endurance_duration` changes exactly one selected sub-TP segment to
+  meet a target Low XSS while preserving the rest of the workout.
+- `project_load_model` projects Training Load, Recovery Load, Form, readiness,
+  and marginal signature response to an explicit target time.
+- `calculate_workout` sends a complete, unsaved Workout Designer structure to
+  Xert Calculate. Signature overrides must supply TP, HIE, and PP together.
+- `get_readiness_input` composes normalized recovery and current or planned-time
+  advice, with optional compact activity loads for named activity paths.
 
-The CLI exposes only model calculations, mixed Planner-event operations, the
-readiness composition adapter, and unsaved Workout Designer Calculate, which
-have not been added to MCP. It is not a fallback for MCP-covered operations.
+The CLI remains useful for development parity, saved Calculate-series files,
+and mixed Planner-event operations. It is not a fallback for MCP-covered
+operations.
 
 ## Choose The Narrowest Command
 
@@ -96,12 +109,12 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   details. Request `includeFields=["xss"]` for compact XSS history rather than
   looping over individual details.
 - When a local strain calculation needs the current Fitness Signature, use MCP
-  `get_training_state`. Map TP, HIE, and PP from its normalized signature into
-  `xert_strain_cli.py calculate`. Do not call live `workout-calculate` solely to
-  obtain a signature.
-- Use `readiness-input` for normalized recovery and training-advice context.
+  `get_training_state`, then pass its normalized TP, HIE, and PP to MCP
+  `calculate_strain`. Do not call live `calculate_workout` solely to obtain a
+  signature.
+- Use MCP `get_readiness_input` for normalized recovery and training-advice context.
   Do not pass raw Xert payloads to readiness consumers.
-- Use `solve-endurance` after the plan role and complete workout format have
+- Use MCP `solve_endurance_duration` after the plan role and complete workout format have
   been resolved. Mark exactly one sub-TP segment as adjustable and supply the
   applicable target low XSS. The solver preserves every fixed quality,
   warm-up, recovery, and cool-down segment and changes only the endurance
@@ -111,13 +124,13 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   adjustable Designer row with the one-based `--adjustable-row` option and pass
   the target and signature flags explicitly. Designer LTP power is derived as
   `TP - HIE(J) / 400` from that signature.
-- Use `workout-capacity` when asking how much Low/High/Peak XSS can be added at
+- Use MCP `calculate_workout_capacity` when asking how much Low/High/Peak XSS can be added at
   an explicit time while still arriving fresh at another explicit time. Require
   both `--as-of` and `--fresh-at`; there is deliberately no duration alternative
   or default horizon. The command projects the fresh live state to `--as-of`
   assuming no intervening training. The timestamps may be equal. Naive values
   use the machine timezone, while `Z` and explicit offsets are accepted.
-- Use `load-model` to project low/high/peak Training Load, capped Recovery
+- Use MCP `project_load_model` to project low/high/peak Training Load, capped Recovery
   Load, Form, star category, system readiness, and marginal TP/HIE/PP response.
   Require `--target-at`; values without an offset use the machine timezone,
   while `Z` and explicit offsets are accepted. There is deliberately no
