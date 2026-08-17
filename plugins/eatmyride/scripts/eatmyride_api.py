@@ -19,13 +19,14 @@ EATMYRIDE_API_BASE_URL = os.environ.get(
 )
 EATMYRIDE_API_VERSION = os.environ.get("EATMYRIDE_API_VERSION", "1.03")
 LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
+DEFAULT_CONFIG_PATH = Path.home() / ".eatmyride_mcp.json"
 
 
 @dataclass(frozen=True)
 class EatMyRideCredentials:
     """Credentials for the EatMyRide personal API."""
 
-    email: str
+    username: str
     password: str
 
     def login(self) -> str:
@@ -34,22 +35,39 @@ class EatMyRideCredentials:
         payload = _request_json(
             "/auth/login",
             method="POST",
-            json_body={"email": self.email, "password": self.password},
+            json_body={"email": self.username, "password": self.password},
         )
         if not isinstance(payload, dict) or not payload.get("token"):
             raise TypeError("Expected EatMyRide login endpoint to return a token")
         return str(payload["token"])
 
 
-def load_eatmyride_credentials(env_path: str | Path = ".env") -> EatMyRideCredentials:
-    """Load EatMyRide credentials from a local dotenv-style file."""
+def discover_eatmyride_credentials() -> EatMyRideCredentials:
+    """Find credentials for the MCP server without exposing secrets."""
 
-    values = _load_env_values(env_path)
-    email = values.get("EATMYRIDE_EMAIL")
-    password = values.get("EATMYRIDE_PASSWORD")
-    if not email or not password:
-        raise KeyError("Set EATMYRIDE_EMAIL and EATMYRIDE_PASSWORD in .env")
-    return EatMyRideCredentials(email=email, password=password)
+    config_path = DEFAULT_CONFIG_PATH
+    config: dict[str, Any] = {}
+    if config_path.exists():
+        try:
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid EatMyRide config JSON: {config_path}") from exc
+        if not isinstance(payload, dict):
+            raise ValueError(
+                f"EatMyRide config must contain one JSON object: {config_path}"
+            )
+        config = payload
+
+    username = _config_string(config, "username")
+    password = _config_string(config, "password")
+    if not username or not password:
+        raise KeyError(f"Set username and password in {DEFAULT_CONFIG_PATH}")
+    return EatMyRideCredentials(username=username, password=password)
+
+
+def _config_string(config: dict[str, Any], key: str) -> str | None:
+    value = config.get(key)
+    return value if isinstance(value, str) and value else None
 
 
 def list_activities(
@@ -415,6 +433,22 @@ def replace_foodplan(
     """
 
     activity = get_activity(activity_id, token=token)
+    post_foodplan(activity_id, foodplan, token=token)
+    put_activity(activity_id, activity, token=token)
+    return {
+        "activity": get_activity(activity_id, token=token),
+        "foodplan": get_foodplan(activity_id, token=token),
+    }
+
+
+def post_foodplan(
+    activity_id: str | int,
+    foodplan: list[dict[str, Any]],
+    *,
+    token: str,
+) -> list[dict[str, Any]]:
+    """Replace one activity's food-plan document."""
+
     normalized_foodplan = normalize_foodplan_for_replace(activity_id, foodplan)
     posted_foodplan = _request_json(
         f"/foodplan/{activity_id}",
@@ -424,6 +458,17 @@ def replace_foodplan(
     )
     if not isinstance(posted_foodplan, list):
         raise TypeError("Expected EatMyRide foodplan update endpoint to return a list")
+    return posted_foodplan
+
+
+def put_activity(
+    activity_id: str | int,
+    activity: dict[str, Any],
+    *,
+    token: str,
+) -> dict[str, Any]:
+    """Put one activity document back to trigger aggregate recalculation."""
+
     updated_activity = _request_json(
         f"/activities/{activity_id}",
         token=token,
@@ -432,10 +477,7 @@ def replace_foodplan(
     )
     if not isinstance(updated_activity, dict):
         raise TypeError("Expected EatMyRide activity update endpoint to return an object")
-    return {
-        "activity": get_activity(activity_id, token=token),
-        "foodplan": get_foodplan(activity_id, token=token),
-    }
+    return updated_activity
 
 
 def build_foodplan_with_set_products(
@@ -699,11 +741,8 @@ def _request_text(
     try:
         with urlopen(request, timeout=60) as response:
             return response.read().decode("utf-8")
-    except HTTPError as exc:
-        message = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(
-            f"EatMyRide request failed: HTTP {exc.code} {exc.reason}: {message}"
-        ) from exc
+    except HTTPError:
+        raise
     except URLError as exc:
         raise RuntimeError(f"EatMyRide request failed: {exc.reason}") from exc
 
@@ -714,18 +753,6 @@ def _activity_local_date(activity: dict[str, Any]) -> date | None:
         return None
     activity_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
     return activity_date.astimezone(LOCAL_TIMEZONE).date()
-
-
-def _load_env_values(env_path: str | Path) -> dict[str, str]:
-    path = Path(env_path)
-    values = {}
-    if not path.exists():
-        return values
-    for line in path.read_text(encoding="utf-8").splitlines():
-        key, separator, value = line.partition("=")
-        if separator:
-            values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
 
 
 def _optional_grams_to_milligrams(value: float | None) -> int | None:

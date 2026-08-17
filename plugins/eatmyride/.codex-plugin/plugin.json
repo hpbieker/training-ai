@@ -1,11 +1,12 @@
 {
   "name": "eatmyride",
-  "version": "0.1.0+codex.20260710112030",
+  "version": "0.1.0+codex.20260817140600",
   "description": "EatMyRide source semantics for cycling fueling analysis.",
   "author": {
     "name": "Hans Petter Bieker"
   },
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "EatMyRide",
     "shortDescription": "Understand EatMyRide activity, food-plan, and glycogen data.",
@@ -13,8 +14,7 @@
     "developerName": "Hans Petter Bieker",
     "category": "Health & Fitness",
     "capabilities": [
-      "Data Analysis",
-      "Command Line"
+      "Data Analysis"
     ],
     "composerIcon": "./assets/eatmyride-icon.png",
     "logo": "./assets/eatmyride-icon.png",

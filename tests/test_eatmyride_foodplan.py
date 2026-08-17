@@ -12,7 +12,6 @@ from eatmyride_api import (  # noqa: E402
     build_foodplan_with_set_products,
     summarize_foodplan_change,
 )
-from eatmyride_cli import _parse_foodplan_item  # noqa: E402
 
 
 def _product(product_id: int, label: str, unit: str = "piece") -> dict:
@@ -27,44 +26,6 @@ def _product(product_id: int, label: str, unit: str = "piece") -> dict:
 
 
 class EatMyRideFoodplanTests(unittest.TestCase):
-    def test_parse_compact_items(self) -> None:
-        self.assertEqual(
-            _parse_foodplan_item("10139011:pieces=12"),
-            {"product_id": 10139011, "pieces": 12},
-        )
-        self.assertEqual(
-            _parse_foodplan_item("3111:ml=500,gram=33,time=60"),
-            {
-                "product_id": 3111,
-                "ml": 500,
-                "gram": 33,
-                "time": 60,
-            },
-        )
-        self.assertEqual(
-            _parse_foodplan_item("10139011:pieces=4,start=1800,end=2400"),
-            {
-                "product_id": 10139011,
-                "pieces": 4,
-                "start": 1800,
-                "end": 2400,
-            },
-        )
-
-    def test_reject_invalid_compact_items(self) -> None:
-        for value in [
-            "bad",
-            "1:pieces=1.5",
-            "1:pieces=0",
-            "1:pieces=2,gram=2",
-            "1:pieces=1,distance=1000",
-            "1:pieces=1,start=100",
-            "1:pieces=1,start=200,end=100",
-            "1:pieces=1,time=150,start=100,end=200",
-        ]:
-            with self.subTest(value=value), self.assertRaises(Exception):
-                _parse_foodplan_item(value)
-
     def test_set_products_expands_pieces_and_preserves_other_items(self) -> None:
         old_piece = _product(10, "Piece")
         drink = _product(20, "Drink", "gram")

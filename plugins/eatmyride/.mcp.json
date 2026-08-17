@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "eatmyride": {
+      "command": "python3",
+      "args": ["-B", "./eatmyride_mcp.py"],
+      "cwd": "."
+    }
+  }
+}
