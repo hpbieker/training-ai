@@ -30,6 +30,29 @@ Choose the narrowest workflow that answers the request:
   [references/write-safety.md](references/write-safety.md) first and perform a
   fresh readback.
 
+For a completed-activity analysis through MCP, use exactly this sequence:
+
+1. `list_activities` with the requested inclusive local date.
+2. Select and verify the exact activity id.
+3. Call `get_activity` and `get_activity_streams` for that id. These two calls
+   may run concurrently after identity is resolved.
+
+`get_activity_streams` returns a private temporary CSV path rather than placing
+large stream samples in model context.
+
+## Authentication
+
+The MCP server and CLI read `apiKey` from the user-owned
+`~/.intervals_icu_mcp.json`, which survives plugin reinstalls:
+
+```json
+{"apiKey":"..."}
+```
+
+`INTERVALS_ICU_API_KEY` overrides the file. Tests and controlled deployments
+may select another JSON file with `INTERVALS_ICU_MCP_CONFIG`. Never pass or
+print the API key as a tool argument.
+
 ## CLI
 
 Use the local CLI when Intervals.icu access is needed:

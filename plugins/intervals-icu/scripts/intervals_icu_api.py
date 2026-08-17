@@ -11,6 +11,7 @@ import csv
 import gzip
 import json
 import mimetypes
+import os
 from dataclasses import dataclass
 from datetime import date, timedelta
 from pathlib import Path
@@ -22,6 +23,8 @@ from urllib.request import Request, urlopen
 
 INTERVALS_API_BASE_URL = "https://intervals.icu/api/v1"
 DEFAULT_ARTIFACTS_DIR = Path("outputs/intervals")
+CONFIG_ENV = "INTERVALS_ICU_MCP_CONFIG"
+DEFAULT_CONFIG_PATH = Path.home() / ".intervals_icu_mcp.json"
 
 ActivityFileKind = Literal["original", "fit", "web-original"]
 
@@ -688,15 +691,42 @@ def upload_activity_file(
     return uploaded
 
 
-def load_intervals_icu_api_key(env_path: str | Path = ".env") -> str:
-    """Load ``INTERVALS_ICU_API_KEY`` from a local dotenv-style file."""
+def load_intervals_icu_api_key(config_path: str | Path | None = None) -> str:
+    """Discover the API key without exposing it through tool arguments.
 
-    path = Path(env_path)
-    for line in path.read_text(encoding="utf-8").splitlines():
-        key, separator, value = line.partition("=")
-        if separator and key.strip() == "INTERVALS_ICU_API_KEY":
-            return value.strip().strip('"').strip("'")
-    raise KeyError(f"INTERVALS_ICU_API_KEY not found in {path}")
+    An explicit environment variable wins. Otherwise read the user-owned
+    ``~/.intervals_icu_mcp.json`` file, matching the Xert and OmniFocus MCP
+    configuration pattern. ``INTERVALS_ICU_MCP_CONFIG`` can select another
+    config file for tests or controlled deployments.
+    """
+
+    environment_value = os.environ.get("INTERVALS_ICU_API_KEY")
+    if environment_value:
+        return environment_value
+
+    selected_path = Path(
+        config_path
+        or os.environ.get(CONFIG_ENV)
+        or DEFAULT_CONFIG_PATH
+    ).expanduser()
+    try:
+        payload = json.loads(selected_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise KeyError(
+            "Set INTERVALS_ICU_API_KEY or apiKey in "
+            f"{selected_path}"
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid Intervals.icu MCP config JSON: {selected_path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"Intervals.icu MCP config must contain one JSON object: {selected_path}")
+    unknown = set(payload) - {"apiKey"}
+    if unknown:
+        raise ValueError(f"Unknown setting in {selected_path}: {sorted(unknown)[0]}")
+    api_key = payload.get("apiKey")
+    if not isinstance(api_key, str) or not api_key:
+        raise ValueError(f"apiKey in {selected_path} must be a non-empty string")
+    return api_key
 
 
 def load_intervals_icu_cookie(env_path: str | Path = ".env") -> str:

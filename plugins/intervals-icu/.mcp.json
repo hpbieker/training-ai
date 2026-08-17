@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "intervals-icu": {
+      "command": "python3",
+      "args": ["-B", "./intervals_icu_mcp.py"],
+      "cwd": "."
+    }
+  }
+}

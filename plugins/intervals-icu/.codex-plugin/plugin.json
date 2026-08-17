@@ -1,11 +1,12 @@
 {
   "name": "intervals-icu",
-  "version": "0.1.0+codex.20260710112029",
+  "version": "0.1.0+codex.20260817144550",
   "description": "Intervals.icu source semantics and API access for training activity, stream, and wellness data.",
   "author": {
     "name": "Hans Petter Bieker"
   },
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Intervals.icu",
     "shortDescription": "Fetch and interpret Intervals.icu activities, intervals, wellness, and files.",
