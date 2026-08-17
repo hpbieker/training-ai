@@ -126,6 +126,13 @@ class EatMyRideMcpSchemaTests(unittest.TestCase):
                 },
             )
 
+    def test_limited_lists_report_count_and_total_count(self) -> None:
+        for name in ("list_activities", "search_products", "list_products"):
+            properties = MCP.TOOL_DEFINITIONS[name]["outputSchema"]["properties"]
+            self.assertIn("count", properties)
+            self.assertIn("total_count", properties)
+            self.assertNotIn("matched_count", properties)
+
     def test_sdk_accepts_every_tool_definition(self) -> None:
         server = MCP.create_sdk_server(MCP.EatMyRideToolService(FakeEatMyRideService))
         self.assertIsNotNone(server)
@@ -159,7 +166,7 @@ class EatMyRideMcpDispatchTests(unittest.TestCase):
             "list_activities",
             {"start_date": "2026-08-01", "end_date": "2026-08-02", "limit": 1},
         )
-        self.assertEqual(result["matched_count"], 2)
+        self.assertEqual(result["total_count"], 2)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["activities"], [{"id": "a1"}])
 
@@ -177,9 +184,9 @@ class EatMyRideMcpDispatchTests(unittest.TestCase):
             "list_products",
             {"source": "suggested", "activity_id": "a1", "kind": "drinks", "contains": "orange"},
         )
-        self.assertEqual(searched["matched_count"], 2)
+        self.assertEqual(searched["total_count"], 2)
         self.assertEqual(searched["count"], 1)
-        self.assertEqual(suggested["matched_count"], 1)
+        self.assertEqual(suggested["total_count"], 1)
         self.assertEqual(suggested["products"][0]["id"], 1)
 
     def test_rejects_unknown_missing_and_invalid_arguments(self) -> None:

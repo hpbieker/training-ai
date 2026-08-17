@@ -24,6 +24,9 @@ writes. The plugin is stateless and returns normalized data to callers.
 - `create_product`, `update_product`, and `delete_product` operate only on
   custom products. `update_product` changes only explicitly supplied fields.
 
+List and search responses use `count` for the number of returned rows and
+`total_count` for all matching rows before `limit` is applied.
+
 Live MCP reads and writes require external network access.
 
 ## Interpretation

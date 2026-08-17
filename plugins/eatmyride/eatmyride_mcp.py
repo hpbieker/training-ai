@@ -168,7 +168,7 @@ _LIMIT_SCHEMA = {
     "minimum": 1,
     "maximum": 200,
     "default": 50,
-    "description": "Maximum number of rows returned; matched_count remains untruncated.",
+    "description": "Maximum number of rows returned; total_count remains untruncated.",
 }
 
 TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
@@ -195,11 +195,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         output_properties={
             "start_date": {"type": "string"},
             "end_date": {"type": "string"},
-            "matched_count": {"type": "integer"},
+            "total_count": {"type": "integer"},
             "count": {"type": "integer"},
             "activities": _array_of_open_objects("Bounded activity candidate rows."),
         },
-        output_required=["start_date", "end_date", "matched_count", "count", "activities"],
+        output_required=["start_date", "end_date", "total_count", "count", "activities"],
     ),
     "get_fueling": _tool_definition(
         name="get_fueling",
@@ -245,11 +245,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         required=["query"],
         output_properties={
             "query": {"type": "string"},
-            "matched_count": {"type": "integer"},
+            "total_count": {"type": "integer"},
             "count": {"type": "integer"},
             "products": _array_of_open_objects("Bounded matching product rows."),
         },
-        output_required=["query", "matched_count", "count", "products"],
+        output_required=["query", "total_count", "count", "products"],
     ),
     "list_products": _tool_definition(
         name="list_products",
@@ -286,11 +286,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "source": {"type": "string"},
             "activity_id": {"type": "string"},
             "kind": {"type": "string"},
-            "matched_count": {"type": "integer"},
+            "total_count": {"type": "integer"},
             "count": {"type": "integer"},
             "products": _array_of_open_objects("Bounded product rows."),
         },
-        output_required=["source", "matched_count", "count", "products"],
+        output_required=["source", "total_count", "count", "products"],
     ),
     "get_product": _tool_definition(
         name="get_product",
@@ -752,7 +752,7 @@ class EatMyRideToolService:
             return {
                 "start_date": start,
                 "end_date": end,
-                "matched_count": len(activities),
+                "total_count": len(activities),
                 "count": len(selected),
                 "activities": selected,
             }
@@ -766,7 +766,7 @@ class EatMyRideToolService:
             selected = products[:limit]
             return {
                 "query": arguments["query"],
-                "matched_count": len(products),
+                "total_count": len(products),
                 "count": len(selected),
                 "products": selected,
             }
@@ -818,7 +818,7 @@ class EatMyRideToolService:
             "source": arguments["source"],
             **({"activity_id": arguments["activity_id"]} if "activity_id" in arguments else {}),
             **({"kind": arguments["kind"]} if "kind" in arguments else {}),
-            "matched_count": len(products),
+            "total_count": len(products),
             "count": len(selected),
             "products": selected,
         }
