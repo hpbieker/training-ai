@@ -249,13 +249,14 @@ def validate_event(event: dict[str, Any]) -> None:
         raise PlanStateError("evidence must be a list of paths or references.")
     progression_update = event.get("progression_update", {})
     if not isinstance(progression_update, dict) or any(
-        key not in {"status", "next_step", "anchor"}
+        key not in {"status", "next_step", "anchor", "last_result"}
         or not isinstance(value, str)
         or not value.strip()
         for key, value in progression_update.items()
     ):
         raise PlanStateError(
-            "progression_update may contain non-empty status, next_step, and anchor strings."
+            "progression_update may contain non-empty status, next_step, anchor, "
+            "and last_result strings."
         )
 
 

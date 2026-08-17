@@ -146,6 +146,7 @@ class PlanStateTransitionTests(unittest.TestCase):
                 progression_update={
                     "status": "progress",
                     "next_step": "2 x 9 x 60 sec",
+                    "last_result": "Completed 2 x 8 x 60 sec without power fade.",
                 },
             ),
         )
@@ -156,6 +157,10 @@ class PlanStateTransitionTests(unittest.TestCase):
         self.assertEqual(
             quality["progression"]["vo2max"]["next_step"],
             "2 x 9 x 60 sec",
+        )
+        self.assertEqual(
+            quality["progression"]["vo2max"]["last_result"],
+            "Completed 2 x 8 x 60 sec without power fade.",
         )
 
     def test_repeated_vt2_goals_advance_by_step_identity(self):
