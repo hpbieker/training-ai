@@ -12,8 +12,10 @@ from eatmyride_api import (
     build_custom_product_payload,
     create_product,
     delete_product,
+    build_foodplan_with_set_products,
     get_activity,
     get_foodplan,
+    get_product,
     get_suggested_products,
     list_activities,
     list_products,
@@ -24,6 +26,7 @@ from eatmyride_api import (
     summarize_fueling,
     search_products,
     summarize_foodplan,
+    summarize_foodplan_change,
     update_product,
 )
 
@@ -89,6 +92,27 @@ def main() -> None:
     replace.add_argument("activity_id")
     replace.add_argument("json_file", type=Path)
     replace.add_argument("--yes", action="store_true", help="Confirm replacement")
+
+    set_foodplan = subparsers.add_parser(
+        "foodplan-set",
+        help="Set exact quantities for selected products while preserving others",
+    )
+    set_foodplan.add_argument("activity_id")
+    set_foodplan.add_argument(
+        "--item",
+        action="append",
+        required=True,
+        help=(
+            "PRODUCT_ID:pieces=N|gram=N|ml=N[,time=S] or "
+            "PRODUCT_ID:pieces=N|gram=N,start=S,end=S"
+        ),
+    )
+    set_foodplan.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show the compact before/after change without writing",
+    )
+    set_foodplan.add_argument("--yes", action="store_true", help="Confirm remote replacement")
 
     create = subparsers.add_parser("product-create", help="Create a custom product")
     create.add_argument("--label", required=True)
@@ -178,6 +202,42 @@ def main() -> None:
         )
         return
 
+    if args.command == "foodplan-set":
+        if not args.dry_run:
+            _require_confirmation(args.yes, "Food-plan update")
+        items = [_parse_foodplan_item(value) for value in args.item]
+        product_ids = list(dict.fromkeys(int(item["product_id"]) for item in items))
+        token = _login(args.env)
+        current = get_foodplan(args.activity_id, token=token)
+        products = {
+            product_id: get_product(product_id, token=token)
+            for product_id in product_ids
+        }
+        updated = build_foodplan_with_set_products(
+            args.activity_id,
+            current,
+            items,
+            products,
+        )
+        change = summarize_foodplan_change(current, updated, product_ids)
+        if args.dry_run:
+            _print_json({"dry_run": True, "change": change})
+            return
+        verified = replace_foodplan(args.activity_id, updated, token=token)
+        _print_json(
+            {
+                "activity": summarize_activity(verified["activity"]),
+                "change": summarize_foodplan_change(
+                    current,
+                    verified["foodplan"],
+                    product_ids,
+                ),
+                "summary": summarize_foodplan(verified["foodplan"]),
+                "verified": True,
+            }
+        )
+        return
+
     token = _login(args.env)
 
     if args.command == "activity":
@@ -256,6 +316,48 @@ def _read_json_list(path: Path) -> list[dict[str, Any]]:
     if not isinstance(payload, list):
         raise SystemExit(f"Expected JSON list: {path}")
     return payload
+
+
+def _parse_foodplan_item(value: str) -> dict[str, Any]:
+    product_id_text, separator, quantities_text = value.partition(":")
+    if not separator or not product_id_text or not quantities_text:
+        raise argparse.ArgumentTypeError(
+            "Item must use PRODUCT_ID:key=value[,key=value]"
+        )
+    try:
+        product_id = int(product_id_text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Product id must be an integer") from exc
+
+    allowed = {"pieces", "ml", "gram", "time", "start", "end"}
+    item: dict[str, Any] = {"product_id": product_id}
+    for field in quantities_text.split(","):
+        key, equals, raw_value = field.partition("=")
+        if not equals or key not in allowed or not raw_value:
+            raise argparse.ArgumentTypeError(f"Invalid item quantity: {field}")
+        try:
+            numeric = float(raw_value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"{key} must be numeric") from exc
+        item[key] = int(numeric) if numeric.is_integer() else numeric
+
+    if "pieces" in item and ("ml" in item or "gram" in item):
+        raise argparse.ArgumentTypeError("pieces cannot be combined with ml or gram")
+    if not any(key in item for key in ("pieces", "ml", "gram")):
+        raise argparse.ArgumentTypeError("Item must include pieces, ml, or gram")
+    if any(float(item[key]) <= 0 for key in ("pieces", "ml", "gram") if key in item):
+        raise argparse.ArgumentTypeError("pieces, ml, and gram must be positive")
+    if "pieces" in item and not float(item["pieces"]).is_integer():
+        raise argparse.ArgumentTypeError("pieces must be a positive integer")
+    has_start = "start" in item
+    has_end = "end" in item
+    if has_start != has_end:
+        raise argparse.ArgumentTypeError("start and end must be provided together")
+    if has_start and "time" in item:
+        raise argparse.ArgumentTypeError("time cannot be combined with start and end")
+    if has_start and float(item["end"]) < float(item["start"]):
+        raise argparse.ArgumentTypeError("end must be on or after start")
+    return item
 
 
 def _require_confirmation(confirmed: bool, action: str) -> None:

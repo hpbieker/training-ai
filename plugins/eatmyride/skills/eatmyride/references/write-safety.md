@@ -6,10 +6,37 @@ require `--yes`, and read the changed object back before reporting success.
 ## Replace A Food Plan
 
 ```bash
+python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan-set <activity-id> \
+  --item '<product-id>:pieces=<n>' \
+  --item '<product-id>:ml=<n>,gram=<n>' \
+  --dry-run
+python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan-set <activity-id> \
+  --item '<product-id>:pieces=<n>' \
+  --item '<product-id>:ml=<n>,gram=<n>' \
+  --yes
+python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan-set <activity-id> \
+  --item '<product-id>:pieces=<n>,start=<seconds>,end=<seconds>' \
+  --item '<same-product-id>:pieces=<n>,start=<seconds>,end=<seconds>' \
+  --yes
 python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan-replace <activity-id> <foodplan.json> --yes
 python3 -B plugins/eatmyride/scripts/eatmyride_cli.py foodplan <activity-id> --summary
 python3 -B plugins/eatmyride/scripts/eatmyride_cli.py activity <activity-id> --summary
 ```
+
+Prefer `foodplan-set` for product quantity changes. It resolves product objects,
+preserves unrelated events, replaces all existing events for the mentioned
+product IDs, expands piece counts, and verifies the server result. Repeating the
+same command is idempotent.
+
+`time` and period boundaries are elapsed activity seconds. A period distributes
+the requested occurrences evenly inside its boundaries; one occurrence lands
+at the midpoint. The same product may be repeated for separate periods. Keep
+pause detection and other activity interpretation outside this source CLI, and
+pass only the resolved elapsed times.
+
+Use `pieces` for counted products and `gram` for weighed products. A gram amount
+is one event at its exact time or at the midpoint of its period. Represent
+separate weighed servings as repeated `--item` entries for the same product.
 
 Replacement overwrites the complete server-side event list. Preserve intended
 events rather than sending only the changed item.

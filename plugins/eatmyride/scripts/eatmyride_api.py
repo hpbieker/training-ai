@@ -221,6 +221,15 @@ def get_suggested_products(
     return payload
 
 
+def get_product(product_id: str | int, *, token: str) -> dict[str, Any]:
+    """Return one EatMyRide product by id."""
+
+    payload = _request_json(f"/products/{product_id}", token=token)
+    if not isinstance(payload, dict):
+        raise TypeError("Expected EatMyRide product endpoint to return an object")
+    return payload
+
+
 def create_product(
     product: dict[str, Any],
     *,
@@ -429,6 +438,88 @@ def replace_foodplan(
     }
 
 
+def build_foodplan_with_set_products(
+    activity_id: str | int,
+    current_foodplan: list[dict[str, Any]],
+    items: list[dict[str, Any]],
+    products: dict[int, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replace quantities for selected products while preserving other events.
+
+    Piece quantities are expanded to one event per piece because that is the
+    representation EatMyRide uses when calculating and reading food plans.
+    """
+
+    mentioned_ids = {_coerce_int(item["product_id"]) for item in items}
+    updated = [
+        event
+        for event in current_foodplan
+        if _foodplan_event_product_id(event) not in mentioned_ids
+    ]
+    for item in items:
+        product_id = _coerce_int(item["product_id"])
+        product = products.get(product_id)
+        if not isinstance(product, dict):
+            raise KeyError(f"Product {product_id} was not resolved")
+        pieces = item.get("pieces")
+        copies = _coerce_positive_piece_count(pieces) if pieces is not None else 1
+        event_times = _foodplan_item_times(item, copies)
+        for event_time in event_times:
+            event: dict[str, Any] = {
+                "activityId": _coerce_int(activity_id),
+                "distance": 0,
+                "product": product,
+                "productId": product_id,
+                "source": item.get("source"),
+                "time": event_time,
+            }
+            if pieces is not None:
+                event["gram"] = 1
+            if item.get("gram") is not None:
+                event["gram"] = item["gram"]
+            if item.get("ml") is not None:
+                event["ml"] = item["ml"]
+            updated.append(event)
+    return updated
+
+
+def _foodplan_item_times(item: dict[str, Any], count: int) -> list[int | float]:
+    """Return one event time per occurrence, evenly spaced inside a period."""
+
+    if item.get("start") is None:
+        return [item.get("time", 0)] * count
+    start = float(item["start"])
+    end = float(item["end"])
+    duration = end - start
+    times = [start + duration * (index + 0.5) / count for index in range(count)]
+    return [_clean_number(value) for value in times]
+
+
+def summarize_foodplan_change(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    product_ids: list[int],
+) -> dict[str, Any]:
+    """Return a compact before/after summary for selected products."""
+
+    return {
+        "event_count_before": len(before),
+        "event_count_after": len(after),
+        "products": [
+            {
+                "product_id": product_id,
+                "events_before": _count_product_events(before, product_id),
+                "events_after": _count_product_events(after, product_id),
+                "times_before_s": _product_event_times(before, product_id),
+                "times_after_s": _product_event_times(after, product_id),
+            }
+            for product_id in product_ids
+        ],
+        "totals_before": summarize_foodplan(before),
+        "totals_after": summarize_foodplan(after),
+    }
+
+
 def normalize_foodplan_for_replace(
     activity_id: str | int,
     foodplan: list[dict[str, Any]],
@@ -476,6 +567,42 @@ def _normalize_foodplan_event(
     if "ml" in event:
         normalized["ml"] = event["ml"]
     return normalized
+
+
+def _foodplan_event_product_id(event: dict[str, Any]) -> int | None:
+    product = event.get("product")
+    product_id = event.get("productId")
+    if product_id is None and isinstance(product, dict):
+        product_id = product.get("id")
+    return None if product_id is None else _coerce_int(product_id)
+
+
+def _count_product_events(foodplan: list[dict[str, Any]], product_id: int) -> int:
+    return sum(
+        1 for event in foodplan if _foodplan_event_product_id(event) == product_id
+    )
+
+
+def _product_event_times(
+    foodplan: list[dict[str, Any]],
+    product_id: int,
+) -> list[int | float]:
+    return [
+        event.get("time", 0)
+        for event in foodplan
+        if _foodplan_event_product_id(event) == product_id
+    ]
+
+
+def _coerce_positive_piece_count(value: Any) -> int:
+    numeric = float(value)
+    if not numeric.is_integer() or numeric <= 0:
+        raise ValueError("pieces must be a positive integer")
+    return int(numeric)
+
+
+def _clean_number(value: float) -> int | float:
+    return int(value) if value.is_integer() else round(value, 3)
 
 
 def _normalize_foodplan_product(product: dict[str, Any]) -> dict[str, Any]:
