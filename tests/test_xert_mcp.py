@@ -64,6 +64,10 @@ class FakeXertService:
         self.calls.append(("delete_workout", path))
         return {"path": path, "verified_absent": True}
 
+    def update_workout(self, path, *, name=None, description=None, rows=None):
+        self.calls.append(("update_workout", path, name, description, rows))
+        return {"path": path, "submit": "save"}
+
 
 class XertMcpSchemaTests(unittest.TestCase):
     def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
@@ -81,6 +85,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "get_training_advice",
                 "create_workout",
                 "delete_workout",
+                "update_workout",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -95,14 +100,19 @@ class XertMcpSchemaTests(unittest.TestCase):
             writes_note = name == "set_note"
             creates_workout = name == "create_workout"
             deletes_workout = name == "delete_workout"
+            updates_workout = name == "update_workout"
             self.assertEqual(
                 definition["annotations"],
                 {
                     "title": MCP.TOOL_ANNOTATIONS[name]["title"],
                     "readOnlyHint": not (
-                        writes_session_file or writes_note or creates_workout or deletes_workout
+                        writes_session_file
+                        or writes_note
+                        or creates_workout
+                        or deletes_workout
+                        or updates_workout
                     ),
-                    "destructiveHint": writes_note or deletes_workout,
+                    "destructiveHint": writes_note or deletes_workout or updates_workout,
                     "idempotentHint": not (
                         writes_session_file or creates_workout or deletes_workout
                     ),
@@ -211,6 +221,17 @@ class XertMcpDispatchTests(unittest.TestCase):
             "delete_workout", {"workout_path": "old-workout"}
         )
         self.assertTrue(result["deletion"]["verified_absent"])
+
+    def test_update_workout_dispatches_metadata_and_complete_rows(self) -> None:
+        result = self.tools.call_tool(
+            "update_workout",
+            {
+                "workout_path": "workout",
+                "name": "Updated",
+                "rows": [{"duration_seconds": 600, "power": 200}],
+            },
+        )
+        self.assertEqual(result["workout"]["submit"], "save")
 
 
 class XertServiceTests(unittest.TestCase):
@@ -396,6 +417,41 @@ class XertServiceTests(unittest.TestCase):
             result = service.delete_workout(" old ")
         self.assertTrue(result["verified_absent"])
         delete.assert_called_once_with("old", username="user", password="secret")
+
+    def test_update_workout_uses_atomic_replace_for_rows(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        with patch.object(
+            SERVICE,
+            "replace_saved_workout",
+            return_value={"path": "workout", "submit": "save"},
+        ) as replace:
+            result = service.update_workout(
+                "workout",
+                name="Updated",
+                rows=[{"duration_seconds": 600, "power": 200}],
+            )
+        self.assertEqual(result["submit"], "save")
+        self.assertEqual(replace.call_args.kwargs["rows"][0]["duration"]["value"], "10:00")
+        self.assertEqual(replace.call_args.kwargs["name"], "Updated")
+
+    def test_update_workout_uses_metadata_patch_without_rows(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        with patch.object(
+            SERVICE,
+            "update_saved_workout",
+            return_value={"path": "workout", "submit": "save"},
+        ) as update:
+            service.update_workout("workout", description="")
+        update.assert_called_once_with(
+            "workout",
+            username="user",
+            password="secret",
+            name=None,
+            description="",
+            submit="save",
+        )
 
 
 if __name__ == "__main__":

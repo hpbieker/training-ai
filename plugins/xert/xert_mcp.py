@@ -27,6 +27,7 @@ ALL_TOOL_NAMES = (
     "get_training_advice",
     "create_workout",
     "delete_workout",
+    "update_workout",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -107,6 +108,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "idempotentHint": False,
         "openWorldHint": True,
     },
+    "update_workout": {
+        "title": "Update Xert Workout",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
 }
 
 
@@ -123,6 +131,61 @@ def _array(description: str) -> dict[str, object]:
         "type": "array",
         "items": _object("Normalized or source-native Xert object."),
         "description": description,
+    }
+
+
+def _workout_rows_schema(description: str) -> dict[str, object]:
+    return {
+        "type": "array",
+        "minItems": 1,
+        "description": description,
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Optional row name."},
+                "duration_seconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Work duration for each repetition in seconds.",
+                },
+                "power": {"type": "number", "description": "Primary power value."},
+                "power_type": {
+                    "type": "string",
+                    "enum": ["absolute", "relative_ftp", "ramp_ftp", "ramp_ltp", "ramp_absolute"],
+                    "default": "absolute",
+                    "description": "Interpretation of power; relative and ramp values are percentages.",
+                },
+                "power_second_value": {
+                    "type": "number",
+                    "description": "Required ending power for ramp power types.",
+                },
+                "interval_count": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": 1,
+                    "description": "Number of work repetitions represented by this row.",
+                },
+                "rib_duration_seconds": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Rest-in-between duration after every repetition, including the final one.",
+                },
+                "rib_power": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Rest-in-between power value.",
+                },
+                "rib_power_type": {
+                    "type": "string",
+                    "enum": ["absolute", "relative_ftp"],
+                    "default": "absolute",
+                    "description": "Interpretation of rest-in-between power.",
+                },
+            },
+            "required": ["duration_seconds", "power"],
+            "additionalProperties": False,
+        },
     }
 
 
@@ -586,6 +649,48 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["delete_workout"],
     },
+    "update_workout": {
+        "name": "update_workout",
+        "description": (
+            "Update Xert workout metadata and optionally replace all Workout Designer "
+            "rows atomically. Omitted metadata is preserved. When rows are supplied, "
+            "first read view=editable, modify the complete row set, and submit every "
+            "row in final execution order. Saved metadata and rows are read back."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workout_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Xert workout path returned by list_workouts.",
+                },
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Optional replacement workout name.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional replacement description; an empty string clears it.",
+                },
+                "rows": _workout_rows_schema(
+                    "Optional complete replacement Designer rows in final execution order."
+                ),
+            },
+            "required": ["workout_path"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "workout": _object("Verified workout update and timeline summary when rows changed."),
+            },
+            "required": ["workout"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["update_workout"],
+    },
 }
 
 
@@ -710,6 +815,15 @@ class XertToolService:
             }
         if name == "delete_workout":
             return {"deletion": service.delete_workout(arguments["workout_path"])}
+        if name == "update_workout":
+            return {
+                "workout": service.update_workout(
+                    arguments["workout_path"],
+                    name=arguments.get("name"),
+                    description=arguments.get("description"),
+                    rows=arguments.get("rows"),
+                )
+            }
         path = arguments["workout_path"]
         view = arguments.get("view", "resolved")
         workout = service.get_workout(path, view=view)

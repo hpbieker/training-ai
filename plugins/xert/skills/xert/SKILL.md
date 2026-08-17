@@ -54,6 +54,11 @@ Prefer the Xert MCP tools when they are available:
 - `delete_workout` permanently deletes the specified workout path. Use it only
   when deletion is explicitly requested. It reads target metadata first and
   verifies afterward that the path is absent from the workout library.
+- `update_workout` patches `name` and/or `description` and can atomically
+  replace the complete Designer row set. For structural changes, first read
+  `get_workout(view=editable)`, construct the complete desired rows, then pass
+  all rows to `update_workout`; omitted metadata is preserved. Saved changes
+  are read back and verified. There are no separate MCP row-edit tools.
 
 The CLI remains the development/fallback interface and exposes Xert operations
 that have not yet been added to MCP. Both transports call the same Python

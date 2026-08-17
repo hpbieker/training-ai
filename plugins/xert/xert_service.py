@@ -42,7 +42,9 @@ from xert_workouts import (  # noqa: E402
     fetch_workout,
     fetch_workout_designer_rows,
     list_workouts as fetch_workouts,
+    replace_workout as replace_saved_workout,
     summarize_workout_library,
+    update_workout as update_saved_workout,
 )
 
 
@@ -221,6 +223,48 @@ class XertService:
             path,
             username=credentials.username,
             password=credentials.password,
+        )
+
+    def update_workout(
+        self,
+        path: str,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        rows: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        path = _require_identifier(path, "workout path")
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise ValueError("name must be a non-empty string when supplied")
+        if description is not None and not isinstance(description, str):
+            raise ValueError("description must be a string when supplied")
+        if name is None and description is None and rows is None:
+            raise ValueError("update_workout requires name, description, or rows")
+        credentials = self._credentials()
+        normalized_name = name.strip() if isinstance(name, str) else None
+        if rows is not None:
+            if not isinstance(rows, list) or not rows:
+                raise ValueError("rows must be a non-empty array when supplied")
+            designer_rows = [
+                _designer_row_from_input(row, sequence=index)
+                for index, row in enumerate(rows)
+            ]
+            return replace_saved_workout(
+                path,
+                username=credentials.username,
+                password=credentials.password,
+                rows=designer_rows,
+                name=normalized_name,
+                description=description,
+                submit="save",
+            )
+        return update_saved_workout(
+            path,
+            username=credentials.username,
+            password=credentials.password,
+            name=normalized_name,
+            description=description,
+            submit="save",
         )
 
     def list_notes(self, start_date: str, end_date: str) -> list[dict[str, str]]:
