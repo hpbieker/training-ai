@@ -54,8 +54,10 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   `lte`, `in`, `not_in`, `contains`, and `exists`. Health fields use documented
   dotted names such as `sources.hrv.lastNightAvg`.
 - Use `list_activities` to resolve an activity from compact identity summaries.
-  Use `includeFields` to add only selected Garmin training details to each row;
-  moving duration and account or profile fields are not part of the default.
+  The default row contains only `activity_id`, `name`, and `start_local`. Use
+  `includeFields` to add only selected Garmin training details to each row;
+  activity type, duration, distance, source, moving duration, and account or
+  profile fields are not part of the default.
   Use `get_activity` for
   compact Training Effect, load, Stamina, and performance metrics. The compact
   Stamina analysis resolves Garmin's per-activity descriptor indexes, which can

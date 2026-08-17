@@ -76,7 +76,8 @@ _SOURCE_ARRAY = {
 }
 
 _ACTIVITY_LIST_INCLUDE_FIELDS = (
-    "elapsedDuration", "movingDuration", "calories", "averageHR", "maxHR",
+    "type", "duration_s", "distance_m", "source", "elapsedDuration",
+    "movingDuration", "calories", "averageHR", "maxHR",
     "averageBikingCadenceInRevPerMinute", "maxBikingCadenceInRevPerMinute",
     "avgPower", "maxPower", "normPower", "aerobicTrainingEffect",
     "anaerobicTrainingEffect", "trainingEffectLabel", "activityTrainingLoad",
@@ -548,12 +549,17 @@ def _activity_list_summary(
         "activity_id": activity.get("activityId"),
         "name": activity.get("activityName"),
         "start_local": activity.get("startTimeLocal"),
+    }
+    aliases = {
         "type": type_key,
         "duration_s": activity.get("duration"),
         "distance_m": activity.get("distance"),
         "source": "garmin_connect_gccli",
     }
-    summary.update({field: activity.get(field) for field in include_fields})
+    summary.update({
+        field: aliases[field] if field in aliases else activity.get(field)
+        for field in include_fields
+    })
     return summary
 
 

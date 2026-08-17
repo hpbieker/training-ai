@@ -96,8 +96,6 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(result["includeFields"], [])
         self.assertEqual(result["activities"][0], {
             "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
-            "type": "Ride", "duration_s": 3600, "distance_m": 30000,
-            "source": "GARMIN_CONNECT", "external_id": "g1",
         })
         self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-17")
         self.assertEqual(calls[0]["newest"].isoformat(), "2026-08-17")
@@ -162,6 +160,22 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(result["activities"][0]["icu_training_load"], 55)
         self.assertEqual(result["activities"][0]["stream_types"], ["watts"])
         self.assertNotIn("moving_time", result["activities"][0])
+
+    def test_list_activities_adds_old_default_fields_only_when_requested(self):
+        service = self.service(activity_lister=lambda **kwargs: [{
+            "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
+            "type": "Ride", "elapsed_time": 3600, "distance": 30000,
+            "source": "GARMIN_CONNECT", "external_id": "g1",
+        }])
+        result = service.call_tool("list_activities", {
+            "start_date": "2026-08-17", "end_date": "2026-08-17",
+            "includeFields": ["type", "duration_s", "distance_m", "source", "external_id"],
+        })
+        self.assertEqual(result["activities"][0], {
+            "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
+            "type": "Ride", "duration_s": 3600, "distance_m": 30000,
+            "source": "GARMIN_CONNECT", "external_id": "g1",
+        })
 
     def test_list_activities_rejects_invalid_include_fields(self):
         for include_fields, message in (
@@ -237,7 +251,12 @@ class IntervalsIcuMcpTests(unittest.TestCase):
 
     def test_search_activities_is_one_source_call_and_preserves_duplicates(self):
         calls = []
-        source_rows = [{"id": "i1"}, {"id": "i1"}, {"id": "i2"}]
+        source_rows = [
+            {"id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
+             "type": "Ride", "elapsed_time": 3600, "distance": 30000,
+             "source": "GARMIN_CONNECT", "external_id": "g1"},
+            {"id": "i1"}, {"id": "i2"},
+        ]
         service = self.service(
             activity_searcher=lambda **kwargs: calls.append(kwargs) or source_rows
         )
@@ -248,6 +267,9 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual([row["id"] for row in result["activities"]], ["i1", "i1", "i2"])
         self.assertEqual(result["includeFields"], [])
         self.assertEqual(result["count"], 3)
+        self.assertEqual(result["activities"][0], {
+            "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
+        })
 
     def test_search_activities_supports_same_include_fields_as_list(self):
         service = self.service(

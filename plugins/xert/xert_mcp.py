@@ -154,15 +154,17 @@ def _object(description: str) -> dict[str, object]:
 
 
 _ACTIVITY_LIST_INCLUDE_FIELDS = (
-    "map_url", "xss", "xep_watts", "focus", "specificity", "difficulty",
-    "difficulty_rating", "freshness", "signature",
+    "duration_s", "distance_m", "source", "map_url", "xss", "xep_watts",
+    "focus", "specificity", "difficulty", "difficulty_rating", "freshness",
+    "signature",
 )
 _ACTIVITY_LIST_DETAIL_FIELDS = frozenset(
     {"xss", "xep_watts", "focus", "specificity", "difficulty",
      "difficulty_rating", "freshness", "signature"}
 )
 _WORKOUT_LIST_INCLUDE_FIELDS = (
-    "work_watts", "xss", "xlss", "xhss", "xpss", "difficulty", "rating",
+    "duration_s", "work_watts", "xss", "xlss", "xhss", "xpss",
+    "difficulty", "rating",
 )
 _ACTIVITY_LIST_FILTER_FIELDS = (
     "path", "name", "start_local", "duration_s", "distance_m", "source",
@@ -1243,6 +1245,8 @@ def _activity_list_summary(
         "path": activity.get("path"),
         "name": activity.get("name"),
         "start_local": activity.get("start_local"),
+    }
+    optional = {
         "duration_s": (
             round(float(elapsed_minutes) * 60) if elapsed_minutes is not None else None
         ),
@@ -1251,7 +1255,10 @@ def _activity_list_summary(
         ),
         "source": activity.get("source") or "xert_plugin",
     }
-    summary.update({field: activity.get(field) for field in include_fields})
+    summary.update({
+        field: optional[field] if field in optional else activity.get(field)
+        for field in include_fields
+    })
     return summary
 
 
@@ -1262,11 +1269,16 @@ def _workout_list_summary(
     summary = {
         "path": workout.get("path"),
         "name": workout.get("name"),
+    }
+    optional = {
         "duration_s": (
             round(float(duration_min) * 60) if duration_min is not None else None
         ),
     }
-    summary.update({field: workout.get(field) for field in include_fields})
+    summary.update({
+        field: optional[field] if field in optional else workout.get(field)
+        for field in include_fields
+    })
     return summary
 
 

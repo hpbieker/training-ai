@@ -50,6 +50,7 @@ def _object(description: str) -> dict[str, object]:
 
 
 _ACTIVITY_LIST_INCLUDE_FIELDS = (
+    "type", "duration_s", "distance_m", "source", "external_id",
     "moving_time", "trainer", "strava_id", "device_name", "gear",
     "description", "tags", "sub_type", "icu_color", "carbs_ingested", "kg_lifted",
     "icu_ignore_time",
@@ -1159,13 +1160,15 @@ def _activity_list_summary(
         "id": activity.get("id"),
         "name": activity.get("name"),
         "start_date_local": activity.get("start_date_local"),
-        "type": activity.get("type"),
+    }
+    aliases = {
         "duration_s": activity.get("elapsed_time"),
         "distance_m": activity.get("distance"),
-        "source": activity.get("source"),
-        "external_id": activity.get("external_id"),
     }
-    summary.update({field: activity.get(field) for field in include_fields})
+    summary.update({
+        field: aliases[field] if field in aliases else activity.get(field)
+        for field in include_fields
+    })
     return summary
 
 

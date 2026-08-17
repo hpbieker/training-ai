@@ -20,7 +20,8 @@ artifact inspection do not require escalation.
 Prefer the Xert MCP tools when they are available:
 
 - `list_activities` returns compact identity summaries for an inclusive
-  local-date range. Use `includeFields` to add selected details. Requesting
+  local-date range with only `path`, `name`, and `start_local` by default. Use
+  `includeFields` to add selected details such as duration, distance, or source. Requesting
   `xss`, signature, Difficulty, focus, specificity, freshness, or XEP fields
   performs the heavier per-activity detail read; ordinary discovery does not.
 - `list_activities`, `list_workouts`, `list_notes`,
@@ -34,7 +35,9 @@ Prefer the Xert MCP tools when they are available:
   temporary JSON file. Set `save_session=true` only when Xert-specific
   second-by-second data are required; this performs the heavier session read
   and returns a separate private temporary JSON path.
-- `list_workouts` lists or filters compact workout identity summaries. Its
+- `list_workouts` lists or filters compact workout identity summaries containing
+  only `path` and `name` by default; request duration and other details with
+  `includeFields`. Its
   `name_keywords` value requires every supplied word to occur,
   case-insensitively. Use `includeFields` to add selected load, work-power,
   rating, or Difficulty fields to each row.

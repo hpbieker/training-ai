@@ -203,7 +203,6 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertEqual(activities["includeFields"], [])
         self.assertEqual(activities["activities"][0], {
             "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
-            "duration_s": 3630, "distance_m": 30250, "source": "xert_plugin",
         })
         self.assertEqual(
             self.fake.calls[0],
@@ -230,6 +229,16 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertFalse(activities["activities"][0]["map_url"])
         self.assertEqual(self.fake.calls[0][-1], "summary")
 
+    def test_list_activities_adds_old_default_fields_only_when_requested(self) -> None:
+        activities = self.tools.call_tool("list_activities", {
+            "start_date": "2026-08-01", "end_date": "2026-08-02",
+            "includeFields": ["duration_s", "distance_m", "source"],
+        })
+        self.assertEqual(activities["activities"][0], {
+            "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
+            "duration_s": 3630, "distance_m": 30250, "source": "xert_plugin",
+        })
+
     def test_list_activities_rejects_invalid_include_fields(self) -> None:
         for include_fields, message in (
             (["unknown"], "Unsupported includeFields value"),
@@ -254,7 +263,7 @@ class XertMcpDispatchTests(unittest.TestCase):
         result = self.tools.call_tool("list_workouts", {"name_keywords": "VT1"})
         self.assertEqual(result["includeFields"], [])
         self.assertEqual(result["workouts"], [{
-            "path": "w1", "name": "XMB VT1", "duration_s": 7200,
+            "path": "w1", "name": "XMB VT1",
         }])
         self.assertEqual(self.fake.calls[0], ("list_workouts", "VT1", "summary"))
 
@@ -264,9 +273,14 @@ class XertMcpDispatchTests(unittest.TestCase):
         })
         self.assertEqual(result["includeFields"], ["work_watts", "xss"])
         self.assertEqual(result["workouts"][0], {
-            "path": "w1", "name": "XMB VT1", "duration_s": 7200,
+            "path": "w1", "name": "XMB VT1",
             "work_watts": 210, "xss": 100.0,
         })
+
+        with_duration = self.tools.call_tool("list_workouts", {
+            "includeFields": ["duration_s"],
+        })
+        self.assertEqual(with_duration["workouts"][0]["duration_s"], 7200)
 
     def test_list_workouts_rejects_invalid_include_fields(self) -> None:
         for include_fields, message in (

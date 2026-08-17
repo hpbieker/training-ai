@@ -30,8 +30,9 @@ Choose the narrowest workflow that answers the request:
 ## MCP Tools
 
 - `list_activities` lists every activity in an inclusive local-date range as
-  compact identity summaries. Use `includeFields` to add only selected allowed
-  detail fields to each row; `search_activities` performs source text or tag
+  compact identity summaries containing only `id`, `name`, and
+  `start_date_local` by default. Use `includeFields` to add only selected
+  allowed detail fields to each row; `search_activities` performs source text or tag
   search with the same compact rows and `includeFields` choices.
 - `list_activities`, `search_activities`, `list_wellness`, and `list_events`
   accept closed `filters` (`field`, `op`, `value`), ordered `sort` keys, and a

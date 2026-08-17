@@ -148,9 +148,7 @@ class GarminConnectMcpTests(unittest.TestCase):
         self.assertEqual(result["includeFields"], [])
         self.assertEqual(result["activities"], [{
             "activity_id": 123, "name": "Indoor ride",
-            "start_local": "2026-08-17 12:15:23", "type": "indoor_cycling",
-            "duration_s": 7747.1, "distance_m": 72510.5,
-            "source": "garmin_connect_gccli",
+            "start_local": "2026-08-17 12:15:23",
         }])
 
     @patch.object(MCP, "local_now", return_value="2026-08-17T12:00:00+02:00")
@@ -168,6 +166,28 @@ class GarminConnectMcpTests(unittest.TestCase):
         self.assertEqual(result["activities"][0]["movingDuration"], 3590)
         self.assertEqual(result["activities"][0]["avgPower"], 220)
         self.assertNotIn("userRoles", result["activities"][0])
+
+    @patch.object(MCP, "local_now", return_value="2026-08-17T12:00:00+02:00")
+    @patch.object(MCP, "garmin_activity_search")
+    def test_list_activities_adds_old_default_fields_only_when_requested(
+        self, search, _local_now
+    ) -> None:
+        search.return_value = [{
+            "activityId": 123, "activityName": "Indoor ride",
+            "startTimeLocal": "2026-08-17 12:15:23",
+            "activityType": {"typeKey": "indoor_cycling"},
+            "duration": 7747.1, "distance": 72510.5,
+        }]
+        result = self.service.call_tool("list_activities", {
+            "since": "2026-08-17", "until": "2026-08-17",
+            "includeFields": ["type", "duration_s", "distance_m", "source"],
+        })
+        self.assertEqual(result["activities"][0], {
+            "activity_id": 123, "name": "Indoor ride",
+            "start_local": "2026-08-17 12:15:23", "type": "indoor_cycling",
+            "duration_s": 7747.1, "distance_m": 72510.5,
+            "source": "garmin_connect_gccli",
+        })
 
     def test_list_activities_rejects_invalid_include_fields(self) -> None:
         for include_fields, message in (
