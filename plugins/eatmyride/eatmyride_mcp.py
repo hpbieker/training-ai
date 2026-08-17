@@ -35,6 +35,7 @@ from eatmyride_api import (  # noqa: E402
     summarize_activity,
     summarize_foodplan,
     summarize_foodplan_change,
+    summarize_foodplan_events,
     summarize_fueling,
     update_product as api_update_product,
 )
@@ -43,6 +44,7 @@ from eatmyride_api import (  # noqa: E402
 ALL_TOOL_NAMES = (
     "list_activities",
     "get_fueling",
+    "get_foodplan",
     "search_products",
     "list_products",
     "get_product",
@@ -62,6 +64,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     },
     "get_fueling": {
         "title": "Get EatMyRide Fueling",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_foodplan": {
+        "title": "Get EatMyRide Food Plan",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -227,7 +236,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         name="get_fueling",
         description=(
             "Get compact EatMyRide activity energy and glycogen state together with "
-            "food-plan events and calculated intake totals. A food plan is recorded "
+            "aggregated products and calculated intake totals. A food plan is recorded "
             "planning data and is not proof that every item was consumed."
         ),
         properties={
@@ -240,10 +249,32 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         required=["activity_id"],
         output_properties={
             "activity": _open_object("Compact activity and glycogen summary."),
-            "foodplan": _array_of_open_objects("Compact recorded food-plan events."),
-            "summary": _open_object("Calculated carbohydrate and fluid totals."),
+            "products": _array_of_open_objects("Recorded food-plan products aggregated across events."),
+            "summary": _open_object("Calculated intake totals, rates, and counts."),
+            "intake_evidence": {"type": "string", "description": "Evidence boundary for recorded versus confirmed intake."},
         },
-        output_required=["activity", "foodplan", "summary"],
+        output_required=["activity", "products", "summary", "intake_evidence"],
+    ),
+    "get_foodplan": _tool_definition(
+        name="get_foodplan",
+        description=(
+            "Get the exact recorded food-plan events for timing inspection, change "
+            "preparation, or write verification. Use get_fueling for normal analysis."
+        ),
+        properties={
+            "activity_id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "EatMyRide activity identifier from list_activities.",
+            }
+        },
+        required=["activity_id"],
+        output_properties={
+            "activity_id": {"type": "string", "description": "Requested EatMyRide activity identifier."},
+            "event_count": {"type": "integer", "description": "Number of exact food-plan events."},
+            "events": _array_of_open_objects("Exact compact recorded food-plan events."),
+        },
+        output_required=["activity_id", "event_count", "events"],
     ),
     "search_products": _tool_definition(
         name="search_products",
@@ -567,6 +598,11 @@ class EatMyRideLiveService:
         foodplan = self._run(lambda token: get_foodplan(activity_id, token=token))
         return summarize_fueling(activity, foodplan)
 
+    def get_foodplan(self, activity_id: str) -> dict[str, Any]:
+        foodplan = self._run(lambda token: get_foodplan(activity_id, token=token))
+        events = summarize_foodplan_events(foodplan)
+        return {"activity_id": activity_id, "event_count": len(events), "events": events}
+
     def search_products(
         self, query: str, *, product_filter: str | None = None
     ) -> list[dict[str, Any]]:
@@ -789,6 +825,8 @@ class EatMyRideToolService:
             }
         if name == "get_fueling":
             return service.get_fueling(arguments["activity_id"])
+        if name == "get_foodplan":
+            return service.get_foodplan(arguments["activity_id"])
         if name == "search_products":
             products = service.search_products(
                 arguments["query"], product_filter=arguments.get("product_filter")

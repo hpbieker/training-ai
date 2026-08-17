@@ -10,6 +10,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from eatmyride_api import (  # noqa: E402
     build_foodplan_with_set_products,
+    summarize_fueling,
     summarize_foodplan_change,
 )
 
@@ -26,6 +27,24 @@ def _product(product_id: int, label: str, unit: str = "piece") -> dict:
 
 
 class EatMyRideFoodplanTests(unittest.TestCase):
+    def test_fueling_aggregates_piece_events_and_calculates_hourly_rates(self) -> None:
+        piece = _product(10, "Piece")
+        drink = _product(20, "Drink", "gram")
+        foodplan = [
+            {"productId": 10, "product": piece, "gram": 1, "time": 0},
+            {"productId": 10, "product": piece, "gram": 1, "time": 900},
+            {"productId": 20, "product": drink, "gram": 2, "ml": 500, "time": 0},
+        ]
+        result = summarize_fueling({"id": 99, "duration": 7200}, foodplan)
+
+        self.assertEqual(result["products"][0]["pieces"], 2)
+        self.assertNotIn("gram", result["products"][0])
+        self.assertEqual(result["products"][0]["first_time_s"], 0)
+        self.assertEqual(result["products"][0]["last_time_s"], 900)
+        self.assertEqual(result["summary"]["event_count"], 3)
+        self.assertEqual(result["summary"]["product_count"], 2)
+        self.assertAlmostEqual(result["summary"]["fluids_per_hour"], 250.0)
+
     def test_set_products_expands_pieces_and_preserves_other_items(self) -> None:
         old_piece = _product(10, "Piece")
         drink = _product(20, "Drink", "gram")

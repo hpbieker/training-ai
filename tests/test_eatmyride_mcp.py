@@ -25,9 +25,13 @@ class FakeEatMyRideService:
         self.calls.append(("get_fueling", activity_id))
         return {
             "activity": {"id": activity_id, "glycogen": {"min": 300, "end": 340}},
-            "foodplan": [{"label": "Drink"}],
+            "products": [{"label": "Drink", "occurrences": 1}],
             "summary": {"carbohydrates_grams": 60.0, "fluids_ml": 700.0},
+            "intake_evidence": "recorded_food_plan_not_confirmed_consumption",
         }
+    def get_foodplan(self, activity_id):
+        self.calls.append(("get_foodplan", activity_id))
+        return {"activity_id": activity_id, "event_count": 1, "events": [{"label": "Drink"}]}
     def search_products(self, query, *, product_filter=None):
         self.calls.append(("search_products", query, product_filter))
         return [{"id": 1, "label": "One"}, {"id": 2, "label": "Two"}]
@@ -92,6 +96,7 @@ class EatMyRideMcpSchemaTests(unittest.TestCase):
             (
                 "list_activities",
                 "get_fueling",
+                "get_foodplan",
                 "search_products",
                 "list_products",
                 "get_product",
@@ -191,6 +196,12 @@ class EatMyRideMcpDispatchTests(unittest.TestCase):
         self.assertEqual(result["activity"]["glycogen"]["min"], 300)
         self.assertEqual(result["activity"]["glycogen"]["end"], 340)
         self.assertEqual(result["summary"]["carbohydrates_grams"], 60.0)
+        self.assertNotIn("events", result)
+
+    def test_get_foodplan_returns_exact_events_separately(self) -> None:
+        result = self.tools.call_tool("get_foodplan", {"activity_id": "a1"})
+        self.assertEqual(result["event_count"], 1)
+        self.assertEqual(result["events"][0]["label"], "Drink")
 
     def test_product_tools_filter_and_limit(self) -> None:
         searched = self.tools.call_tool(

@@ -14,7 +14,11 @@ writes. The plugin is stateless and returns normalized data to callers.
   the newest row by `date` when the user asks for the latest activity. It
   returns compact identity rows; use `includeFields` for selected source fields.
 - `get_fueling` returns compact activity energy and glycogen state together
-  with food-plan events and calculated intake totals.
+  with aggregated food-plan products, calculated intake totals, hourly rates,
+  and an explicit reminder that recorded planning data is not confirmed intake.
+- `get_foodplan` returns exact item-level events. Use it only when event timing
+  matters, when preparing a change, or when verifying a write; normal activity
+  analysis should stop at `get_fueling`.
 - `search_products` searches the broader EatMyRide product catalogue. Product
   lists are compact by default; use `includeFields` for selected nutrition and
   serving fields.

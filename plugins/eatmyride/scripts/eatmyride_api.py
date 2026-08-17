@@ -150,12 +150,26 @@ def summarize_fueling(
     activity: dict[str, Any],
     foodplan: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Return compact activity energy state plus item-level intake."""
+    """Return compact activity energy state plus aggregated planned intake."""
+
+    activity_summary = summarize_activity(activity)
+    totals = summarize_foodplan(foodplan)
+    duration_s = float(activity_summary.get("duration_s") or 0)
+    duration_h = duration_s / 3600 if duration_s > 0 else None
 
     return {
-        "activity": summarize_activity(activity),
-        "foodplan": summarize_foodplan_events(foodplan),
-        "summary": summarize_foodplan(foodplan),
+        "activity": activity_summary,
+        "products": summarize_foodplan_products(foodplan),
+        "summary": {
+            **totals,
+            "carbohydrates_per_hour": (
+                totals["carbohydrates_grams"] / duration_h if duration_h else None
+            ),
+            "fluids_per_hour": totals["fluids_ml"] / duration_h if duration_h else None,
+            "event_count": len(foodplan),
+            "product_count": len({_foodplan_event_product_id(row) for row in foodplan}),
+        },
+        "intake_evidence": "recorded_food_plan_not_confirmed_consumption",
     }
 
 
@@ -391,6 +405,56 @@ def summarize_foodplan_events(foodplan: list[dict[str, Any]]) -> list[dict[str, 
     """Return compact item-level food-plan rows for analysis output."""
 
     return [summarize_foodplan_event(event) for event in foodplan]
+
+
+def summarize_foodplan_products(foodplan: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Aggregate food-plan events by product for normal fueling analysis."""
+
+    grouped: dict[int | str | None, dict[str, Any]] = {}
+    for event in foodplan:
+        product = event.get("product") or {}
+        product_id = event.get("productId") or product.get("id")
+        key = product_id if product_id is not None else product.get("label")
+        row = grouped.setdefault(
+            key,
+            {
+                "product_id": product_id,
+                "label": product.get("label"),
+                "occurrences": 0,
+                "pieces": 0,
+                "gram": 0.0,
+                "ml": 0.0,
+                "carbohydrates_grams": 0.0,
+                "calories_kcal": 0.0,
+                "times_s": [],
+            },
+        )
+        compact = summarize_foodplan_event(event)
+        row["occurrences"] += 1
+        if product.get("ingredientsQtyUnit") == "gram":
+            row["gram"] += float(event.get("gram") or 0)
+        else:
+            row["pieces"] += 1
+        row["ml"] += float(event.get("ml") or 0)
+        row["carbohydrates_grams"] += compact["carbohydrates_grams"]
+        row["calories_kcal"] += compact["calories_kcal"]
+        if event.get("time") is not None:
+            row["times_s"].append(event["time"])
+
+    result = []
+    for row in grouped.values():
+        times = sorted(set(row.pop("times_s")))
+        row["first_time_s"] = times[0] if times else None
+        row["last_time_s"] = times[-1] if times else None
+        row["time_count"] = len(times)
+        if not row["pieces"]:
+            row.pop("pieces")
+        if not row["gram"]:
+            row.pop("gram")
+        if not row["ml"]:
+            row.pop("ml")
+        result.append(row)
+    return result
 
 
 def summarize_foodplan_event(event: dict[str, Any]) -> dict[str, Any]:
