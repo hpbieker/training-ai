@@ -72,6 +72,21 @@ _SOURCE_ARRAY = {
     "description": "Optional Garmin daily sources. Omit for the readiness profile.",
 }
 
+_ACTIVITY_LIST_INCLUDE_FIELDS = (
+    "elapsedDuration", "movingDuration", "calories", "averageHR", "maxHR",
+    "averageBikingCadenceInRevPerMinute", "maxBikingCadenceInRevPerMinute",
+    "avgPower", "maxPower", "normPower", "aerobicTrainingEffect",
+    "anaerobicTrainingEffect", "trainingEffectLabel", "activityTrainingLoad",
+    "trainingStressScore", "intensityFactor", "vO2MaxValue", "deviceId",
+    "manufacturer", "minTemperature", "maxTemperature", "waterEstimated",
+    "isFavorite", "isPR", "privacy",
+)
+_COURSE_LIST_INCLUDE_FIELDS = (
+    "elevationGainMeter", "elevationLossMeter", "elapsedSeconds", "favorite",
+    "startPoint", "sourceTypeId", "speedMeterPerSecond", "createdDate",
+    "updatedDate", "privacyRule", "userProfilePk",
+)
+
 TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "get_health_day": {
         "name": "get_health_day",
@@ -118,8 +133,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_activities": {
         "name": "list_activities",
         "description": (
-            "List Garmin activities in an inclusive local-date range. Use the same "
-            "date for since and until when resolving an exact same-day activity."
+            "List compact Garmin activity identity summaries in an inclusive local-date "
+            "range. Use the same date for since and until when resolving an exact "
+            "same-day activity, and includeFields for selected training details."
         ),
         "inputSchema": {
             "type": "object",
@@ -127,6 +143,13 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "since": {"type": "string", "format": "date"},
                 "until": {"type": "string", "format": "date"},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 100},
+                "includeFields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(_ACTIVITY_LIST_INCLUDE_FIELDS)},
+                    "uniqueItems": True,
+                    "default": [],
+                    "description": "Optional Garmin activity fields added to every compact summary.",
+                },
             },
             "required": ["since", "until"],
             "additionalProperties": False,
@@ -138,10 +161,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "source_time_local": {"type": "string"},
                 "since": {"type": "string"},
                 "until": {"type": "string"},
+                "includeFields": {"type": "array", "items": {"type": "string"}},
                 "count": {"type": "integer"},
                 "activities": {"type": "array", "items": _object("Garmin activity summary.")},
             },
-            "required": ["source", "source_time_local", "since", "until", "count", "activities"],
+            "required": [
+                "source", "source_time_local", "since", "until",
+                "includeFields", "count", "activities",
+            ],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activities"],
@@ -167,10 +194,22 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_courses": {
         "name": "list_courses",
         "description": (
-            "List the Garmin Connect user's saved courses (planned routes), including "
-            "IDs, names, sport types, distance, elevation, start coordinates, and source."
+            "List compact Garmin Connect saved-course identity rows. Use includeFields "
+            "for selected elevation, start-point, timing, privacy, and source details."
         ),
-        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "includeFields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(_COURSE_LIST_INCLUDE_FIELDS)},
+                    "uniqueItems": True,
+                    "default": [],
+                    "description": "Optional course detail fields added to every compact row.",
+                }
+            },
+            "additionalProperties": False,
+        },
         "outputSchema": _object("Garmin saved-course list."),
         "annotations": ANNOTATIONS["list_courses"],
     },
@@ -292,14 +331,19 @@ class GarminConnectToolService:
             limit = arguments.get("limit", 100)
             if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 500:
                 raise ValueError("limit must be an integer from 1 to 500")
+            include_fields = _include_fields(arguments.get("includeFields", []))
             activities = garmin_activity_search(gccli, since, until, limit=limit)
             return {
                 "source": "garmin_connect_gccli",
                 "source_time_local": local_now(),
                 "since": since,
                 "until": until,
+                "includeFields": list(include_fields),
                 "count": len(activities),
-                "activities": activities,
+                "activities": [
+                    _activity_list_summary(activity, include_fields)
+                    for activity in activities
+                ],
             }
         if name == "get_activity":
             activity = _required_id(arguments, "activity_id")
@@ -308,7 +352,20 @@ class GarminConnectToolService:
             payload.pop("details", None)
             return payload
         if name == "list_courses":
-            return fetch_courses(gccli=gccli)
+            payload = fetch_courses(gccli=gccli)
+            include_fields = _include_fields(
+                arguments.get("includeFields", []), _COURSE_LIST_INCLUDE_FIELDS
+            )
+            return {
+                "source": payload["source"],
+                "source_time_local": payload["source_time_local"],
+                "includeFields": list(include_fields),
+                "count": len(payload["courses"]),
+                "courses": [
+                    _course_list_summary(course, include_fields)
+                    for course in payload["courses"]
+                ],
+            }
         if name == "get_course":
             return fetch_course(_required_id(arguments, "course_id"), gccli=gccli)
         if name == "create_course":
@@ -365,6 +422,54 @@ def _sources(arguments: dict[str, Any]) -> list[str] | None:
     if any(value not in DAILY_SPEC_CHOICES for value in values):
         raise ValueError("sources contains an unsupported Garmin daily source")
     return values
+
+
+def _include_fields(
+    value: Any, allowed: tuple[str, ...] = _ACTIVITY_LIST_INCLUDE_FIELDS
+) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(field, str) for field in value):
+        raise ValueError("includeFields must be an array of strings")
+    if len(set(value)) != len(value):
+        raise ValueError("includeFields must contain unique fields")
+    unsupported = [field for field in value if field not in allowed]
+    if unsupported:
+        raise ValueError(f"Unsupported includeFields value: {unsupported[0]}")
+    return tuple(value)
+
+
+def _activity_list_summary(
+    activity: dict[str, Any], include_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    activity_type = activity.get("activityType")
+    type_key = activity_type.get("typeKey") if isinstance(activity_type, dict) else None
+    summary = {
+        "activity_id": activity.get("activityId"),
+        "name": activity.get("activityName"),
+        "start_local": activity.get("startTimeLocal"),
+        "type": type_key,
+        "duration_s": activity.get("duration"),
+        "distance_m": activity.get("distance"),
+        "source": "garmin_connect_gccli",
+    }
+    summary.update({field: activity.get(field) for field in include_fields})
+    return summary
+
+
+def _course_list_summary(
+    course: dict[str, Any], include_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    sport_type = course.get("sportType")
+    if isinstance(sport_type, dict):
+        sport_type = sport_type.get("typeKey") or sport_type.get("displayName")
+    summary = {
+        "course_id": course.get("courseId"),
+        "name": course.get("courseName"),
+        "sport_type": sport_type,
+        "distance_m": course.get("distanceMeter"),
+        "source": "garmin_connect_gccli",
+    }
+    summary.update({field: course.get(field) for field in include_fields})
+    return summary
 
 
 def create_sdk_server(service: GarminConnectToolService) -> Any:

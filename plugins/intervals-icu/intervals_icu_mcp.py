@@ -48,14 +48,23 @@ def _object(description: str) -> dict[str, object]:
     return {"type": "object", "additionalProperties": True, "description": description}
 
 
+_ACTIVITY_LIST_INCLUDE_FIELDS = (
+    "moving_time", "trainer", "strava_id", "device_name", "gear",
+    "icu_training_load", "icu_intensity", "icu_average_watts",
+    "icu_weighted_avg_watts", "average_heartrate", "max_heartrate",
+    "average_cadence", "average_temp", "decoupling", "icu_rpe", "feel",
+    "interval_summary", "stream_types",
+)
+
+
 ANNOTATIONS = {
     "list_activities": {
         "title": "List Intervals.icu Activities", "readOnlyHint": True,
         "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
     },
     "get_activity": {
-        "title": "Get Intervals.icu Activity", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "title": "Get Intervals.icu Activity", "readOnlyHint": False,
+        "destructiveHint": False, "idempotentHint": False, "openWorldHint": True,
     },
     "search_activities": {
         "title": "Search Intervals.icu Activities", "readOnlyHint": True,
@@ -121,6 +130,13 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
                 "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                "includeFields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(_ACTIVITY_LIST_INCLUDE_FIELDS)},
+                    "uniqueItems": True,
+                    "default": [],
+                    "description": "Optional activity detail fields added to every compact summary.",
+                },
             },
             "required": ["start_date", "end_date"],
             "additionalProperties": False,
@@ -129,10 +145,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "start_date": {"type": "string"}, "end_date": {"type": "string"},
+                "includeFields": {"type": "array", "items": {"type": "string"}},
                 "count": {"type": "integer"},
                 "activities": {"type": "array", "items": _object("Intervals.icu activity summary.")},
             },
-            "required": ["start_date", "end_date", "count", "activities"],
+            "required": ["start_date", "end_date", "includeFields", "count", "activities"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activities"],
@@ -141,7 +158,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "search_activities",
         "description": (
             "Search Intervals.icu activities through the source search endpoint. "
-            "The result is limited by Intervals.icu and preserves source order and duplicates."
+            "Returns compact identity summaries with optional includeFields. The result "
+            "is limited by Intervals.icu and preserves source order and duplicates."
         ),
         "inputSchema": {
             "type": "object",
@@ -154,6 +172,13 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": "integer", "minimum": 1, "default": 10,
                     "description": "Maximum number of source search results.",
                 },
+                "includeFields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(_ACTIVITY_LIST_INCLUDE_FIELDS)},
+                    "uniqueItems": True,
+                    "default": [],
+                    "description": "Optional activity detail fields added to every compact summary.",
+                },
             },
             "required": ["query"],
             "additionalProperties": False,
@@ -163,10 +188,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "query": {"type": "string"},
                 "limit": {"type": "integer"},
+                "includeFields": {"type": "array", "items": {"type": "string"}},
                 "count": {"type": "integer"},
                 "activities": {"type": "array", "items": _object("Intervals.icu search result.")},
             },
-            "required": ["query", "limit", "count", "activities"],
+            "required": ["query", "limit", "includeFields", "count", "activities"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["search_activities"],
@@ -174,14 +200,18 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "get_activity": {
         "name": "get_activity",
         "description": (
-            "Get one Intervals.icu activity by its exact Intervals.icu id, including "
-            "Intervals.icu interval summaries by default."
+            "Get a compact summary of one exact Intervals.icu activity. Set "
+            "save_full=true to also save the complete source activity in the "
+            "standard activity envelope to a private temporary JSON file."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "activity_id": {"type": "string", "minLength": 1},
-                "include_intervals": {"type": "boolean", "default": True},
+                "save_full": {
+                    "type": "boolean", "default": False,
+                    "description": "Save complete activity metadata to a private temporary JSON file.",
+                },
             },
             "required": ["activity_id"],
             "additionalProperties": False,
@@ -190,10 +220,12 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "activity_id": {"type": "string"},
-                "include_intervals": {"type": "boolean"},
-                "activity": _object("Source-native Intervals.icu activity."),
+                "activity": _object("Compact normalized Intervals.icu activity summary."),
+                "full_activity_file": {"type": "string"},
+                "full_activity_format": {"type": "string"},
+                "full_activity_byte_size": {"type": "integer"},
             },
-            "required": ["activity_id", "include_intervals", "activity"],
+            "required": ["activity_id", "activity"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["get_activity"],
@@ -657,22 +689,38 @@ class IntervalsIcuToolService:
                 end_date = _required_date(arguments, "end_date")
                 if end_date < start_date:
                     raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+                include_fields = _include_fields(
+                    arguments.get("includeFields", []), _ACTIVITY_LIST_INCLUDE_FIELDS
+                )
                 activities = self._activity_lister(oldest=start_date, newest=end_date, **auth)
                 return {
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
-                    "count": len(activities), "activities": activities,
+                    "includeFields": list(include_fields),
+                    "count": len(activities),
+                    "activities": [
+                        _activity_list_summary(activity, include_fields)
+                        for activity in activities
+                    ],
                 }
             if name == "search_activities":
                 query = _required_string(arguments, "query")
                 limit = arguments.get("limit", 10)
                 if isinstance(limit, bool) or not isinstance(limit, int) or limit <= 0:
                     raise ToolFailure("limit must be a positive integer", "invalid_arguments")
+                include_fields = _include_fields(
+                    arguments.get("includeFields", []), _ACTIVITY_LIST_INCLUDE_FIELDS
+                )
                 activities = self._activity_searcher(
                     query=query, limit=limit, **auth,
                 )
                 return {
                     "query": query, "limit": limit,
-                    "count": len(activities), "activities": activities,
+                    "includeFields": list(include_fields),
+                    "count": len(activities),
+                    "activities": [
+                        _activity_list_summary(activity, include_fields)
+                        for activity in activities
+                    ],
                 }
             if name == "get_activity_file":
                 activity_id = _required_string(arguments, "activity_id")
@@ -927,17 +975,34 @@ class IntervalsIcuToolService:
                 }
             activity_id = _required_string(arguments, "activity_id")
             if name == "get_activity":
-                include_intervals = arguments.get("include_intervals", True)
-                if not isinstance(include_intervals, bool):
-                    raise ToolFailure("include_intervals must be a boolean", "invalid_arguments")
+                save_full = arguments.get("save_full", False)
+                if not isinstance(save_full, bool):
+                    raise ToolFailure("save_full must be a boolean", "invalid_arguments")
                 activity = self._activity_getter(
-                    activity_id=activity_id, include_intervals=include_intervals, **auth,
+                    activity_id=activity_id, include_intervals=True, **auth,
                 )
-                return {
+                result = {
                     "activity_id": activity_id,
-                    "include_intervals": include_intervals,
-                    "activity": activity,
+                    "activity": _activity_summary(activity),
                 }
+                if save_full:
+                    descriptor, raw_path = tempfile.mkstemp(
+                        prefix=f"intervals-{activity_id}-", suffix="-activity.json"
+                    )
+                    try:
+                        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                            json.dump(
+                                {"activity_id": activity_id, "activity": activity},
+                                handle, ensure_ascii=False, separators=(",", ":"),
+                            )
+                        os.chmod(raw_path, 0o600)
+                        result["full_activity_file"] = raw_path
+                        result["full_activity_format"] = "intervals-icu-activity-v1"
+                        result["full_activity_byte_size"] = Path(raw_path).stat().st_size
+                    except Exception:
+                        Path(raw_path).unlink(missing_ok=True)
+                        raise
+                return result
             stream_types = arguments.get("stream_types", [])
             if not isinstance(stream_types, list) or any(
                 not isinstance(value, str) or not value for value in stream_types
@@ -974,6 +1039,59 @@ def _required_string(arguments: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ToolFailure(f"{key} must be a non-empty string", "invalid_arguments")
     return value
+
+
+_ACTIVITY_SUMMARY_FIELDS = (
+    "id", "name", "description", "type", "start_date", "start_date_local",
+    "elapsed_time", "moving_time", "distance", "trainer", "source",
+    "external_id", "strava_id", "device_name", "gear", "icu_ignore_time",
+    "icu_ignore_hr", "icu_ignore_power", "ignore_velocity", "ignore_pace",
+    "ignore_parts", "icu_average_watts", "icu_weighted_avg_watts",
+    "average_heartrate", "max_heartrate", "average_cadence", "average_temp",
+    "icu_intensity", "icu_training_load", "power_load", "hr_load", "trimp",
+    "icu_joules", "calories", "carbs_used", "carbs_ingested", "decoupling",
+    "icu_variability_index", "icu_efficiency_factor", "icu_rpe", "feel",
+    "perceived_exertion", "session_rpe", "interval_summary", "stream_types",
+    "icu_zone_times", "icu_hr_zone_times", "custom_zones", "analysis_issues",
+)
+
+def _include_fields(value: Any, allowed: tuple[str, ...]) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(field, str) for field in value):
+        raise ToolFailure("includeFields must be an array of strings", "invalid_arguments")
+    if len(set(value)) != len(value):
+        raise ToolFailure("includeFields must contain unique fields", "invalid_arguments")
+    unsupported = [field for field in value if field not in allowed]
+    if unsupported:
+        raise ToolFailure(
+            f"Unsupported includeFields value: {unsupported[0]}", "invalid_arguments"
+        )
+    return tuple(value)
+
+
+def _activity_list_summary(
+    activity: dict[str, Any], include_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    summary = {
+        "id": activity.get("id"),
+        "name": activity.get("name"),
+        "start_date_local": activity.get("start_date_local"),
+        "type": activity.get("type"),
+        "duration_s": activity.get("elapsed_time"),
+        "distance_m": activity.get("distance"),
+        "source": activity.get("source"),
+        "external_id": activity.get("external_id"),
+    }
+    summary.update({field: activity.get(field) for field in include_fields})
+    return summary
+
+
+def _activity_summary(activity: dict[str, Any]) -> dict[str, Any]:
+    """Return the stable, analysis-oriented subset safe for inline MCP output."""
+    return {
+        field: activity[field]
+        for field in _ACTIVITY_SUMMARY_FIELDS
+        if field in activity
+    }
 
 
 def _required_date(arguments: dict[str, Any], key: str) -> date:

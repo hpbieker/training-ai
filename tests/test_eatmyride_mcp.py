@@ -168,7 +168,23 @@ class EatMyRideMcpDispatchTests(unittest.TestCase):
         )
         self.assertEqual(result["total_count"], 2)
         self.assertEqual(result["count"], 1)
-        self.assertEqual(result["activities"], [{"id": "a1"}])
+        self.assertEqual(result["activities"][0]["id"], "a1")
+        self.assertEqual(result["includeFields"], [])
+
+    def test_lists_add_only_requested_activity_and_product_fields(self) -> None:
+        self.fake.list_activities = lambda start, end: [
+            {"id": "a1", "label": "Ride", "normalizedPower": 245, "warning": "raw"}
+        ]
+        activity = self.tools.call_tool(
+            "list_activities",
+            {"start_date": "2026-08-01", "end_date": "2026-08-01", "includeFields": ["normalizedPower"]},
+        )["activities"][0]
+        product = self.tools.call_tool(
+            "search_products", {"query": "sis", "includeFields": ["carbohydrates"]}
+        )["products"][0]
+        self.assertEqual(activity["normalizedPower"], 245)
+        self.assertNotIn("warning", activity)
+        self.assertIn("carbohydrates", product)
 
     def test_get_fueling_combines_compact_state(self) -> None:
         result = self.tools.call_tool("get_fueling", {"activity_id": "a1"})

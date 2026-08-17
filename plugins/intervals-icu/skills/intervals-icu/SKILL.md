@@ -18,7 +18,9 @@ Choose the narrowest workflow that answers the request:
 - Latest activity when no date is implied: use MCP `list_activities` over an explicit lookback range and select the newest result.
 - Text or tag search: call MCP `search_activities`; use `list_activities`
   instead when complete date-range coverage is required.
-- Metadata or interval orientation only: call MCP `get_activity`; omit intervals only when they are not needed.
+- Metadata or interval orientation only: call MCP `get_activity` for its compact
+  summary. Set `save_full=true` when the complete source activity is needed by
+  the repo persistence or analysis workflow.
 - Readiness context: call MCP `list_wellness` and `list_events`; let the caller
   resolve source priority and compose readiness.
 - Calendar events: call MCP `list_events` first, then use `create_event`,
@@ -27,9 +29,13 @@ Choose the narrowest workflow that answers the request:
 
 ## MCP Tools
 
-- `list_activities` lists every activity in an inclusive local-date range;
-  `search_activities` performs source text or tag search.
-- `get_activity` reads metadata and optional intervals;
+- `list_activities` lists every activity in an inclusive local-date range as
+  compact identity summaries. Use `includeFields` to add only selected allowed
+  detail fields to each row; `search_activities` performs source text or tag
+  search with the same compact rows and `includeFields` choices.
+- `get_activity` returns compact metadata and interval orientation. With
+  `save_full=true`, it also saves the complete source activity in the standard
+  activity envelope to a private temporary JSON file;
   `get_activity_streams` saves selected streams to a private temporary file;
   `get_activity_file` saves the original upload or reconstructed FIT file to a
   private temporary file.
@@ -49,8 +55,10 @@ For a completed-activity analysis through MCP, use exactly this sequence:
 
 1. `list_activities` with the requested inclusive local date.
 2. Select and verify the exact activity id.
-3. Call `get_activity` and `get_activity_streams` for that id. These two calls
-   may run concurrently after identity is resolved.
+3. Call `get_activity(save_full=true)` and `get_activity_streams` for that id.
+   These two calls may run concurrently after identity is resolved. Pass the
+   returned `full_activity_file` and `streams_file` directly to the repo
+   persistence helper.
 
 When an activity has an `id` but no URL field, build the web link
 as `https://intervals.icu/activities/<activity-id>`, for example

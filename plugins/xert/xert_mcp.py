@@ -134,6 +134,19 @@ def _object(description: str) -> dict[str, object]:
     }
 
 
+_ACTIVITY_LIST_INCLUDE_FIELDS = (
+    "map_url", "xss", "xep_watts", "focus", "specificity", "difficulty",
+    "difficulty_rating", "freshness", "signature",
+)
+_ACTIVITY_LIST_DETAIL_FIELDS = frozenset(
+    {"xss", "xep_watts", "focus", "specificity", "difficulty",
+     "difficulty_rating", "freshness", "signature"}
+)
+_WORKOUT_LIST_INCLUDE_FIELDS = (
+    "work_watts", "xss", "xlss", "xhss", "xpss", "difficulty", "rating",
+)
+
+
 def _array(description: str) -> dict[str, object]:
     return {
         "type": "array",
@@ -201,9 +214,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_activities": {
         "name": "list_activities",
         "description": (
-            "List Xert activities for an inclusive local-date range. Use view=loads "
-            "only when compact Low, High, and Peak XSS details are required because "
-            "it fetches every activity detail."
+            "List compact Xert activity identity summaries for an inclusive local-date "
+            "range. Use includeFields for selected details; load and signature fields "
+            "trigger the heavier per-activity detail read."
         ),
         "inputSchema": {
             "type": "object",
@@ -218,11 +231,12 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "format": "date",
                     "description": "Inclusive local end date in YYYY-MM-DD format.",
                 },
-                "view": {
-                    "type": "string",
-                    "enum": ["summary", "loads"],
-                    "default": "summary",
-                    "description": "summary lists activities cheaply; loads fetches compact XSS details.",
+                "includeFields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(_ACTIVITY_LIST_INCLUDE_FIELDS)},
+                    "uniqueItems": True,
+                    "default": [],
+                    "description": "Optional activity detail fields added to every compact summary.",
                 },
             },
             "required": ["start_date", "end_date"],
@@ -233,11 +247,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "start_date": {"type": "string", "description": "Requested inclusive start date."},
                 "end_date": {"type": "string", "description": "Requested inclusive end date."},
-                "view": {"type": "string", "description": "Returned activity representation."},
+                "includeFields": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Requested optional fields.",
+                },
                 "count": {"type": "integer", "description": "Number of returned activities."},
                 "activities": _array("Activities in source order."),
             },
-            "required": ["start_date", "end_date", "view", "count", "activities"],
+            "required": ["start_date", "end_date", "includeFields", "count", "activities"],
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["list_activities"],
@@ -245,9 +262,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "get_activity": {
         "name": "get_activity",
         "description": (
-            "Get one Xert activity. summary is the normal analysis view; full returns "
-            "the source document; session writes large second-by-second data to a "
-            "private temporary JSON file and returns its path."
+            "Get a compact summary of one Xert activity. Set save_full=true to save "
+            "the complete activity document, or save_session=true to fetch and save "
+            "Xert-specific second-by-second data, in private temporary JSON files."
         ),
         "inputSchema": {
             "type": "object",
@@ -257,11 +274,15 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "minLength": 1,
                     "description": "Xert activity path returned by list_activities.",
                 },
-                "view": {
-                    "type": "string",
-                    "enum": ["summary", "full", "session"],
-                    "default": "summary",
-                    "description": "Requested detail level; session is persisted to a private temporary file.",
+                "save_full": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Save the complete activity document without session series.",
+                },
+                "save_session": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Fetch and save the complete activity including Xert session series.",
                 },
             },
             "required": ["activity_path"],
@@ -271,14 +292,21 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "activity_path": {"type": "string", "description": "Requested Xert activity path."},
-                "view": {"type": "string", "description": "Returned activity representation."},
-                "activity": _object("Activity payload for summary or full views."),
+                "activity": _object("Compact normalized Xert activity summary."),
+                "full_activity_file": {
+                    "type": "string",
+                    "description": "Private complete-activity JSON path; absent unless requested.",
+                },
+                "full_activity_format": {"type": "string"},
+                "full_activity_byte_size": {"type": "integer"},
                 "session_file": {
                     "type": "string",
-                    "description": "Private temporary JSON file for session view; absent otherwise.",
+                    "description": "Private session-inclusive JSON path; absent unless requested.",
                 },
+                "session_format": {"type": "string"},
+                "session_byte_size": {"type": "integer"},
             },
-            "required": ["activity_path", "view"],
+            "required": ["activity_path", "activity"],
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["get_activity"],
@@ -286,8 +314,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_workouts": {
         "name": "list_workouts",
         "description": (
-            "List the Xert workout library, optionally requiring every supplied "
-            "case-insensitive name keyword."
+            "List compact Xert workout identity summaries, optionally requiring "
+            "every supplied case-insensitive name keyword. Use includeFields to "
+            "add selected load or difficulty fields."
         ),
         "inputSchema": {
             "type": "object",
@@ -297,11 +326,12 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "minLength": 1,
                     "description": "Optional space-separated keywords that must all occur in the workout name.",
                 },
-                "view": {
-                    "type": "string",
-                    "enum": ["summary", "full"],
-                    "default": "summary",
-                    "description": "summary returns compact rows; full retains source workout fields.",
+                "includeFields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(_WORKOUT_LIST_INCLUDE_FIELDS)},
+                    "uniqueItems": True,
+                    "default": [],
+                    "description": "Optional workout detail fields added to every compact summary.",
                 },
             },
             "additionalProperties": False,
@@ -309,7 +339,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "outputSchema": {
             "type": "object",
             "properties": {
-                "view": {"type": "string", "description": "Returned workout representation."},
+                "includeFields": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": "Requested optional fields.",
+                },
                 "name_keywords": {
                     "type": ["string", "null"],
                     "description": "Applied name filter, or null when unfiltered.",
@@ -317,7 +350,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "count": {"type": "integer", "description": "Number of returned workouts."},
                 "workouts": _array("Matching workouts in source order."),
             },
-            "required": ["view", "name_keywords", "count", "workouts"],
+            "required": ["includeFields", "name_keywords", "count", "workouts"],
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["list_workouts"],
@@ -815,35 +848,73 @@ class XertToolService:
         if name == "list_activities":
             start = arguments["start_date"]
             end = arguments["end_date"]
-            view = arguments.get("view", "summary")
+            include_fields = _validate_include_fields(arguments.get("includeFields", []))
+            view = (
+                "loads"
+                if any(field in _ACTIVITY_LIST_DETAIL_FIELDS for field in include_fields)
+                else "summary"
+            )
             result = service.list_activities(start, end, view=view)
             activities = result["activities"] if view == "loads" else result
             return {
                 "start_date": start,
                 "end_date": end,
-                "view": view,
+                "includeFields": list(include_fields),
                 "count": len(activities),
-                "activities": activities,
+                "activities": [
+                    _activity_list_summary(activity, include_fields)
+                    for activity in activities
+                ],
             }
         if name == "get_activity":
             path = arguments["activity_path"]
-            view = arguments.get("view", "summary")
-            activity = service.get_activity(path, view=view)
-            output: dict[str, Any] = {"activity_path": path, "view": view}
-            if view == "session":
-                output["session_file"] = _write_private_session_file(activity)
-            else:
-                output["activity"] = activity
+            save_full = arguments.get("save_full", False)
+            save_session = arguments.get("save_session", False)
+            if not isinstance(save_full, bool):
+                raise ValueError("save_full must be a boolean")
+            if not isinstance(save_session, bool):
+                raise ValueError("save_session must be a boolean")
+            output: dict[str, Any] = {
+                "activity_path": path,
+                "activity": service.get_activity(path, view="summary"),
+            }
+            if save_full:
+                full = service.get_activity(path, view="full")
+                file_path, byte_size = _write_private_activity_file(
+                    path, full, kind="activity"
+                )
+                output.update({
+                    "full_activity_file": file_path,
+                    "full_activity_format": "xert-activity-v1",
+                    "full_activity_byte_size": byte_size,
+                })
+            if save_session:
+                session = service.get_activity(path, view="session")
+                file_path, byte_size = _write_private_activity_file(
+                    path, session, kind="session"
+                )
+                output.update({
+                    "session_file": file_path,
+                    "session_format": "xert-activity-session-v1",
+                    "session_byte_size": byte_size,
+                })
             return output
         if name == "list_workouts":
-            view = arguments.get("view", "summary")
             keywords = arguments.get("name_keywords")
-            workouts = service.list_workouts(name_keywords=keywords, view=view)
+            include_fields = _validate_include_fields(
+                arguments.get("includeFields", []),
+                allowed=_WORKOUT_LIST_INCLUDE_FIELDS,
+                parameter="includeFields",
+            )
+            workouts = service.list_workouts(name_keywords=keywords, view="summary")
             return {
-                "view": view,
+                "includeFields": list(include_fields),
                 "name_keywords": keywords,
                 "count": len(workouts),
-                "workouts": workouts,
+                "workouts": [
+                    _workout_list_summary(workout, include_fields)
+                    for workout in workouts
+                ],
             }
         if name == "list_notes":
             start = arguments["start_date"]
@@ -904,17 +975,80 @@ class XertToolService:
         return output
 
 
-def _write_private_session_file(payload: dict[str, Any]) -> str:
-    descriptor, raw_path = tempfile.mkstemp(prefix="xert-activity-", suffix=".json")
+def _write_private_activity_file(
+    activity_path: str, payload: dict[str, Any], *, kind: str
+) -> tuple[str, int]:
+    safe_path = "".join(
+        character if character.isalnum() or character in "-_" else "-"
+        for character in activity_path
+    ).strip("-") or "activity"
+    descriptor, raw_path = tempfile.mkstemp(
+        prefix=f"xert-{safe_path}-", suffix=f"-{kind}.json"
+    )
     path = Path(raw_path)
     try:
         os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
-            json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"))
+            json.dump(
+                {"activity_path": activity_path, "activity": payload},
+                stream, ensure_ascii=False, separators=(",", ":"),
+            )
     except Exception:
         path.unlink(missing_ok=True)
         raise
-    return str(path)
+    return str(path), path.stat().st_size
+
+
+def _validate_include_fields(
+    value: Any,
+    *,
+    allowed: tuple[str, ...] = _ACTIVITY_LIST_INCLUDE_FIELDS,
+    parameter: str = "includeFields",
+) -> tuple[str, ...]:
+    if not isinstance(value, list) or any(not isinstance(field, str) for field in value):
+        raise ValueError(f"{parameter} must be an array of strings")
+    if len(set(value)) != len(value):
+        raise ValueError(f"{parameter} must contain unique fields")
+    unsupported = [field for field in value if field not in allowed]
+    if unsupported:
+        raise ValueError(f"Unsupported {parameter} value: {unsupported[0]}")
+    return tuple(value)
+
+
+def _activity_list_summary(
+    activity: dict[str, Any], include_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    elapsed_minutes = activity.get("elapsed_minutes")
+    distance_km = activity.get("distance_km")
+    summary = {
+        "path": activity.get("path"),
+        "name": activity.get("name"),
+        "start_local": activity.get("start_local"),
+        "duration_s": (
+            round(float(elapsed_minutes) * 60) if elapsed_minutes is not None else None
+        ),
+        "distance_m": (
+            round(float(distance_km) * 1000) if distance_km is not None else None
+        ),
+        "source": activity.get("source") or "xert_plugin",
+    }
+    summary.update({field: activity.get(field) for field in include_fields})
+    return summary
+
+
+def _workout_list_summary(
+    workout: dict[str, Any], include_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    duration_min = workout.get("duration_min")
+    summary = {
+        "path": workout.get("path"),
+        "name": workout.get("name"),
+        "duration_s": (
+            round(float(duration_min) * 60) if duration_min is not None else None
+        ),
+    }
+    summary.update({field: workout.get(field) for field in include_fields})
+    return summary
 
 
 def create_sdk_server(service: XertToolService) -> Any:

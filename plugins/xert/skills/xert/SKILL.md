@@ -19,14 +19,19 @@ not require escalation.
 
 Prefer the Xert MCP tools when they are available:
 
-- `list_activities` lists an inclusive local-date range. Keep `view=summary`
-  for discovery; use `view=loads` only when compact Low/High/Peak XSS details
-  are required because it fetches every activity detail.
-- `get_activity` reads one activity path. Use `view=summary` normally,
-  `view=full` for source fields, and `view=session` only for Xert-specific
-  second-by-second data; session view returns a private temporary JSON path.
-- `list_workouts` lists or filters the workout library. Its `name_keywords`
-  value requires every supplied word to occur, case-insensitively.
+- `list_activities` returns compact identity summaries for an inclusive
+  local-date range. Use `includeFields` to add selected details. Requesting
+  `xss`, signature, Difficulty, focus, specificity, freshness, or XEP fields
+  performs the heavier per-activity detail read; ordinary discovery does not.
+- `get_activity` always returns a compact activity summary. Set
+  `save_full=true` to save the complete activity document to a private
+  temporary JSON file. Set `save_session=true` only when Xert-specific
+  second-by-second data are required; this performs the heavier session read
+  and returns a separate private temporary JSON path.
+- `list_workouts` lists or filters compact workout identity summaries. Its
+  `name_keywords` value requires every supplied word to occur,
+  case-insensitively. Use `includeFields` to add selected load, work-power,
+  rating, or Difficulty fields to each row.
 - `get_workout` uses `view=resolved` for the workout calculated with the current
   Fitness Signature and `view=editable` for authoritative Workout Designer
   rows, including repeats, slopes, and rest-in-between fields.
@@ -85,8 +90,8 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
 ```
 
 - Use MCP `list_activities` and `get_activity` for activity discovery and
-  details. Use `view=loads` for compact XSS history rather than looping over
-  individual details.
+  details. Request `includeFields=["xss"]` for compact XSS history rather than
+  looping over individual details.
 - When a local strain calculation needs the current Fitness Signature, use MCP
   `get_training_state`. Map TP, HIE, and PP from its normalized signature into
   `xert_strain_cli.py calculate`. Do not call live `workout-calculate` solely to
@@ -227,8 +232,8 @@ Use session data only for Xert-specific time-series fields that are unavailable
 from a better source. Always write it to an explicit temporary file and never
 print it to chat or terminal output:
 
-Use MCP `get_activity(view=session)`. It persists the session to a private
-temporary JSON file and returns only that path.
+Use MCP `get_activity(save_session=true)`. It returns the normal compact summary
+and persists the complete session to a private temporary JSON file.
 
 ## Semantics And Writes
 

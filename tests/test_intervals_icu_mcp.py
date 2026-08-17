@@ -82,13 +82,53 @@ class IntervalsIcuMcpTests(unittest.TestCase):
 
     def test_list_activities_uses_inclusive_date_bounds(self):
         calls = []
-        service = self.service(activity_lister=lambda **kwargs: calls.append(kwargs) or [{"id": "i1"}])
+        source = {
+            "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
+            "type": "Ride", "elapsed_time": 3600, "moving_time": 3590,
+            "distance": 30000, "source": "GARMIN_CONNECT", "external_id": "g1",
+            "icu_training_load": 55, "source_noise": "excluded",
+        }
+        service = self.service(activity_lister=lambda **kwargs: calls.append(kwargs) or [source])
         result = service.call_tool(
             "list_activities", {"start_date": "2026-08-17", "end_date": "2026-08-17"}
         )
         self.assertEqual(result["count"], 1)
+        self.assertEqual(result["includeFields"], [])
+        self.assertEqual(result["activities"][0], {
+            "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
+            "type": "Ride", "duration_s": 3600, "distance_m": 30000,
+            "source": "GARMIN_CONNECT", "external_id": "g1",
+        })
         self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-17")
         self.assertEqual(calls[0]["newest"].isoformat(), "2026-08-17")
+
+    def test_list_activities_adds_only_requested_fields(self):
+        service = self.service(activity_lister=lambda **kwargs: [{
+            "id": "i1", "elapsed_time": 3600, "moving_time": 3590,
+            "icu_training_load": 55, "stream_types": ["watts"],
+        }])
+        result = service.call_tool("list_activities", {
+            "start_date": "2026-08-17", "end_date": "2026-08-17",
+            "includeFields": ["icu_training_load", "stream_types"],
+        })
+        self.assertEqual(result["includeFields"], ["icu_training_load", "stream_types"])
+        self.assertEqual(result["activities"][0]["icu_training_load"], 55)
+        self.assertEqual(result["activities"][0]["stream_types"], ["watts"])
+        self.assertNotIn("moving_time", result["activities"][0])
+
+    def test_list_activities_rejects_invalid_include_fields(self):
+        for include_fields, message in (
+            (["unknown"], "Unsupported includeFields value"),
+            (["moving_time", "moving_time"], "unique"),
+            ("moving_time", "array of strings"),
+        ):
+            with self.subTest(include_fields=include_fields), self.assertRaisesRegex(
+                MCP.ToolFailure, message
+            ):
+                self.service().call_tool("list_activities", {
+                    "start_date": "2026-08-17", "end_date": "2026-08-17",
+                    "includeFields": include_fields,
+                })
 
     def test_authentication_is_discovered_once_and_reused(self):
         discoveries = []
@@ -108,12 +148,45 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(len(discoveries), 1)
         self.assertEqual([call["api_key"] for call in calls], ["cached-key", "cached-key"])
 
-    def test_get_activity_defaults_to_intervals(self):
+    def test_get_activity_returns_compact_summary_and_fetches_intervals(self):
         calls = []
-        service = self.service(activity_getter=lambda **kwargs: calls.append(kwargs) or {"id": "i1"})
+        service = self.service(activity_getter=lambda **kwargs: calls.append(kwargs) or {
+            "id": "i1", "name": "Ride", "icu_training_load": 99,
+            "icu_intervals": [{"id": 1}], "source_private_field": "secret-noise",
+        })
         result = service.call_tool("get_activity", {"activity_id": "i1"})
-        self.assertTrue(result["include_intervals"])
+        self.assertEqual(
+            result["activity"], {"id": "i1", "name": "Ride", "icu_training_load": 99}
+        )
+        self.assertNotIn("full_activity_file", result)
         self.assertTrue(calls[0]["include_intervals"])
+
+    def test_get_activity_can_save_full_private_standard_envelope(self):
+        source = {
+            "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
+            "icu_intervals": [{"id": 1}], "source_private_field": "retained-in-file",
+        }
+        result = self.service(activity_getter=lambda **kwargs: source).call_tool(
+            "get_activity", {"activity_id": "i1", "save_full": True}
+        )
+        path = Path(result["full_activity_file"])
+        try:
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(result["full_activity_format"], "intervals-icu-activity-v1")
+            self.assertEqual(result["full_activity_byte_size"], path.stat().st_size)
+            self.assertEqual(
+                json.loads(path.read_text(encoding="utf-8")),
+                {"activity_id": "i1", "activity": source},
+            )
+            self.assertNotIn("icu_intervals", result["activity"])
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_get_activity_rejects_non_boolean_save_full(self):
+        with self.assertRaisesRegex(MCP.ToolFailure, "save_full must be a boolean"):
+            self.service().call_tool(
+                "get_activity", {"activity_id": "i1", "save_full": "yes"}
+            )
 
     def test_search_activities_is_one_source_call_and_preserves_duplicates(self):
         calls = []
@@ -125,8 +198,18 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["query"], "#VT2")
         self.assertEqual(calls[0]["limit"], 20)
-        self.assertEqual(result["activities"], source_rows)
+        self.assertEqual([row["id"] for row in result["activities"]], ["i1", "i1", "i2"])
+        self.assertEqual(result["includeFields"], [])
         self.assertEqual(result["count"], 3)
+
+    def test_search_activities_supports_same_include_fields_as_list(self):
+        service = self.service(
+            activity_searcher=lambda **kwargs: [{"id": "i1", "icu_training_load": 42}]
+        )
+        result = service.call_tool(
+            "search_activities", {"query": "tempo", "includeFields": ["icu_training_load"]}
+        )
+        self.assertEqual(result["activities"][0]["icu_training_load"], 42)
 
     def test_search_activities_defaults_limit_and_rejects_invalid_limit(self):
         calls = []

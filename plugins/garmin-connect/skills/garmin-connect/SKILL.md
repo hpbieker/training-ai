@@ -46,7 +46,10 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
 - Use `list_health_days` when trend context across several days matters. Pass
   `sources=["hrv"]` when the caller needs actual nightly HRV values without fetching
   unrelated daily sources or Body Battery history.
-- Use `list_activities` to resolve an activity and `get_activity` for
+- Use `list_activities` to resolve an activity from compact identity summaries.
+  Use `includeFields` to add only selected Garmin training details to each row;
+  moving duration and account or profile fields are not part of the default.
+  Use `get_activity` for
   compact Training Effect, load, Stamina, and performance metrics. The compact
   Stamina analysis resolves Garmin's per-activity descriptor indexes, which can
   vary between activities, and reports aligned coverage, start/end/minimum,
@@ -54,9 +57,10 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   drawdown without returning the raw chart series. It may therefore fetch
   activity chart details internally even though the MCP result omits them
   from its output.
-- Use `list_courses` to list saved Garmin Connect courses (routes), including course
-  IDs, names, sport types, distances, elevation, start coordinates, and source
-  applications.
+- Use `list_courses` to list saved Garmin Connect courses (routes) as compact
+  identity rows containing course ID, name, sport type, distance, and source.
+  Use `includeFields` for selected elevation, start-point, timing, ownership,
+  privacy, or source details.
 - Use `get_course` to fetch one saved course with its full Garmin
   payload. The `course.geoPoints` array contains the route geometry and normally
   includes latitude, longitude, elevation, cumulative distance, and timestamp.

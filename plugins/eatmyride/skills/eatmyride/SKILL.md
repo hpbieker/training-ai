@@ -11,13 +11,16 @@ writes. The plugin is stateless and returns normalized data to callers.
 ## MCP Tools
 
 - `list_activities` lists candidates in an inclusive local-date range. Select
-  the newest row by `date` when the user asks for the latest activity.
+  the newest row by `date` when the user asks for the latest activity. It
+  returns compact identity rows; use `includeFields` for selected source fields.
 - `get_fueling` returns compact activity energy and glycogen state together
   with food-plan events and calculated intake totals.
-- `search_products` searches the broader EatMyRide product catalogue.
+- `search_products` searches the broader EatMyRide product catalogue. Product
+  lists are compact by default; use `includeFields` for selected nutrition and
+  serving fields.
 - `list_products` uses `source: custom` for the user's products or
   `source: suggested` with `activity_id` and `kind` for activity-specific food
-  or drink candidates.
+  or drink candidates, with the same compact rows and `includeFields` choices.
 - `get_product` resolves one exact product before a food-plan or product write.
 - `set_foodplan_products` sets exact quantities and elapsed times for selected
   products while preserving unrelated food-plan events.

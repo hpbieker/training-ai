@@ -80,7 +80,14 @@ class GarminConnectMcpTests(unittest.TestCase):
     @patch.object(MCP, "local_now", return_value="2026-08-17T12:00:00+02:00")
     @patch.object(MCP, "garmin_activity_search")
     def test_list_activities_returns_count(self, search, _local_now) -> None:
-        search.return_value = [{"activityId": 123}]
+        search.return_value = [{
+            "activityId": 123, "activityName": "Indoor ride",
+            "startTimeLocal": "2026-08-17 12:15:23",
+            "activityType": {"typeKey": "indoor_cycling"},
+            "duration": 7747.1, "distance": 72510.5,
+            "movingDuration": 7736, "avgPower": 237,
+            "userRoles": ["ROLE_CONNECTUSER"], "ownerFullName": "Private",
+        }]
 
         result = self.service.call_tool(
             "list_activities",
@@ -91,6 +98,43 @@ class GarminConnectMcpTests(unittest.TestCase):
             "/mock/gccli", "2026-08-17", "2026-08-17", limit=100
         )
         self.assertEqual(result["count"], 1)
+        self.assertEqual(result["includeFields"], [])
+        self.assertEqual(result["activities"], [{
+            "activity_id": 123, "name": "Indoor ride",
+            "start_local": "2026-08-17 12:15:23", "type": "indoor_cycling",
+            "duration_s": 7747.1, "distance_m": 72510.5,
+            "source": "garmin_connect_gccli",
+        }])
+
+    @patch.object(MCP, "local_now", return_value="2026-08-17T12:00:00+02:00")
+    @patch.object(MCP, "garmin_activity_search")
+    def test_list_activities_adds_only_requested_fields(self, search, _local_now) -> None:
+        search.return_value = [{
+            "activityId": 123, "duration": 3600, "distance": 30000,
+            "movingDuration": 3590, "avgPower": 220, "userRoles": ["private"],
+        }]
+        result = self.service.call_tool("list_activities", {
+            "since": "2026-08-17", "until": "2026-08-17",
+            "includeFields": ["movingDuration", "avgPower"],
+        })
+        self.assertEqual(result["includeFields"], ["movingDuration", "avgPower"])
+        self.assertEqual(result["activities"][0]["movingDuration"], 3590)
+        self.assertEqual(result["activities"][0]["avgPower"], 220)
+        self.assertNotIn("userRoles", result["activities"][0])
+
+    def test_list_activities_rejects_invalid_include_fields(self) -> None:
+        for include_fields, message in (
+            (["ownerFullName"], "Unsupported includeFields value"),
+            (["avgPower", "avgPower"], "unique"),
+            ("avgPower", "array of strings"),
+        ):
+            with self.subTest(include_fields=include_fields), self.assertRaisesRegex(
+                MCP.ToolFailure, message
+            ):
+                self.service.call_tool("list_activities", {
+                    "since": "2026-08-17", "until": "2026-08-17",
+                    "includeFields": include_fields,
+                })
 
     @patch.object(MCP, "fetch_activity")
     def test_get_activity_returns_only_normalized_summary(self, fetch_activity) -> None:
@@ -112,12 +156,21 @@ class GarminConnectMcpTests(unittest.TestCase):
 
     @patch.object(MCP, "fetch_courses")
     def test_list_courses_uses_course_service(self, fetch_courses) -> None:
-        fetch_courses.return_value = {"courses": [{"courseId": 123}]}
+        fetch_courses.return_value = {
+            "source": "garmin_connect_gccli", "source_time_local": "now",
+            "courses": [{"courseId": 123, "courseName": "Slemdal", "elevationGainMeter": 500}],
+        }
 
         result = self.service.call_tool("list_courses", {})
 
         fetch_courses.assert_called_once_with(gccli="/mock/gccli")
-        self.assertEqual(result["courses"][0]["courseId"], 123)
+        self.assertEqual(result["courses"][0]["course_id"], 123)
+        self.assertNotIn("elevationGainMeter", result["courses"][0])
+
+        detailed = self.service.call_tool(
+            "list_courses", {"includeFields": ["elevationGainMeter"]}
+        )
+        self.assertEqual(detailed["courses"][0]["elevationGainMeter"], 500)
 
     @patch.object(MCP, "fetch_course")
     def test_get_course_uses_exact_id(self, fetch_course) -> None:

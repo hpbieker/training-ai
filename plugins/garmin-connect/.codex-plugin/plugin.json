@@ -1,6 +1,6 @@
 {
   "name": "garmin-connect",
-  "version": "0.1.0+codex.20260817164833",
+  "version": "0.1.0+codex.20260817172210",
   "description": "Garmin Connect source semantics and live access for health, activities, and courses.",
   "author": {
     "name": "Hans Petter Bieker"

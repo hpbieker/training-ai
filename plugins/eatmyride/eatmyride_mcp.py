@@ -171,12 +171,32 @@ _LIMIT_SCHEMA = {
     "description": "Maximum number of rows returned; total_count remains untruncated.",
 }
 
+_ACTIVITY_INCLUDE_FIELDS = (
+    "isActual", "isEvaluated", "evaluatedAt", "sourceType", "sourceId",
+    "normalizedPower", "avgHeartRate", "elevation", "averageTemperature",
+    "tracker", "rideType", "warning", "goal", "profile",
+)
+_PRODUCT_INCLUDE_FIELDS = (
+    "weight", "volume", "calories", "carbohydrates", "fat", "protein",
+    "ingredientsQty", "ingredientsQtyUnit", "tags", "salt", "sugars",
+    "saturatedFat", "fibers", "caffeine",
+)
+
+
+def _include_fields_schema(allowed: tuple[str, ...], noun: str) -> dict[str, object]:
+    return {
+        "type": "array", "items": {"type": "string", "enum": list(allowed)},
+        "uniqueItems": True, "default": [],
+        "description": f"Optional {noun} fields added to every compact row.",
+    }
+
 TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_activities": _tool_definition(
         name="list_activities",
         description=(
-            "List EatMyRide activity candidates in an inclusive local-date range. "
-            "Use get_fueling for evaluated intake and glycogen details."
+            "List compact EatMyRide activity candidates in an inclusive local-date "
+            "range, with optional includeFields. Use get_fueling for evaluated intake "
+            "and glycogen details."
         ),
         properties={
             "start_date": {
@@ -190,6 +210,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "description": "Inclusive local end date in YYYY-MM-DD format.",
             },
             "limit": _LIMIT_SCHEMA,
+            "includeFields": _include_fields_schema(_ACTIVITY_INCLUDE_FIELDS, "activity"),
         },
         required=["start_date", "end_date"],
         output_properties={
@@ -197,9 +218,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "end_date": {"type": "string"},
             "total_count": {"type": "integer"},
             "count": {"type": "integer"},
+            "includeFields": {"type": "array", "items": {"type": "string"}},
             "activities": _array_of_open_objects("Bounded activity candidate rows."),
         },
-        output_required=["start_date", "end_date", "total_count", "count", "activities"],
+        output_required=["start_date", "end_date", "includeFields", "total_count", "count", "activities"],
     ),
     "get_fueling": _tool_definition(
         name="get_fueling",
@@ -226,8 +248,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "search_products": _tool_definition(
         name="search_products",
         description=(
-            "Search EatMyRide products for read-only product identification. Results "
-            "do not establish food-plan intake totals."
+            "Search compact EatMyRide product rows for read-only identification, with "
+            "optional includeFields for nutrition and serving details. Results do not "
+            "establish food-plan intake totals."
         ),
         properties={
             "query": {
@@ -241,22 +264,24 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "description": "Optional EatMyRide product-search filter value.",
             },
             "limit": _LIMIT_SCHEMA,
+            "includeFields": _include_fields_schema(_PRODUCT_INCLUDE_FIELDS, "product"),
         },
         required=["query"],
         output_properties={
             "query": {"type": "string"},
             "total_count": {"type": "integer"},
             "count": {"type": "integer"},
+            "includeFields": {"type": "array", "items": {"type": "string"}},
             "products": _array_of_open_objects("Bounded matching product rows."),
         },
-        output_required=["query", "total_count", "count", "products"],
+        output_required=["query", "includeFields", "total_count", "count", "products"],
     ),
     "list_products": _tool_definition(
         name="list_products",
         description=(
-            "List custom products or activity-specific suggested products, optionally "
-            "filtered by label or description. Suggested products require activity_id "
-            "and kind and are candidates, not recorded intake."
+            "List compact custom or activity-specific suggested product rows, optionally "
+            "filtered by label or description and extended with includeFields. Suggested "
+            "products require activity_id and kind and are candidates, not recorded intake."
         ),
         properties={
             "source": {
@@ -280,6 +305,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "description": "Optional case-insensitive label or description substring.",
             },
             "limit": _LIMIT_SCHEMA,
+            "includeFields": _include_fields_schema(_PRODUCT_INCLUDE_FIELDS, "product"),
         },
         required=["source"],
         output_properties={
@@ -288,9 +314,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "kind": {"type": "string"},
             "total_count": {"type": "integer"},
             "count": {"type": "integer"},
+            "includeFields": {"type": "array", "items": {"type": "string"}},
             "products": _array_of_open_objects("Bounded product rows."),
         },
-        output_required=["source", "total_count", "count", "products"],
+        output_required=["source", "includeFields", "total_count", "count", "products"],
     ),
     "get_product": _tool_definition(
         name="get_product",
@@ -749,12 +776,16 @@ class EatMyRideToolService:
             activities = service.list_activities(start, end)
             limit = arguments.get("limit", 50)
             selected = activities[:limit]
+            include_fields = tuple(arguments.get("includeFields", []))
             return {
                 "start_date": start,
                 "end_date": end,
+                "includeFields": list(include_fields),
                 "total_count": len(activities),
                 "count": len(selected),
-                "activities": selected,
+                "activities": [
+                    _activity_list_summary(row, include_fields) for row in selected
+                ],
             }
         if name == "get_fueling":
             return service.get_fueling(arguments["activity_id"])
@@ -764,11 +795,13 @@ class EatMyRideToolService:
             )
             limit = arguments.get("limit", 50)
             selected = products[:limit]
+            include_fields = tuple(arguments.get("includeFields", []))
             return {
                 "query": arguments["query"],
+                "includeFields": list(include_fields),
                 "total_count": len(products),
                 "count": len(selected),
-                "products": selected,
+                "products": [_product_list_summary(row, include_fields) for row in selected],
             }
         if name == "get_product":
             return {"product": service.get_product(arguments["product_id"])}
@@ -814,20 +847,59 @@ class EatMyRideToolService:
             ]
         limit = arguments.get("limit", 50)
         selected = products[:limit]
+        include_fields = tuple(arguments.get("includeFields", []))
         return {
             "source": arguments["source"],
+            "includeFields": list(include_fields),
             **({"activity_id": arguments["activity_id"]} if "activity_id" in arguments else {}),
             **({"kind": arguments["kind"]} if "kind" in arguments else {}),
             "total_count": len(products),
             "count": len(selected),
-            "products": selected,
+            "products": [_product_list_summary(row, include_fields) for row in selected],
         }
+
+
+def _activity_list_summary(
+    row: dict[str, Any], include_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    summary = {
+        "id": row.get("id"),
+        "label": row.get("label") or row.get("name"),
+        "date": row.get("date"),
+        "sport": row.get("sport"),
+        "type": row.get("type"),
+        "duration_s": row.get("duration"),
+        "distance_m": row.get("distance"),
+    }
+    summary.update({field: row.get(field) for field in include_fields})
+    return summary
+
+
+def _product_list_summary(
+    row: dict[str, Any], include_fields: tuple[str, ...]
+) -> dict[str, Any]:
+    summary = {
+        "id": row.get("id"),
+        "label": row.get("label"),
+        "description": row.get("description"),
+    }
+    summary.update({field: row.get(field) for field in include_fields})
+    return summary
 
 
 def _validate_arguments(name: str, arguments: dict[str, Any]) -> None:
     for key, value in arguments.items():
         if key == "limit" and (not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 200):
             raise ToolFailure("invalid_arguments", "limit must be an integer from 1 to 200")
+        if key == "includeFields":
+            allowed = _ACTIVITY_INCLUDE_FIELDS if name == "list_activities" else _PRODUCT_INCLUDE_FIELDS
+            if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+                raise ToolFailure("invalid_arguments", "includeFields must be an array of strings")
+            if len(value) != len(set(value)):
+                raise ToolFailure("invalid_arguments", "includeFields must not contain duplicates")
+            unknown = [item for item in value if item not in allowed]
+            if unknown:
+                raise ToolFailure("invalid_arguments", f"unsupported includeFields value: {unknown[0]}")
         if key in {"start_date", "end_date", "activity_id", "query", "product_filter", "contains", "label"}:
             if not isinstance(value, str) or not value.strip():
                 raise ToolFailure("invalid_arguments", f"{key} must be a non-empty string")

@@ -151,13 +151,21 @@ class XertService:
             raise ValueError("view must be 'summary' or 'loads'")
         credentials = self._credentials()
         if view == "summary":
-            return fetch_activities(
+            activities = fetch_activities(
                 username=credentials.username,
                 password=credentials.password,
                 oldest=start_date,
                 newest=end_date,
                 access_token=self._auth.bearer_token(),
             )
+            return [
+                compact_activity_load({
+                    "path": activity.get("path"),
+                    "activity_list_row": activity,
+                })
+                for activity in activities
+                if isinstance(activity, dict)
+            ]
         details = list_activity_details(
             username=credentials.username,
             password=credentials.password,
@@ -449,9 +457,13 @@ def compact_activity_load(payload: dict[str, Any]) -> dict[str, Any]:
         "path": payload.get("path") or summary.get("path"),
         "name": payload.get("name") or summary.get("name") or list_row.get("name"),
         "map_url": payload.get("map_url") or summary.get("map_url") or list_row.get("map_url"),
-        "start_local": _activity_start_local(summary),
+        "start_local": _activity_start_local(summary) or _activity_start_local(list_row),
         "distance_km": summary.get("distance") or list_row.get("distance"),
-        "elapsed_minutes": _minutes(_number(summary.get("duration") or session.get("total_elapsed_time"))),
+        "elapsed_minutes": _minutes(_number(
+            summary.get("duration")
+            or session.get("total_elapsed_time")
+            or list_row.get("duration")
+        )),
         "xss": {
             "total": summary.get("xss") or xss.get("total"),
             "low": summary.get("xlss") or xss.get("xlss"),
@@ -737,6 +749,11 @@ def _activity_start_local(summary: dict[str, Any]) -> str | None:
             if start.get("timezone") == "UTC":
                 parsed = parsed.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE)
             return parsed.replace(tzinfo=None).isoformat()
+    if isinstance(start, str) and start:
+        parsed = datetime.fromisoformat(start.replace("Z", "+00:00"))
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(LOCAL_TIMEZONE).replace(tzinfo=None)
+        return parsed.isoformat()
     raw_progression_start = (summary.get("progression") or {}).get("start_date")
     if raw_progression_start:
         return (

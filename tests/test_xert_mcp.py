@@ -21,8 +21,15 @@ class FakeXertService:
     def list_activities(self, start_date, end_date, *, view="summary"):
         self.calls.append(("list_activities", start_date, end_date, view))
         if view == "loads":
-            return {"activities": [{"path": "a1", "xss": {"low": 10}}]}
-        return [{"path": "a1", "name": "Ride"}]
+            return {"activities": [{
+                "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
+                "elapsed_minutes": 60.5, "distance_km": 30.25,
+                "xss": {"total": 12, "low": 10, "high": 2, "peak": 0},
+            }]}
+        return [{
+            "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
+            "elapsed_minutes": 60.5, "distance_km": 30.25, "map_url": False,
+        }]
 
     def get_activity(self, path, *, view="summary"):
         self.calls.append(("get_activity", path, view))
@@ -30,7 +37,10 @@ class FakeXertService:
 
     def list_workouts(self, *, name_keywords=None, view="summary"):
         self.calls.append(("list_workouts", name_keywords, view))
-        return [{"path": "w1", "name": "XMB VT1"}]
+        return [{
+            "path": "w1", "name": "XMB VT1", "duration_min": 120.0,
+            "work_watts": 210, "xss": 100.0, "difficulty": 55.0,
+        }]
 
     def get_workout(self, path, *, view="resolved"):
         self.calls.append(("get_workout", path, view))
@@ -157,34 +167,144 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.fake = FakeXertService()
         self.tools = MCP.XertToolService(lambda: self.fake)
 
-    def test_list_activity_loads_and_editable_workout(self) -> None:
+    def test_list_activities_is_compact_by_default(self) -> None:
         activities = self.tools.call_tool(
             "list_activities",
-            {"start_date": "2026-08-01", "end_date": "2026-08-02", "view": "loads"},
+            {"start_date": "2026-08-01", "end_date": "2026-08-02"},
         )
+        self.assertEqual(activities["includeFields"], [])
+        self.assertEqual(activities["activities"][0], {
+            "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
+            "duration_s": 3630, "distance_m": 30250, "source": "xert_plugin",
+        })
+        self.assertEqual(
+            self.fake.calls[0],
+            ("list_activities", "2026-08-01", "2026-08-02", "summary"),
+        )
+
+    def test_list_activities_fetches_details_only_for_requested_load_fields(self) -> None:
+        activities = self.tools.call_tool("list_activities", {
+            "start_date": "2026-08-01", "end_date": "2026-08-02",
+            "includeFields": ["xss"],
+        })
+        self.assertEqual(activities["includeFields"], ["xss"])
+        self.assertEqual(activities["activities"][0]["xss"]["low"], 10)
+        self.assertEqual(
+            self.fake.calls[0],
+            ("list_activities", "2026-08-01", "2026-08-02", "loads"),
+        )
+
+    def test_list_activities_cheap_include_field_uses_summary_read(self) -> None:
+        activities = self.tools.call_tool("list_activities", {
+            "start_date": "2026-08-01", "end_date": "2026-08-02",
+            "includeFields": ["map_url"],
+        })
+        self.assertFalse(activities["activities"][0]["map_url"])
+        self.assertEqual(self.fake.calls[0][-1], "summary")
+
+    def test_list_activities_rejects_invalid_include_fields(self) -> None:
+        for include_fields, message in (
+            (["unknown"], "Unsupported includeFields value"),
+            (["xss", "xss"], "unique"),
+            ("xss", "array of strings"),
+        ):
+            with self.subTest(include_fields=include_fields), self.assertRaisesRegex(
+                MCP.ToolFailure, message
+            ):
+                self.tools.call_tool("list_activities", {
+                    "start_date": "2026-08-01", "end_date": "2026-08-02",
+                    "includeFields": include_fields,
+                })
+
+    def test_editable_workout(self) -> None:
         workout = self.tools.call_tool(
             "get_workout", {"workout_path": "w1", "view": "editable"}
         )
-        self.assertEqual(activities["count"], 1)
         self.assertEqual(workout["rows"], [{"name": "Warm-up"}])
 
-    def test_session_view_writes_private_file_instead_of_returning_series(self) -> None:
+    def test_list_workouts_is_compact_by_default(self) -> None:
+        result = self.tools.call_tool("list_workouts", {"name_keywords": "VT1"})
+        self.assertEqual(result["includeFields"], [])
+        self.assertEqual(result["workouts"], [{
+            "path": "w1", "name": "XMB VT1", "duration_s": 7200,
+        }])
+        self.assertEqual(self.fake.calls[0], ("list_workouts", "VT1", "summary"))
+
+    def test_list_workouts_adds_only_requested_fields(self) -> None:
+        result = self.tools.call_tool("list_workouts", {
+            "includeFields": ["work_watts", "xss"],
+        })
+        self.assertEqual(result["includeFields"], ["work_watts", "xss"])
+        self.assertEqual(result["workouts"][0], {
+            "path": "w1", "name": "XMB VT1", "duration_s": 7200,
+            "work_watts": 210, "xss": 100.0,
+        })
+
+    def test_list_workouts_rejects_invalid_include_fields(self) -> None:
+        for include_fields, message in (
+            (["unknown"], "Unsupported includeFields value"),
+            (["xss", "xss"], "unique"),
+            ("xss", "array of strings"),
+        ):
+            with self.subTest(include_fields=include_fields), self.assertRaisesRegex(
+                MCP.ToolFailure, message
+            ):
+                self.tools.call_tool("list_workouts", {"includeFields": include_fields})
+
+    def test_get_activity_always_returns_summary(self) -> None:
+        result = self.tools.call_tool("get_activity", {"activity_path": "a1"})
+        self.assertEqual(result["activity"], {"path": "a1", "summary": {"xss": 12}})
+        self.assertEqual(self.fake.calls, [("get_activity", "a1", "summary")])
+        self.assertNotIn("full_activity_file", result)
+        self.assertNotIn("session_file", result)
+
+    def test_get_activity_can_save_full_and_session_private_files(self) -> None:
         result = self.tools.call_tool(
-            "get_activity", {"activity_path": "a1", "view": "session"}
+            "get_activity", {
+                "activity_path": "folder/a1", "save_full": True, "save_session": True,
+            }
         )
-        path = Path(result["session_file"])
+        full_path = Path(result["full_activity_file"])
+        session_path = Path(result["session_file"])
         try:
-            self.assertTrue(path.is_file())
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["path"], "a1")
-            self.assertNotIn("activity", result)
+            self.assertEqual(result["full_activity_format"], "xert-activity-v1")
+            self.assertEqual(result["session_format"], "xert-activity-session-v1")
+            for path, size_key in (
+                (full_path, "full_activity_byte_size"),
+                (session_path, "session_byte_size"),
+            ):
+                self.assertTrue(path.is_file())
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+                self.assertEqual(result[size_key], path.stat().st_size)
+                envelope = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(envelope["activity_path"], "folder/a1")
+                self.assertEqual(envelope["activity"]["path"], "folder/a1")
+                self.assertNotIn("/", path.name)
+            self.assertEqual(
+                self.fake.calls,
+                [
+                    ("get_activity", "folder/a1", "summary"),
+                    ("get_activity", "folder/a1", "full"),
+                    ("get_activity", "folder/a1", "session"),
+                ],
+            )
         finally:
-            path.unlink(missing_ok=True)
+            full_path.unlink(missing_ok=True)
+            session_path.unlink(missing_ok=True)
+
+    def test_get_activity_rejects_non_boolean_save_flags(self) -> None:
+        for field in ("save_full", "save_session"):
+            with self.subTest(field=field), self.assertRaisesRegex(
+                MCP.ToolFailure, f"{field} must be a boolean"
+            ):
+                self.tools.call_tool(
+                    "get_activity", {"activity_path": "a1", field: "yes"}
+                )
 
     def test_rejects_unknown_and_missing_arguments(self) -> None:
         with self.assertRaisesRegex(MCP.ToolFailure, "unknown argument"):
             self.tools.call_tool(
-                "list_workouts", {"view": "summary", "surprise": True}
+                "list_workouts", {"view": "summary"}
             )
         with self.assertRaisesRegex(MCP.ToolFailure, "missing required"):
             self.tools.call_tool("get_activity", {})
@@ -268,14 +388,20 @@ class XertServiceTests(unittest.TestCase):
         credentials = SERVICE.XertCredentials(username="user", password="secret")
         service = self._service(credentials)
         with (
-            patch.object(SERVICE, "fetch_activities", return_value=[{"path": "a1"}]),
+            patch.object(SERVICE, "fetch_activities", return_value=[{
+                "path": "a1", "name": "Ride", "start_date": "2026-08-01T08:00:00Z",
+                "duration": 3630, "distance": 30.25,
+            }]),
             patch.object(SERVICE, "fetch_activity_detail", return_value={"summary": {"xss": 4}}),
             patch.object(SERVICE, "fetch_workouts", return_value=[{"name": "XMB VT1", "path": "w1"}]),
             patch.object(SERVICE, "fetch_workout", return_value={"path": "w1"}),
         ):
-            self.assertEqual(
-                service.list_activities("2026-08-01", "2026-08-01"), [{"path": "a1"}]
-            )
+            listed = service.list_activities("2026-08-01", "2026-08-01")
+            self.assertEqual(listed[0]["path"], "a1")
+            self.assertEqual(listed[0]["source"], "xert_plugin")
+            self.assertEqual(listed[0]["elapsed_minutes"], 60.5)
+            self.assertEqual(listed[0]["distance_km"], 30.25)
+            self.assertEqual(listed[0]["start_local"], "2026-08-01T10:00:00")
             self.assertEqual(service.get_activity("a1")["xss"]["total"], 4)
             self.assertEqual(service.list_workouts(name_keywords="vt1", view="full")[0]["path"], "w1")
             self.assertEqual(service.get_workout("w1"), {"path": "w1"})
