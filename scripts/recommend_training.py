@@ -422,15 +422,15 @@ def main() -> None:
         checked_at=generated_at,
         overrides=set(args.source_overrides_json),
     )
-    sources_requiring_mcp = {
-        key for key in ("garmin", "intervals_wellness", "intervals_events")
-        if source_refresh.get(key, {}).get("refresh")
-    }
+    sources_requiring_mcp = mcp_sources_requiring_refresh(
+        source_refresh,
+        indoor_available=indoor_available,
+    )
     if sources_requiring_mcp:
         raise SystemExit(
-            "Garmin Connect and Intervals.icu live access is MCP-only. Fetch the "
-            "required normalized MCP result, persist it as JSON, then pass the "
-            "file through --source-overrides-json: "
+            "Live source access is MCP-only for these inputs. Fetch each normalized "
+            "MCP result, persist it as JSON, then pass the files through "
+            "--source-overrides-json: "
             + ", ".join(sorted(sources_requiring_mcp))
         )
     latest_activity = latest_activity_on_or_before(
@@ -452,23 +452,6 @@ def main() -> None:
             sources=primary_sources,
             local_timezone=local_timezone,
         )
-    if source_refresh.get("xert_activity_loads", {}).get("refresh"):
-        write_json(
-            source_files["xert_activity_loads"],
-            fetch_xert_activity_loads_for_recent_window(args.date),
-        )
-    if indoor_available and source_refresh.get("xert_recommended_training", {}).get("refresh"):
-        recommended_training = run_json(
-            [
-                sys.executable,
-                "-B",
-                "plugins/xert/scripts/xert_cli.py",
-                "recommended-training",
-                "--date",
-                args.date,
-            ]
-        )
-        write_json(source_files["xert_recommended_training"], recommended_training)
     ensure_source_files_exist(
         source_files,
         required=tuple(
@@ -729,7 +712,12 @@ def main() -> None:
         and source_refresh.get("xert_route_maps", {}).get("refresh")
     ):
         route_map_limit = 1 if args.route_options_json["map_scope"] == "top" else None
-        route_packet = enrich_route_packet_with_xert_maps(route_packet, limit=route_map_limit)
+        route_packet = enrich_route_packet_with_xert_maps(
+            route_packet,
+            xert_activities=load_json_if_exists(source_files["xert_activity_loads"]),
+            local_timezone=local_timezone,
+            limit=route_map_limit,
+        )
         route_packet = cache_xert_route_map_images(
             route_packet,
             output_dir=output_dir,
@@ -999,6 +987,26 @@ def build_source_refresh_plan(
             "path": str(path),
         }
     return plan
+
+
+def mcp_sources_requiring_refresh(
+    source_refresh: dict[str, dict[str, Any]],
+    *,
+    indoor_available: bool,
+) -> set[str]:
+    """Return live inputs whose transport is owned by an MCP source plugin."""
+
+    candidates = {
+        "garmin",
+        "intervals_wellness",
+        "intervals_events",
+        "xert_activity_loads",
+    }
+    if indoor_available:
+        candidates.add("xert_recommended_training")
+    return {
+        key for key in candidates if source_refresh.get(key, {}).get("refresh")
+    }
 
 
 def source_file_age_minutes(path: Path, *, checked_at: datetime) -> float | None:
@@ -1599,6 +1607,7 @@ def fetch_primary_live_inputs(
         xert_activity_path = resolve_xert_activity_path(
             latest_activity,
             local_timezone=local_timezone,
+            xert_activities=load_json_if_exists(source_files["xert_activity_loads"]),
         )
         if xert_activity_path:
             xert_command.extend(["--activity", xert_activity_path])
@@ -1723,6 +1732,7 @@ def resolve_xert_activity_path(
     activity: dict[str, Any] | None,
     *,
     local_timezone: Any,
+    xert_activities: dict[str, Any] | None = None,
 ) -> str | None:
     if not activity or not activity.get("start_local"):
         return None
@@ -1730,20 +1740,7 @@ def resolve_xert_activity_path(
         str(activity["start_local"]),
         local_timezone=local_timezone,
     )
-    day = start_local.date().isoformat()
-    try:
-        activities = run_json(
-            [
-                sys.executable,
-                "-B",
-                "plugins/xert/scripts/xert_cli.py",
-                "activities",
-                day,
-                day,
-            ]
-        )
-    except SystemExit:
-        return None
+    activities = (xert_activities or {}).get("activities")
     if not isinstance(activities, list):
         return None
     candidates = []
@@ -1769,6 +1766,8 @@ def resolve_xert_activity_path(
 def enrich_route_packet_with_xert_maps(
     route_packet: dict[str, Any],
     *,
+    xert_activities: dict[str, Any] | None = None,
+    local_timezone: Any,
     limit: int | None = None,
 ) -> dict[str, Any]:
     """Attach Xert activity/map URLs to route recommendations when they match."""
@@ -1777,7 +1776,16 @@ def enrich_route_packet_with_xert_maps(
     if not isinstance(recommendations, list) or not recommendations:
         return route_packet
 
+    activity_rows = (xert_activities or {}).get("activities")
+    if not isinstance(activity_rows, list):
+        activity_rows = []
     xert_by_date: dict[str, list[dict[str, Any]]] = {}
+    for row in activity_rows:
+        if not isinstance(row, dict):
+            continue
+        start = xert_activity_start_local(row, local_timezone=local_timezone)
+        if start is not None:
+            xert_by_date.setdefault(start.date().isoformat(), []).append(row)
     enriched = []
     for index, route in enumerate(recommendations, start=1):
         if not isinstance(route, dict):
@@ -1787,8 +1795,6 @@ def enrich_route_packet_with_xert_maps(
             enriched.append(route)
             continue
         route_date = str(route.get("date") or "")
-        if route_date and route_date not in xert_by_date:
-            xert_by_date[route_date] = fetch_xert_activities_for_route_date(route_date)
         match = match_xert_activity_for_route(route, xert_by_date.get(route_date) or [])
         route = dict(route)
         if match:
@@ -1931,25 +1937,6 @@ def is_supported_image_payload(data: bytes, *, content_type: str) -> bool:
     )
 
 
-def fetch_xert_activities_for_route_date(day: str) -> list[dict[str, Any]]:
-    try:
-        activities = run_json(
-            [
-                sys.executable,
-                "-B",
-                "plugins/xert/scripts/xert_cli.py",
-                "activities",
-                day,
-                day,
-            ]
-        )
-    except SystemExit:
-        return []
-    if not isinstance(activities, list):
-        return []
-    return [row for row in activities if isinstance(row, dict)]
-
-
 def match_xert_activity_for_route(
     route: dict[str, Any],
     activities: list[dict[str, Any]],
@@ -2040,21 +2027,6 @@ def load_json_if_exists(path: Path) -> Any:
     if not path.exists():
         return None
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def fetch_xert_activity_loads_for_recent_window(day: str, *, days: int = 14) -> dict[str, Any]:
-    target_day = date.fromisoformat(day)
-    start_day = (target_day - timedelta(days=days - 1)).isoformat()
-    return run_json(
-        [
-            sys.executable,
-            "-B",
-            "plugins/xert/scripts/xert_cli.py",
-            "activity-loads",
-            start_day,
-            day,
-        ]
-    )
 
 
 def compact_xert_activity_load(
@@ -5801,11 +5773,17 @@ def compact_xert_workout_recommendations(
     target_load: float,
     readiness_bias: str = "normal_vt1",
 ) -> dict[str, Any]:
-    exercises = payload.get("exercises") if isinstance(payload, dict) else []
+    from_mcp_workouts = isinstance(payload, dict) and "workouts" in payload
+    exercises = (
+        payload.get("workouts") if from_mcp_workouts else payload.get("exercises")
+    ) if isinstance(payload, dict) else []
+    if not isinstance(exercises, list):
+        exercises = []
     workouts = [
         compact_xert_workout(row, target_minutes=target_minutes, target_load=target_load)
         for row in exercises
-        if isinstance(row, dict) and row.get("exerciseType") == "Workout"
+        if isinstance(row, dict)
+        and (row.get("exerciseType") == "Workout" or from_mcp_workouts)
     ]
     workouts = [row for row in workouts if row is not None]
     low_intensity = [row for row in workouts if row["low_intensity_candidate"]]

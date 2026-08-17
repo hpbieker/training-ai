@@ -39,6 +39,7 @@ from recommend_training import (
     hrv_readiness_risk,
     initialize_plan_trace,
     intensity_signal_agreement,
+    mcp_sources_requiring_refresh,
     parse_availability_payload,
     parse_planning_context_json,
     parse_plan_selection_json,
@@ -2350,6 +2351,18 @@ class ExecutionModalityConstraintTests(unittest.TestCase):
 
 
 class SourceRefreshPolicyTests(unittest.TestCase):
+    def test_stale_xert_mcp_sources_are_requested_as_overrides(self):
+        refresh = {
+            "xert_activity_loads": {"refresh": True},
+            "xert_recommended_training": {"refresh": True},
+            "xert": {"refresh": True},
+        }
+
+        self.assertEqual(
+            mcp_sources_requiring_refresh(refresh, indoor_available=True),
+            {"xert_activity_loads", "xert_recommended_training"},
+        )
+
     def test_garmin_refresh_is_mcp_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "garmin.json"
@@ -2451,6 +2464,23 @@ class SurfaceClassificationTests(unittest.TestCase):
 
 
 class WorkoutReadinessBiasTests(unittest.TestCase):
+    def test_accepts_mcp_recommended_workout_shape(self):
+        result = compact_xert_workout_recommendations(
+            {
+                "workouts": [{
+                    "name": "XMB: VT1 30 min (165W)",
+                    "path": "vt1",
+                    "duration": 1800,
+                    "xss": 24,
+                    "max_power": 165,
+                }]
+            },
+            target_minutes=30,
+            target_load=24,
+        )
+
+        self.assertEqual(result["recommended"]["path"], "vt1")
+
     def test_easy_vt1_suppresses_openers_but_keeps_vt1(self):
         payload = {
             "exercises": [
