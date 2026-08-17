@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -21,7 +21,11 @@ from xert_activities import (  # noqa: E402
     list_activities as fetch_activities,
     list_activity_details,
 )
-from xert_calendar import fetch_calendar_notes_with_opener, set_calendar_note  # noqa: E402
+from xert_calendar import (  # noqa: E402
+    fetch_calendar_notes_with_opener,
+    fetch_recommended_training_with_login,
+    set_calendar_note,
+)
 from xert_common import (  # noqa: E402
     LOCAL_TIMEZONE,
     DEFAULT_XERT_OAUTH_CLIENT_ID,
@@ -237,6 +241,34 @@ class XertService:
             return {"training_info": training_info, "recovery_model": recovery_model}
         return compact_training_state(training_info, recovery_model)
 
+    def get_training_advice(
+        self, *, at: str | None = None, view: str = "summary"
+    ) -> dict[str, Any]:
+        if view not in {"summary", "full"}:
+            raise ValueError("view must be 'summary' or 'full'")
+        credentials = self._credentials()
+        if at is None:
+            payload = fetch_recovery_model_with_login(
+                username=_required_credential(credentials.username, "XERT_USERNAME"),
+                password=_required_credential(credentials.password, "XERT_PASSWORD"),
+            )
+            if view == "full":
+                return {"source_scope": "current", "at": None, "payload": payload}
+            return compact_current_training_advice(payload)
+
+        advice_value = _planned_advice_value(at)
+        payload = fetch_recommended_training_with_login(
+            username=_required_credential(credentials.username, "XERT_USERNAME"),
+            password=_required_credential(credentials.password, "XERT_PASSWORD"),
+            date_value=advice_value,
+            recent=True,
+            additional=False,
+            sport=None,
+        )
+        if view == "full":
+            return {"source_scope": "planned_time", "at": at, "payload": payload}
+        return compact_planned_training_advice(payload, at=at)
+
     def _calendar_notes(self) -> dict[str, Any]:
         credentials = self._credentials()
         opener = xert_web_login(
@@ -322,6 +354,61 @@ def compact_training_state(
         "recovery_hours": _system_triplet(recovery_model.get("recovery_hours"), "lo", "hi", "pk"),
         "target_xss": _system_triplet(recovery_model.get("targetXSS"), "xlss", "xhss", "xpss"),
     }
+
+
+def compact_current_training_advice(model: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "source": model.get("source"),
+        "source_endpoint": "/my-fitness",
+        "source_scope": "current",
+        "at": None,
+        "training_status": model.get("training_status"),
+        "target_xss": _system_triplet(model.get("targetXSS"), "xlss", "xhss", "xpss"),
+        "remaining_xss": None,
+        "completed_xss": None,
+        "original_target_xss": None,
+        "daily_goal_complete": None,
+        "recovery_needed": None,
+        "training_advice_as_of": (model.get("at_state") or {}).get("start_date"),
+        "targets_source": None,
+        "based_on_day": None,
+    }
+
+
+def compact_planned_training_advice(payload: dict[str, Any], *, at: str) -> dict[str, Any]:
+    advice = payload.get("training_advice") if isinstance(payload, dict) else {}
+    if not isinstance(advice, dict):
+        advice = {}
+    return {
+        "source": "xert_recommended_training",
+        "source_endpoint": "/recommended-training",
+        "source_scope": "planned_time",
+        "at": at,
+        "training_status": advice.get("training_status"),
+        "target_xss": _system_triplet(advice.get("targetXSS"), "xlss", "xhss", "xpss"),
+        "remaining_xss": _system_triplet(advice.get("remainingXSS"), "xlss", "xhss", "xpss"),
+        "completed_xss": _system_triplet(advice.get("completedXSS"), "xlss", "xhss", "xpss"),
+        "original_target_xss": _system_triplet(
+            advice.get("originalTargetXSS"), "xlss", "xhss", "xpss"
+        ),
+        "daily_goal_complete": advice.get("daily_goal_complete"),
+        "recovery_needed": advice.get("recovery_needed"),
+        "training_advice_as_of": advice.get("training_advice_as_of"),
+        "targets_source": advice.get("targets_source"),
+        "based_on_day": advice.get("based_on_day"),
+    }
+
+
+def _planned_advice_value(at: str) -> str:
+    try:
+        planned_at = datetime.fromisoformat(at.replace("Z", "+00:00"))
+    except (AttributeError, ValueError) as exc:
+        raise ValueError("at must be an ISO date-time") from exc
+    if planned_at.tzinfo is None:
+        planned_at = planned_at.replace(tzinfo=LOCAL_TIMEZONE)
+    return (planned_at - timedelta(seconds=1)).astimezone(timezone.utc).isoformat(
+        timespec="seconds"
+    )
 
 
 def _system_triplet(source: Any, low_key: str, high_key: str, peak_key: str) -> dict[str, Any]:

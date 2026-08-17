@@ -41,6 +41,11 @@ Prefer the Xert MCP tools when they are available:
   hours, training status, and target XSS. Use `view=full` only when both source
   payloads or model parameters are required. It does not project a future state,
   fetch planned-time advice, or add activity-specific readiness context.
+- `get_training_advice` returns Xert advice. Omit `at` for current advice from
+  `/my-fitness`; supply an ISO date-time for planned-time advice from
+  `/recommended-training`, resolved immediately before that planned start.
+  Use `view=summary` normally and `view=full` only for the selected raw source
+  payload. This tool does not add activity load or cross-source readiness.
 
 The CLI remains the development/fallback interface and exposes Xert operations
 that have not yet been added to MCP. Both transports call the same Python

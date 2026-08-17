@@ -24,6 +24,7 @@ ALL_TOOL_NAMES = (
     "get_note",
     "set_note",
     "get_training_state",
+    "get_training_advice",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -78,6 +79,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     },
     "get_training_state": {
         "title": "Get Xert Training State",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_training_advice": {
+        "title": "Get Xert Training Advice",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -408,6 +416,45 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["get_training_state"],
     },
+    "get_training_advice": {
+        "name": "get_training_advice",
+        "description": (
+            "Get Xert training advice for now or a planned time. Omit at for the "
+            "current /my-fitness advice; provide at for /recommended-training advice "
+            "resolved immediately before that planned start. This does not include "
+            "activity-specific load or cross-source readiness."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": (
+                        "Optional planned ISO date-time. Naive values use the user's "
+                        "local timezone; omit for advice now."
+                    ),
+                },
+                "view": {
+                    "type": "string",
+                    "enum": ["summary", "full"],
+                    "default": "summary",
+                    "description": "summary returns normalized advice; full returns the selected source payload.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "view": {"type": "string", "description": "Returned advice representation."},
+                "advice": _object("Normalized advice or selected complete source payload."),
+            },
+            "required": ["view", "advice"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["get_training_advice"],
+    },
 }
 
 
@@ -516,6 +563,12 @@ class XertToolService:
         if name == "get_training_state":
             view = arguments.get("view", "summary")
             return {"view": view, "state": service.get_training_state(view=view)}
+        if name == "get_training_advice":
+            view = arguments.get("view", "summary")
+            return {
+                "view": view,
+                "advice": service.get_training_advice(at=arguments.get("at"), view=view),
+            }
         path = arguments["workout_path"]
         view = arguments.get("view", "resolved")
         workout = service.get_workout(path, view=view)
@@ -548,10 +601,9 @@ def create_sdk_server(service: XertToolService) -> Any:
         "xert",
         version="0.1.0",
         instructions=(
-            "Read Xert cycling activities, workouts, calendar notes, and current "
-            "training state, and set calendar-note text. Inclusive dates use the "
-            "user's local calendar. Use editable workout view when complete Workout "
-            "Designer rows are required."
+            "Read Xert cycling activities, workouts, calendar notes, current training "
+            "state, and current or planned-time training advice, and set calendar-note "
+            "text. Inclusive dates use the user's local calendar."
         ),
     )
 

@@ -52,6 +52,10 @@ class FakeXertService:
         self.calls.append(("get_training_state", view))
         return {"as_of": "2026-08-17T09:00:00+02:00"} if view == "summary" else {"training_info": {}}
 
+    def get_training_advice(self, *, at=None, view="summary"):
+        self.calls.append(("get_training_advice", at, view))
+        return {"source_scope": "planned_time" if at else "current", "at": at}
+
 
 class XertMcpSchemaTests(unittest.TestCase):
     def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
@@ -66,6 +70,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "get_note",
                 "set_note",
                 "get_training_state",
+                "get_training_advice",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -165,6 +170,14 @@ class XertMcpDispatchTests(unittest.TestCase):
         result = self.tools.call_tool("get_training_state", {"view": "full"})
         self.assertEqual(result["view"], "full")
         self.assertEqual(result["state"], {"training_info": {}})
+
+    def test_training_advice_dispatches_optional_time_and_view(self) -> None:
+        result = self.tools.call_tool(
+            "get_training_advice",
+            {"at": "2026-08-18T09:00:00+02:00", "view": "full"},
+        )
+        self.assertEqual(result["view"], "full")
+        self.assertEqual(result["advice"]["source_scope"], "planned_time")
 
 
 class XertServiceTests(unittest.TestCase):
@@ -269,6 +282,46 @@ class XertServiceTests(unittest.TestCase):
         self.assertEqual(summary["training_load"], {"low": 70, "high": 8, "peak": 2})
         self.assertEqual(summary["recovery_hours"]["high"], 4)
         self.assertEqual(full["training_info"], training_info)
+
+    def test_training_advice_selects_current_or_planned_source(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        current = {
+            "source": "xert_web_direct",
+            "training_status": "Fresh",
+            "targetXSS": {"xlss": 40, "xhss": 2, "xpss": 0},
+            "at_state": {"start_date": "2026-08-17T09:00:00+02:00"},
+        }
+        planned = {
+            "training_advice": {
+                "training_status": "Tired",
+                "targetXSS": {"xlss": 20, "xhss": 0, "xpss": 0},
+                "remainingXSS": {"xlss": 10, "xhss": 0, "xpss": 0},
+                "completedXSS": {"xlss": 10, "xhss": 0, "xpss": 0},
+            }
+        }
+        with (
+            patch.object(SERVICE, "fetch_recovery_model_with_login", return_value=current),
+            patch.object(
+                SERVICE,
+                "fetch_recommended_training_with_login",
+                return_value=planned,
+            ) as fetch_planned,
+        ):
+            current_summary = service.get_training_advice()
+            planned_summary = service.get_training_advice(at="2026-08-18T09:00:00+02:00")
+        self.assertEqual(current_summary["source_scope"], "current")
+        self.assertEqual(current_summary["target_xss"]["low"], 40)
+        self.assertEqual(planned_summary["source_scope"], "planned_time")
+        self.assertEqual(planned_summary["remaining_xss"]["low"], 10)
+        fetch_planned.assert_called_once_with(
+            username="user",
+            password="secret",
+            date_value="2026-08-18T06:59:59+00:00",
+            recent=True,
+            additional=False,
+            sport=None,
+        )
 
 
 if __name__ == "__main__":
