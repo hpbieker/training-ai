@@ -137,7 +137,7 @@ Interpretation and authority rules:
 
 - Treat Xert staff material as authoritative for qualitative semantics and the
   local equations as Calculate-validated rather than published Xert formulas.
-- Use `xert_strain_cli.py` for offline calculations; do not recreate formulas in a
+- Use MCP `calculate_strain` for offline calculations; do not recreate formulas in a
   caller or training-analysis helper.
 - Mark the first `P >= MPA` as point-of-failure and reject an ordinary designed
   workout as feasible for that signature.

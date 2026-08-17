@@ -32,7 +32,7 @@ ALL_TOOL_NAMES = (
     "get_training_forecast",
     "calculate_workout_capacity",
     "calculate_strain",
-    "solve_endurance_duration",
+    "solve_segment_duration",
     "project_load_model",
     "calculate_workout",
 )
@@ -138,7 +138,7 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     },
     "calculate_workout_capacity": {"title": "Calculate Xert Workout Capacity", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
     "calculate_strain": {"title": "Calculate Xert Strain", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
-    "solve_endurance_duration": {"title": "Solve Xert Endurance Duration", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
+    "solve_segment_duration": {"title": "Solve Xert Segment Duration", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
     "project_load_model": {"title": "Project Xert Load Model", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
     "calculate_workout": {"title": "Calculate Xert Workout", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 }
@@ -857,20 +857,21 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "outputSchema": _object("Local Xert strain calculation."),
         "annotations": TOOL_ANNOTATIONS["calculate_strain"],
     },
-    "solve_endurance_duration": {
-        "name": "solve_endurance_duration",
-        "description": "Solve exactly one adjustable sub-TP segment duration to match a target Low XSS for the complete structure.",
+    "solve_segment_duration": {
+        "name": "solve_segment_duration",
+        "description": "Solve exactly one adjustable segment duration to match one XSS target for the complete structure.",
         "inputSchema": {"type": "object", "properties": {
             "signature": _object("Fitness Signature with tp, hie in joules, and pp."),
             "segments": _array("Complete ordered workout segments."),
             "adjustable_segment_index": {"type": "integer", "minimum": 0, "description": "Zero-based adjustable segment index."},
-            "target_low_xss": {"type": "number", "exclusiveMinimum": 0, "description": "Target Low XSS for the complete workout."},
+            "target_metric": {"type": "string", "enum": ["low_xss", "high_xss", "peak_xss", "total_xss"], "description": "Complete-workout XSS metric to match."},
+            "target_value": {"type": "number", "exclusiveMinimum": 0, "description": "Target value in XSS points."},
             "minimum_duration_seconds": {"type": "integer", "minimum": 1, "default": 1, "description": "Minimum adjustable duration."},
             "maximum_duration_seconds": {"type": "integer", "minimum": 1, "default": 28800, "description": "Maximum adjustable duration."},
-            "tolerance_xss": {"type": "number", "exclusiveMinimum": 0, "default": 0.05, "description": "Accepted Low XSS error."}},
-            "required": ["signature", "segments", "adjustable_segment_index", "target_low_xss"], "additionalProperties": False},
-        "outputSchema": _object("Solved endurance duration and complete strain result."),
-        "annotations": TOOL_ANNOTATIONS["solve_endurance_duration"],
+            "absolute_tolerance": {"type": "number", "exclusiveMinimum": 0, "default": 0.05, "description": "Accepted absolute error in XSS points."}},
+            "required": ["signature", "segments", "adjustable_segment_index", "target_metric", "target_value"], "additionalProperties": False},
+        "outputSchema": _object("Solved segment duration and complete strain result."),
+        "annotations": TOOL_ANNOTATIONS["solve_segment_duration"],
     },
     "project_load_model": {
         "name": "project_load_model",
@@ -1082,8 +1083,8 @@ class XertToolService:
             return service.calculate_strain(
                 signature=arguments["signature"], segments=arguments["segments"]
             )
-        if name == "solve_endurance_duration":
-            return service.solve_endurance_duration(**arguments)
+        if name == "solve_segment_duration":
+            return service.solve_segment_duration(**arguments)
         if name == "project_load_model":
             return service.project_load_model(**arguments)
         if name == "calculate_workout":

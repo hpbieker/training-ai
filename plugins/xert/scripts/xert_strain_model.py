@@ -511,19 +511,20 @@ def calculate_workout(
     return result
 
 
-def solve_endurance_duration(
+def solve_segment_duration(
     *,
     signature: dict[str, Any],
     segments: Iterable[dict[str, Any]],
     adjustable_segment_index: int,
-    target_low_xss: float,
+    target_metric: str,
+    target_value: float,
     minimum_duration_seconds: int = 1,
     maximum_duration_seconds: int = 8 * 60 * 60,
-    tolerance_xss: float = 0.05,
+    absolute_tolerance: float = 0.05,
 ) -> dict[str, Any]:
-    """Solve one sub-TP endurance segment so complete-workout low XSS matches."""
+    """Solve one segment duration so one complete-workout XSS metric matches."""
 
-    tp, _, _ = validate_signature(signature)
+    validate_signature(signature)
     segment_list = [dict(segment) for segment in segments]
     if not segment_list:
         raise ValueError("segments must contain at least one segment")
@@ -533,9 +534,12 @@ def solve_endurance_duration(
         or not 0 <= adjustable_segment_index < len(segment_list)
     ):
         raise ValueError("adjustable_segment_index is out of range")
-    target = _finite_number(target_low_xss, field="target_low_xss")
+    if target_metric not in {"low_xss", "high_xss", "peak_xss", "total_xss"}:
+        raise ValueError("target_metric must be low_xss, high_xss, peak_xss, or total_xss")
+    xss_key = target_metric.removesuffix("_xss")
+    target = _finite_number(target_value, field="target_value")
     if target <= 0:
-        raise ValueError("target_low_xss must be positive")
+        raise ValueError("target_value must be positive")
     if (
         isinstance(minimum_duration_seconds, bool)
         or isinstance(maximum_duration_seconds, bool)
@@ -545,21 +549,9 @@ def solve_endurance_duration(
         or maximum_duration_seconds < minimum_duration_seconds
     ):
         raise ValueError("require 0 < minimum duration <= maximum duration")
-    tolerance = _finite_number(tolerance_xss, field="tolerance_xss")
+    tolerance = _finite_number(absolute_tolerance, field="absolute_tolerance")
     if tolerance <= 0:
-        raise ValueError("tolerance_xss must be positive")
-
-    adjustable = segment_list[adjustable_segment_index]
-    start_power = _finite_number(
-        adjustable.get("power", adjustable.get("start_power")),
-        field="adjustable segment power",
-    )
-    end_power = _finite_number(
-        adjustable.get("end_power", start_power),
-        field="adjustable segment end_power",
-    )
-    if start_power > tp or end_power > tp:
-        raise ValueError("adjustable endurance segment must remain at or below TP")
+        raise ValueError("absolute_tolerance must be positive")
 
     def calculate_at(duration_seconds: int) -> dict[str, Any]:
         candidate_segments = [dict(segment) for segment in segment_list]
@@ -573,39 +565,37 @@ def solve_endurance_duration(
 
     lower = calculate_at(minimum_duration_seconds)
     upper = calculate_at(maximum_duration_seconds)
-    lower_xss = float(lower["calculation"]["xss"]["low"])
-    upper_xss = float(upper["calculation"]["xss"]["low"])
+    lower_xss = float(lower["calculation"]["xss"][xss_key])
+    upper_xss = float(upper["calculation"]["xss"][xss_key])
     if target < lower_xss - tolerance or target > upper_xss + tolerance:
-        raise ValueError(
-            "target_low_xss is outside the configured endurance-duration bounds"
-        )
+        raise ValueError("target_value is outside the configured duration bounds")
 
     best = min(
         (lower, upper),
-        key=lambda item: abs(float(item["calculation"]["xss"]["low"]) - target),
+        key=lambda item: abs(float(item["calculation"]["xss"][xss_key]) - target),
     )
     lo = minimum_duration_seconds
     hi = maximum_duration_seconds
     while lo <= hi:
         mid = (lo + hi) // 2
         candidate = calculate_at(mid)
-        candidate_low = float(candidate["calculation"]["xss"]["low"])
-        if abs(candidate_low - target) < abs(
-            float(best["calculation"]["xss"]["low"]) - target
+        candidate_value = float(candidate["calculation"]["xss"][xss_key])
+        if abs(candidate_value - target) < abs(
+            float(best["calculation"]["xss"][xss_key]) - target
         ):
             best = candidate
-        if candidate_low < target:
+        if candidate_value < target:
             lo = mid + 1
-        elif candidate_low > target:
+        elif candidate_value > target:
             hi = mid - 1
         else:
             best = candidate
             break
 
     calculation = best["calculation"]
-    achieved_low = float(calculation["xss"]["low"])
+    achieved_value = float(calculation["xss"][xss_key])
     return {
-        "source": "local_xert_endurance_duration_solver",
+        "source": "local_xert_segment_duration_solver",
         "network_used": False,
         "model_basis": calculation["model_basis"],
         "signature": calculation["signature"],
@@ -614,11 +604,13 @@ def solve_endurance_duration(
             "duration_seconds"
         ],
         "duration_seconds": calculation["duration_seconds"],
-        "target_low_xss": target,
+        "target_metric": target_metric,
+        "target_value": target,
+        "achieved_target_value": achieved_value,
         "achieved_xss": calculation["xss"],
-        "low_xss_error": achieved_low - target,
-        "tolerance_xss": tolerance,
-        "matched_within_tolerance": abs(achieved_low - target) <= tolerance,
+        "target_error": achieved_value - target,
+        "absolute_tolerance": tolerance,
+        "matched_within_tolerance": abs(achieved_value - target) <= tolerance,
         "segments": best["segments"],
         "difficulty": calculation["difficulty"],
         "feasibility": calculation["feasibility"],

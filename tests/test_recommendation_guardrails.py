@@ -295,7 +295,7 @@ class TrainingTargetContractTests(unittest.TestCase):
             )
 
     def test_vt1_requires_xert_solved_endurance_duration(self):
-        with self.assertRaisesRegex(SystemExit, "solve-endurance"):
+        with self.assertRaisesRegex(SystemExit, "solve_segment_duration"):
             require_endurance_solution_for_selected_domain(
                 intensity_decision={"selected_domain": "vt1"},
                 target_resolution={"target_minutes": 220.2},

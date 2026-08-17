@@ -225,16 +225,9 @@ synonym for workout quality or plan compliance.
 Use the pure local model when the Fitness Signature and workout structure are
 already known:
 
-```bash
-python3 -B plugins/xert/scripts/xert_strain_cli.py calculate \
-  --signature-tp 296 --signature-hie 14000 --signature-pp 775 \
-  --segment 10:00@180 \
-  --segment 3:00@340 \
-  --segment 3:00@120
-```
+Call MCP `calculate_strain` with the Fitness Signature and ordered segments.
 
-Linear ramps use `duration@start-end`, for example `05:00@150-250`. Add
-`--series-output /tmp/result.json` only when the second-by-second path is needed.
+Linear ramps supply both `power` and `end_power` on the segment.
 
 The default summary must retain:
 

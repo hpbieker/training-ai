@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from xert_strain_model import calculate_workout, solve_endurance_duration
+from xert_strain_model import calculate_workout
 
 
 def _duration_seconds(value: str) -> int:
@@ -267,7 +267,7 @@ def _summary(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_parser() -> argparse.ArgumentParser:
+def _legacy_build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Calculate and compare Xert XSS locally without network access."
     )
@@ -327,6 +327,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--maximum-duration-seconds", type=int, default=8 * 60 * 60
     )
     solve_endurance.add_argument("--tolerance-xss", type=float, default=0.05)
+    return parser
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Compare two local Xert workout calculations.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    compare = subparsers.add_parser("compare", help="Compare two local workout JSON specs")
+    compare.add_argument("left")
+    compare.add_argument("right")
+    compare.add_argument("--detailed", action="store_true")
     return parser
 
 

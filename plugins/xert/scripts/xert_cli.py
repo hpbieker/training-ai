@@ -49,7 +49,7 @@ from xert_api import (
 )
 
 
-def main() -> None:
+def _legacy_main() -> None:
     parser = argparse.ArgumentParser(description="Xert model and Planner utilities.")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("recovery-model", help="Fetch model inputs and calculated recovery hours")
@@ -498,6 +498,81 @@ def main() -> None:
         print(json.dumps({"wrote": output_path}, indent=2, sort_keys=True))
     else:
         print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def main() -> None:
+    """Expose only Xert operations that do not have an MCP equivalent."""
+
+    parser = argparse.ArgumentParser(description="Xert readiness adapter and Planner utilities.")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    readiness = subparsers.add_parser(
+        "readiness-input", help="Compact selected Xert fields for training-analysis"
+    )
+    readiness.add_argument("--activity", action="append", default=[])
+    readiness.add_argument(
+        "--advice-source",
+        choices=("current", "recommended-training", "auto"),
+        default="current",
+    )
+    readiness.add_argument("--advice-date")
+    readiness.add_argument("--advice-at")
+    readiness.add_argument("--advice-now")
+    calendar_events = subparsers.add_parser("calendar-events")
+    calendar_events.add_argument("date")
+    calendar_event = subparsers.add_parser("calendar-event")
+    calendar_event.add_argument("path")
+    calendar_event.add_argument("--date", required=True)
+    create = subparsers.add_parser("calendar-event-create")
+    create.add_argument("--event-json", required=True)
+    create.add_argument("--yes", action="store_true")
+    update = subparsers.add_parser("calendar-event-update")
+    update.add_argument("path")
+    update.add_argument("--date", required=True)
+    update.add_argument("--patch-json", required=True)
+    update.add_argument("--yes", action="store_true")
+    delete = subparsers.add_parser("calendar-event-delete")
+    delete.add_argument("path")
+    delete.add_argument("--date", required=True)
+    delete.add_argument("--yes", action="store_true")
+
+    args = parser.parse_args()
+    credentials = discover_xert_credentials()
+    username = _require(credentials.username, "XERT_USERNAME")
+    password = _require(credentials.password, "XERT_PASSWORD")
+    if args.command == "readiness-input":
+        payload = build_readiness_input(
+            username=username,
+            password=password,
+            activity_paths=args.activity,
+            advice_source=args.advice_source,
+            advice_date=args.advice_date,
+            advice_at=args.advice_at,
+            advice_now=args.advice_now,
+        )
+    else:
+        opener = xert_web_login(username=username, password=password)
+        if args.command == "calendar-events":
+            payload = fetch_calendar_events_with_opener(opener, args.date)
+        elif args.command == "calendar-event":
+            payload = fetch_calendar_event_with_opener(opener, args.date, args.path)
+            if payload is None:
+                raise SystemExit(f"Xert calendar event not found: {args.path}")
+        elif args.command == "calendar-event-create":
+            event = _json_object(args.event_json, "--event-json")
+            payload = ({"dry_run": True, "event": event} if not args.yes
+                       else create_calendar_event_with_opener(opener, event))
+        elif args.command == "calendar-event-update":
+            patch = _json_object(args.patch_json, "--patch-json")
+            current = fetch_calendar_event_with_opener(opener, args.date, args.path)
+            if current is None:
+                raise SystemExit(f"Xert calendar event not found: {args.path}")
+            payload = ({"dry_run": True, "current": current, "patch": patch} if not args.yes
+                       else update_calendar_event_with_opener(opener, args.date, args.path, patch))
+        else:
+            if not args.yes:
+                raise SystemExit("Refusing to delete Xert calendar event without --yes")
+            payload = delete_calendar_event_with_opener(opener, args.date, args.path)
+    print(json.dumps(payload, indent=2, sort_keys=True))
 
 
 def fetch_training_info(

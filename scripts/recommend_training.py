@@ -19,7 +19,7 @@ XERT_SCRIPTS = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scrip
 if str(XERT_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(XERT_SCRIPTS))
 
-from xert_strain_model import solve_endurance_duration
+from xert_strain_model import solve_segment_duration
 
 from plan_state import (
     DEFAULT_STATE_PATH,
@@ -2861,17 +2861,24 @@ def solve_endurance_structure(
     if target_low is None or target_low <= 0:
         raise ValueError("target resolution has no applicable Xert low-XSS target")
 
-    return solve_endurance_duration(
+    solution = solve_segment_duration(
         signature=structure.get("signature"),
         segments=structure.get("segments"),
         adjustable_segment_index=structure.get("adjustable_segment_index"),
-        target_low_xss=target_low,
+        target_metric="low_xss",
+        target_value=target_low,
         minimum_duration_seconds=structure.get("minimum_duration_seconds", 1),
         maximum_duration_seconds=structure.get(
             "maximum_duration_seconds", 8 * 60 * 60
         ),
-        tolerance_xss=structure.get("tolerance_xss", 0.05),
+        absolute_tolerance=structure.get("tolerance_xss", 0.05),
     )
+    return {
+        **solution,
+        "target_low_xss": target_low,
+        "low_xss_error": solution["target_error"],
+        "tolerance_xss": solution["absolute_tolerance"],
+    }
 
 
 def require_endurance_solution_for_selected_domain(
@@ -2886,7 +2893,7 @@ def require_endurance_solution_for_selected_domain(
         return
     raise SystemExit(
         "A recovery/VT1 recommendation requires --endurance-workout-json from "
-        "xert_strain_cli.py solve-endurance. Mixed-history XSS/min cannot define "
+        "the Xert solve_segment_duration model. Mixed-history XSS/min cannot define "
         "the prescribed endurance duration."
     )
 

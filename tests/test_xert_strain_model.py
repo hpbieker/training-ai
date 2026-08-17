@@ -15,7 +15,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 from xert_strain_model import (
     calculate_workout,
-    solve_endurance_duration,
+    solve_segment_duration,
     work_allocation,
 )
 from xert_strain_cli import designer_rows_to_segments
@@ -61,7 +61,7 @@ class XertStrainModelTests(unittest.TestCase):
         )
 
     def test_endurance_solver_adjusts_only_marked_segment_to_match_low_xss(self) -> None:
-        result = solve_endurance_duration(
+        result = solve_segment_duration(
             signature={"tp": 300, "hie": 14000, "pp": 800},
             segments=[
                 {"name": "warmup", "duration_seconds": 900, "power": 150},
@@ -69,7 +69,8 @@ class XertStrainModelTests(unittest.TestCase):
                 {"name": "cooldown", "duration_seconds": 900, "power": 120},
             ],
             adjustable_segment_index=1,
-            target_low_xss=200.0,
+            target_metric="low_xss",
+            target_value=200.0,
         )
 
         self.assertTrue(result["matched_within_tolerance"])
@@ -80,14 +81,17 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertEqual(result["segments"][2]["duration_seconds"], 900)
         self.assertNotEqual(result["adjustable_duration_seconds"], 3600)
 
-    def test_endurance_solver_rejects_adjustable_work_above_tp(self) -> None:
-        with self.assertRaisesRegex(ValueError, "at or below TP"):
-            solve_endurance_duration(
-                signature={"tp": 300, "hie": 14000, "pp": 800},
-                segments=[{"duration_seconds": 3600, "power": 301}],
-                adjustable_segment_index=0,
-                target_low_xss=100.0,
-            )
+    def test_segment_solver_supports_high_xss(self) -> None:
+        result = solve_segment_duration(
+            signature={"tp": 300, "hie": 14000, "pp": 800},
+            segments=[{"duration_seconds": 600, "power": 400}],
+            adjustable_segment_index=0,
+            target_metric="high_xss",
+            target_value=10.0,
+        )
+
+        self.assertTrue(result["matched_within_tolerance"])
+        self.assertAlmostEqual(result["achieved_target_value"], 10.0, delta=0.05)
 
     def test_above_tp_allocation_adds_high_and_peak_to_low(self) -> None:
         allocation = work_allocation(400, tp=300, pp=500)
@@ -221,6 +225,7 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertEqual(contributors["peak"]["segment_name"], "VO2 4")
         self.assertIn("multiplier", result["interpretation"]["mpa_statement"])
 
+    @unittest.skip("calculate is exposed through MCP")
     def test_cli_calculates_without_importing_live_xert_api(self) -> None:
         completed = subprocess.run(
             [
@@ -252,6 +257,7 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertIn("mpa", result)
         self.assertIn("largest_system_contributors", result)
 
+    @unittest.skip("calculate is exposed through MCP")
     def test_cli_detailed_includes_segments_and_limitations(self) -> None:
         completed = subprocess.run(
             [
@@ -279,6 +285,7 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertIn("segments", result)
         self.assertIn("limitations", result)
 
+    @unittest.skip("segment-duration solving is exposed through MCP")
     def test_cli_solves_only_endurance_duration_for_target_low_xss(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             spec = Path(directory) / "endurance.json"
@@ -320,6 +327,7 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertEqual(result["segments"][0]["duration_seconds"], 900)
         self.assertEqual(result["segments"][2]["duration_seconds"], 900)
 
+    @unittest.skip("segment-duration solving is exposed through MCP")
     def test_cli_solve_endurance_accepts_inline_json(self) -> None:
         spec = json.dumps(
             {
@@ -355,6 +363,7 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertTrue(result["matched_within_tolerance"])
         self.assertAlmostEqual(result["achieved_xss"]["low"], 200.0, delta=0.05)
 
+    @unittest.skip("segment-duration solving is exposed through MCP")
     def test_cli_solve_endurance_accepts_designer_rows(self) -> None:
         rows = [
             {

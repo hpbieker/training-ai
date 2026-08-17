@@ -1,7 +1,7 @@
 # Training Load, Recovery Load, and Fitness Development
 
 Use this reference to reason about how training changes Xert's state over time.
-Use `xert_cli.py load-model` for numerical answers; the mental model below is
+Use MCP `project_load_model` for numerical answers; the mental model below is
 for explaining direction, timing, and tradeoffs without inventing precision.
 Read [sources.md](sources.md) before making evidence or validation claims.
 
@@ -118,11 +118,8 @@ To gain a requested signature amount at a chosen horizon:
 
 Use the implementation rather than calculating this manually:
 
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py load-model \
-  --target-at 2026-08-10T09:00:00+02:00 --workout-after-hours 4 \
-  --build-tp 1 --build-hie 0.5 --build-pp 5 --summary
-```
+Call MCP `project_load_model` with `target_at`, `workout_after_hours`, and the
+desired `build_tp`, `build_hie`, and `build_pp` values.
 
 The returned `single_impulse_xss_at_workout_time` values are system-equivalent
 requirements. They answer how much Low, High, or Peak XSS the response model
@@ -132,24 +129,17 @@ actual workout structure.
 
 For a known planned dose:
 
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py load-model \
-  --target-at 2026-08-09T09:00:00+02:00 --workout-after-hours 6 \
-  --low-xss 80 --high-xss 8 --peak-xss 2
-```
+Call MCP `project_load_model` with `target_at`, `workout_after_hours`, and the
+known `low_xss`, `high_xss`, and `peak_xss` dose.
 
 For several workouts, use `simulate_calendar_sequence`. Planner forecasts
 aggregate multiple planned events on one local day and apply the combined XSS
 at the last event time. Use independent impulses for completed activities or
 an explicitly hypothetical sequence.
 
-For a daily linear Low-XSS ramp to an absolute TP target, use:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py load-model \
-  --target-at 2027-01-01T09:00:00 \
-  --target-tp 300 --distribution linear --frequency daily --summary
-```
+Daily linear Low-XSS ramps are not exposed by the narrow MCP projection tool;
+use the model module directly from repo analysis code when that specialized
+simulation is required.
 
 The default start dose is the daily Low XSS that maintains the current Low TL.
 `--start-low-xss` can override it. The solver weights every daily impulse by

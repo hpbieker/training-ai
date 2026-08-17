@@ -48,6 +48,10 @@ class CliSurfaceTests(unittest.TestCase):
             "workout-row-remove",
             "workout-copy",
             "workout-delete",
+            "recovery-model",
+            "workout-capacity",
+            "load-model",
+            "workout-calculate",
         )
         for command in removed:
             with self.subTest(command=command), patch.object(
@@ -336,6 +340,7 @@ class WorkoutCalculateRowsTests(unittest.TestCase):
         self.assertNotIn("training_status", summary)
         self.assertNotIn("freshness", summary)
 
+    @unittest.skip("workout Calculate is exposed through MCP")
     def test_series_output_writes_full_payload_and_keeps_stdout_compact(self) -> None:
         calculated = {
             "saved": False,
@@ -384,6 +389,7 @@ class WorkoutCalculateRowsTests(unittest.TestCase):
             self.assertNotIn("series", printed)
             self.assertEqual(printed["series_output"], str(output_path))
 
+    @unittest.skip("workout Calculate is exposed through MCP")
     def test_signature_overrides_are_forwarded_to_unsaved_calculate(self) -> None:
         argv = [
             "xert_cli.py",

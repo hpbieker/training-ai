@@ -77,8 +77,8 @@ Prefer the Xert MCP tools when they are available:
   `fresh_at`. Both timestamps are mandatory.
 - `calculate_strain` performs the local Xert strain calculation for an explicit
   Fitness Signature and ordered power segments; it does not call Xert.
-- `solve_endurance_duration` changes exactly one selected sub-TP segment to
-  meet a target Low XSS while preserving the rest of the workout.
+- `solve_segment_duration` changes exactly one selected segment duration to
+  meet one Low, High, Peak, or total XSS target while preserving the rest.
 - `project_load_model` projects Training Load, Recovery Load, Form, readiness,
   and marginal signature response to an explicit target time.
 - `calculate_workout` sends a complete, unsaved Workout Designer structure to
@@ -91,16 +91,9 @@ operations.
 ## Choose The Narrowest Command
 
 ```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-capacity --as-of <ISO-datetime> --fresh-at <ISO-datetime>
-python3 -B plugins/xert/scripts/xert_cli.py readiness-input [--activity <path>]
-python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto --advice-at <ISO-local-datetime>
-python3 -B plugins/xert/scripts/xert_cli.py load-model --target-at <ISO-datetime> --workout-after-hours <H> --low-xss <XSS> --high-xss <XSS> --peak-xss <XSS>
 python3 -B plugins/xert/scripts/xert_cli.py calendar-events <YYYY-MM-DD>
 python3 -B plugins/xert/scripts/xert_cli.py calendar-event <path> --date <YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_cli.py workout-calculate --row-json '<designer-row-json>'
-python3 -B plugins/xert/scripts/xert_strain_cli.py calculate --signature-tp <W> --signature-hie <J> --signature-pp <W> --segment <MM:SS@W>
-python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <plan-structure.json>
-python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <designer-rows.json> --adjustable-row <one-based-row> --target-low-xss <XSS> --signature-tp <W> --signature-hie <J> --signature-pp <W>
+python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto --advice-at <ISO-local-datetime>
 ```
 
 - Use MCP `list_activities` and `get_activity` for activity discovery and
@@ -112,7 +105,7 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   signature.
 - Compose readiness in the repo-level training-analysis workflow from the
   narrow Xert MCP source calls. Do not add a source-plugin readiness score.
-- Use MCP `solve_endurance_duration` after the plan role and complete workout format have
+- Use MCP `solve_segment_duration` after the plan role and complete workout format have
   been resolved. Mark exactly one sub-TP segment as adjustable and supply the
   applicable target low XSS. The solver preserves every fixed quality,
   warm-up, recovery, and cool-down segment and changes only the endurance
@@ -197,11 +190,10 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
 - Read [references/strain-model.md](references/strain-model.md) when explaining how
   XSS works, relating low/high/peak XSS to workout structure, comparing XSS
   profiles, or calculating a known workout without network access. Prefer the
-  offline `xert_strain_cli.py` whenever the segments can be resolved. If only
+  MCP `calculate_strain` whenever the segments can be resolved. If only
   the current signature is missing, obtain it with MCP `get_training_state` and continue
   locally; a missing signature alone is not a reason to use live Calculate. Its
-  default output is the analysis-ready summary; add `--detailed` only when
-  segment diagnostics or model limitations are needed.
+  output is the analysis-ready local model result.
 
 Credentials come from `username` and `password` in the user-owned
 `~/.xert_mcp.json`. Explicit `XERT_USERNAME` and `XERT_PASSWORD` environment

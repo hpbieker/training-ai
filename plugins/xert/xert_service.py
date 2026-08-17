@@ -41,7 +41,7 @@ from xert_common import (  # noqa: E402
 )
 from xert_recovery import calculate_workout_capacity, fetch_recovery_model_with_opener  # noqa: E402
 from xert_load_model import calculate_load_projection  # noqa: E402
-from xert_strain_model import calculate_workout as calculate_strain_workout, solve_endurance_duration  # noqa: E402
+from xert_strain_model import calculate_workout as calculate_strain_workout, solve_segment_duration  # noqa: E402
 from xert_workouts import (  # noqa: E402
     create_workout as create_saved_workout,
     calculate_new_workout,
@@ -447,8 +447,8 @@ class XertService:
     def calculate_strain(self, *, signature: dict[str, Any], segments: list[dict[str, Any]]) -> dict[str, Any]:
         return calculate_strain_workout(signature=signature, segments=segments, include_series=False)
 
-    def solve_endurance_duration(self, **arguments: Any) -> dict[str, Any]:
-        return solve_endurance_duration(**arguments)
+    def solve_segment_duration(self, **arguments: Any) -> dict[str, Any]:
+        return solve_segment_duration(**arguments)
 
     def project_load_model(
         self, *, target_at: str, workout_after_hours: float = 0.0,

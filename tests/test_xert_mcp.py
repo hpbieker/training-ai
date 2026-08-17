@@ -97,8 +97,8 @@ class FakeXertService:
         self.calls.append(("calculate_strain", kwargs))
         return {"xss": {"low": 50, "high": 0, "peak": 0}}
 
-    def solve_endurance_duration(self, **kwargs):
-        self.calls.append(("solve_endurance_duration", kwargs))
+    def solve_segment_duration(self, **kwargs):
+        self.calls.append(("solve_segment_duration", kwargs))
         return {"adjustable_duration_seconds": 3600}
 
     def project_load_model(self, **kwargs):
@@ -130,7 +130,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "get_training_forecast",
                 "calculate_workout_capacity",
                 "calculate_strain",
-                "solve_endurance_duration",
+                "solve_segment_duration",
                 "project_load_model",
                 "calculate_workout",
             ),
@@ -163,7 +163,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                     "idempotentHint": not (
                         writes_session_file or creates_workout or deletes_workout
                     ),
-                    "openWorldHint": name not in {"calculate_strain", "solve_endurance_duration"},
+                    "openWorldHint": name not in {"calculate_strain", "solve_segment_duration"},
                 },
             )
 
@@ -421,10 +421,10 @@ class XertMcpDispatchTests(unittest.TestCase):
             "signature": {"tp": 300, "hie": 14000, "pp": 800},
             "segments": [{"duration_seconds": 600, "power": 200}],
         })["xss"]["low"], 50)
-        self.assertEqual(self.tools.call_tool("solve_endurance_duration", {
+        self.assertEqual(self.tools.call_tool("solve_segment_duration", {
             "signature": {"tp": 300, "hie": 14000, "pp": 800},
             "segments": [{"duration_seconds": 600, "power": 200}],
-            "adjustable_segment_index": 0, "target_low_xss": 50,
+            "adjustable_segment_index": 0, "target_metric": "low_xss", "target_value": 50,
         })["adjustable_duration_seconds"], 3600)
         self.assertEqual(self.tools.call_tool("project_load_model", {
             "target_at": "2026-08-19T09:00:00+02:00",

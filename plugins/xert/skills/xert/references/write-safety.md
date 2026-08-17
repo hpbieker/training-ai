@@ -62,54 +62,19 @@ created workout is read back and verified.
 
 ## Synthetic Calculation
 
-Use `workout-calculate` for controlled, unsaved XSS probes:
+Use MCP `calculate_workout` with complete Designer rows for controlled, unsaved
+XSS probes.
 
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-calculate --duration 10:00 --power-type relative_ftp --power 120
-```
-
-When the second-by-second response is needed for empirical analysis, write it
-to an explicit temporary file rather than printing it:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-calculate \
-  --duration 10:00 --power-type relative_ftp --power 120 \
-  --series-output /tmp/xert-120pct-series.json --summary
-```
+When the second-by-second response is needed, set `include_series=true` and
+keep the verbose series out of chat output.
 
 The series file includes Xert's calculation signature and per-second fields
 such as power, MPA, proximity, XSS rate, cumulative XSS, and difficulty. It is
 still an unsaved calculation. It also includes raw calculation statistics for
 system work and strain analysis.
 
-For a complete workout, repeat `--row-json` in execution order. A row can be
-one segment or a repeated work/recovery block:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-calculate \
-  --name "4 x 4 calculation" \
-  --row-json '{"name":"Warm-up","duration":"15:00","power":180}' \
-  --row-json '{"name":"4 x 4","duration":"04:00","power":340,"interval_count":4,"rib_duration":"03:00","rib_power":120}' \
-  --row-json '{"name":"Cool-down","duration":"10:00","power":140}' \
-  --summary
-```
-
-For normal absolute-power workouts, prefer the compact notation so warm-up,
-work/recovery, and cool-down are all explicit without JSON row construction:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-calculate \
-  --name "4 x 4 calculation" \
-  --warmup-step 10:00@170 \
-  --warmup-step 05:00@220 \
-  --interval-block 4x04:00@340/03:00@120 \
-  --cooldown-step 10:00@140 \
-  --summary
-```
-
-`--summary` prints only compact calculated metrics to stdout: duration,
-total/low/high/peak XSS, difficulty, rating, focus, specificity, XEP, and
-average/max power.
+Pass complete rows in execution order. A row can represent one segment or a
+repeated work/recovery block.
 
 Do not save synthetic workouts unless the user explicitly requests it.
 
