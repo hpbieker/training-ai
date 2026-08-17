@@ -79,6 +79,17 @@ Use the internal `build_planning_context()` helper for repo automation and
 simulators instead of assembling the complete JSON object manually. The CLI
 still accepts normalized JSON at its boundary.
 
+For every agent-driven recommendation, call the existing
+`build_planning_context()` function programmatically and pass its validated
+return value to `recommend_training.py`; never hand-author
+`--planning-context-json`. Before calling it, derive `planned_at` and the
+availability windows from the freshly read calendar by starting at the
+configured earliest preferred start, classifying fixed, open, tentative, and
+movable events, and applying the complete setup, workout, and cleanup window.
+An existing calendar event that appears to reserve time for training is
+calendar evidence, not an automatic choice of `planned_at`; select its start
+only when the same first-practical-window calculation supports it.
+
 Discover active files under `config/plans/` through the repo-local
 `training-plan` skill and read `config/plan-state.json` before choosing
 `intensity_goal` inside `--plan-selection-json`. Run `python3 -B scripts/plan_state.py pending`; inspect,
@@ -107,6 +118,14 @@ and `list_events` before invoking the helper. Persist each complete MCP result
 as normalized JSON and pass the paths as `intervals_wellness` and
 `intervals_events` in `--source-overrides-json`. `recommend_training.py` must
 not import the Intervals transport or invoke its CLI.
+
+Apply the same persistence boundary to every live MCP result used as a source
+override: write the result's `structuredContent`, without the surrounding MCP
+transport envelope, to a date-scoped private temporary JSON file, build the
+complete `--source-overrides-json` map from those paths, and verify that every
+required override file exists before invoking `recommend_training.py`. Do not
+select refresh mode `none` until all source files required by refresh planning
+are present.
 
 Before composing the final recommendation, reject any source or recommendation
 packet whose snapshot date/time is stale for the current run, whose local date
