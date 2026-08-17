@@ -282,12 +282,16 @@ normal logic from day three only if the athlete feels healthy.
   structure, and exactly one marked adjustable sub-TP segment through
   `recommend_training.py --endurance-structure-json`. The recommendation
   helper resolves the applicable post-guardrail low-XSS target and runs the
-  offline endurance solver internally. Use `--endurance-workout-json` instead
-  when an already calculated result must be replayed exactly; the two inputs
-  are mutually exclusive. Preserve fixed quality, warm-up, recovery, and
-  cool-down segments. Never derive prescribed duration from XSS/minute across
-  activities of mixed intensity domains, and never add high/peak work merely
-  to match high/peak advice on a plan-selected VT1 day.
+  offline endurance solver internally. The structure object accepts exactly
+  `signature`, `segments`, `adjustable_segment_index`, and the optional fields
+  `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`;
+  do not pass MCP-only names such as `absolute_tolerance`. Use
+  `--endurance-workout-json '{"calculation": <normalized-result>}'` instead
+  when an already calculated MCP or CLI solver result must be replayed exactly;
+  the two inputs are mutually exclusive. Preserve fixed quality, warm-up,
+  recovery, and cool-down segments. Never derive prescribed duration from
+  XSS/minute across activities of mixed intensity domains, and never add
+  high/peak work merely to match high/peak advice on a plan-selected VT1 day.
 - For a structured quality session followed by easy volume, calculate the
   complete quality workout in Xert, including warm-up, recoveries, and
   cool-down, and pass the compact `workout-calculate --summary` JSON directly
@@ -386,6 +390,13 @@ Do not add warm-up outside a workout whose total already includes it.
 
 ## Final Answer Contract
 
+- A complete recommendation requires a successful `recommend_training.py`
+  run and a valid recommendation packet for the requested date. If the helper
+  fails, correct the input, source-persistence, or refresh problem and rerun it;
+  do not silently bypass the helper and compose an ordinary recommendation
+  directly from the source payloads. If a valid packet still cannot be
+  produced after safe in-scope recovery attempts, stop and report the concrete
+  blocker instead of issuing the recommendation.
 - Follow `primary_decision.action` and `primary_decision.executable_now` as the
   default recommendation. Treat `remaining_after_completed_activities` as a
   remaining dose whose same-day activities are already accounted for; never

@@ -202,6 +202,10 @@ def parse_plan_selection_json(raw: str) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Fetch Garmin/Xert/Yr inputs and build one recommendation packet.",
+        epilog=(
+            "Planning-context calendar.remainder_disposition accepts: "
+            "unscheduled, dropped, moved, or conditionally_split."
+        ),
     )
     parser.add_argument(
         "--planning-context-json",
@@ -245,7 +249,8 @@ def main() -> None:
         help=(
             "Optional inline structure for local Xert endurance solving after "
             "readiness guardrails: signature, segments, one "
-            "adjustable_segment_index, and optional duration bounds/tolerance. "
+            "adjustable_segment_index, and optional minimum_duration_seconds, "
+            "maximum_duration_seconds, and tolerance_xss. "
             "The applicable low-XSS target is resolved internally."
         ),
     )
