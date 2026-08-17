@@ -21,6 +21,10 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         defaults = {
             "credential_factory": lambda: MCP.IntervalsIcuCredentials(api_key="secret"),
             "activity_lister": lambda **kwargs: [{"id": "i1"}, {"id": "i2"}],
+            "activity_power_curve_lister": lambda **kwargs: {
+                "secs": list(kwargs["secs"]),
+                "curves": [{"id": "i1", "watts": [900]}],
+            },
             "activity_searcher": lambda **kwargs: [{"id": "i1"}, {"id": "i1"}],
             "activity_getter": lambda **kwargs: {"id": kwargs["activity_id"]},
             "streams_downloader": self._write_streams,
@@ -52,16 +56,42 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         path.write_bytes(b"activity-file")
         return path
 
-    def test_advertises_exactly_fourteen_tools(self):
+    def test_advertises_exactly_fifteen_tools(self):
         self.assertEqual(
             [tool["name"] for tool in self.service().list_tools()],
             [
-                "list_activities", "search_activities", "get_activity",
+                "list_activities", "list_activity_power_curves", "search_activities", "get_activity",
                 "get_activity_streams", "get_activity_file", "update_activity",
                 "delete_activity", "upload_activity", "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
             ],
         )
+
+    def test_list_activity_power_curves_passes_dates_and_secs_without_athlete_id(self):
+        calls = []
+        service = self.service(
+            activity_power_curve_lister=lambda **kwargs: calls.append(kwargs) or {
+                "secs": [1, 5],
+                "curves": [{"id": "i1", "watts": [1000, 900]}],
+            }
+        )
+        result = service.call_tool("list_activity_power_curves", {
+            "start_date": "2026-08-01", "end_date": "2026-08-17", "secs": [1, 5],
+        })
+        self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-01")
+        self.assertEqual(calls[0]["newest"].isoformat(), "2026-08-17")
+        self.assertEqual(calls[0]["secs"], (1, 5))
+        self.assertNotIn("athlete_id", calls[0])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["curves"][0]["watts"], [1000, 900])
+
+    def test_list_activity_power_curves_validates_secs(self):
+        service = self.service()
+        for secs in ([], [0], [1, 1], [True], "1"):
+            with self.subTest(secs=secs), self.assertRaises(MCP.ToolFailure):
+                service.call_tool("list_activity_power_curves", {
+                    "start_date": "2026-08-01", "end_date": "2026-08-17", "secs": secs,
+                })
 
     def test_date_bounded_tools_use_start_and_end_date_only(self):
         tools = {tool["name"]: tool for tool in self.service().list_tools()}
@@ -633,7 +663,7 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [tool.name for tool in result.tools],
             [
-                "list_activities", "search_activities", "get_activity",
+                "list_activities", "list_activity_power_curves", "search_activities", "get_activity",
                 "get_activity_streams", "get_activity_file", "update_activity",
                 "delete_activity", "upload_activity", "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",

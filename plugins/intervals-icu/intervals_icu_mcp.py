@@ -27,6 +27,7 @@ from intervals_icu_api import (  # noqa: E402
     get_activity,
     get_wellness,
     list_activities,
+    list_activity_power_curves,
     list_events,
     list_wellness,
     discover_intervals_icu_credentials,
@@ -79,6 +80,10 @@ _EVENT_FILTER_FIELDS = (
 ANNOTATIONS = {
     "list_activities": {
         "title": "List Intervals.icu Activities", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "list_activity_power_curves": {
+        "title": "List Intervals.icu Activity Power Curves", "readOnlyHint": True,
         "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
     },
     "get_activity": {
@@ -178,6 +183,44 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activities"],
+    },
+    "list_activity_power_curves": {
+        "name": "list_activity_power_curves",
+        "description": (
+            "List per-activity Intervals.icu power-curve values for explicit durations "
+            "in an inclusive local-date range. For example, secs=[1] returns each "
+            "activity's best one-second average power; this is not raw max-power metadata."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                "secs": {
+                    "type": "array",
+                    "items": {"type": "integer", "minimum": 1},
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "uniqueItems": True,
+                    "description": "Power-curve durations in seconds, for example [1, 5, 60, 300].",
+                },
+            },
+            "required": ["start_date", "end_date", "secs"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string"},
+                "end_date": {"type": "string"},
+                "secs": {"type": "array", "items": {"type": "integer"}},
+                "count": {"type": "integer"},
+                "curves": {"type": "array", "items": _object("Intervals.icu activity power-curve row.")},
+            },
+            "required": ["start_date", "end_date", "secs", "count", "curves"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["list_activity_power_curves"],
     },
     "search_activities": {
         "name": "search_activities",
@@ -679,6 +722,7 @@ class IntervalsIcuToolService:
         self,
         credential_factory: Callable[[], IntervalsIcuCredentials] = discover_intervals_icu_credentials,
         activity_lister: Callable[..., list[dict[str, Any]]] = list_activities,
+        activity_power_curve_lister: Callable[..., dict[str, Any]] = list_activity_power_curves,
         activity_searcher: Callable[..., list[dict[str, Any]]] = search_activities,
         activity_getter: Callable[..., dict[str, Any]] = get_activity,
         streams_downloader: Callable[..., Path] = download_activity_streams_csv,
@@ -696,6 +740,7 @@ class IntervalsIcuToolService:
     ) -> None:
         self._auth = IntervalsIcuAuthSession(credential_factory())
         self._activity_lister = activity_lister
+        self._activity_power_curve_lister = activity_power_curve_lister
         self._activity_searcher = activity_searcher
         self._activity_getter = activity_getter
         self._streams_downloader = streams_downloader
@@ -768,6 +813,26 @@ class IntervalsIcuToolService:
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     "includeFields": list(include_fields),
                     "count": len(summaries), "activities": summaries, **query_meta,
+                }
+            if name == "list_activity_power_curves":
+                start_date = _required_date(arguments, "start_date")
+                end_date = _required_date(arguments, "end_date")
+                if end_date < start_date:
+                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+                secs = _required_positive_int_array(arguments, "secs", maximum_items=100)
+                result = self._activity_power_curve_lister(
+                    oldest=start_date, newest=end_date, secs=secs, **auth,
+                )
+                curves = result.get("curves")
+                returned_secs = result.get("secs")
+                if not isinstance(curves, list) or not isinstance(returned_secs, list):
+                    raise ToolFailure(
+                        "Activity power curves response is missing secs or curves",
+                        "source_error",
+                    )
+                return {
+                    "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
+                    "secs": returned_secs, "count": len(curves), "curves": curves,
                 }
             if name == "search_activities":
                 query = _required_string(arguments, "query")
@@ -1123,6 +1188,22 @@ def _required_string(arguments: dict[str, Any], key: str) -> str:
     if not isinstance(value, str) or not value:
         raise ToolFailure(f"{key} must be a non-empty string", "invalid_arguments")
     return value
+
+
+def _required_positive_int_array(
+    arguments: dict[str, Any], key: str, *, maximum_items: int
+) -> tuple[int, ...]:
+    value = arguments.get(key)
+    if not isinstance(value, list) or not value or len(value) > maximum_items:
+        raise ToolFailure(
+            f"{key} must be a non-empty array with at most {maximum_items} items",
+            "invalid_arguments",
+        )
+    if any(isinstance(item, bool) or not isinstance(item, int) or item <= 0 for item in value):
+        raise ToolFailure(f"{key} values must be positive integers", "invalid_arguments")
+    if len(set(value)) != len(value):
+        raise ToolFailure(f"{key} values must be unique", "invalid_arguments")
+    return tuple(value)
 
 
 _ACTIVITY_SUMMARY_FIELDS = (

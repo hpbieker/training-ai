@@ -21,6 +21,9 @@ Choose the narrowest workflow that answers the request:
 - Metadata or interval orientation only: call MCP `get_activity` for its compact
   summary. Set `save_full=true` when the complete source activity is needed by
   the repo persistence or analysis workflow.
+- Per-activity best power for explicit durations: call MCP
+  `list_activity_power_curves`. Use `secs=[1]` for best one-second average
+  power; do not describe it as a raw max-power metadata field.
 - Readiness context: call MCP `list_wellness` and `list_events`; let the caller
   resolve source priority and compose readiness.
 - Calendar events: call MCP `list_events` first, then use `create_event`,
@@ -45,6 +48,10 @@ Choose the narrowest workflow that answers the request:
   `get_activity_streams` saves selected streams to a private temporary file;
   `get_activity_file` saves the original upload or reconstructed FIT file to a
   private temporary file.
+- `list_activity_power_curves` returns Intervals.icu's per-activity power-curve
+  rows for explicit durations in an inclusive local-date range. Its `secs` and
+  each curve's aligned `watts` array preserve source order. It resolves the
+  authenticated athlete internally and does not accept an athlete-id argument.
 - `update_activity` patches supported metadata, tags, subtype, color, fueling,
   strength load, and whole-activity ignore flags, and requires
   `confirm_overwrite=true` before replacing an existing non-empty value;

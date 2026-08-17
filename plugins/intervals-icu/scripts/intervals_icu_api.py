@@ -490,6 +490,43 @@ def list_activities(
     return activities
 
 
+def list_activity_power_curves(
+    *,
+    secs: Iterable[int],
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    oldest: str | date,
+    newest: str | date,
+) -> dict[str, Any]:
+    """Return per-activity power-curve points for selected durations."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    athlete = _request_json("/athlete/0", credentials)
+    if not isinstance(athlete, dict):
+        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
+    athlete_id = athlete.get("id")
+    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
+        raise TypeError("Intervals.icu athlete response did not contain an id")
+
+    result = _request_json(
+        f"/athlete/{athlete_id}/activity-power-curves",
+        credentials,
+        params={
+            "oldest": f"{_date_to_string(oldest)}T00:00:00",
+            "newest": f"{_date_to_string(newest)}T23:59:59",
+            "secs": ",".join(str(value) for value in secs),
+        },
+    )
+    if not isinstance(result, dict):
+        raise TypeError("Expected Intervals.icu activity power curves to return an object")
+    if not isinstance(result.get("secs"), list) or not isinstance(result.get("curves"), list):
+        raise TypeError("Intervals.icu activity power curves response is missing secs or curves")
+    return result
+
+
 def search_activities(
     *,
     query: str,
