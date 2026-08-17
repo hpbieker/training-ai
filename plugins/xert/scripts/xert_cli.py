@@ -12,9 +12,16 @@ import argparse
 import json
 import math
 import re
+import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
+
+from xert_service import XertService, compact_activity_load, filter_workouts
 
 from xert_api import (
     LOCAL_TIMEZONE,
@@ -504,45 +511,19 @@ def main() -> None:
 
     args = parser.parse_args()
     credentials = load_xert_credentials()
+    service = XertService(lambda: credentials)
 
     if args.command == "activities":
-        payload = list_activities(
-            username=credentials.username,
-            password=credentials.password,
-            oldest=args.start,
-            newest=args.end,
-        )
+        payload = service.list_activities(args.start, args.end)
     elif args.command == "activity-loads":
-        details = list_activity_details(
-            username=credentials.username,
-            password=credentials.password,
-            oldest=args.start,
-            newest=args.end,
-            include_session_data=False,
-        )
-        payload = {
-            "source": "xert_plugin_activity_loads",
-            "start_date": args.start,
-            "end_date": args.end,
-            "activity_count": len(details),
-            "activities": [compact_activity_load(detail) for detail in details],
-        }
+        payload = service.list_activities(args.start, args.end, view="loads")
     elif args.command == "activity":
         if args.session_data and args.summary_only:
             raise SystemExit("Use either --session-data or --summary-only, not both")
         if args.session_data and not args.output:
             raise SystemExit("Use --output <file> with --session-data to avoid huge terminal output")
-        activity_payload = fetch_activity_detail(
-            args.path,
-            username=credentials.username,
-            password=credentials.password,
-            include_session_data=args.session_data,
-        )
-        if args.summary_only:
-            payload = compact_activity_load(activity_payload)
-            payload["path"] = args.path
-        else:
-            payload = activity_payload
+        view = "session" if args.session_data else "summary" if args.summary_only else "full"
+        payload = service.get_activity(args.path, view=view)
     elif args.command == "training-info":
         payload = fetch_training_info(
             username=credentials.username,
@@ -754,27 +735,14 @@ def main() -> None:
             sport=args.sport,
         )
     elif args.command == "workouts":
-        workouts_payload = list_workouts(
-            username=credentials.username,
-            password=credentials.password,
-        )
-        payload = (
-            summarize_workout_library(workouts_payload, name_filter=args.name)
-            if args.summary
-            else _filter_workouts(workouts_payload, args.name)
+        payload = service.list_workouts(
+            name_keywords=args.name,
+            view="summary" if args.summary else "full",
         )
     elif args.command == "workout":
-        payload = fetch_workout(
-            args.path,
-            username=credentials.username,
-            password=credentials.password,
-        )
+        payload = service.get_workout(args.path, view="resolved")
     elif args.command == "workout-rows":
-        opener = xert_web_login(
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-        )
-        payload = fetch_workout_designer_rows(opener, args.path)
+        payload = service.get_workout(args.path, view="editable")
     elif args.command == "workout-update":
         if not args.dry_run and not args.yes:
             raise SystemExit("Refusing to save Xert workout update without --yes")
@@ -1557,38 +1525,6 @@ def compact_recovery_model(model: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def compact_activity_load(payload: dict[str, Any]) -> dict[str, Any]:
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else payload
-    if not isinstance(summary, dict):
-        raise TypeError("Expected Xert activity payload to contain an object summary")
-    progression = summary.get("progression") if isinstance(summary.get("progression"), dict) else {}
-    xss = progression.get("xss") if isinstance(progression.get("xss"), dict) else {}
-    session = summary.get("session") if isinstance(summary.get("session"), dict) else {}
-    list_row = payload.get("activity_list_row") if isinstance(payload.get("activity_list_row"), dict) else {}
-    return {
-        "source": "xert_plugin",
-        "path": payload.get("path") or summary.get("path"),
-        "name": payload.get("name") or summary.get("name") or list_row.get("name"),
-        "map_url": payload.get("map_url") or summary.get("map_url") or list_row.get("map_url"),
-        "start_local": _activity_start_local(summary),
-        "distance_km": summary.get("distance") or list_row.get("distance"),
-        "elapsed_minutes": _minutes(_number(summary.get("duration") or session.get("total_elapsed_time"))),
-        "xss": {
-            "total": summary.get("xss") or xss.get("total"),
-            "low": summary.get("xlss") or xss.get("xlss"),
-            "high": summary.get("xhss") or xss.get("xhss"),
-            "peak": summary.get("xpss") or xss.get("xpss"),
-        },
-        "xep_watts": summary.get("xep"),
-        "focus": summary.get("focus"),
-        "specificity": summary.get("specificity"),
-        "difficulty": summary.get("difficulty"),
-        "difficulty_rating": summary.get("difficulty_rating"),
-        "freshness": summary.get("freshness"),
-        "signature": summary.get("sig") or progression.get("signature"),
-    }
-
-
 def _system_triplet(source: Any, low_key: str, high_key: str, peak_key: str) -> dict[str, Any]:
     if not isinstance(source, dict):
         source = {}
@@ -1597,26 +1533,6 @@ def _system_triplet(source: Any, low_key: str, high_key: str, peak_key: str) -> 
         "high": source.get(high_key),
         "peak": source.get(peak_key),
     }
-
-
-def _activity_start_local(summary: dict[str, Any]) -> str | None:
-    start = summary.get("start_date")
-    if isinstance(start, dict):
-        raw = start.get("date")
-        if raw:
-            parsed = datetime.fromisoformat(str(raw))
-            if start.get("timezone") == "UTC":
-                parsed = parsed.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE)
-            return parsed.replace(tzinfo=None).isoformat()
-    raw_progression_start = (summary.get("progression") or {}).get("start_date")
-    if raw_progression_start:
-        return (
-            datetime.fromisoformat(str(raw_progression_start).replace("Z", "+00:00"))
-            .astimezone(LOCAL_TIMEZONE)
-            .replace(tzinfo=None)
-            .isoformat()
-        )
-    return None
 
 
 def _number(value: Any) -> float | None:
@@ -1633,14 +1549,7 @@ def _minutes(seconds: float | None) -> float | None:
 
 
 def _filter_workouts(workouts: list[dict[str, Any]], contains: str | None) -> list[dict[str, Any]]:
-    if not contains:
-        return workouts
-    keywords = contains.casefold().split()
-    return [
-        row
-        for row in workouts
-        if all(keyword in str(row.get("name") or "").casefold() for keyword in keywords)
-    ]
+    return filter_workouts(workouts, contains)
 
 
 def workout_probe_row(

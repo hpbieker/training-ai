@@ -15,6 +15,26 @@ Live Xert reads and writes require external network access. Run live
 do not first try them in a network-isolated sandbox. Offline help and local
 artifact inspection do not require escalation.
 
+## MCP Read Access
+
+Prefer the Xert MCP tools when they are available:
+
+- `list_activities` lists an inclusive local-date range. Keep `view=summary`
+  for discovery; use `view=loads` only when compact Low/High/Peak XSS details
+  are required because it fetches every activity detail.
+- `get_activity` reads one activity path. Use `view=summary` normally,
+  `view=full` for source fields, and `view=session` only for Xert-specific
+  second-by-second data; session view returns a private temporary JSON path.
+- `list_workouts` lists or filters the workout library. Its `name_keywords`
+  value requires every supplied word to occur, case-insensitively.
+- `get_workout` uses `view=resolved` for the workout calculated with the current
+  Fitness Signature and `view=editable` for authoritative Workout Designer
+  rows, including repeats, slopes, and rest-in-between fields.
+
+The CLI remains the development/fallback interface and exposes Xert operations
+that have not yet been added to MCP. Both transports call the same Python
+service for activities and workouts.
+
 ## Choose The Narrowest Command
 
 ```bash

@@ -1,0 +1,418 @@
+#!/usr/bin/env python3
+"""Xert activities and workouts exposed through the stable MCP Python SDK."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import tempfile
+import threading
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable
+
+from xert_service import XertService
+
+
+ALL_TOOL_NAMES = (
+    "list_activities",
+    "get_activity",
+    "list_workouts",
+    "get_workout",
+)
+
+TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
+    "list_activities": {
+        "title": "List Xert Activities",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_activity": {
+        "title": "Get Xert Activity",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    "list_workouts": {
+        "title": "List Xert Workouts",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_workout": {
+        "title": "Get Xert Workout",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+}
+
+
+def _object(description: str) -> dict[str, object]:
+    return {
+        "type": "object",
+        "additionalProperties": True,
+        "description": description,
+    }
+
+
+def _array(description: str) -> dict[str, object]:
+    return {
+        "type": "array",
+        "items": _object("Normalized or source-native Xert object."),
+        "description": description,
+    }
+
+
+TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
+    "list_activities": {
+        "name": "list_activities",
+        "description": (
+            "List Xert activities for an inclusive local-date range. Use view=loads "
+            "only when compact Low, High, and Peak XSS details are required because "
+            "it fetches every activity detail."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Inclusive local start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Inclusive local end date in YYYY-MM-DD format.",
+                },
+                "view": {
+                    "type": "string",
+                    "enum": ["summary", "loads"],
+                    "default": "summary",
+                    "description": "summary lists activities cheaply; loads fetches compact XSS details.",
+                },
+            },
+            "required": ["start_date", "end_date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "Requested inclusive start date."},
+                "end_date": {"type": "string", "description": "Requested inclusive end date."},
+                "view": {"type": "string", "description": "Returned activity representation."},
+                "count": {"type": "integer", "description": "Number of returned activities."},
+                "activities": _array("Activities in source order."),
+            },
+            "required": ["start_date", "end_date", "view", "count", "activities"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["list_activities"],
+    },
+    "get_activity": {
+        "name": "get_activity",
+        "description": (
+            "Get one Xert activity. summary is the normal analysis view; full returns "
+            "the source document; session writes large second-by-second data to a "
+            "private temporary JSON file and returns its path."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Xert activity path returned by list_activities.",
+                },
+                "view": {
+                    "type": "string",
+                    "enum": ["summary", "full", "session"],
+                    "default": "summary",
+                    "description": "Requested detail level; session is persisted to a private temporary file.",
+                },
+            },
+            "required": ["activity_path"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_path": {"type": "string", "description": "Requested Xert activity path."},
+                "view": {"type": "string", "description": "Returned activity representation."},
+                "activity": _object("Activity payload for summary or full views."),
+                "session_file": {
+                    "type": "string",
+                    "description": "Private temporary JSON file for session view; absent otherwise.",
+                },
+            },
+            "required": ["activity_path", "view"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["get_activity"],
+    },
+    "list_workouts": {
+        "name": "list_workouts",
+        "description": (
+            "List the Xert workout library, optionally requiring every supplied "
+            "case-insensitive name keyword."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name_keywords": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Optional space-separated keywords that must all occur in the workout name.",
+                },
+                "view": {
+                    "type": "string",
+                    "enum": ["summary", "full"],
+                    "default": "summary",
+                    "description": "summary returns compact rows; full retains source workout fields.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "view": {"type": "string", "description": "Returned workout representation."},
+                "name_keywords": {
+                    "type": ["string", "null"],
+                    "description": "Applied name filter, or null when unfiltered.",
+                },
+                "count": {"type": "integer", "description": "Number of returned workouts."},
+                "workouts": _array("Matching workouts in source order."),
+            },
+            "required": ["view", "name_keywords", "count", "workouts"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["list_workouts"],
+    },
+    "get_workout": {
+        "name": "get_workout",
+        "description": (
+            "Get one Xert workout. resolved uses the current Fitness Signature; "
+            "editable returns authoritative Workout Designer rows including repeats, "
+            "slopes, and rest-in-between fields."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workout_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Xert workout path returned by list_workouts.",
+                },
+                "view": {
+                    "type": "string",
+                    "enum": ["resolved", "editable"],
+                    "default": "resolved",
+                    "description": "resolved returns the calculated workout; editable returns Designer rows.",
+                },
+            },
+            "required": ["workout_path"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "workout_path": {"type": "string", "description": "Requested Xert workout path."},
+                "view": {"type": "string", "description": "Returned workout representation."},
+                "workout": _object("Resolved workout payload; absent for editable view."),
+                "rows": _array("Editable Workout Designer rows; absent for resolved view."),
+            },
+            "required": ["workout_path", "view"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["get_workout"],
+    },
+}
+
+
+@dataclass(frozen=True)
+class ToolSpec:
+    name: str
+    definition: dict[str, object]
+
+
+TOOL_SPECS = {
+    name: ToolSpec(name=name, definition=TOOL_DEFINITIONS[name]) for name in ALL_TOOL_NAMES
+}
+
+
+class ToolFailure(Exception):
+    """Stable tool-facing error with a machine-readable category."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+class XertToolService:
+    """Transport-independent MCP validation and dispatch."""
+
+    def __init__(self, service_factory: Callable[[], XertService] = XertService) -> None:
+        self._service_factory = service_factory
+        self._service: XertService | None = None
+        self._lock = threading.RLock()
+
+    def list_tools(self) -> list[dict[str, object]]:
+        return [TOOL_SPECS[name].definition for name in ALL_TOOL_NAMES]
+
+    def call_tool(self, name: str, arguments: object | None = None) -> dict[str, Any]:
+        if name not in TOOL_SPECS:
+            raise ToolFailure("unknown_tool", f"Unknown Xert tool: {name}")
+        if arguments is None:
+            arguments = {}
+        if not isinstance(arguments, dict):
+            raise ToolFailure("invalid_arguments", "tool arguments must be an object")
+        schema = TOOL_SPECS[name].definition["inputSchema"]
+        allowed = set(schema["properties"])
+        unknown = set(arguments) - allowed
+        if unknown:
+            raise ToolFailure("invalid_arguments", f"unknown argument: {sorted(unknown)[0]}")
+        missing = [field for field in schema.get("required", []) if field not in arguments]
+        if missing:
+            raise ToolFailure("invalid_arguments", f"missing required argument: {missing[0]}")
+        try:
+            with self._lock:
+                if self._service is None:
+                    self._service = self._service_factory()
+                return self._dispatch(self._service, name, arguments)
+        except ToolFailure:
+            raise
+        except ValueError as exc:
+            code = "authentication_error" if "XERT_" in str(exc) else "invalid_arguments"
+            raise ToolFailure(code, str(exc)) from exc
+        except Exception as exc:
+            raise ToolFailure("xert_error", str(exc)) from exc
+
+    @staticmethod
+    def _dispatch(service: XertService, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == "list_activities":
+            start = arguments["start_date"]
+            end = arguments["end_date"]
+            view = arguments.get("view", "summary")
+            result = service.list_activities(start, end, view=view)
+            activities = result["activities"] if view == "loads" else result
+            return {
+                "start_date": start,
+                "end_date": end,
+                "view": view,
+                "count": len(activities),
+                "activities": activities,
+            }
+        if name == "get_activity":
+            path = arguments["activity_path"]
+            view = arguments.get("view", "summary")
+            activity = service.get_activity(path, view=view)
+            output: dict[str, Any] = {"activity_path": path, "view": view}
+            if view == "session":
+                output["session_file"] = _write_private_session_file(activity)
+            else:
+                output["activity"] = activity
+            return output
+        if name == "list_workouts":
+            view = arguments.get("view", "summary")
+            keywords = arguments.get("name_keywords")
+            workouts = service.list_workouts(name_keywords=keywords, view=view)
+            return {
+                "view": view,
+                "name_keywords": keywords,
+                "count": len(workouts),
+                "workouts": workouts,
+            }
+        path = arguments["workout_path"]
+        view = arguments.get("view", "resolved")
+        workout = service.get_workout(path, view=view)
+        output = {"workout_path": path, "view": view}
+        output["rows" if view == "editable" else "workout"] = workout
+        return output
+
+
+def _write_private_session_file(payload: dict[str, Any]) -> str:
+    descriptor, raw_path = tempfile.mkstemp(prefix="xert-activity-", suffix=".json")
+    path = Path(raw_path)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    return str(path)
+
+
+def create_sdk_server(service: XertToolService) -> Any:
+    """Build the stable SDK server used by the stdio entry point."""
+
+    import anyio
+    import mcp.types as mcp_types
+    from mcp.server import Server
+
+    server = Server(
+        "xert",
+        version="0.1.0",
+        instructions=(
+            "Read Xert cycling activities and workouts. Inclusive activity dates "
+            "use the user's local calendar. Use editable workout view when complete "
+            "Workout Designer rows are required."
+        ),
+    )
+
+    @server.list_tools()
+    async def list_tools() -> list[mcp_types.Tool]:
+        return [mcp_types.Tool.model_validate(definition) for definition in service.list_tools()]
+
+    @server.call_tool()
+    async def call_tool(name: str, arguments: dict[str, Any]) -> mcp_types.CallToolResult:
+        try:
+            payload = await anyio.to_thread.run_sync(service.call_tool, name, arguments)
+        except ToolFailure as exc:
+            error_payload = {"error": str(exc), "errorCode": exc.code}
+            return mcp_types.CallToolResult(
+                content=[mcp_types.TextContent(type="text", text=str(exc))],
+                structuredContent=error_payload,
+                isError=True,
+            )
+        text = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return mcp_types.CallToolResult(
+            content=[mcp_types.TextContent(type="text", text=text)],
+            structuredContent=payload,
+        )
+
+    return server
+
+
+async def serve_async(service_factory: Callable[[], XertService] = XertService) -> None:
+    from mcp.server.stdio import stdio_server
+
+    server = create_sdk_server(XertToolService(service_factory))
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, server.create_initialization_options())
+
+
+def serve(service_factory: Callable[[], XertService] = XertService) -> int:
+    try:
+        import anyio
+
+        anyio.run(serve_async, service_factory)
+    except Exception as exc:
+        print(f"Xert MCP internal error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def main() -> int:
+    return serve(XertService)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

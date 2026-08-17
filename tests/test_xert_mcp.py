@@ -1,0 +1,166 @@
+import json
+import os
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
+sys.path.insert(0, str(PLUGIN_ROOT))
+
+import xert_mcp as MCP  # noqa: E402
+import xert_service as SERVICE  # noqa: E402
+
+
+class FakeXertService:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def list_activities(self, start_date, end_date, *, view="summary"):
+        self.calls.append(("list_activities", start_date, end_date, view))
+        if view == "loads":
+            return {"activities": [{"path": "a1", "xss": {"low": 10}}]}
+        return [{"path": "a1", "name": "Ride"}]
+
+    def get_activity(self, path, *, view="summary"):
+        self.calls.append(("get_activity", path, view))
+        return {"path": path, "summary": {"xss": 12}}
+
+    def list_workouts(self, *, name_keywords=None, view="summary"):
+        self.calls.append(("list_workouts", name_keywords, view))
+        return [{"path": "w1", "name": "XMB VT1"}]
+
+    def get_workout(self, path, *, view="resolved"):
+        self.calls.append(("get_workout", path, view))
+        return [{"name": "Warm-up"}] if view == "editable" else {"path": path}
+
+
+class XertMcpSchemaTests(unittest.TestCase):
+    def test_exposes_only_activity_and_workout_tools(self) -> None:
+        self.assertEqual(
+            MCP.ALL_TOOL_NAMES,
+            ("list_activities", "get_activity", "list_workouts", "get_workout"),
+        )
+        self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
+
+    def test_every_tool_has_closed_described_inputs_and_expected_annotations(self) -> None:
+        for name in MCP.ALL_TOOL_NAMES:
+            definition = MCP.TOOL_DEFINITIONS[name]
+            self.assertFalse(definition["inputSchema"]["additionalProperties"], name)
+            for field, schema in definition["inputSchema"]["properties"].items():
+                self.assertTrue(schema.get("description"), f"{name}.{field}")
+            writes_session_file = name == "get_activity"
+            self.assertEqual(
+                definition["annotations"],
+                {
+                    "title": MCP.TOOL_ANNOTATIONS[name]["title"],
+                    "readOnlyHint": not writes_session_file,
+                    "destructiveHint": False,
+                    "idempotentHint": not writes_session_file,
+                    "openWorldHint": True,
+                },
+            )
+
+    def test_sdk_accepts_every_tool_definition(self) -> None:
+        server = MCP.create_sdk_server(MCP.XertToolService(FakeXertService))
+        self.assertIsNotNone(server)
+
+
+class XertMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stdio_initialize_and_list_tools(self) -> None:
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        parameters = StdioServerParameters(
+            command=sys.executable,
+            args=["-B", "./xert_mcp.py"],
+            cwd=str(PLUGIN_ROOT),
+        )
+        async with stdio_client(parameters) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.list_tools()
+
+        self.assertEqual([tool.name for tool in result.tools], list(MCP.ALL_TOOL_NAMES))
+
+
+class XertMcpDispatchTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.fake = FakeXertService()
+        self.tools = MCP.XertToolService(lambda: self.fake)
+
+    def test_list_activity_loads_and_editable_workout(self) -> None:
+        activities = self.tools.call_tool(
+            "list_activities",
+            {"start_date": "2026-08-01", "end_date": "2026-08-02", "view": "loads"},
+        )
+        workout = self.tools.call_tool(
+            "get_workout", {"workout_path": "w1", "view": "editable"}
+        )
+        self.assertEqual(activities["count"], 1)
+        self.assertEqual(workout["rows"], [{"name": "Warm-up"}])
+
+    def test_session_view_writes_private_file_instead_of_returning_series(self) -> None:
+        result = self.tools.call_tool(
+            "get_activity", {"activity_path": "a1", "view": "session"}
+        )
+        path = Path(result["session_file"])
+        try:
+            self.assertTrue(path.is_file())
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["path"], "a1")
+            self.assertNotIn("activity", result)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_rejects_unknown_and_missing_arguments(self) -> None:
+        with self.assertRaisesRegex(MCP.ToolFailure, "unknown argument"):
+            self.tools.call_tool(
+                "list_workouts", {"view": "summary", "surprise": True}
+            )
+        with self.assertRaisesRegex(MCP.ToolFailure, "missing required"):
+            self.tools.call_tool("get_activity", {})
+
+
+class XertServiceTests(unittest.TestCase):
+    def test_service_routes_activity_and_workout_views(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        with (
+            patch.object(SERVICE, "fetch_activities", return_value=[{"path": "a1"}]),
+            patch.object(SERVICE, "fetch_activity_detail", return_value={"summary": {"xss": 4}}),
+            patch.object(SERVICE, "fetch_workouts", return_value=[{"name": "XMB VT1", "path": "w1"}]),
+            patch.object(SERVICE, "fetch_workout", return_value={"path": "w1"}),
+        ):
+            self.assertEqual(
+                service.list_activities("2026-08-01", "2026-08-01"), [{"path": "a1"}]
+            )
+            self.assertEqual(service.get_activity("a1")["xss"]["total"], 4)
+            self.assertEqual(service.list_workouts(name_keywords="vt1", view="full")[0]["path"], "w1")
+            self.assertEqual(service.get_workout("w1"), {"path": "w1"})
+
+    def test_credentials_support_mcp_config_with_environment_override(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            config = Path(temp_dir) / "xert.json"
+            config.write_text(
+                json.dumps({"username": "config-user", "password": "config-password"}),
+                encoding="utf-8",
+            )
+            with patch.dict(
+                os.environ,
+                {
+                    "XERT_MCP_CONFIG": str(config),
+                    "XERT_USERNAME": "environment-user",
+                    "XERT_PASSWORD": "environment-password",
+                },
+                clear=False,
+            ):
+                credentials = SERVICE.discover_xert_credentials()
+        self.assertEqual(credentials.username, "environment-user")
+        self.assertEqual(credentials.password, "environment-password")
+
+
+if __name__ == "__main__":
+    unittest.main()

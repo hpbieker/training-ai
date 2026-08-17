@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "xert": {
+      "command": "python3",
+      "args": ["-B", "./xert_mcp.py"],
+      "cwd": "."
+    }
+  }
+}
