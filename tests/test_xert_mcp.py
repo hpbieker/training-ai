@@ -109,11 +109,6 @@ class FakeXertService:
         self.calls.append(("calculate_workout", kwargs))
         return {"saved": False}
 
-    def get_readiness_input(self, **kwargs):
-        self.calls.append(("get_readiness_input", kwargs))
-        return {"source": "xert_plugin"}
-
-
 class XertMcpSchemaTests(unittest.TestCase):
     def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
         self.assertEqual(
@@ -138,7 +133,6 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "solve_endurance_duration",
                 "project_load_model",
                 "calculate_workout",
-                "get_readiness_input",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -438,7 +432,6 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertFalse(self.tools.call_tool("calculate_workout", {
             "rows": [{"duration_seconds": 600, "power": 200}],
         })["saved"])
-        self.assertEqual(self.tools.call_tool("get_readiness_input", {})["source"], "xert_plugin")
 
 
 class XertServiceTests(unittest.TestCase):

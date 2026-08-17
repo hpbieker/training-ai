@@ -35,7 +35,6 @@ ALL_TOOL_NAMES = (
     "solve_endurance_duration",
     "project_load_model",
     "calculate_workout",
-    "get_readiness_input",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -142,7 +141,6 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     "solve_endurance_duration": {"title": "Solve Xert Endurance Duration", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
     "project_load_model": {"title": "Project Xert Load Model", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
     "calculate_workout": {"title": "Calculate Xert Workout", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-    "get_readiness_input": {"title": "Get Xert Readiness Input", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
 }
 
 
@@ -905,16 +903,6 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "outputSchema": _object("Unsaved Workout Designer calculation."),
         "annotations": TOOL_ANNOTATIONS["calculate_workout"],
     },
-    "get_readiness_input": {
-        "name": "get_readiness_input",
-        "description": "Get normalized Xert recovery and current or planned-time training advice, optionally including compact loads for selected activities.",
-        "inputSchema": {"type": "object", "properties": {
-            "advice_at": {"type": "string", "format": "date-time", "description": "Optional planned advice time; omit for current advice."},
-            "activity_paths": {"type": "array", "items": {"type": "string"}, "default": [], "description": "Optional Xert activity paths to include as compact loads."}},
-            "additionalProperties": False},
-        "outputSchema": _object("Normalized Xert readiness input."),
-        "annotations": TOOL_ANNOTATIONS["get_readiness_input"],
-    },
 }
 
 
@@ -1107,11 +1095,6 @@ class XertToolService:
                 signature_tp=arguments.get("signature_tp"),
                 signature_hie=arguments.get("signature_hie"),
                 signature_pp=arguments.get("signature_pp"),
-            )
-        if name == "get_readiness_input":
-            return service.get_readiness_input(
-                advice_at=arguments.get("advice_at"),
-                activity_paths=arguments.get("activity_paths", []),
             )
         if name == "create_workout":
             return {

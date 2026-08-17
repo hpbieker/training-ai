@@ -83,8 +83,6 @@ Prefer the Xert MCP tools when they are available:
   and marginal signature response to an explicit target time.
 - `calculate_workout` sends a complete, unsaved Workout Designer structure to
   Xert Calculate. Signature overrides must supply TP, HIE, and PP together.
-- `get_readiness_input` composes normalized recovery and current or planned-time
-  advice, with optional compact activity loads for named activity paths.
 
 The CLI remains useful for development parity, saved Calculate-series files,
 and mixed Planner-event operations. It is not a fallback for MCP-covered
@@ -112,8 +110,8 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   `get_training_state`, then pass its normalized TP, HIE, and PP to MCP
   `calculate_strain`. Do not call live `calculate_workout` solely to obtain a
   signature.
-- Use MCP `get_readiness_input` for normalized recovery and training-advice context.
-  Do not pass raw Xert payloads to readiness consumers.
+- Compose readiness in the repo-level training-analysis workflow from the
+  narrow Xert MCP source calls. Do not add a source-plugin readiness score.
 - Use MCP `solve_endurance_duration` after the plan role and complete workout format have
   been resolved. Mark exactly one sub-TP segment as adjustable and supply the
   applicable target low XSS. The solver preserves every fixed quality,

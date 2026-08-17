@@ -488,26 +488,6 @@ class XertService:
             signature_hie=signature_hie, signature_pp=signature_pp,
         )
 
-    def get_readiness_input(self, *, advice_at: str | None = None, activity_paths: list[str] | None = None) -> dict[str, Any]:
-        model = fetch_recovery_model_with_opener(self._auth.web_opener())
-        now = datetime.now(LOCAL_TIMEZONE)
-        advice = self.get_training_advice(at=advice_at)
-        recovery = compact_recovery_input(model)
-        if advice_at:
-            elapsed_hours = max(
-                0.0,
-                (_aware_datetime(advice_at, "advice_at") - now).total_seconds() / 3600,
-            )
-            recovery["recovery_hours_at_advice_time"] = {
-                key: max(0.0, float(value) - elapsed_hours) if value is not None else None
-                for key, value in recovery["recovery_hours"].items()
-            }
-        return {
-            "source": "xert_plugin", "source_time_local": now.isoformat(timespec="seconds"),
-            "training_advice": advice, "recovery": recovery,
-            "activity_loads": [self.get_activity(path, view="summary") for path in (activity_paths or [])],
-        }
-
     def get_training_forecast(
         self, start_date: str, end_date: str, *, view: str = "summary"
     ) -> dict[str, Any]:
@@ -687,15 +667,6 @@ def compact_current_training_advice(model: dict[str, Any]) -> dict[str, Any]:
         "training_advice_as_of": (model.get("at_state") or {}).get("start_date"),
         "targets_source": None,
         "based_on_day": None,
-    }
-
-
-def compact_recovery_input(model: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "recovery_hours": _system_triplet(model.get("recovery_hours"), "lo", "hi", "pk"),
-        "training_load": _system_triplet((model.get("at_state") or {}).get("tl"), "ftp", "hie", "pp"),
-        "recovery_load": _system_triplet((model.get("at_state") or {}).get("rl"), "ftp", "hie", "pp"),
-        "training_status": model.get("training_status"),
     }
 
 
