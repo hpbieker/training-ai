@@ -10,10 +10,10 @@ writes. The plugin is stateless and returns normalized data to callers.
 
 ## Network Execution
 
-Live Xert reads and writes require external network access. Run live
-`xert_cli.py` commands with escalated network permission on the first attempt;
-do not first try them in a network-isolated sandbox. Offline help and local
-artifact inspection do not require escalation.
+Use MCP for the live operations listed below. The remaining model and Planner
+CLI commands require external network access; run them with escalated network
+permission on the first attempt. Offline help and local artifact inspection do
+not require escalation.
 
 ## MCP Read Access
 
@@ -65,49 +65,30 @@ Prefer the Xert MCP tools when they are available:
   all rows to `update_workout`; omitted metadata is preserved. Saved changes
   are read back and verified. There are no separate MCP row-edit tools.
 
-The CLI remains the development/fallback interface and exposes Xert operations
-that have not yet been added to MCP. Both transports call the same Python
-service for activities, workouts, calendar notes, state, and advice.
+The CLI exposes only model calculations, mixed Planner-event operations, the
+readiness composition adapter, and unsaved Workout Designer Calculate, which
+have not been added to MCP. It is not a fallback for MCP-covered operations.
 
 ## Choose The Narrowest Command
 
 ```bash
-python3 -B plugins/xert/scripts/xert_cli.py activities <start-date> <end-date>
-python3 -B plugins/xert/scripts/xert_cli.py activity-loads <start-date> <end-date>
-python3 -B plugins/xert/scripts/xert_cli.py activity <path> --summary-only
-python3 -B plugins/xert/scripts/xert_cli.py training-info
 python3 -B plugins/xert/scripts/xert_cli.py workout-capacity --as-of <ISO-datetime> --fresh-at <ISO-datetime>
 python3 -B plugins/xert/scripts/xert_cli.py readiness-input [--activity <path>]
 python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto --advice-at <ISO-local-datetime>
 python3 -B plugins/xert/scripts/xert_cli.py load-model --target-at <ISO-datetime> --workout-after-hours <H> --low-xss <XSS> --high-xss <XSS> --peak-xss <XSS>
-python3 -B plugins/xert/scripts/xert_cli.py recommended-training --date <YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_cli.py workouts [--name <name-keywords>] [--summary]
-python3 -B plugins/xert/scripts/xert_cli.py workout <path>
-python3 -B plugins/xert/scripts/xert_cli.py workout-rows <path>
-python3 -B plugins/xert/scripts/xert_cli.py workout-row-add <path> <row-number> --duration <MM:SS> --power <watts> --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py workout-row-update <path> <row-number> --power <watts> --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py workout-row-remove <path> <row-number> --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py workout-replace <path> --rows-json <rows.json> --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py training-forecast
 python3 -B plugins/xert/scripts/xert_cli.py calendar-events <YYYY-MM-DD>
 python3 -B plugins/xert/scripts/xert_cli.py calendar-event <path> --date <YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_cli.py calendar-notes
+python3 -B plugins/xert/scripts/xert_cli.py workout-calculate --row-json '<designer-row-json>'
 python3 -B plugins/xert/scripts/xert_strain_cli.py calculate --signature-tp <W> --signature-hie <J> --signature-pp <W> --segment <MM:SS@W>
 python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <plan-structure.json>
 python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <designer-rows.json> --adjustable-row <one-based-row> --target-low-xss <XSS> --signature-tp <W> --signature-hie <J> --signature-pp <W>
 ```
 
-- Use `activities` for activity discovery. Pass the intended inclusive local
-  calendar dates; the CLI handles UTC conversion.
-- Use `activity-loads` for compact XSS history. Do not loop over individual
-  activity details from the caller.
-- Use `activity --summary-only` for normal activity analysis. It includes the
-  XSS split, XEP, focus, specificity, difficulty, freshness, and fitness
-  signature.
-- Use `training-info` as the narrow first choice when a local strain calculation
-  needs the current Fitness Signature and no fresh, time-appropriate signature
-  is already available. Map `signature.ftp` to TP, convert `signature.hie` from
-  kJ to J, and map `signature.pp` to PP. Then pass all three values to
+- Use MCP `list_activities` and `get_activity` for activity discovery and
+  details. Use `view=loads` for compact XSS history rather than looping over
+  individual details.
+- When a local strain calculation needs the current Fitness Signature, use MCP
+  `get_training_state`. Map TP, HIE, and PP from its normalized signature into
   `xert_strain_cli.py calculate`. Do not call live `workout-calculate` solely to
   obtain a signature.
 - Use `readiness-input` for normalized recovery and training-advice context.
@@ -151,26 +132,21 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   splits; asks what is required to build a Fitness Signature component; or
   needs a multi-workout projection. Use its mental model for explanation and
   `load-model`/`simulate_calendar_sequence` for numbers.
-- Use `recommended-training` when candidate workouts or activities are needed,
-  and filter workout selection to `exerciseType == "Workout"`.
-- Use `workouts --name <name-keywords>` to filter the freshly fetched workout
-  library by case-insensitive keywords. All supplied words must occur in the
-  name, in any order.
-- Use `workout-rows` for editable Workout Designer structure, especially for
-  repeat or slope rows. The resolved OAuth workout can be incomplete for these.
+- Use MCP `get_training_advice(include_recommendations=true)` when candidate
+  workouts are needed.
+- Use MCP `list_workouts(name_keywords=...)` to filter the freshly fetched
+  workout library. All supplied words must occur in the name, in any order.
+- Use MCP `get_workout(view=editable)` for Workout Designer structure,
+  especially for repeat or slope rows.
 - In a repeat row, Xert's `Rest in between` (`rib_duration`/`rib_power`) is
   appended after every work interval, including the final repetition. For
   example, `interval_count=4` with a five-minute RIB produces four work
   intervals and four five-minute recovery intervals. Do not add a separate
   recovery row after the repeat block unless an additional recovery is
   intentionally required.
-- Use `workout-row-add`, `workout-row-update`, or `workout-row-remove` for one
-  structural row operation. Row numbers are one-based. Add and update expose
-  the same row field options; add requires duration and power, while update
-  leaves every omitted field unchanged.
-- Use `workout-replace` when the complete workout structure changes. Calculate
-  one complete row array with `--dry-run`, then save the same file once with
-  `--yes`; the command replaces all rows atomically and verifies fresh readback.
+- For a structural workout change, read the complete editable rows, change the
+  desired row locally, and submit the complete final row array to MCP
+  `update_workout`. It replaces all rows atomically and verifies fresh readback.
 - Workout create/copy, update/replace/row operations, and calculate results
   include `timeline_summary`: a chronological expansion with numeric
   `start`/`end`/`duration` values in seconds and a compact text `power` value.
@@ -204,7 +180,7 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   XSS works, relating low/high/peak XSS to workout structure, comparing XSS
   profiles, or calculating a known workout without network access. Prefer the
   offline `xert_strain_cli.py` whenever the segments can be resolved. If only
-  the current signature is missing, obtain it with `training-info` and continue
+  the current signature is missing, obtain it with MCP `get_training_state` and continue
   locally; a missing signature alone is not a reason to use live Calculate. Its
   default output is the analysis-ready summary; add `--detailed` only when
   segment diagnostics or model limitations are needed.
@@ -251,9 +227,8 @@ Use session data only for Xert-specific time-series fields that are unavailable
 from a better source. Always write it to an explicit temporary file and never
 print it to chat or terminal output:
 
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py activity <path> --session-data --output /tmp/xert-activity.json
-```
+Use MCP `get_activity(view=session)`. It persists the session to a private
+temporary JSON file and returns only that path.
 
 ## Semantics And Writes
 

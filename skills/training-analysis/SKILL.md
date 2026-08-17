@@ -58,8 +58,8 @@ When the question depends on Xert MPA, point-of-failure, Difficulty dynamics,
 or low/high/peak strain, use the Xert source skill. Prefer the offline
 `xert_strain_cli.py` whenever the workout segments can be resolved. If the
 Fitness Signature is the only missing input, first reuse a fresh, time-appropriate
-signature already in the source context; otherwise fetch it through the Xert
-skill's narrow `training-info` workflow, then calculate locally. Do not use live
+    signature already in the source context; otherwise fetch it with Xert MCP
+    `get_training_state`, then calculate locally. Do not use live
 Workout Designer Calculate merely to discover the current signature. Use
 `xert_calculate_analyze.py` for an existing Calculate or activity series. Keep
 Xert formulas in the source skill and consume normalized model output here

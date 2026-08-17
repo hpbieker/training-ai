@@ -234,9 +234,9 @@ chat surface supports Markdown images. In live recommendation packets, prefer
 `xert_map_local_path` for Codex/app Markdown image embeds, for example
 `![Xert-kart for <route>](<xert_map_local_path>)`, because app chat may not
 render external asset URLs reliably. Fall back to `xert_map_url` when no local
-copy exists. If the route packet lacks `xert_map_url`, fetch Xert activities for
-the selected route date with `plugins/xert/scripts/xert_cli.py activities
-<YYYY-MM-DD> <YYYY-MM-DD>`, match by route name/date/distance, and use that
+   copy exists. If the route packet lacks `xert_map_url`, list Xert activities for
+   the selected route date with Xert MCP `list_activities`, match by
+   route name/date/distance, and use that
 row's `map_url` as the route map. If no Xert map can be found, say so explicitly
 instead of silently omitting it. If Markdown image embedding is not supported,
 include the direct map URL as a fallback.

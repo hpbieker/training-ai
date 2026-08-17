@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Stateless command line access to Xert.
-
-This CLI prints live Xert payloads or compact JSON summaries to stdout. It does
-not write local files; callers that want persistence should redirect or store
-the output at their own layer.
-"""
+"""CLI for Xert operations that are not exposed by the Xert MCP server."""
 
 from __future__ import annotations
 
@@ -22,7 +17,6 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from xert_service import (
-    XertService,
     compact_activity_load,
     discover_xert_credentials,
     filter_workouts,
@@ -33,29 +27,16 @@ from xert_api import (
     _request_json,
     create_calendar_event_with_opener,
     delete_calendar_event_with_opener,
-    delete_workout,
     fetch_activity_detail,
     fetch_activity_event_metadata_for_starts,
     fetch_flagged_activity_starts_with_login,
-    fetch_calendar_notes_with_opener,
     fetch_calendar_event_with_opener,
     fetch_calendar_events_with_opener,
     fetch_recommended_training_with_login,
     fetch_recovery_model_with_login,
     calculate_workout_capacity,
     fetch_fitness_measures_with_login,
-    fetch_training_forecast_with_login,
-    fetch_workout,
-    fetch_workout_designer_rows,
     calculate_new_workout,
-    list_activities,
-    list_activity_details,
-    list_workouts,
-    mutate_workout_row,
-    replace_workout,
-    set_calendar_note,
-    summarize_workout_library,
-    update_workout,
     update_calendar_event_with_opener,
     xert_web_login,
     calculate_load_projection,
@@ -69,37 +50,8 @@ from xert_api import (
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Live Xert access.")
+    parser = argparse.ArgumentParser(description="Xert model and Planner utilities.")
     subparsers = parser.add_subparsers(dest="command", required=True)
-
-    activities = subparsers.add_parser(
-        "activities",
-        help="List Xert activities for an inclusive local-date range",
-    )
-    activities.add_argument("start", help="Local start date, YYYY-MM-DD")
-    activities.add_argument("end", help="Local end date, YYYY-MM-DD")
-
-    activity_loads = subparsers.add_parser(
-        "activity-loads",
-        help="Fetch compact XSS load rows for activities in an inclusive local-date range",
-    )
-    activity_loads.add_argument("start", help="Local start date, YYYY-MM-DD")
-    activity_loads.add_argument("end", help="Local end date, YYYY-MM-DD")
-
-    activity = subparsers.add_parser("activity", help="Fetch one Xert activity detail payload")
-    activity.add_argument("path", help="Xert activity path from activities output")
-    activity.add_argument("--session-data", action="store_true")
-    activity.add_argument(
-        "--summary-only",
-        action="store_true",
-        help="Return compact activity load fields without second-by-second session data",
-    )
-    activity.add_argument(
-        "--output",
-        help="Write activity JSON to this file instead of stdout. Required with --session-data.",
-    )
-
-    subparsers.add_parser("training-info", help="Fetch current Xert training_info payload")
     subparsers.add_parser("recovery-model", help="Fetch model inputs and calculated recovery hours")
     workout_capacity = subparsers.add_parser(
         "workout-capacity",
@@ -207,9 +159,6 @@ def main() -> None:
         "--advice-now",
         help="Current local/ISO datetime for --advice-source auto. Defaults to system now.",
     )
-    subparsers.add_parser("training-forecast", help="Fetch Xert calendar training forecast")
-    subparsers.add_parser("calendar-notes", help="Fetch Xert calendar notes")
-
     calendar_events = subparsers.add_parser(
         "calendar-events", help="List Xert Planner events for one date"
     )
@@ -243,180 +192,6 @@ def main() -> None:
     calendar_event_delete.add_argument(
         "--yes", action="store_true", help="Confirm destructive deletion"
     )
-
-    calendar_note_set = subparsers.add_parser(
-        "calendar-note-set",
-        help="Set one Xert calendar note and verify it",
-    )
-    calendar_note_set.add_argument("date", help="Local calendar date, YYYY-MM-DD")
-    calendar_note_set.add_argument("notes", help="Note text. Use an empty string to clear it.")
-    calendar_note_set.add_argument("--update-weight", action="store_true")
-    calendar_note_set.add_argument("--weight", type=float)
-    calendar_note_set.add_argument("--weight-units", default="kg")
-    calendar_note_set.add_argument("--yes", action="store_true", help="Confirm the write")
-
-    recommended = subparsers.add_parser("recommended-training", help="Fetch recommended training")
-    recommended.add_argument("--date", default=date.today().isoformat())
-    recommended.add_argument(
-        "--recent",
-        action=argparse.BooleanOptionalAction,
-        default=True,
-        help=(
-            "Keep the Xert query value recent=true for normal recommendations. "
-            "Use --no-recent only when older repeatable activities should be included."
-        ),
-    )
-    recommended.add_argument(
-        "--additional",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help=(
-            "Allow additional/extra training suggestions. Keep the Xert query "
-            "value additional=false for the primary training advice dose."
-        ),
-    )
-    recommended.add_argument("--sport")
-
-    workouts = subparsers.add_parser("workouts", help="List Xert workout library")
-    workouts.add_argument(
-        "--name",
-        help="Filter workouts by case-insensitive name keywords; all words must occur",
-    )
-    workouts.add_argument("--summary", action="store_true", help="Return compact workout rows")
-
-    workout = subparsers.add_parser("workout", help="Fetch one resolved Xert workout")
-    workout.add_argument("path", help="Xert workout path")
-
-    workout_rows = subparsers.add_parser(
-        "workout-rows",
-        help="Fetch editable Xert Workout Designer rows for a workout",
-    )
-    workout_rows.add_argument("path", help="Xert workout path")
-
-    workout_update = subparsers.add_parser(
-        "workout-update",
-        help="Update a Xert workout through Workout Designer rows",
-    )
-    workout_update.add_argument("path", help="Xert workout path")
-    workout_update.add_argument("--name")
-    workout_update.add_argument("--description")
-    workout_update.add_argument("--match-name")
-    workout_update.add_argument("--match-power", type=float)
-    workout_update.add_argument("--expect-matches", type=int, default=1)
-    workout_update.add_argument("--set-duration")
-    workout_update.add_argument("--set-power", type=float)
-    workout_update.add_argument("--set-power-type")
-    workout_update.add_argument("--set-power-second-value", type=float)
-    workout_update.add_argument("--set-row-name")
-    workout_update.add_argument("--set-interval-count")
-    workout_update.add_argument("--set-rib-duration")
-    workout_update.add_argument("--set-rib-power", type=float)
-    workout_update.add_argument("--set-rib-power-type")
-    workout_update.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate with Xert calculate instead of saving",
-    )
-    workout_update.add_argument("--yes", action="store_true", help="Confirm the write")
-
-    workout_replace = subparsers.add_parser(
-        "workout-replace",
-        help="Atomically replace every Workout Designer row",
-    )
-    workout_replace.add_argument("path", help="Xert workout path")
-    workout_replace_input = workout_replace.add_mutually_exclusive_group(required=True)
-    workout_replace_input.add_argument(
-        "--rows-json",
-        type=Path,
-        help="JSON file containing a non-empty array of complete Workout Designer rows",
-    )
-    workout_replace_input.add_argument(
-        "--row-json",
-        action="append",
-        help=(
-            "Inline compact JSON row; repeat in execution order. Uses the same "
-            "row fields as workout-calculate --row-json."
-        ),
-    )
-    workout_replace.add_argument("--name")
-    workout_replace.add_argument("--description")
-    workout_replace.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate the complete replacement with Xert calculate without saving",
-    )
-    workout_replace.add_argument("--yes", action="store_true", help="Confirm the atomic replacement")
-
-    workout_row_add = subparsers.add_parser(
-        "workout-row-add",
-        help="Insert one Workout Designer row at a one-based row number",
-    )
-    workout_row_add.add_argument("path", help="Xert workout path")
-    workout_row_add.add_argument("row_number", type=int, help="One-based insertion position")
-    workout_row_add.add_argument("--name")
-    workout_row_add.add_argument("--duration", required=True)
-    workout_row_add.add_argument("--power", required=True, type=float)
-    workout_row_add.add_argument("--power-type", default="absolute")
-    workout_row_add.add_argument("--power-second-value", type=float)
-    workout_row_add.add_argument("--interval-count", default="1")
-    workout_row_add.add_argument("--rib-duration", default="00:00")
-    workout_row_add.add_argument("--rib-power", type=float, default=0)
-    workout_row_add.add_argument("--rib-power-type", default="absolute")
-    workout_row_add.add_argument("--dry-run", action="store_true")
-    workout_row_add.add_argument("--yes", action="store_true", help="Confirm the write")
-
-    workout_row_update = subparsers.add_parser(
-        "workout-row-update",
-        help="Patch specified fields on one one-based Workout Designer row",
-    )
-    workout_row_update.add_argument("path", help="Xert workout path")
-    workout_row_update.add_argument("row_number", type=int, help="One-based row number")
-    workout_row_update.add_argument("--name")
-    workout_row_update.add_argument("--duration")
-    workout_row_update.add_argument("--power", type=float)
-    workout_row_update.add_argument("--power-type")
-    workout_row_update.add_argument("--power-second-value", type=float)
-    workout_row_update.add_argument("--interval-count")
-    workout_row_update.add_argument("--rib-duration")
-    workout_row_update.add_argument("--rib-power", type=float)
-    workout_row_update.add_argument("--rib-power-type")
-    workout_row_update.add_argument("--dry-run", action="store_true")
-    workout_row_update.add_argument("--yes", action="store_true", help="Confirm the write")
-
-    workout_row_remove = subparsers.add_parser(
-        "workout-row-remove",
-        help="Remove one one-based Workout Designer row",
-    )
-    workout_row_remove.add_argument("path", help="Xert workout path")
-    workout_row_remove.add_argument("row_number", type=int, help="One-based row number")
-    workout_row_remove.add_argument("--dry-run", action="store_true")
-    workout_row_remove.add_argument("--yes", action="store_true", help="Confirm the write")
-
-    workout_copy = subparsers.add_parser(
-        "workout-copy",
-        help="Copy a Xert workout through Workout Designer rows",
-    )
-    workout_copy.add_argument("path", help="Source Xert workout path")
-    workout_copy.add_argument("--name", required=True, help="Name for the copied workout")
-    workout_copy.add_argument("--description")
-    workout_copy.add_argument("--match-name")
-    workout_copy.add_argument("--match-power", type=float)
-    workout_copy.add_argument("--expect-matches", type=int, default=1)
-    workout_copy.add_argument("--set-duration")
-    workout_copy.add_argument("--set-power", type=float)
-    workout_copy.add_argument("--set-power-type")
-    workout_copy.add_argument("--set-power-second-value", type=float)
-    workout_copy.add_argument("--set-row-name")
-    workout_copy.add_argument("--set-interval-count")
-    workout_copy.add_argument("--set-rib-duration")
-    workout_copy.add_argument("--set-rib-power", type=float)
-    workout_copy.add_argument("--set-rib-power-type")
-    workout_copy.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Validate the copied structure with Xert calculate without creating it",
-    )
-    workout_copy.add_argument("--yes", action="store_true", help="Confirm the write")
 
     workout_calculate = subparsers.add_parser(
         "workout-calculate",
@@ -509,31 +284,9 @@ def main() -> None:
         help="Override Peak Power for this unsaved calculation only.",
     )
 
-    workout_delete = subparsers.add_parser("workout-delete", help="Delete a Xert workout")
-    workout_delete.add_argument("path", help="Xert workout path")
-    workout_delete.add_argument("--yes", action="store_true", help="Confirm destructive deletion")
-
     args = parser.parse_args()
     credentials = discover_xert_credentials()
-    service = XertService(lambda: credentials)
-
-    if args.command == "activities":
-        payload = service.list_activities(args.start, args.end)
-    elif args.command == "activity-loads":
-        payload = service.list_activities(args.start, args.end, view="loads")
-    elif args.command == "activity":
-        if args.session_data and args.summary_only:
-            raise SystemExit("Use either --session-data or --summary-only, not both")
-        if args.session_data and not args.output:
-            raise SystemExit("Use --output <file> with --session-data to avoid huge terminal output")
-        view = "session" if args.session_data else "summary" if args.summary_only else "full"
-        payload = service.get_activity(args.path, view=view)
-    elif args.command == "training-info":
-        payload = fetch_training_info(
-            username=credentials.username,
-            password=credentials.password,
-        )
-    elif args.command == "recovery-model":
+    if args.command == "recovery-model":
         payload = fetch_recovery_model_with_login(
             username=_require(credentials.username, "XERT_USERNAME"),
             password=_require(credentials.password, "XERT_PASSWORD"),
@@ -664,17 +417,6 @@ def main() -> None:
             advice_at=args.advice_at,
             advice_now=args.advice_now,
         )
-    elif args.command == "training-forecast":
-        payload = fetch_training_forecast_with_login(
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-        )
-    elif args.command == "calendar-notes":
-        opener = xert_web_login(
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-        )
-        payload = fetch_calendar_notes_with_opener(opener)
     elif args.command in {
         "calendar-events",
         "calendar-event",
@@ -715,150 +457,6 @@ def main() -> None:
             payload = delete_calendar_event_with_opener(opener, args.date, args.path)
         if isinstance(payload, dict) and payload.get("success") is False:
             raise SystemExit(json.dumps(payload, indent=2, sort_keys=True))
-    elif args.command == "calendar-note-set":
-        if not args.yes:
-            raise SystemExit("Refusing to set Xert calendar note without --yes")
-        payload = set_calendar_note(
-            args.date,
-            args.notes,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            update_weight=args.update_weight,
-            weight=args.weight,
-            weight_units=args.weight_units,
-        )
-        if not payload.get("success"):
-            raise SystemExit(json.dumps(payload, indent=2, sort_keys=True))
-    elif args.command == "recommended-training":
-        payload = fetch_recommended_training_with_login(
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            date_value=args.date,
-            recent=args.recent,
-            additional=args.additional,
-            sport=args.sport,
-        )
-    elif args.command == "workouts":
-        payload = service.list_workouts(
-            name_keywords=args.name,
-            view="summary" if args.summary else "full",
-        )
-    elif args.command == "workout":
-        payload = service.get_workout(args.path, view="resolved")
-    elif args.command == "workout-rows":
-        payload = service.get_workout(args.path, view="editable")
-    elif args.command == "workout-update":
-        if not args.dry_run and not args.yes:
-            raise SystemExit("Refusing to save Xert workout update without --yes")
-        payload = update_workout(
-            args.path,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            name=args.name,
-            description=args.description,
-            match_name=args.match_name,
-            match_power=args.match_power,
-            expected_matches=args.expect_matches,
-            set_duration=args.set_duration,
-            set_power=args.set_power,
-            set_power_type=args.set_power_type,
-            set_power_second_value=args.set_power_second_value,
-            set_row_name=args.set_row_name,
-            set_interval_count=args.set_interval_count,
-            set_rib_duration=args.set_rib_duration,
-            set_rib_power=args.set_rib_power,
-            set_rib_power_type=args.set_rib_power_type,
-            submit="calculate" if args.dry_run else "save",
-        )
-    elif args.command == "workout-replace":
-        if not args.dry_run and not args.yes:
-            raise SystemExit("Refusing to replace Xert workout rows without --yes")
-        rows = workout_replacement_rows(args)
-        payload = replace_workout(
-            args.path,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            rows=rows,
-            name=args.name,
-            description=args.description,
-            submit="calculate" if args.dry_run else "save",
-        )
-    elif args.command == "workout-row-add":
-        if not args.dry_run and not args.yes:
-            raise SystemExit("Refusing to add Xert workout row without --yes")
-        payload = mutate_workout_row(
-            args.path,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            operation="add",
-            row_number=args.row_number,
-            row=workout_probe_row(
-                name=args.name or f"Row {args.row_number}",
-                duration=args.duration,
-                power=args.power,
-                power_type=args.power_type,
-                interval_count=args.interval_count,
-                rib_duration=args.rib_duration,
-                rib_power=args.rib_power,
-                rib_power_type=args.rib_power_type,
-            ),
-            set_power_second_value=args.power_second_value,
-            submit="calculate" if args.dry_run else "save",
-        )
-    elif args.command == "workout-row-update":
-        if not args.dry_run and not args.yes:
-            raise SystemExit("Refusing to update Xert workout row without --yes")
-        payload = mutate_workout_row(
-            args.path,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            operation="update",
-            row_number=args.row_number,
-            set_duration=args.duration,
-            set_power=args.power,
-            set_power_type=args.power_type,
-            set_power_second_value=args.power_second_value,
-            set_row_name=args.name,
-            set_interval_count=args.interval_count,
-            set_rib_duration=args.rib_duration,
-            set_rib_power=args.rib_power,
-            set_rib_power_type=args.rib_power_type,
-            submit="calculate" if args.dry_run else "save",
-        )
-    elif args.command == "workout-row-remove":
-        if not args.dry_run and not args.yes:
-            raise SystemExit("Refusing to remove Xert workout row without --yes")
-        payload = mutate_workout_row(
-            args.path,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            operation="remove",
-            row_number=args.row_number,
-            submit="calculate" if args.dry_run else "save",
-        )
-    elif args.command == "workout-copy":
-        if not args.dry_run and not args.yes:
-            raise SystemExit("Refusing to copy Xert workout without --yes")
-        payload = update_workout(
-            args.path,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-            name=args.name,
-            description=args.description,
-            match_name=args.match_name,
-            match_power=args.match_power,
-            expected_matches=args.expect_matches,
-            set_duration=args.set_duration,
-            set_power=args.set_power,
-            set_power_type=args.set_power_type,
-            set_power_second_value=args.set_power_second_value,
-            set_row_name=args.set_row_name,
-            set_interval_count=args.set_interval_count,
-            set_rib_duration=args.set_rib_duration,
-            set_rib_power=args.set_rib_power,
-            set_rib_power_type=args.set_rib_power_type,
-            submit="calculate" if args.dry_run else "copy",
-        )
     elif args.command == "workout-calculate":
         rows = workout_calculate_rows(args)
         payload = calculate_new_workout(
@@ -891,14 +489,6 @@ def main() -> None:
             payload = compact_workout_calculation_summary(payload)
             if args.series_output:
                 payload["series_output"] = args.series_output
-    elif args.command == "workout-delete":
-        if not args.yes:
-            raise SystemExit("Refusing to delete Xert workout without --yes")
-        payload = delete_workout(
-            args.path,
-            username=_require(credentials.username, "XERT_USERNAME"),
-            password=_require(credentials.password, "XERT_PASSWORD"),
-        )
     else:
         raise AssertionError(f"Unhandled command: {args.command}")
 

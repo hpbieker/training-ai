@@ -27,6 +27,37 @@ import xert_common as COMMON
 import xert_service as SERVICE
 
 
+class CliSurfaceTests(unittest.TestCase):
+    def test_mcp_covered_commands_are_not_exposed(self) -> None:
+        removed = (
+            "activities",
+            "activity-loads",
+            "activity",
+            "training-info",
+            "training-forecast",
+            "calendar-notes",
+            "calendar-note-set",
+            "recommended-training",
+            "workouts",
+            "workout",
+            "workout-rows",
+            "workout-update",
+            "workout-replace",
+            "workout-row-add",
+            "workout-row-update",
+            "workout-row-remove",
+            "workout-copy",
+            "workout-delete",
+        )
+        for command in removed:
+            with self.subTest(command=command), patch.object(
+                sys, "argv", ["xert_cli.py", command]
+            ), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    CLI.main()
+                self.assertEqual(raised.exception.code, 2)
+
+
 class AuthenticationCacheTests(unittest.TestCase):
     def test_bearer_token_is_reused_within_one_service_session(self) -> None:
         auth = SERVICE.XertAuthSession(

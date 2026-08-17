@@ -6,10 +6,8 @@ successful write.
 
 ## Calendar Notes
 
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py calendar-note-set <YYYY-MM-DD> "<note>" --yes
-python3 -B plugins/xert/scripts/xert_cli.py calendar-notes
-```
+Use MCP `set_note` only after explicit confirmation. Read the date back with
+MCP `get_note`; use `list_notes` when range context is relevant.
 
 Calendar notes are separate from forecast and training-plan fields.
 
@@ -35,68 +33,15 @@ python3 -B plugins/xert/scripts/xert_cli.py calendar-event-delete <path> --date 
 
 ## Workout Updates
 
-Inspect editable rows first:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-rows <path>
-```
-
-Test an edit with `--dry-run`, which uses Workout Designer calculation without
-saving. Persist only with `--yes`, then verify with both `workout-rows <path>`
-and `workouts --summary` as relevant.
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-update <path> --match-name "<row>" --set-duration <MM:SS> --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py workout-update <path> --match-name "<row>" --set-duration <MM:SS> --yes
-```
+Inspect editable rows first with MCP `get_workout(view=editable)`. For a saved
+change, construct the complete final row array and submit it to MCP
+`update_workout`; omitted metadata remains unchanged and the tool verifies the
+saved rows. Use the unsaved `workout-calculate` CLI only when an empirical
+Calculate result is actually required before the write.
 
 Prefer updating repeat-row fields over expanding repeated blocks into copied
-rows. Use the CLI's explicit row options for names, interval count, recovery
-duration, recovery power, and power type.
-
-Use `workout-update` only for a bounded metadata change or an in-place change
-to matching existing rows. Saved updates read all rows back and fail if Xert's
-saved structure differs from the submitted structure. Row changes require a
-name or power selector and expect exactly one match by default; pass
-`--expect-matches <count>` only when multiple matches are intentional.
-
-For a single row, prefer the explicit one-based row operations:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-row-add <path> 3 \
-  --name "VT1" --duration 15:00 --power 205 --interval-count 4 --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py workout-row-update <path> 3 \
-  --name "VT1" --duration 15:00 --power 205 --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py workout-row-remove <path> 3 --dry-run
-```
-
-Repeat the identical command with `--yes` only after inspecting the dry-run.
-`workout-row-update` has patch semantics: omitted fields remain unchanged.
-Add and update use the same field options, without JSON: `--name`, `--duration`,
-`--power`, `--power-type`, `--power-second-value`, `--interval-count`,
-`--rib-duration`, `--rib-power`, and `--rib-power-type`. Add requires duration
-and power and supplies defaults for omitted optional fields. Add accepts
-positions 1 through row-count plus one; update and remove require an existing
-row. Remove refuses to delete the workout's only row. Saved operations renumber
-all rows and verify a fresh readback against the complete submitted structure.
-
-When the workout changes shape, replace the complete row array atomically:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-rows <path> > /tmp/current-rows.json
-python3 -B plugins/xert/scripts/xert_cli.py workout-replace <path> \
-  --rows-json /tmp/replacement-rows.json --dry-run
-python3 -B plugins/xert/scripts/xert_cli.py workout-replace <path> \
-  --rows-json /tmp/replacement-rows.json --yes
-```
-
-`workout-replace` renumbers rows, clears transport row IDs, submits every row
-in one request, and compares the saved rows with the requested rows.
-
-For a small number of compact or complete Designer rows, repeated inline
-`--row-json` arguments may be used instead of creating a temporary rows file.
-Complete inline rows preserve advanced power types such as ramps. Use the file
-form for large or already-materialized complete Designer payloads.
+rows. MCP has no separate row-edit operation: preserve every unmodified row,
+change only the intended row locally, and submit all rows in execution order.
 
 When the new structure makes the existing workout name or description stale,
 pass the corrected `--name` and `--description` in the same dry-run and saved
@@ -111,10 +56,9 @@ recovery. Do not add a separate following recovery row unless an additional
 recovery beyond that final RIB is explicitly intended. Confirm this behavior
 against Xert's calculated total duration as well as the saved row readback.
 
-`workout-copy` creates a new workout and therefore also requires explicit
-confirmation. Inspect the source rows first, run `workout-copy ... --dry-run`,
-then use the same command with `--yes`. The copy is read back and its rows must
-match the calculated structure.
+To copy a workout, inspect the source with MCP `get_workout(view=editable)`,
+then call MCP `create_workout` with the new name and complete copied rows. The
+created workout is read back and verified.
 
 ## Synthetic Calculation
 
@@ -171,14 +115,7 @@ Do not save synthetic workouts unless the user explicitly requests it.
 
 ## Deletion
 
-Workout deletion is destructive and requires explicit confirmation:
-
-```bash
-python3 -B plugins/xert/scripts/xert_cli.py workout-delete <path> --yes
-python3 -B plugins/xert/scripts/xert_cli.py workouts --summary
-```
-
-The implementation uses authenticated `DELETE /workout/<path>`. Do not test it
-against a real workout merely to characterize the endpoint. The command reads
-the target metadata before deletion and verifies afterward that the path is no
-longer present in the workout library.
+Workout deletion is destructive and requires explicit confirmation. Use MCP
+`delete_workout`; it reads the target metadata before deletion and verifies
+afterward that the path is absent. Do not test it against a real workout merely
+to characterize the endpoint.
