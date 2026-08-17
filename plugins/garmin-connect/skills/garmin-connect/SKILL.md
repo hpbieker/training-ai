@@ -32,8 +32,10 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
 
 - Use `get_health_day` for normal same-day readiness input. Its stable compact
   output includes normalized Training Readiness drivers and VO2max context and retains supporting daily
-  source signals needed for readiness composition and preserves all normalized
+  source summaries needed for readiness composition and preserves all normalized
   readiness observations so a historical cutoff can select the correct row.
+  Pass `save_full=true` only when the complete fetched health-day payload is
+  needed; it is saved to a private temporary JSON file and kept out of MCP context.
   Compact VO2max preserves Garmin's `cycling` and `generic` categories; it does
   not guess that `generic` means running or infer a VO2max source device from
   the separate Training Status device context.

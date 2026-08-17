@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
@@ -93,7 +95,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "description": (
             "Get compact normalized Garmin health and readiness data for one local date. "
             "Returns all timestamped Training Readiness observations, its six drivers, "
-            "Recovery Time, VO2max context, and the requested supporting daily sources. "
+            "Recovery Time, VO2max context, and compact supporting-source summaries. "
+            "Set save_full=true to save the complete fetched health-day payload to a "
+            "private temporary JSON file. "
             "For a future training date, request the latest date that has occurred."
         ),
         "inputSchema": {
@@ -102,6 +106,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "date": {"type": "string", "format": "date"},
                 "sources": _SOURCE_ARRAY,
                 "tolerate_errors": {"type": "boolean", "default": True},
+                "save_full": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Save the complete fetched Garmin health-day payload to a "
+                        "private temporary JSON file."
+                    ),
+                },
             },
             "required": ["date"],
             "additionalProperties": False,
@@ -277,6 +289,28 @@ class ToolFailure(RuntimeError):
         self.code = code
 
 
+def _write_private_health_day_file(
+    day: str, payload: dict[str, Any]
+) -> tuple[str, int]:
+    descriptor, raw_path = tempfile.mkstemp(
+        prefix=f"garmin-{day}-", suffix="-health-day.json"
+    )
+    path = Path(raw_path)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            json.dump(
+                {"date": day, "health_day": payload},
+                stream,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    return str(path), path.stat().st_size
+
+
 class GarminConnectToolService:
     def __init__(self, gccli_factory: Callable[[], str] = resolve_gccli) -> None:
         self._gccli_factory = gccli_factory
@@ -298,6 +332,9 @@ class GarminConnectToolService:
         gccli = self._gccli_factory()
         if name == "get_health_day":
             day = _iso_date(arguments["date"], "date")
+            save_full = arguments.get("save_full", False)
+            if not isinstance(save_full, bool):
+                raise ValueError("save_full must be a boolean")
             payload = fetch_day(
                 day,
                 gccli=gccli,
@@ -305,7 +342,15 @@ class GarminConnectToolService:
                 profile="full" if arguments.get("sources") else "readiness",
                 tolerate_errors=arguments.get("tolerate_errors", True),
             )
-            return compact_day_payload(payload)
+            result = compact_day_payload(payload)
+            if save_full:
+                file_path, byte_size = _write_private_health_day_file(day, payload)
+                result.update({
+                    "full_health_day_file": file_path,
+                    "full_health_day_format": "garmin-health-day-v1",
+                    "full_health_day_byte_size": byte_size,
+                })
+            return result
         if name == "list_health_days":
             until = _iso_date(arguments["until"], "until")
             days = arguments.get("days", 7)

@@ -170,11 +170,7 @@ def compact_day_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "training_status_context": compact_daily_training_status_context(
             sources.get("training_status")
         ),
-        "sources": {
-            key: value
-            for key, value in sources.items()
-            if key != "training_readiness"
-        },
+        "sources": compact_daily_source_summaries(sources),
     }
     errors = {
         key: value
@@ -184,6 +180,120 @@ def compact_day_payload(payload: dict[str, Any]) -> dict[str, Any]:
     if errors:
         result["source_errors"] = errors
     return result
+
+
+def compact_daily_source_summaries(sources: dict[str, Any]) -> dict[str, Any]:
+    """Return useful daily scalars without embedding Garmin's raw time series."""
+
+    fields = {
+        "heart_rate": (
+            "calendarDate", "startTimestampGMT", "endTimestampGMT",
+            "startTimestampLocal", "endTimestampLocal", "maxHeartRate",
+            "minHeartRate", "restingHeartRate", "lastSevenDaysAvgRestingHeartRate",
+        ),
+        "hrv": (
+            "calendarDate", "lastNightAvg", "lastNight5MinHigh", "weeklyAvg",
+            "status", "baselineLowUpper", "baselineBalancedLow",
+            "baselineBalancedUpper", "feedbackPhrase", "createTimeStamp",
+            "endTimestampGMT", "endTimestampLocal",
+        ),
+        "sleep": (
+            "calendarDate", "sleepTimeSeconds", "napTimeSeconds",
+            "sleepStartTimestampGMT", "sleepEndTimestampGMT",
+            "sleepStartTimestampLocal", "sleepEndTimestampLocal",
+            "averageSpO2Value", "lowestSpO2Value", "averageRespirationValue",
+            "lowestRespirationValue", "highestRespirationValue",
+        ),
+        "stress": (
+            "calendarDate", "startTimestampGMT", "endTimestampGMT",
+            "startTimestampLocal", "endTimestampLocal", "maxStressLevel",
+            "avgStressLevel",
+        ),
+        "summary": (
+            "calendarDate", "totalSteps", "dailyStepGoal", "totalDistanceMeters",
+            "activeKilocalories", "bmrKilocalories", "restingHeartRate",
+            "minHeartRate", "maxHeartRate", "averageStressLevel",
+            "maxStressLevel", "stressDuration", "restStressDuration",
+            "lowStressDuration", "mediumStressDuration", "highStressDuration",
+        ),
+        "training_status": (
+            "calendarDate", "timestamp", "timestampLocal", "trainingStatus",
+            "trainingStatusFeedbackPhrase", "acuteTrainingLoad",
+            "acuteTrainingLoadStatus", "loadRatio", "loadRatioStatus",
+        ),
+        "body_battery": (
+            "calendarDate", "startTimestampGMT", "endTimestampGMT",
+            "startTimestampLocal", "endTimestampLocal", "charged", "drained",
+            "highestValue", "lowestValue",
+        ),
+    }
+    summaries: dict[str, Any] = {}
+    for source, payload in sources.items():
+        if source == "training_readiness":
+            continue
+        if isinstance(payload, dict) and payload.get("error"):
+            summaries[source] = {"error": payload.get("error")}
+            continue
+        row = _first_source_row(payload)
+        if row is None:
+            summaries[source] = None
+            continue
+        summary = {key: row[key] for key in fields.get(source, ()) if key in row}
+        if source == "sleep":
+            score = _nested_value(row, "sleepScores", "overall", "value")
+            if score is not None:
+                summary["sleep_score"] = score
+        if source == "stress":
+            battery = _body_battery_series_summary(row)
+            if battery:
+                summary["body_battery"] = battery
+        summaries[source] = summary
+    return summaries
+
+
+def _first_source_row(payload: Any) -> dict[str, Any] | None:
+    if isinstance(payload, dict):
+        return payload
+    if isinstance(payload, list):
+        return next((row for row in payload if isinstance(row, dict)), None)
+    return None
+
+
+def _nested_value(payload: dict[str, Any], *path: str) -> Any:
+    value: Any = payload
+    for key in path:
+        if not isinstance(value, dict):
+            return None
+        value = value.get(key)
+    return value
+
+
+def _body_battery_series_summary(payload: dict[str, Any]) -> dict[str, Any] | None:
+    descriptors = {
+        row.get("bodyBatteryValueDescriptorKey"): row.get("bodyBatteryValueDescriptorIndex")
+        for row in payload.get("bodyBatteryValueDescriptorsDTOList") or []
+        if isinstance(row, dict)
+    }
+    timestamp_index = descriptors.get("timestamp")
+    level_index = descriptors.get("bodyBatteryLevel")
+    if not isinstance(timestamp_index, int) or not isinstance(level_index, int):
+        return None
+    points = []
+    for row in payload.get("bodyBatteryValuesArray") or []:
+        if not isinstance(row, list) or max(timestamp_index, level_index) >= len(row):
+            continue
+        timestamp, level = row[timestamp_index], row[level_index]
+        if isinstance(level, (int, float)) and not isinstance(level, bool):
+            points.append((timestamp, level))
+    if not points:
+        return None
+    return {
+        "point_count": len(points),
+        "first": {"timestamp_ms": points[0][0], "value": points[0][1]},
+        "last": {"timestamp_ms": points[-1][0], "value": points[-1][1]},
+        "minimum": min(level for _, level in points),
+        "maximum": max(level for _, level in points),
+    }
 
 
 def compact_recent_payload(payload: dict[str, Any]) -> dict[str, Any]:

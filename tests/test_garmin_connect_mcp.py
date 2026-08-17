@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import stat
 import sys
 import unittest
 from pathlib import Path
@@ -49,6 +51,37 @@ class GarminConnectMcpTests(unittest.TestCase):
             tolerate_errors=True,
         )
         self.assertTrue(result["compact"])
+        self.assertNotIn("full_health_day_file", result)
+
+    @patch.object(MCP, "compact_day_payload")
+    @patch.object(MCP, "fetch_day")
+    def test_get_health_day_can_save_full_private_file(
+        self, fetch_day, compact_day
+    ) -> None:
+        fetch_day.return_value = {
+            "date": "2026-08-17",
+            "sources": {"stress": {"stressValuesArray": [[1, 42]]}},
+        }
+        compact_day.return_value = {"date": "2026-08-17", "summary": True}
+
+        result = self.service.call_tool(
+            "get_health_day", {"date": "2026-08-17", "save_full": True}
+        )
+
+        path = Path(result["full_health_day_file"])
+        self.addCleanup(path.unlink, missing_ok=True)
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertTrue(result["summary"])
+        self.assertEqual(result["full_health_day_format"], "garmin-health-day-v1")
+        self.assertEqual(result["full_health_day_byte_size"], path.stat().st_size)
+        self.assertEqual(saved["health_day"], fetch_day.return_value)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_get_health_day_rejects_non_boolean_save_full(self) -> None:
+        with self.assertRaisesRegex(MCP.ToolFailure, "save_full must be a boolean"):
+            self.service.call_tool(
+                "get_health_day", {"date": "2026-08-17", "save_full": "yes"}
+            )
 
     @patch.object(MCP, "compact_recent_payload")
     @patch.object(MCP, "fetch_recent_days")

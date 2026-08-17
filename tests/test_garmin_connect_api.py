@@ -48,6 +48,33 @@ class GarminCompactHealthTests(unittest.TestCase):
         self.assertNotIn("training_readiness", result["sources"])
         self.assertIn("training_status", result["sources"])
 
+    def test_compact_day_summarizes_stress_and_body_battery_series(self) -> None:
+        payload = {
+            "source": "garmin_connect_gccli",
+            "date": "2026-08-17",
+            "sources": {
+                "stress": {
+                    "avgStressLevel": 8,
+                    "maxStressLevel": 78,
+                    "stressValuesArray": [[1, 8], [2, 12]],
+                    "bodyBatteryValueDescriptorsDTOList": [
+                        {"bodyBatteryValueDescriptorKey": "timestamp", "bodyBatteryValueDescriptorIndex": 0},
+                        {"bodyBatteryValueDescriptorKey": "bodyBatteryLevel", "bodyBatteryValueDescriptorIndex": 1},
+                    ],
+                    "bodyBatteryValuesArray": [[1, 46], [2, 92], [3, 70]],
+                }
+            },
+        }
+
+        result = API.compact_day_payload(payload)
+        stress = result["sources"]["stress"]
+
+        self.assertEqual(stress["avgStressLevel"], 8)
+        self.assertEqual(stress["body_battery"]["point_count"], 3)
+        self.assertEqual(stress["body_battery"]["maximum"], 92)
+        self.assertNotIn("stressValuesArray", stress)
+        self.assertNotIn("bodyBatteryValuesArray", stress)
+
     def test_compact_day_preserves_vo2max_category_date_and_precision(self) -> None:
         result = API.compact_day_payload(self.payload)
         estimates = result["vo2max"]["estimates"]
