@@ -51,6 +51,9 @@ Prefer the Xert MCP tools when they are available:
   `rib_duration_seconds` is applied after every repetition, including the
   final one. Use it only when creation is explicitly requested; inspect its
   verified metadata and `timeline_summary` after the write.
+- `delete_workout` permanently deletes the specified workout path. Use it only
+  when deletion is explicitly requested. It reads target metadata first and
+  verifies afterward that the path is absent from the workout library.
 
 The CLI remains the development/fallback interface and exposes Xert operations
 that have not yet been added to MCP. Both transports call the same Python

@@ -26,6 +26,7 @@ ALL_TOOL_NAMES = (
     "get_training_state",
     "get_training_advice",
     "create_workout",
+    "delete_workout",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -96,6 +97,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "title": "Create Xert Workout",
         "readOnlyHint": False,
         "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    "delete_workout": {
+        "title": "Delete Xert Workout",
+        "readOnlyHint": False,
+        "destructiveHint": True,
         "idempotentHint": False,
         "openWorldHint": True,
     },
@@ -549,6 +557,35 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["create_workout"],
     },
+    "delete_workout": {
+        "name": "delete_workout",
+        "description": (
+            "Permanently delete one Xert workout. The target metadata is read before "
+            "deletion and the workout library is read afterward to verify that the "
+            "path is absent. Use only when deletion is explicitly requested."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "workout_path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Xert workout path returned by list_workouts.",
+                },
+            },
+            "required": ["workout_path"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "deletion": _object("Deleted target metadata and absence verification."),
+            },
+            "required": ["deletion"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["delete_workout"],
+    },
 }
 
 
@@ -671,6 +708,8 @@ class XertToolService:
                     rows=arguments["rows"],
                 )
             }
+        if name == "delete_workout":
+            return {"deletion": service.delete_workout(arguments["workout_path"])}
         path = arguments["workout_path"]
         view = arguments.get("view", "resolved")
         workout = service.get_workout(path, view=view)

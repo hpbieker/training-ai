@@ -60,6 +60,10 @@ class FakeXertService:
         self.calls.append(("create_workout", name, rows, description))
         return {"path": "new-workout", "saved": True}
 
+    def delete_workout(self, path):
+        self.calls.append(("delete_workout", path))
+        return {"path": path, "verified_absent": True}
+
 
 class XertMcpSchemaTests(unittest.TestCase):
     def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
@@ -76,6 +80,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "get_training_state",
                 "get_training_advice",
                 "create_workout",
+                "delete_workout",
             ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
@@ -89,13 +94,18 @@ class XertMcpSchemaTests(unittest.TestCase):
             writes_session_file = name == "get_activity"
             writes_note = name == "set_note"
             creates_workout = name == "create_workout"
+            deletes_workout = name == "delete_workout"
             self.assertEqual(
                 definition["annotations"],
                 {
                     "title": MCP.TOOL_ANNOTATIONS[name]["title"],
-                    "readOnlyHint": not (writes_session_file or writes_note or creates_workout),
-                    "destructiveHint": writes_note,
-                    "idempotentHint": not (writes_session_file or creates_workout),
+                    "readOnlyHint": not (
+                        writes_session_file or writes_note or creates_workout or deletes_workout
+                    ),
+                    "destructiveHint": writes_note or deletes_workout,
+                    "idempotentHint": not (
+                        writes_session_file or creates_workout or deletes_workout
+                    ),
                     "openWorldHint": True,
                 },
             )
@@ -195,6 +205,12 @@ class XertMcpDispatchTests(unittest.TestCase):
             },
         )
         self.assertEqual(result["workout"]["path"], "new-workout")
+
+    def test_delete_workout_dispatches_path(self) -> None:
+        result = self.tools.call_tool(
+            "delete_workout", {"workout_path": "old-workout"}
+        )
+        self.assertTrue(result["deletion"]["verified_absent"])
 
 
 class XertServiceTests(unittest.TestCase):
@@ -368,6 +384,18 @@ class XertServiceTests(unittest.TestCase):
         self.assertEqual(row["interval_count"], "4")
         self.assertEqual(row["rib_duration"]["value"], "03:00")
         self.assertEqual(create.call_args.kwargs["name"], "4 x 4")
+
+    def test_delete_workout_uses_existing_verified_delete(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        with patch.object(
+            SERVICE,
+            "delete_saved_workout",
+            return_value={"path": "old", "verified_absent": True},
+        ) as delete:
+            result = service.delete_workout(" old ")
+        self.assertTrue(result["verified_absent"])
+        delete.assert_called_once_with("old", username="user", password="secret")
 
 
 if __name__ == "__main__":

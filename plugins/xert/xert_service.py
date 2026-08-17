@@ -38,6 +38,7 @@ from xert_common import (  # noqa: E402
 from xert_recovery import fetch_recovery_model_with_login  # noqa: E402
 from xert_workouts import (  # noqa: E402
     create_workout as create_saved_workout,
+    delete_workout as delete_saved_workout,
     fetch_workout,
     fetch_workout_designer_rows,
     list_workouts as fetch_workouts,
@@ -211,6 +212,15 @@ class XertService:
             name=name.strip(),
             description=description,
             rows=designer_rows,
+        )
+
+    def delete_workout(self, path: str) -> dict[str, Any]:
+        path = _require_identifier(path, "workout path")
+        credentials = self._credentials()
+        return delete_saved_workout(
+            path,
+            username=credentials.username,
+            password=credentials.password,
         )
 
     def list_notes(self, start_date: str, end_date: str) -> list[dict[str, str]]:
