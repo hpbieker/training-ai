@@ -10,12 +10,13 @@ import json
 import math
 import urllib.parse
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 import route_recommendations as rr
 from analysis import ARTIFACTS_DIR, load_activity_metadata, value
+from route_context import parse_route_context_json
 
 
 ROUTE_CATALOG_SCHEMA = "training-ai-route-catalog-v1"
@@ -32,7 +33,7 @@ OSM_TILE_PADDING_M = 200.0
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Build cached raw, cleaned, grouped, and scored route files.")
-    parser.add_argument("--date", default=date.today().isoformat())
+    parser.add_argument("--date", required=True)
     parser.add_argument("--years", type=float, default=5.0)
     parser.add_argument("--artifacts-dir", type=Path, default=ARTIFACTS_DIR)
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/routes"))
@@ -53,17 +54,14 @@ def main() -> None:
     parser.add_argument("--osm-tile-lat-step", type=float, default=OSM_TILE_LAT_STEP_DEG)
     parser.add_argument("--osm-tile-lng-step", type=float, default=OSM_TILE_LNG_STEP_DEG)
     parser.add_argument("--osm-tile-padding-m", type=float, default=OSM_TILE_PADDING_M)
-    parser.add_argument("--start-anchor-displayname", dest="start_anchor_name")
-    parser.add_argument("--start-anchor-lat", type=float)
-    parser.add_argument("--start-anchor-lng", type=float)
-    parser.add_argument("--start-radius-km", type=float, default=rr.DEFAULT_START_RADIUS_KM)
     parser.add_argument(
-        "--surface-preference",
-        choices=("road", "gravel", "any", "unknown-ok"),
-        default="road",
+        "--route-context-json",
+        required=True,
+        type=parse_route_context_json,
     )
-    parser.add_argument("--target-distance-km", type=float)
     args = parser.parse_args()
+    route_context = args.route_context_json
+    start_anchor = route_context.get("start_anchor") or {}
 
     result = build_route_catalog(
         day=rr.parse_date(args.date),
@@ -79,12 +77,12 @@ def main() -> None:
         osm_tile_lat_step=args.osm_tile_lat_step,
         osm_tile_lng_step=args.osm_tile_lng_step,
         osm_tile_padding_m=args.osm_tile_padding_m,
-        start_anchor_name=args.start_anchor_name,
-        start_anchor_lat=args.start_anchor_lat,
-        start_anchor_lng=args.start_anchor_lng,
-        start_radius_km=args.start_radius_km,
-        surface_preference=args.surface_preference,
-        target_distance_km=args.target_distance_km,
+        start_anchor_name=start_anchor.get("display_name"),
+        start_anchor_lat=start_anchor.get("lat"),
+        start_anchor_lng=start_anchor.get("lng"),
+        start_radius_km=start_anchor.get("radius_km", rr.DEFAULT_START_RADIUS_KM),
+        surface_preference=route_context["surface_preference"],
+        target_distance_km=route_context["target_distance_km"],
     )
     print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
 
@@ -1249,7 +1247,9 @@ def rounded_km(raw_m: Any) -> float | None:
 
 
 def now_iso() -> str:
-    return datetime.now().astimezone().isoformat(timespec="seconds")
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
 
 
 if __name__ == "__main__":

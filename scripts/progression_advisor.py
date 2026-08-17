@@ -6,10 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import statistics
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ class CandidateActivity:
     start: datetime
     elapsed_seconds: float | None
     training_load: float | None
+    completed_prescription: dict[str, Any]
 
 
 def main() -> None:
@@ -37,17 +39,23 @@ def main() -> None:
         )
     )
     parser.add_argument("--type", choices=("vt2", "vo2max"), required=True)
-    parser.add_argument("--date", default=date.today().isoformat())
+    parser.add_argument("--date", required=True)
     parser.add_argument("--lookback-days", type=int, default=90)
     parser.add_argument("--max-sessions", type=int, default=6)
     parser.add_argument("--artifacts-dir", type=Path, default=DEFAULT_ARTIFACTS_DIR)
     parser.add_argument("--recommendations-dir", type=Path, default=DEFAULT_RECOMMENDATIONS_DIR)
     parser.add_argument("--xert-recommended-training-json", type=Path)
-    parser.add_argument("--vt2-watts", type=float, default=295.0)
+    parser.add_argument(
+        "--vt2-watts",
+        type=float,
+        help="Required explicit VT2 reference power when --type=vt2.",
+    )
     parser.add_argument("--vo2max-watts", type=float, default=380.0)
     parser.add_argument("--force-inspect", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.type == "vt2" and args.vt2_watts is None:
+        parser.error("--vt2-watts is required when --type=vt2")
 
     day = parse_date(args.date)
     activities = recent_relevant_activities(
@@ -56,11 +64,9 @@ def main() -> None:
         lookback_days=args.lookback_days,
         max_sessions=args.max_sessions,
         artifacts_dir=args.artifacts_dir,
+        target_power_w=(args.vt2_watts if args.type == "vt2" else args.vo2max_watts),
     )
-    inspected = [
-        inspect_activity(activity, args=args)
-        for activity in activities
-    ]
+    inspected = inspect_activities(activities, args=args)
     xmb_workouts = load_xmb_workouts(args, day=day)
     if args.type == "vt2":
         advice = advise_vt2(inspected, target_power_w=args.vt2_watts)
@@ -77,7 +83,7 @@ def main() -> None:
         "schema": SCHEMA,
         "date": day.isoformat(),
         "type": args.type,
-        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "generated_at": utc_now_iso(),
         "lookback_days": args.lookback_days,
         "sessions_considered": inspected,
         **advice,
@@ -96,6 +102,7 @@ def recent_relevant_activities(
     lookback_days: int,
     max_sessions: int,
     artifacts_dir: Path,
+    target_power_w: float,
 ) -> list[CandidateActivity]:
     since = day - timedelta(days=lookback_days)
     activities_dir = artifacts_dir / "activities"
@@ -106,7 +113,11 @@ def recent_relevant_activities(
         except (OSError, json.JSONDecodeError):
             continue
         name = str(metadata.get("name") or "")
-        if not name_matches_type(name, workout_type):
+        if not activity_matches_type(
+            metadata,
+            workout_type,
+            target_power_w=target_power_w,
+        ):
             continue
         start = parse_optional_datetime(metadata.get("start_date_local"))
         if start is None or not (since <= start.date() <= day):
@@ -122,25 +133,38 @@ def recent_relevant_activities(
                 start=start,
                 elapsed_seconds=number(metadata.get("elapsed_time")),
                 training_load=number(metadata.get("icu_training_load")),
+                completed_prescription=completed_prescription(
+                    name,
+                    metadata=metadata,
+                    workout_type=workout_type,
+                    target_power_w=target_power_w,
+                ),
             )
         )
     return sorted(candidates, key=lambda item: item.start, reverse=True)[:max_sessions]
 
 
-def inspect_activity(activity: CandidateActivity, *, args: argparse.Namespace) -> dict[str, Any]:
+def inspect_activities(
+    activities: list[CandidateActivity], *, args: argparse.Namespace
+) -> list[dict[str, Any]]:
+    if not activities:
+        return []
     command = [
         sys.executable,
         "-B",
         "scripts/activity_inspect_pipeline.py",
-        str(activity.activity_dir),
-        "--mode",
-        args.type,
-        "--shape",
-        "brief",
+        *(str(activity.activity_dir) for activity in activities),
+        "--analysis-options-json",
+        json.dumps(
+            {
+                "mode": args.type,
+                "shape": "brief",
+                **({"vt2_watts": args.vt2_watts} if args.type == "vt2" else {}),
+            },
+            separators=(",", ":"),
+        ),
         "--print-results",
     ]
-    if args.type == "vt2":
-        command.extend(["--vt2-watts", format_number(args.vt2_watts)])
     if args.force_inspect:
         command.append("--force")
     completed = subprocess.run(
@@ -150,8 +174,22 @@ def inspect_activity(activity: CandidateActivity, *, args: argparse.Namespace) -
         text=True,
         capture_output=True,
     )
-    result = json.loads(completed.stdout)
-    prescription = parse_completed_prescription(activity.name, workout_type=args.type)
+    raw_results = json.loads(completed.stdout)
+    results = raw_results if isinstance(raw_results, list) else [raw_results]
+    if len(results) != len(activities):
+        raise RuntimeError(
+            "activity inspection returned "
+            f"{len(results)} results for {len(activities)} activities"
+        )
+    return [
+        inspected_activity_payload(activity, result, workout_type=args.type)
+        for activity, result in zip(activities, results, strict=True)
+    ]
+
+
+def inspected_activity_payload(
+    activity: CandidateActivity, result: dict[str, Any], *, workout_type: str
+) -> dict[str, Any]:
     return {
         "activity_id": activity.activity_id,
         "name": activity.name,
@@ -160,8 +198,8 @@ def inspect_activity(activity: CandidateActivity, *, args: argparse.Namespace) -
         if activity.elapsed_seconds is not None
         else None,
         "training_load": activity.training_load,
-        "completed_prescription": prescription,
-        "inspect_summary": compact_inspect_summary(result, workout_type=args.type),
+        "completed_prescription": activity.completed_prescription,
+        "inspect_summary": compact_inspect_summary(result, workout_type=workout_type),
     }
 
 
@@ -485,6 +523,129 @@ def parse_completed_prescription(name: str, *, workout_type: str) -> dict[str, A
     return {"type": workout_type, "summary": f"unparsed: {name}"}
 
 
+def completed_prescription(
+    name: str,
+    *,
+    metadata: dict[str, Any],
+    workout_type: str,
+    target_power_w: float,
+) -> dict[str, Any]:
+    """Use the title when structured, otherwise infer from real interval rows."""
+
+    parsed = parse_completed_prescription(name, workout_type=workout_type)
+    if not str(parsed.get("summary") or "").startswith("unparsed:"):
+        return parsed
+    return infer_prescription_from_intervals(
+        metadata,
+        workout_type=workout_type,
+        target_power_w=target_power_w,
+    ) or parsed
+
+
+def infer_prescription_from_intervals(
+    metadata: dict[str, Any],
+    *,
+    workout_type: str,
+    target_power_w: float = 295.0,
+) -> dict[str, Any] | None:
+    intervals = [
+        row
+        for row in metadata.get("icu_intervals") or []
+        if isinstance(row, dict)
+    ]
+    if workout_type == "vt2":
+        # Saved outdoor laps are often labelled WORK even when they are long,
+        # easy route sections. Duration alone therefore cannot establish that
+        # an activity completed a VT2 prescription. Require the candidate work
+        # rows to carry threshold-like power as well.
+        work_rows = [
+            row
+            for row in intervals
+            if str(row.get("type") or "").upper() == "WORK"
+            and interval_seconds(row) is not None
+            and interval_seconds(row) >= 600
+            and number(row.get("average_watts")) is not None
+            and number(row.get("average_watts")) >= 0.8 * target_power_w
+        ]
+        if len(work_rows) < 2:
+            return None
+        work_seconds = [interval_seconds(row) for row in work_rows]
+        minutes = round(statistics.median(work_seconds) / 60)
+        return vt2_prescription(
+            sets=len(work_rows),
+            minutes=minutes,
+            target_power_w=median_or_default(
+                [
+                    watts
+                    for row in work_rows
+                    if (watts := number(row.get("average_watts"))) is not None
+                ],
+                target_power_w,
+            ),
+        )
+
+    groups: list[list[float]] = []
+    current: list[float] = []
+    for row in intervals:
+        kind = str(row.get("type") or "").upper()
+        seconds = interval_seconds(row)
+        if kind == "WORK" and seconds is not None and 45 <= seconds <= 75:
+            current.append(seconds)
+        elif kind == "RECOVERY" and seconds is not None and seconds > 180 and current:
+            groups.append(current)
+            current = []
+    if current:
+        groups.append(current)
+    groups = [group for group in groups if len(group) >= 4]
+    total_reps = sum(len(group) for group in groups)
+    if total_reps < 6:
+        return None
+    return vo2max_prescription(
+        sets=len(groups),
+        reps=round(statistics.median([len(group) for group in groups])),
+        seconds=round(statistics.median([seconds for group in groups for seconds in group])),
+        target_power_w=median_or_default(
+            [
+                watts
+                for row in intervals
+                if str(row.get("type") or "").upper() == "WORK"
+                and interval_seconds(row) is not None
+                and 45 <= interval_seconds(row) <= 75
+                if (watts := number(row.get("average_watts"))) is not None
+            ],
+            380.0,
+        ),
+    )
+
+
+def interval_seconds(row: dict[str, Any]) -> float | None:
+    return (
+        number(row.get("elapsed_time"))
+        or number(row.get("moving_time"))
+        or number(row.get("duration"))
+    )
+
+
+def median_or_default(values: list[float], default: float) -> float:
+    return statistics.median(values) if values else default
+
+
+def activity_matches_type(
+    metadata: dict[str, Any],
+    workout_type: str,
+    *,
+    target_power_w: float,
+) -> bool:
+    name = str(metadata.get("name") or "")
+    if name_matches_type(name, workout_type):
+        return True
+    return infer_prescription_from_intervals(
+        metadata,
+        workout_type=workout_type,
+        target_power_w=target_power_w,
+    ) is not None
+
+
 def load_xmb_workouts(args: argparse.Namespace, *, day: date) -> list[dict[str, Any]]:
     path = args.xert_recommended_training_json or (
         args.recommendations_dir / day.isoformat() / f"xert-recommended-training-{day.isoformat()}.json"
@@ -619,6 +780,12 @@ def parse_optional_datetime(raw: Any) -> datetime | None:
 
 def parse_date(raw: str) -> date:
     return datetime.strptime(raw, "%Y-%m-%d").date()
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
 
 
 def number(raw: Any) -> float | None:

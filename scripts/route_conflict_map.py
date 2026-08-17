@@ -15,7 +15,7 @@ import route_recommendations as routes
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create a Leaflet route conflict map.")
     parser.add_argument("--activity-id", required=True)
-    parser.add_argument("--date", default=date.today().isoformat())
+    parser.add_argument("--date", required=True)
     parser.add_argument("--years", type=float, default=5.0)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -42,8 +42,6 @@ def find_route(activity_id: str, *, day: date, years: float) -> dict[str, Any]:
     result = routes.recommend_routes(
         day=day,
         years=years,
-        target_minutes=None,
-        target_load=None,
         xert_loads_json=None,
         target_distance_km=None,
         queries=[],

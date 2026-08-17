@@ -39,7 +39,7 @@ on the same route group, but never let naming affect identity or score.
 - For endurance routes, use `steady_endurance` and report both kilometres and
   route percentages above the relevant descent thresholds. Downgrade suspect
   altitude data unless another clean reference supports the same route.
-- Use `--junction-source osm` for junction/conflict estimates. Map-match the
+- Use `{"junction_source":"osm"}` inside `--execution-options-json` for junction/conflict estimates. Map-match the
   cleaned GPS route first; do not count arbitrary nearby nodes or present GPS
   bearing changes as junctions.
 - Treat explicit stop/give-way nodes and inferred priority conflicts as

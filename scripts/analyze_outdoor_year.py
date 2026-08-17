@@ -237,10 +237,6 @@ def activity_name_implies_threshold(activity_name: Any) -> bool:
         "vt2",
         "terskel",
         "threshold",
-        "tryvann",
-        "klatring",
-        "climb",
-        "bakke",
     )
     return any(token in name for token in threshold_tokens)
 

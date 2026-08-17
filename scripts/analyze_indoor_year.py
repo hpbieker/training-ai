@@ -126,7 +126,7 @@ def summarize_activity(activity_dir: Path, brief: dict[str, Any]) -> dict[str, A
     activity = brief.get("activity") or {}
     indoor_vt1 = brief.get("indoor_vt1_quality") or {}
     vt2 = brief.get("vt2_quality") or {}
-    best_vt2 = vt2.get("best_duration_block") or {}
+    session_vt2 = vt2.get("session_quality") or vt2.get("best_duration_block") or {}
     total = brief.get("total") or {}
     beta = brief.get("beta_summary") or {}
     return {
@@ -145,8 +145,8 @@ def summarize_activity(activity_dir: Path, brief: dict[str, Any]) -> dict[str, A
         "beta_category": beta.get("category"),
         "beta_status": beta.get("status"),
         "vt1": summarize_indoor_vt1(indoor_vt1),
-        "vt2": summarize_vt2(vt2, best_vt2),
-        "quality_label": quality_label(indoor_vt1, best_vt2, beta),
+        "vt2": summarize_vt2(vt2, session_vt2),
+        "quality_label": quality_label(indoor_vt1, session_vt2, beta),
     }
 
 
@@ -172,25 +172,26 @@ def summarize_indoor_vt1(indoor_vt1: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def summarize_vt2(vt2: dict[str, Any], best: dict[str, Any]) -> dict[str, Any] | None:
+def summarize_vt2(vt2: dict[str, Any], session: dict[str, Any]) -> dict[str, Any] | None:
     if not vt2:
         return None
-    physiology = best.get("physiology") or {}
+    physiology = session.get("physiology") or {}
     controlled_blocks = controlled_vt2_blocks(vt2.get("blocks") or [])
     return {
-        "verdict": best.get("verdict"),
-        "rating": best.get("rating"),
-        "duration_s": best.get("duration_s"),
+        "verdict": session.get("verdict"),
+        "rating": session.get("rating"),
+        "duration_s": session.get("total_duration_s") or session.get("duration_s"),
         "controlled_reps": len(controlled_blocks),
         "controlled_duration_s": sum(float(block.get("duration_s") or 0) for block in controlled_blocks),
-        "watts_avg": best.get("watts_avg"),
-        "execution_score": best.get("execution_score"),
-        "response_score": best.get("response_score"),
-        "heat_adjusted_response_score": best.get("heat_adjusted_response_score"),
-        "recovery_score": best.get("recovery_score"),
-        "combined_score": best.get("combined_score"),
+        "watts_avg": session.get("watts_avg"),
+        "power_fade_pct": session.get("power_fade_pct"),
+        "execution_score": session.get("execution_score"),
+        "response_score": session.get("response_score"),
+        "heat_adjusted_response_score": session.get("heat_adjusted_response_score"),
+        "recovery_score": session.get("recovery_score"),
+        "combined_score": session.get("combined_score"),
         "heat_penalty_points": physiology.get("heat_penalty_points"),
-        "limiter_hints": best.get("limiter_hints") or [],
+        "limiter_hints": session.get("limiter_hints") or [],
     }
 
 

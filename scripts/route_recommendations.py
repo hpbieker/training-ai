@@ -13,11 +13,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from analysis import ARTIFACTS_DIR, load_activity_metadata, value
+from route_context import parse_route_context_json
 
 
 DEFAULT_START_RADIUS_KM = 0.25
@@ -106,107 +107,98 @@ GEAR_SURFACE_BY_ID = {
 }
 
 
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+
+
+def parse_execution_options_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(f"--execution-options-json must be valid JSON: {exc.msg}") from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError("--execution-options-json must contain one JSON object")
+    allowed = {"route_index", "analysis_cache", "data_quality", "prefer_terrain_steady_endurance", "junction_source", "rebuild_index", "rebuild_analysis_cache"}
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        raise argparse.ArgumentTypeError(f"unsupported execution-option field: {unknown[0]}")
+    junction_source = payload.get("junction_source", "none")
+    if junction_source not in {"none", "osm"}:
+        raise argparse.ArgumentTypeError("execution-option junction_source must be none or osm")
+    path_values = {
+        "route_index": payload.get("route_index", str(DEFAULT_ROUTE_INDEX)),
+        "analysis_cache": payload.get("analysis_cache", str(DEFAULT_ROUTE_ANALYSIS_CACHE)),
+        "data_quality": payload.get("data_quality", str(DEFAULT_ROUTE_DATA_QUALITY)),
+    }
+    for field, value in path_values.items():
+        if not isinstance(value, str) or not value.strip():
+            raise argparse.ArgumentTypeError(
+                f"execution-option {field} must be a non-empty path"
+            )
+    result = {
+        **{field: Path(value) for field, value in path_values.items()},
+        "prefer_terrain_steady_endurance": payload.get("prefer_terrain_steady_endurance", True),
+        "junction_source": junction_source,
+        "rebuild_index": payload.get("rebuild_index", False),
+        "rebuild_analysis_cache": payload.get("rebuild_analysis_cache", False),
+    }
+    for field in ("prefer_terrain_steady_endurance", "rebuild_index", "rebuild_analysis_cache"):
+        if not isinstance(result[field], bool):
+            raise argparse.ArgumentTypeError(f"execution-option {field} must be boolean")
+    return result
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Rank saved outdoor rides as concrete route candidates.",
     )
-    parser.add_argument("--date", default=date.today().isoformat())
+    parser.add_argument("--date", required=True)
     parser.add_argument("--years", type=float, default=5.0)
-    parser.add_argument("--target-minutes", type=float)
-    parser.add_argument("--target-load", type=float)
     parser.add_argument("--xert-loads-json", type=Path)
-    parser.add_argument("--target-distance-km", type=float)
+    parser.add_argument(
+        "--route-context-json",
+        required=True,
+        type=parse_route_context_json,
+    )
     parser.add_argument("--query", action="append", help="Route/name fragment to prefer. Can be repeated.")
     parser.add_argument("--max-results", type=int, default=8)
     parser.add_argument("--artifacts-dir", default=str(ARTIFACTS_DIR))
-    parser.add_argument(
-        "--start-anchor-displayname",
-        dest="start_anchor_displayname",
-        default=None,
-        help="Optional display label for the required start/end anchor.",
-    )
-    parser.add_argument("--start-anchor-lat", type=float)
-    parser.add_argument("--start-anchor-lng", type=float)
-    parser.add_argument(
-        "--start-radius-km",
-        type=float,
-        default=DEFAULT_START_RADIUS_KM,
-        help="Only include routes whose first and last GPS point are within this distance of the start anchor.",
-    )
-    parser.add_argument(
-        "--allow-away",
-        "--no-start-filter",
-        dest="allow_away",
-        action="store_true",
-        help="Include routes that do not start/end near the start anchor. With no anchor lat/lng, disable start filtering entirely.",
-    )
     parser.add_argument("--output", type=Path)
-    parser.add_argument("--route-index", type=Path, default=DEFAULT_ROUTE_INDEX)
-    parser.add_argument("--route-analysis-cache", type=Path, default=DEFAULT_ROUTE_ANALYSIS_CACHE)
-    parser.add_argument(
-        "--route-data-quality",
-        type=Path,
-        default=DEFAULT_ROUTE_DATA_QUALITY,
-        help="Manual data-quality registry for excluding route references with unusable source streams.",
-    )
-    parser.add_argument(
-        "--no-prefer-terrain-steady-endurance",
-        dest="no_prefer_terrain_steady_endurance",
-        action="store_true",
-        help="Do not boost/penalize route ranking by downhill terrain risk for steady endurance suitability.",
-    )
-    parser.add_argument(
-        "--surface-preference",
-        choices=("road", "gravel", "any", "unknown-ok"),
-        default="road",
-        help="Preferred route surface for the planned bike. Use road for landevei, gravel for grus, any to ignore surface, or unknown-ok to avoid penalizing unknown gear.",
-    )
-    parser.add_argument(
-        "--junction-source",
-        choices=("none", "osm"),
-        default="none",
-        help="Add map-backed junction counts for returned routes. 'osm' queries Overpass/OpenStreetMap.",
-    )
-    parser.add_argument(
-        "--rebuild-index",
-        action="store_true",
-        help="Re-scan saved activities and refresh the route index cache.",
-    )
-    parser.add_argument(
-        "--rebuild-route-analysis-cache",
-        action="store_true",
-        help="Recompute OSM route analysis instead of reusing cached conflict points.",
-    )
+    parser.add_argument("--execution-options-json", type=parse_execution_options_json, default=parse_execution_options_json("{}"))
     args = parser.parse_args()
-    if not args.allow_away and (args.start_anchor_lat is None or args.start_anchor_lng is None):
+    execution = args.execution_options_json
+    route_context = args.route_context_json
+    start_anchor = route_context.get("start_anchor") or {}
+    if not route_context["allow_away"] and not start_anchor:
         parser.error(
-            "pass --start-anchor-lat and --start-anchor-lng from caller context "
-            "(memory/preferences/user request), or use --no-start-filter/--allow-away"
+            "--route-context-json start_anchor is required unless allow_away is true"
         )
 
     result = recommend_routes(
         day=parse_date(args.date),
         years=args.years,
-        target_minutes=args.target_minutes,
-        target_load=args.target_load,
         xert_loads_json=args.xert_loads_json,
-        target_distance_km=args.target_distance_km,
+        target_distance_km=route_context["target_distance_km"],
         queries=args.query or [],
         max_results=args.max_results,
         artifacts_dir=Path(args.artifacts_dir),
-        start_anchor_name=args.start_anchor_displayname or ("selected start anchor" if args.start_anchor_lat is not None and args.start_anchor_lng is not None else None),
-        start_anchor_lat=args.start_anchor_lat,
-        start_anchor_lng=args.start_anchor_lng,
-        start_radius_km=args.start_radius_km,
-        allow_away=args.allow_away,
-        prefer_terrain_steady_endurance=not args.no_prefer_terrain_steady_endurance,
-        surface_preference=args.surface_preference,
-        junction_source=args.junction_source,
-        route_index=args.route_index,
-        route_data_quality=args.route_data_quality,
-        rebuild_index=args.rebuild_index,
-        route_analysis_cache=args.route_analysis_cache,
-        rebuild_route_analysis_cache=args.rebuild_route_analysis_cache,
+        start_anchor_name=start_anchor.get("display_name") or (
+            "selected start anchor" if start_anchor else None
+        ),
+        start_anchor_lat=start_anchor.get("lat"),
+        start_anchor_lng=start_anchor.get("lng"),
+        start_radius_km=start_anchor.get("radius_km", DEFAULT_START_RADIUS_KM),
+        allow_away=route_context["allow_away"],
+        prefer_terrain_steady_endurance=execution["prefer_terrain_steady_endurance"],
+        surface_preference=route_context["surface_preference"],
+        junction_source=execution["junction_source"],
+        route_index=execution["route_index"],
+        route_data_quality=execution["data_quality"],
+        rebuild_index=execution["rebuild_index"],
+        route_analysis_cache=execution["analysis_cache"],
+        rebuild_route_analysis_cache=execution["rebuild_analysis_cache"],
     )
     text = json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True)
     if args.output:
@@ -220,8 +212,6 @@ def recommend_routes(
     *,
     day: date,
     years: float,
-    target_minutes: float | None,
-    target_load: float | None,
     xert_loads_json: Path | None,
     target_distance_km: float | None,
     queries: list[str],
@@ -232,6 +222,7 @@ def recommend_routes(
     start_anchor_lng: float | None,
     start_radius_km: float,
     allow_away: bool,
+    target_minutes: float | None = None,
     prefer_terrain_steady_endurance: bool = True,
     surface_preference: str = "road",
     junction_source: str = "none",
@@ -291,6 +282,7 @@ def recommend_routes(
             "score": score_route(
                 route,
                 target_distance_km=target_distance_km,
+                target_minutes=target_minutes,
                 prefer_terrain_steady_endurance=prefer_terrain_steady_endurance,
                 surface_preference=surface_preference,
             ),
@@ -326,19 +318,25 @@ def recommend_routes(
             "start_radius_km": None if allow_away else start_radius_km,
             "prefer_terrain_steady_endurance": prefer_terrain_steady_endurance,
             "surface_preference": surface_preference,
+            "target_minutes": target_minutes,
             "junction_source": junction_source,
             "recency_used_for_route_ranking": False,
             "query": queries,
-            "target_minutes": target_minutes,
-            "target_load": target_load,
-            "target_fields_used_for_route_ranking": target_distance_km is not None,
-            "target_load_meaning": "Accepted for compatibility only; Xert XSS target is not used for route ranking.",
+            "target_fields_used_for_route_ranking": (
+                target_distance_km is not None or target_minutes is not None
+            ),
             "target_distance_km": target_distance_km,
             "target_distance_meaning": (
                 "Used as a broad eligibility filter plus a small closeness bonus. "
                 "Within the eligible distance band, route quality can beat distance closeness."
                 if target_distance_km is not None
                 else "Not supplied; route ranking uses anchor, terrain flow, and surface preference."
+            ),
+            "target_minutes_meaning": (
+                "Used as a moderate duration-closeness bonus. Terrain flow, surface, "
+                "and anchor fit still contribute independently."
+                if target_minutes is not None
+                else None
             ),
             "target_distance_filter": target_distance_filter(target_distance_km),
             "route_index": str(route_index) if route_index else None,
@@ -568,7 +566,7 @@ def write_route_analysis_cache(path: Path | None, payload: dict[str, Any]) -> No
     path.parent.mkdir(parents=True, exist_ok=True)
     output = {
         "schema": ROUTE_ANALYSIS_CACHE_SCHEMA,
-        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "generated_at": utc_now_iso(),
         "model_version": OSM_CONFLICT_MODEL_VERSION,
         "entries": payload.get("entries") or {},
     }
@@ -769,7 +767,7 @@ def write_route_index(
         "schema": ROUTE_INDEX_SCHEMA,
         "source": "local_saved_intervals_activities",
         "artifacts_dir": str(artifacts_dir),
-        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "generated_at": utc_now_iso(),
         "start_anchor_note": "Start anchor is caller supplied at normalization/filter time.",
         "routes": [serialize_route(route) for route in routes],
     }
@@ -938,7 +936,7 @@ def add_osm_junction_counts(
             if cache_key and isinstance(map_junctions, dict) and map_junctions.get("available"):
                 cache_entries[cache_key] = {
                     "model_version": OSM_CONFLICT_MODEL_VERSION,
-                    "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "generated_at": utc_now_iso(),
                     "route_shape_key": route.get("route_shape_key"),
                     "reference_activity_id": route.get("id"),
                     "reference_activity_name": route.get("name"),
@@ -2281,6 +2279,7 @@ def score_route(
     route: dict[str, Any],
     *,
     target_distance_km: float | None,
+    target_minutes: float | None = None,
     prefer_terrain_steady_endurance: bool,
     surface_preference: str,
 ) -> float:
@@ -2295,6 +2294,17 @@ def score_route(
                 tolerance=distance_tolerance_km,
             )
             * 16
+        )
+    if target_minutes is not None and route.get("moving_minutes") is not None:
+        duration_tolerance_minutes = max(30.0, target_minutes * 0.25)
+        score += (
+            route_closeness_score(
+                route,
+                "moving_minutes",
+                target_minutes,
+                tolerance=duration_tolerance_minutes,
+            )
+            * 18
         )
     if route.get("starts_ends_near_start_anchor"):
         score += 20

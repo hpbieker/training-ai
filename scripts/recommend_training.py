@@ -15,22 +15,36 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+XERT_SCRIPTS = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scripts"
+if str(XERT_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(XERT_SCRIPTS))
+
+from xert_strain_model import solve_endurance_duration
+
+from plan_state import (
+    DEFAULT_STATE_PATH,
+    PlanStateError,
+    load_plan_state,
+    recommendation_plan_context,
+)
 from readiness_snapshot import (
     ARTIFACTS_DIR,
     build_readiness_snapshot,
+    format_local,
+    format_utc,
     latest_activity_on_or_before,
     load_garmin_input,
     load_xert_input,
     parse_cli_local_datetime,
+    parse_timezone,
 )
+from route_context import parse_route_context_payload
 from route_recommendations import parse_date, recommend_routes
 
 
 DEFAULT_OUTPUT_DIR = Path("outputs/recommendations")
 SLEMDAL_LAT = 59.9556
 SLEMDAL_LON = 10.6875
-SORKEDALEN_LAT = 60.0189
-SORKEDALEN_LON = 10.5834
 REFRESH_GROUPS = frozenset({"garmin", "xert", "intervals", "weather"})
 SOURCE_REFRESH_POLICY = {
     "garmin": ("garmin", 15),
@@ -45,152 +59,233 @@ SOURCE_REFRESH_POLICY = {
 }
 
 
+def parse_training_target_json(raw: str) -> dict[str, float]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--training-target-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--training-target-json must contain one JSON object"
+        )
+    unknown = sorted(set(payload) - {"minutes", "load"})
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unsupported training-target field: {unknown[0]}"
+        )
+    if not payload:
+        raise argparse.ArgumentTypeError(
+            "--training-target-json must contain minutes and/or load"
+        )
+    parsed: dict[str, float] = {}
+    for field, value in payload.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+            raise argparse.ArgumentTypeError(
+                f"training-target {field} must be a positive number"
+            )
+        parsed[field] = float(value)
+    return parsed
+
+
+def parse_quality_workout_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--quality-workout-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--quality-workout-json must contain one JSON object"
+        )
+    unknown = sorted(set(payload) - {"status", "calculation"})
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unsupported quality-workout field: {unknown[0]}"
+        )
+    missing = sorted({"status", "calculation"} - set(payload))
+    if missing:
+        raise argparse.ArgumentTypeError(
+            f"missing required quality-workout field: {missing[0]}"
+        )
+    if payload["status"] not in {"planned", "completed"}:
+        raise argparse.ArgumentTypeError(
+            "quality-workout status must be planned or completed"
+        )
+    if not isinstance(payload["calculation"], dict) or not payload["calculation"]:
+        raise argparse.ArgumentTypeError(
+            "quality-workout calculation must be a non-empty JSON object"
+        )
+    return payload
+
+
+def parse_endurance_workout_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--endurance-workout-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--endurance-workout-json must contain one JSON object"
+        )
+    unknown = sorted(set(payload) - {"calculation"})
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unsupported endurance-workout field: {unknown[0]}"
+        )
+    calculation = payload.get("calculation")
+    if not isinstance(calculation, dict) or not calculation:
+        raise argparse.ArgumentTypeError(
+            "endurance-workout calculation must be a non-empty JSON object"
+        )
+    return payload
+
+
+def parse_endurance_structure_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--endurance-structure-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--endurance-structure-json must contain one JSON object"
+        )
+    allowed = {
+        "signature",
+        "segments",
+        "adjustable_segment_index",
+        "minimum_duration_seconds",
+        "maximum_duration_seconds",
+        "tolerance_xss",
+    }
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unsupported endurance-structure field: {unknown[0]}"
+        )
+    missing = sorted(
+        {"signature", "segments", "adjustable_segment_index"} - set(payload)
+    )
+    if missing:
+        raise argparse.ArgumentTypeError(
+            f"missing required endurance-structure field: {missing[0]}"
+        )
+    return payload
+
+
+def parse_plan_selection_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(f"--plan-selection-json must be valid JSON: {exc.msg}") from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError("--plan-selection-json must contain one JSON object")
+    unknown = sorted(set(payload) - {"intensity_goal", "state", "role_mismatch_reason"})
+    if unknown:
+        raise argparse.ArgumentTypeError(f"unsupported plan-selection field: {unknown[0]}")
+    goal = payload.get("intensity_goal")
+    if goal not in {"recovery", "vt1", "vt2", "vo2max", "sprint", "mixed"}:
+        raise argparse.ArgumentTypeError("plan-selection intensity_goal is required and unsupported")
+    state = payload.get("state", str(DEFAULT_STATE_PATH))
+    if not isinstance(state, str) or not state.strip():
+        raise argparse.ArgumentTypeError("plan-selection state must be a non-empty path")
+    reason = payload.get("role_mismatch_reason")
+    if reason is not None and (not isinstance(reason, str) or not reason.strip()):
+        raise argparse.ArgumentTypeError("plan-selection role_mismatch_reason must be a non-empty string")
+    return {"intensity_goal": goal, "state": Path(state), "role_mismatch_reason": reason}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Fetch Garmin/Xert/Yr inputs and build one recommendation packet.",
     )
-    parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument(
-        "--planned-at",
-        help=(
-            "Planned local workout time. Accepts HH:MM or an ISO local datetime. "
-            "When omitted, the script assumes a practical same-day time and "
-            "marks it as assumed in the recommendation packet."
-        ),
-    )
-    parser.add_argument(
-        "--now",
-        help=(
-            "Current local time for freshness/projection. Accepts HH:MM "
-            "for --date or an ISO local datetime."
-        ),
-    )
-    parser.add_argument(
-        "--target-minutes",
-        type=float,
-        help=(
-            "Explicit workout-duration target. When omitted, recommend_today "
-            "derives the target from readiness, recent history, and session goal."
-        ),
-    )
-    parser.add_argument(
-        "--target-load",
-        type=float,
-        help=(
-            "Explicit training-load target. When omitted, recommend_today derives "
-            "the target from readiness, recent history, and session goal."
-        ),
-    )
-    parser.add_argument(
-        "--intensity-goal",
-        choices=("recovery", "vt1", "vt2", "vo2max", "sprint", "mixed"),
+        "--planning-context-json",
         required=True,
         help=(
-            "Resolved training goal for intensity selection. Readiness remains "
-            "the ceiling; progression and recent same-family stimulus can make "
-            "the selected domain easier."
+            "Normalized JSON object containing date, local_timezone, absolute "
+            "now and optional planned_at timestamps, availability windows, "
+            "cycling modalities and unavailable reasons, plus optional route "
+            "context."
+        ),
+    )
+    parser.add_argument(
+        "--training-target-json",
+        type=parse_training_target_json,
+        help=(
+            "Optional JSON object with minutes and/or load. Missing values are "
+            "derived from the supplied value; when omitted, both targets are derived."
+        ),
+    )
+    parser.add_argument(
+        "--quality-workout-json",
+        type=parse_quality_workout_json,
+        help=(
+            "Optional JSON object with status (planned or completed) and the "
+            "complete inline Xert calculation object."
+        ),
+    )
+    endurance_input = parser.add_mutually_exclusive_group()
+    endurance_input.add_argument(
+        "--endurance-workout-json",
+        type=parse_endurance_workout_json,
+        help=(
+            "Optional normalized solve-endurance result from Xert's offline "
+            "calculation CLI. The flexible endurance segment must match the "
+            "applicable low-XSS target."
+        ),
+    )
+    endurance_input.add_argument(
+        "--endurance-structure-json",
+        type=parse_endurance_structure_json,
+        help=(
+            "Optional inline structure for local Xert endurance solving after "
+            "readiness guardrails: signature, segments, one "
+            "adjustable_segment_index, and optional duration bounds/tolerance. "
+            "The applicable low-XSS target is resolved internally."
+        ),
+    )
+    parser.add_argument(
+        "--plan-selection-json",
+        type=parse_plan_selection_json,
+        required=True,
+        help=(
+            "Validated JSON with intensity_goal, optional state path, and optional "
+            "role_mismatch_reason."
         ),
     )
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
-        "--garmin-json",
-        type=Path,
+        "--source-overrides-json",
+        type=parse_source_overrides_json,
+        default={},
         help=(
-            "Use this Garmin Connect day JSON as an explicit input override. "
-            "It cannot be combined with a forced Garmin refresh."
+            "Optional JSON object mapping normalized source names to JSON file "
+            "paths. An overridden source cannot also be forcibly refreshed."
         ),
     )
     parser.add_argument(
-        "--refresh",
-        type=parse_refresh_spec,
-        default=parse_refresh_spec("auto"),
-        metavar="auto|all|none|SOURCE[,SOURCE...]",
+        "--refresh-json",
+        type=parse_refresh_json,
+        default={"mode": "auto", "sources": []},
         help=(
-            "Source refresh policy. 'auto' reuses snapshots within source-specific "
-            "TTLs; 'all' forces every source; 'none' uses local files only; a "
-            "comma-separated list forces selected sources: garmin,xert,intervals,weather."
-        ),
-    )
-    parser.add_argument("--route-index", type=Path, default=Path("outputs/route-index.json"))
-    parser.add_argument("--rebuild-route-index", action="store_true")
-    parser.add_argument(
-        "--surface-preference",
-        choices=("road", "gravel", "any", "unknown-ok"),
-        default="road",
-        help="Preferred outdoor route surface for the planned bike.",
-    )
-    parser.add_argument(
-        "--start-anchor-displayname",
-        dest="start_anchor_displayname",
-        help=(
-            "Optional display label for the start/end anchor."
+            "Validated JSON source refresh policy with mode auto, all, none, or "
+            "selected; selected mode requires a sources array."
         ),
     )
     parser.add_argument(
-        "--start-anchor-lat",
-        type=float,
-        help="Latitude of the start/end anchor to pass to route recommendations.",
-    )
-    parser.add_argument(
-        "--start-anchor-lng",
-        type=float,
-        help="Longitude of the start/end anchor to pass to route recommendations.",
-    )
-    parser.add_argument(
-        "--weather-timezone",
-        required=True,
+        "--route-options-json",
+        type=parse_route_options_json,
+        default={"index": Path("outputs/route-index.json"), "rebuild_index": False, "map_scope": "top"},
         help=(
-            "IANA timezone for weather filtering and display, for example "
-            "Europe/Oslo or Europe/Lisbon. The caller must resolve this from "
-            "the current location context."
-        ),
-    )
-    parser.add_argument(
-        "--start-radius-km",
-        type=float,
-        default=0.25,
-        help="Start/end anchor radius for route recommendations.",
-    )
-    parser.add_argument(
-        "--available-window",
-        action="append",
-        default=[],
-        metavar="HH:MM-HH:MM[; note]",
-        help=(
-            "LLM-selected available training window. Can be repeated for split "
-            "opportunities. Optional text after ';' is stored as a note. If "
-            "--planned-at is omitted, the first window start becomes the "
-            "planned workout time."
-        ),
-    )
-    parser.add_argument(
-        "--route-map-scope",
-        choices=("top", "all", "none"),
-        default="top",
-        help=(
-            "How many Xert route maps to fetch/cache. Daily recommendations only "
-            "need the top route; use all for image-backed route menus."
-        ),
-    )
-    parser.add_argument(
-        "--available-modalities",
-        required=True,
-        type=parse_available_modalities,
-        metavar="indoor,outdoor|indoor|outdoor",
-        help=(
-            "Comma-separated training modalities available in the current context. "
-            "The caller/LLM must choose this explicitly."
-        ),
-    )
-    parser.add_argument(
-        "--unavailable-reason",
-        action="append",
-        default=[],
-        type=parse_unavailable_reason,
-        metavar="indoor=reason|outdoor=reason",
-        help=(
-            "Reason for an unavailable modality. Can be repeated. The value is "
-            "used only when the modality is not present in --available-modalities."
+            "Validated JSON route execution options: index, rebuild_index, and "
+            "map_scope (top, all, or none)."
         ),
     )
     parser.add_argument(
@@ -199,39 +294,85 @@ def main() -> None:
         help="Print a compact chat-oriented summary instead of the full JSON packet.",
     )
     args = parser.parse_args()
-    indoor_available = "indoor" in args.available_modalities
-    outdoor_available = "outdoor" in args.available_modalities
-    requested_unavailable_reasons = unavailable_reason_map(args.unavailable_reason)
+    try:
+        planning_context = parse_planning_context_json(args.planning_context_json)
+        args.date = planning_context["date"]
+        args.local_timezone = planning_context["local_timezone"]
+        args.now = planning_context["now"]
+        args.planned_at = planning_context.get("planned_at")
+        args.available_modalities = frozenset(
+            planning_context["cycling"]["available_modalities"]
+        )
+        args.surface_preference = planning_context["route"]["surface_preference"]
+        start_anchor = planning_context["route"].get("start_anchor") or {}
+        args.start_anchor_displayname = start_anchor.get("display_name")
+        args.start_anchor_lat = start_anchor.get("lat")
+        args.start_anchor_lng = start_anchor.get("lng")
+        args.start_radius_km = start_anchor.get("radius_km", 0.25)
+        args.route_target_distance_km = planning_context["route"][
+            "target_distance_km"
+        ]
+        args.route_allow_away = planning_context["route"]["allow_away"]
+        local_timezone = parse_timezone(args.local_timezone)
+    except argparse.ArgumentTypeError as exc:
+        parser.error(str(exc))
+    try:
+        plan_state = load_plan_state(args.plan_selection_json["state"])
+        plan_context = recommendation_plan_context(
+            plan_state,
+            intensity_goal=args.plan_selection_json["intensity_goal"],
+            mismatch_reason=args.plan_selection_json["role_mismatch_reason"],
+        )
+    except PlanStateError as exc:
+        parser.error(str(exc))
+    indoor_available = "indoor_cycling" in args.available_modalities
+    indoor_gym_available = "indoor_cycling_gym" in args.available_modalities
+    outdoor_available = "outdoor_cycling" in args.available_modalities
+    requested_unavailable_reasons = planning_context["cycling"][
+        "unavailable_reasons"
+    ]
     indoor_unavailable_reason = requested_unavailable_reasons.get(
-        "indoor", "no_indoor_equipment_available"
+        "indoor_cycling", "no_indoor_equipment_available"
     )
     outdoor_unavailable_reason = requested_unavailable_reasons.get(
-        "outdoor", "outdoor_riding_not_realistic"
+        "outdoor_cycling", "outdoor_riding_not_realistic"
     )
     unavailable_reasons = {}
-    if not indoor_available:
-        unavailable_reasons["indoor"] = indoor_unavailable_reason
+    if not indoor_available and not indoor_gym_available:
+        unavailable_reasons["indoor_cycling"] = indoor_unavailable_reason
     if not outdoor_available:
-        unavailable_reasons["outdoor"] = outdoor_unavailable_reason
+        unavailable_reasons["outdoor_cycling"] = outdoor_unavailable_reason
     validate_context(parser, args=args, outdoor_available=outdoor_available)
 
     output_dir = args.output_dir / args.date
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    generated_at = datetime.now().astimezone()
+    generated_at_utc = datetime.now(timezone.utc)
+    generated_at = generated_at_utc.astimezone(local_timezone)
     now = (
-        parse_cli_local_datetime(args.now, default_day=args.date)
+        parse_cli_local_datetime(
+            args.now,
+            default_day=args.date,
+            local_timezone=local_timezone,
+        )
         if args.now
         else generated_at
     )
-    available_windows = parse_available_windows(
-        args.available_window,
-        default_day=args.date,
-        tzinfo=now.tzinfo,
-    )
+    try:
+        available_windows = parse_availability_payload(
+            planning_context["availability"],
+            expected_timezone=local_timezone,
+            argument_name="--planning-context-json availability",
+        )
+    except argparse.ArgumentTypeError as exc:
+        parser.error(str(exc))
     if args.planned_at:
-        planned_at = parse_cli_local_datetime(args.planned_at, default_day=args.date)
-        planned_at_source = "cli"
+        planned_at = parse_cli_local_datetime(
+            args.planned_at,
+            default_day=args.date,
+            local_timezone=local_timezone,
+        )
+        planned_at_source = "planning_context"
         validate_planned_at_in_available_windows(
             parser,
             planned_at=planned_at,
@@ -239,19 +380,33 @@ def main() -> None:
         )
     elif available_windows:
         planned_at = available_windows[0]["start"]
-        planned_at_source = "available_window"
+        planned_at_source = "planning_context_availability"
     else:
         planned_at = default_planned_at(args.date, now=now)
         planned_at_source = "default"
+    split_preference = planning_context.get("split_preference")
+    if split_preference is not None:
+        available_windows = apply_split_preference_to_windows(
+            available_windows,
+            planned_at=planned_at,
+            split_preference=split_preference,
+        )
     source_files = source_paths(output_dir, args.date)
-    if args.garmin_json and refresh_spec_forces(args.refresh, "garmin"):
-        parser.error("--garmin-json cannot be combined with --refresh all or --refresh garmin.")
-    if args.garmin_json:
-        garmin_override = load_json_if_exists(args.garmin_json)
-        if not isinstance(garmin_override, dict):
-            parser.error(f"--garmin-json must contain one JSON object: {args.garmin_json}")
-        garmin_override.setdefault("source_file", str(args.garmin_json))
-        write_json(source_files["garmin"], garmin_override)
+    for source_name, override_path in args.source_overrides_json.items():
+        source_group = SOURCE_REFRESH_POLICY[source_name][0]
+        if refresh_spec_forces(args.refresh_json, source_group):
+            parser.error(
+                f"source override {source_name} cannot be combined with a refresh "
+                f"policy that forces {source_group}"
+            )
+        override_payload = load_json_if_exists(override_path)
+        if not isinstance(override_payload, dict):
+            parser.error(
+                f"source override {source_name} must contain one JSON object: "
+                f"{override_path}"
+            )
+        override_payload.setdefault("source_file", str(override_path))
+        write_json(source_files[source_name], override_payload)
     required_sources = {
         "garmin", "xert", "intervals_wellness", "intervals_events",
         "xert_activity_loads", "weather_home",
@@ -260,19 +415,23 @@ def main() -> None:
         required_sources.add("xert_recommended_training")
     if outdoor_available:
         required_sources.add("weather_route")
-        if args.route_map_scope != "none":
+        if args.route_options_json["map_scope"] != "none":
             required_sources.add("xert_route_maps")
     source_refresh = build_source_refresh_plan(
         source_files,
         required=required_sources,
-        refresh_spec=args.refresh,
+        refresh_spec=args.refresh_json,
         checked_at=generated_at,
-        overrides={"garmin"} if args.garmin_json else set(),
+        overrides=set(args.source_overrides_json),
     )
     intervals_cache_refresh = None
     if source_group_will_refresh(source_refresh, "intervals"):
         intervals_cache_refresh = refresh_recent_intervals_cache()
-    latest_activity = latest_activity_on_or_before(args.date, artifacts_dir=ARTIFACTS_DIR)
+    latest_activity = latest_activity_on_or_before(
+        args.date,
+        artifacts_dir=ARTIFACTS_DIR,
+        local_timezone=local_timezone,
+    )
     primary_sources = {
         key for key in ("garmin", "xert", "intervals_wellness", "intervals_events")
         if source_refresh.get(key, {}).get("refresh")
@@ -285,6 +444,7 @@ def main() -> None:
             latest_activity=latest_activity,
             source_files=source_files,
             sources=primary_sources,
+            local_timezone=local_timezone,
         )
     if source_refresh.get("xert_activity_loads", {}).get("refresh"):
         write_json(
@@ -311,7 +471,7 @@ def main() -> None:
                 - {"xert_route_maps", "weather_home", "weather_route"}
             )
         ),
-        policy=args.refresh["mode"],
+        policy=args.refresh_json["mode"],
     )
 
     readiness_packet = build_readiness_snapshot(
@@ -319,19 +479,28 @@ def main() -> None:
         artifacts_dir=ARTIFACTS_DIR,
         now=now,
         planned_at=planned_at,
-        garmin_input=load_garmin_input(str(source_files["garmin"])),
-        xert_input=load_xert_input(str(source_files["xert"])),
+        local_timezone=local_timezone,
+        garmin_input=load_garmin_input(
+            str(source_files["garmin"]),
+            local_timezone=local_timezone,
+        ),
+        xert_input=load_xert_input(
+            str(source_files["xert"]),
+            local_timezone=local_timezone,
+        ),
         intervals_wellness_input=load_json_if_exists(source_files["intervals_wellness"]),
         intervals_events_input=load_json_if_exists(source_files["intervals_events"]),
     )
+    annotate_hrv_decision_context(readiness_packet)
     history_context = training_history_context(
         args.date,
         artifacts_dir=ARTIFACTS_DIR,
         xert_activity_loads=load_json_if_exists(source_files["xert_activity_loads"]),
+        local_timezone=local_timezone,
     )
     target_resolution = resolve_training_targets(
-        explicit_minutes=args.target_minutes,
-        explicit_load=args.target_load,
+        explicit_minutes=(args.training_target_json or {}).get("minutes"),
+        explicit_load=(args.training_target_json or {}).get("load"),
         readiness_packet=readiness_packet,
         history_context=history_context,
     )
@@ -344,23 +513,123 @@ def main() -> None:
         )
         or {},
     )
+    progression_advice = build_progression_advice(
+        day=args.date,
+        source_files=source_files,
+        recommendations_dir=args.output_dir,
+        plan_progression=plan_context.get("progression") or {},
+    )
+    intensity_decision = select_intensity_domain(
+        day=args.date,
+        readiness_ceiling=recommendation_bias_from_readiness_packet(
+            readiness_packet,
+        ),
+        intensity_goal=args.plan_selection_json["intensity_goal"],
+        progression_advice=progression_advice,
+        plan_progression=plan_context.get("progression"),
+    )
+    apply_execution_modality_constraint(
+        intensity_decision,
+        indoor_gym_only=(
+            indoor_gym_available and not indoor_available and not outdoor_available
+        ),
+    )
+    apply_readiness_domain_target_cap(
+        target_resolution,
+        intensity_decision=intensity_decision,
+    )
+    if args.endurance_structure_json is not None:
+        endurance_structure = args.endurance_structure_json
+        if split_preference is not None:
+            endurance_structure = split_endurance_structure(
+                endurance_structure,
+                first_session_minutes=split_preference["first_session_minutes"],
+            )
+        calculation = solve_endurance_structure(
+            target_resolution,
+            structure=endurance_structure,
+        )
+        apply_xert_endurance_duration_solution(
+            target_resolution,
+            calculation=calculation,
+            selected_intensity=str(
+                intensity_decision.get("selected_domain") or ""
+            ),
+        )
+    if args.endurance_workout_json is not None:
+        apply_xert_endurance_duration_solution(
+            target_resolution,
+            calculation=args.endurance_workout_json["calculation"],
+            selected_intensity=str(
+                intensity_decision.get("selected_domain") or ""
+            ),
+        )
+    require_endurance_solution_for_selected_domain(
+        intensity_decision=intensity_decision,
+        target_resolution=target_resolution,
+    )
     finalize_plan_trace(target_resolution)
+    annotate_volume_density(target_resolution, history_context=history_context)
+    if args.quality_workout_json is not None:
+        apply_quality_workout_vt1_composition(
+            target_resolution,
+            quality_calculation=args.quality_workout_json["calculation"],
+            selected_intensity=str(
+                intensity_decision.get("selected_domain") or ""
+            ),
+            quality_workout_status=args.quality_workout_json["status"],
+        )
+    if indoor_available or outdoor_available or indoor_gym_available:
+        require_quality_workout_for_selected_domain(
+            intensity_decision=intensity_decision,
+            dose_composition=target_resolution.get("dose_composition"),
+        )
     target_resolution["split"] = split_session_info(
         target_resolution,
         planned_at=planned_at,
+        now=now,
         available_windows=available_windows,
     )
-    target_resolution["split_note"] = split_session_guidance(target_resolution["split"])
+    annotate_dose_composition_window_fit(
+        target_resolution,
+        planned_at=planned_at,
+        now=now,
+        available_windows=available_windows,
+    )
+    remainder_disposition = planning_context["calendar"]["remainder_disposition"]
+    target_resolution["split"]["remainder_disposition"] = remainder_disposition
+    target_resolution["split"]["guidance"] = split_session_guidance(
+        target_resolution["split"],
+        remainder_disposition=remainder_disposition,
+    )
+    target_resolution["split_note"] = target_resolution["split"]["guidance"]
     target_minutes = float(target_resolution["target_minutes"])
     target_load = float(target_resolution["target_load"])
-    target_distance_km = outdoor_target_distance_km(
-        target_minutes=target_minutes,
-        surface_preference=args.surface_preference,
+    route_session_target_minutes = (
+        float(split_preference["first_session_minutes"])
+        if split_preference is not None
+        else target_minutes
+    )
+    target_distance_km = (
+        args.route_target_distance_km
+        if args.route_target_distance_km is not None
+        else outdoor_target_distance_km(
+            target_minutes=route_session_target_minutes,
+            surface_preference=args.surface_preference,
+        )
     )
     target_resolution["target_distance_km"] = target_distance_km
     target_resolution["target_distance_meaning"] = (
-        "Derived before route ranking from the recommendation duration target "
-        "and the selected surface preference."
+        (
+            "Explicit route-context target distance."
+            if args.route_target_distance_km is not None
+            else "Derived before route ranking from the recommendation duration "
+            "target and the selected surface preference."
+        )
+    )
+    target_resolution["route_session_target_minutes"] = round(
+        route_session_target_minutes,
+        1,
     )
     workout_bias = recommendation_bias_from_readiness_packet(
         readiness_packet,
@@ -368,7 +637,12 @@ def main() -> None:
     recommended_training_raw = (
         None if not indoor_available else load_json_if_exists(source_files["xert_recommended_training"])
     )
-    if not indoor_available:
+    if indoor_gym_available and not indoor_available:
+        indoor_workouts_packet = indoor_gym_packet(
+            target_minutes=route_session_target_minutes,
+        )
+        write_json(source_files["xert_workouts"], indoor_workouts_packet)
+    elif not indoor_available:
         indoor_workouts_packet = indoor_unavailable_packet(reason=indoor_unavailable_reason)
         write_json(
             source_files["xert_workouts"],
@@ -384,46 +658,35 @@ def main() -> None:
         annotate_indoor_window_fit(
             indoor_workouts_packet,
             planned_at=planned_at,
+            now=now,
             available_windows=available_windows,
         )
         write_json(
             source_files["xert_workouts"],
             indoor_workouts_packet,
         )
-    elif args.refresh["mode"] == "none":
+    elif args.refresh_json["mode"] == "none":
         ensure_source_files_exist(source_files, required=("xert_workouts",))
         indoor_workouts_packet = load_json_if_exists(source_files["xert_workouts"])
     else:
         indoor_workouts_packet = load_json_if_exists(source_files["xert_workouts"])
-    if indoor_available and isinstance(indoor_workouts_packet, dict):
+    if (indoor_available or indoor_gym_available) and isinstance(
+        indoor_workouts_packet, dict
+    ):
         annotate_indoor_window_fit(
             indoor_workouts_packet,
             planned_at=planned_at,
+            now=now,
             available_windows=available_windows,
         )
         write_json(source_files["xert_workouts"], indoor_workouts_packet)
 
-    progression_advice = (
-        progression_unavailable_packet(
-            reason=requested_unavailable_reasons.get("indoor", "indoor_workout_matching_disabled")
-        )
-        if not indoor_available
-        else build_progression_advice(
-            day=args.date,
-            source_files=source_files,
-            recommendations_dir=args.output_dir,
-        )
-    )
-    intensity_decision = select_intensity_domain(
-        day=args.date,
-        readiness_ceiling=workout_bias,
-        intensity_goal=args.intensity_goal,
-        progression_advice=progression_advice,
-    )
     primary_decision = build_primary_decision(
         readiness_packet=readiness_packet,
         target_resolution=target_resolution,
         intensity_decision=intensity_decision,
+        cycling_available=indoor_available or indoor_gym_available or outdoor_available,
+        remainder_disposition=planning_context["calendar"]["remainder_disposition"],
     )
 
     if not outdoor_available:
@@ -432,10 +695,9 @@ def main() -> None:
         route_packet = recommend_routes(
             day=parse_date(args.date),
             years=5,
-            target_minutes=None,
-            target_load=None,
             xert_loads_json=source_files["xert_activity_loads"],
             target_distance_km=target_distance_km,
+            target_minutes=target_minutes,
             queries=[],
             max_results=8,
             artifacts_dir=ARTIFACTS_DIR,
@@ -443,22 +705,24 @@ def main() -> None:
             start_anchor_lat=args.start_anchor_lat,
             start_anchor_lng=args.start_anchor_lng,
             start_radius_km=args.start_radius_km,
-            allow_away=False,
+            allow_away=args.route_allow_away,
             surface_preference=args.surface_preference,
-            route_index=args.route_index,
-            rebuild_index=args.rebuild_route_index,
+            route_index=args.route_options_json["index"],
+            rebuild_index=args.route_options_json["rebuild_index"],
         )
         annotate_route_window_fit(
             route_packet,
+            target_minutes=route_session_target_minutes,
             planned_at=planned_at,
+            now=now,
             available_windows=available_windows,
         )
     if (
         outdoor_available
-        and args.route_map_scope != "none"
+        and args.route_options_json["map_scope"] != "none"
         and source_refresh.get("xert_route_maps", {}).get("refresh")
     ):
-        route_map_limit = 1 if args.route_map_scope == "top" else None
+        route_map_limit = 1 if args.route_options_json["map_scope"] == "top" else None
         route_packet = enrich_route_packet_with_xert_maps(route_packet, limit=route_map_limit)
         route_packet = cache_xert_route_map_images(
             route_packet,
@@ -471,6 +735,7 @@ def main() -> None:
     weather_sources = {
         key for key in ("weather_home", "weather_route")
         if source_refresh.get(key, {}).get("refresh")
+        and (key != "weather_route" or first_route is not None)
     }
     if weather_sources:
         home_weather_lat, home_weather_lon = home_weather_coordinates(
@@ -479,7 +744,7 @@ def main() -> None:
         )
         fetch_weather_inputs(
             planned_at=planned_at,
-            weather_timezone=args.weather_timezone,
+            local_timezone=args.local_timezone,
             outdoor_available=outdoor_available,
             first_route=first_route,
             home_weather_lat=home_weather_lat,
@@ -495,13 +760,20 @@ def main() -> None:
                 key
                 for key in ("weather_home", "weather_route")
                 if key in required_sources
+                and (key != "weather_route" or first_route is not None)
             )
         ),
-        policy=args.refresh["mode"],
+        policy=args.refresh_json["mode"],
     )
 
     weather_home = load_json_if_exists(source_files["weather_home"])
-    weather_route = None if not outdoor_available else load_json_if_exists(source_files["weather_route"])
+    weather_route = (
+        None
+        if not outdoor_available
+        else weather_home
+        if first_route is None
+        else load_json_if_exists(source_files["weather_route"])
+    )
     indoor_workouts = indoor_workouts_packet
     decision_inputs = compact_decision_inputs(
         readiness_packet,
@@ -522,22 +794,33 @@ def main() -> None:
         planned_at=planned_at,
         planned_at_source=planned_at_source,
         available_windows=available_windows,
+        calendar_context=planning_context["calendar"],
     )
     llm_context["primary_decision"] = primary_decision
+    llm_context["plan_context"] = plan_context
+    primary_decision["plan_context"] = plan_context
 
     packet = {
-        "source": "training-ai-recommend-today",
+        "source": "training-ai-recommend-training",
         "date": args.date,
-        "generated_at": generated_at.isoformat(timespec="seconds"),
+        "generated_at": generated_at_utc.isoformat(timespec="seconds").replace(
+            "+00:00", "Z"
+        ),
+        "local_timezone": args.local_timezone,
         "planned_at": planned_at.isoformat(timespec="seconds"),
+        "planned_at_utc": planned_at.astimezone(timezone.utc).isoformat(
+            timespec="seconds"
+        ).replace("+00:00", "Z"),
         "planned_at_source": planned_at_source,
         "available_windows": serialize_available_windows(available_windows),
+        "calendar": planning_context["calendar"],
         "available_modalities": sorted(args.available_modalities),
         "unavailable_reasons": unavailable_reasons,
         "source_files": {key: str(path) for key, path in source_files.items()},
         "source_refresh": source_refresh,
         "intervals_cache_refresh": intervals_cache_refresh,
         "readiness": readiness_packet,
+        "plan_context": plan_context,
         "primary_decision": primary_decision,
         "target_resolution": target_resolution,
         "training_history_context": history_context,
@@ -581,19 +864,98 @@ def source_paths(output_dir: Path, day: str) -> dict[str, Path]:
     }
 
 
-def parse_refresh_spec(raw: str) -> dict[str, Any]:
-    value = raw.strip().lower()
-    if value in {"auto", "all", "none"}:
-        return {"mode": value, "sources": []}
-    sources = sorted({part.strip() for part in value.split(",") if part.strip()})
-    unknown = sorted(set(sources) - REFRESH_GROUPS)
-    if not sources or unknown:
-        detail = f"; unsupported: {', '.join(unknown)}" if unknown else ""
+def parse_refresh_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
         raise argparse.ArgumentTypeError(
-            "expected auto, all, none, or a comma-separated subset of "
-            f"{', '.join(sorted(REFRESH_GROUPS))}{detail}"
+            f"--refresh-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError("--refresh-json must contain one JSON object")
+    unknown_fields = sorted(set(payload) - {"mode", "sources"})
+    if unknown_fields:
+        raise argparse.ArgumentTypeError(f"unsupported refresh field: {unknown_fields[0]}")
+    mode = payload.get("mode")
+    if mode not in {"auto", "all", "none", "selected"}:
+        raise argparse.ArgumentTypeError("refresh mode must be auto, all, none, or selected")
+    sources = payload.get("sources", [])
+    if not isinstance(sources, list) or any(not isinstance(item, str) for item in sources):
+        raise argparse.ArgumentTypeError("refresh sources must be an array of strings")
+    sources = sorted(set(sources))
+    unknown_sources = sorted(set(sources) - REFRESH_GROUPS)
+    if unknown_sources:
+        raise argparse.ArgumentTypeError(f"unsupported refresh source: {unknown_sources[0]}")
+    if mode == "selected" and not sources:
+        raise argparse.ArgumentTypeError("selected refresh mode requires sources")
+    if mode != "selected" and sources:
+        raise argparse.ArgumentTypeError("refresh sources are only allowed with selected mode")
+    return {"mode": mode, "sources": sources}
+
+
+def parse_source_overrides_json(raw: str) -> dict[str, Path]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--source-overrides-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--source-overrides-json must contain one JSON object"
         )
-    return {"mode": "selected", "sources": sources}
+    unknown = sorted(set(payload) - set(SOURCE_REFRESH_POLICY))
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unsupported source override: {unknown[0]}"
+        )
+    parsed: dict[str, Path] = {}
+    for source_name, raw_path in payload.items():
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            raise argparse.ArgumentTypeError(
+                f"source override {source_name} must be a non-empty file path"
+            )
+        path = Path(raw_path)
+        if not path.is_file():
+            raise argparse.ArgumentTypeError(
+                f"source override file does not exist: {path}"
+            )
+        try:
+            source_payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise argparse.ArgumentTypeError(
+                f"source override {source_name} must contain valid JSON: {exc.msg}"
+            ) from exc
+        if not isinstance(source_payload, dict):
+            raise argparse.ArgumentTypeError(
+                f"source override {source_name} must contain one JSON object"
+            )
+        parsed[source_name] = path
+    return parsed
+
+
+def parse_route_options_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--route-options-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError("--route-options-json must contain one JSON object")
+    unknown = sorted(set(payload) - {"index", "rebuild_index", "map_scope"})
+    if unknown:
+        raise argparse.ArgumentTypeError(f"unsupported route-option field: {unknown[0]}")
+    index = payload.get("index", "outputs/route-index.json")
+    if not isinstance(index, str) or not index.strip():
+        raise argparse.ArgumentTypeError("route-option index must be a non-empty path")
+    rebuild_index = payload.get("rebuild_index", False)
+    if not isinstance(rebuild_index, bool):
+        raise argparse.ArgumentTypeError("route-option rebuild_index must be boolean")
+    map_scope = payload.get("map_scope", "top")
+    if map_scope not in {"top", "all", "none"}:
+        raise argparse.ArgumentTypeError("route-option map_scope must be top, all, or none")
+    return {"index": Path(index), "rebuild_index": rebuild_index, "map_scope": map_scope}
 
 
 def refresh_spec_forces(refresh_spec: dict[str, Any], group: str) -> bool:
@@ -654,41 +1016,332 @@ def source_group_will_refresh(plan: dict[str, dict[str, Any]], group: str) -> bo
     return any(row["group"] == group and row["refresh"] for row in plan.values())
 
 
-def parse_available_modalities(raw: str) -> frozenset[str]:
-    modalities = frozenset(part.strip().lower() for part in raw.split(",") if part.strip())
-    allowed = {"indoor", "outdoor"}
-    unknown = sorted(modalities - allowed)
+def parse_planning_context_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--planning-context-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json must contain one JSON object"
+        )
+    unknown_top_level = sorted(
+        set(payload)
+        - {
+            "date",
+            "local_timezone",
+            "now",
+            "planned_at",
+            "availability",
+            "cycling",
+            "route",
+            "calendar",
+            "split_preference",
+        }
+    )
+    if unknown_top_level:
+        raise argparse.ArgumentTypeError(
+            "unsupported planning-context field(s): "
+            + ", ".join(unknown_top_level)
+        )
+
+    day = payload.get("date")
+    if not isinstance(day, str):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json date must be an ISO calendar date"
+        )
+    try:
+        date.fromisoformat(day)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json date must be an ISO calendar date"
+        ) from exc
+
+    timezone_name = payload.get("local_timezone")
+    if not isinstance(timezone_name, str) or not timezone_name:
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json local_timezone must be an IANA timezone"
+        )
+    local_timezone = parse_timezone(timezone_name)
+
+    now = planning_context_instant(
+        payload.get("now"),
+        field="--planning-context-json now",
+        local_timezone=local_timezone,
+        required=True,
+    )
+    planned_at = planning_context_instant(
+        payload.get("planned_at"),
+        field="--planning-context-json planned_at",
+        local_timezone=local_timezone,
+        required=False,
+    )
+    if planned_at is not None and planned_at.date().isoformat() != day:
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json planned_at must belong to date"
+        )
+
+    availability = payload.get("availability", {"windows": []})
+    windows = parse_availability_payload(
+        availability,
+        expected_timezone=local_timezone,
+        argument_name="--planning-context-json availability",
+    )
+
+    cycling = payload.get("cycling")
+    if not isinstance(cycling, dict):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json requires a cycling object"
+        )
+    modalities_raw = cycling.get("available_modalities")
+    if not isinstance(modalities_raw, list) or any(
+        not isinstance(value, str) for value in modalities_raw
+    ):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json cycling.available_modalities must be an array"
+        )
+    modalities = list(dict.fromkeys(modalities_raw))
+    allowed_modalities = {
+        "indoor_cycling",
+        "indoor_cycling_gym",
+        "outdoor_cycling",
+    }
+    unknown_modalities = sorted(set(modalities) - allowed_modalities)
+    if unknown_modalities:
+        raise argparse.ArgumentTypeError(
+            "unsupported cycling modalit"
+            f"{'y' if len(unknown_modalities) == 1 else 'ies'}: "
+            + ", ".join(unknown_modalities)
+        )
+
+    unavailable_reasons = cycling.get("unavailable_reasons", {})
+    if not isinstance(unavailable_reasons, dict):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json cycling.unavailable_reasons must be an object"
+        )
+    unknown_reason_keys = sorted(set(unavailable_reasons) - allowed_modalities)
+    if unknown_reason_keys:
+        raise argparse.ArgumentTypeError(
+            "unsupported unavailable-reason modalit"
+            f"{'y' if len(unknown_reason_keys) == 1 else 'ies'}: "
+            + ", ".join(unknown_reason_keys)
+        )
+    if any(
+        not isinstance(reason, str) or not reason.strip()
+        for reason in unavailable_reasons.values()
+    ):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json unavailable reasons must be non-empty strings"
+        )
+
+    route = parse_route_context_payload(
+        payload.get("route", {}),
+        argument_name="--planning-context-json route",
+    )
+    calendar = parse_calendar_context_payload(
+        payload.get("calendar", {}),
+        local_timezone=local_timezone,
+    )
+    split_preference = parse_split_preference_payload(
+        payload.get("split_preference"),
+        local_timezone=local_timezone,
+        day=day,
+    )
+    start_anchor = route["start_anchor"]
+    if (
+        "outdoor_cycling" in modalities
+        and start_anchor is None
+        and not route["allow_away"]
+    ):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json outdoor_cycling requires route.start_anchor "
+            "unless route.allow_away is true"
+        )
+
+    return {
+        "date": day,
+        "local_timezone": timezone_name,
+        "now": now.isoformat(timespec="seconds"),
+        "planned_at": (
+            planned_at.isoformat(timespec="seconds") if planned_at else None
+        ),
+        "availability": {
+            "windows": serialize_available_windows(windows),
+        },
+        "cycling": {
+            "available_modalities": modalities,
+            "unavailable_reasons": {
+                key: value.strip() for key, value in unavailable_reasons.items()
+            },
+        },
+        "route": route,
+        "calendar": calendar,
+        "split_preference": split_preference,
+    }
+
+
+def build_planning_context(
+    *,
+    day: str,
+    local_timezone: str,
+    now: str,
+    cycling: dict[str, Any],
+    planned_at: str | None = None,
+    availability_windows: list[dict[str, Any]] | None = None,
+    route: dict[str, Any] | None = None,
+    calendar: dict[str, Any] | None = None,
+    split_preference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build and validate the internal planning context without hand-written JSON."""
+
+    payload = {
+        "date": day,
+        "local_timezone": local_timezone,
+        "now": now,
+        "planned_at": planned_at,
+        "availability": {"windows": availability_windows or []},
+        "cycling": cycling,
+        "route": route or {},
+        "calendar": calendar or {},
+    }
+    if split_preference is not None:
+        payload["split_preference"] = split_preference
+    return parse_planning_context_json(json.dumps(payload))
+
+
+def parse_split_preference_payload(
+    payload: Any,
+    *,
+    local_timezone: Any,
+    day: str,
+) -> dict[str, Any] | None:
+    if payload is None:
+        return None
+    if not isinstance(payload, dict) or set(payload) != {
+        "first_session_minutes",
+        "second_session_start",
+    }:
+        raise argparse.ArgumentTypeError(
+            "split_preference must contain exactly first_session_minutes and second_session_start"
+        )
+    first_minutes = payload.get("first_session_minutes")
+    if (
+        isinstance(first_minutes, bool)
+        or not isinstance(first_minutes, (int, float))
+        or first_minutes < MIN_SEPARATE_VT1_SESSION_MINUTES
+    ):
+        raise argparse.ArgumentTypeError(
+            f"split_preference.first_session_minutes must be at least {MIN_SEPARATE_VT1_SESSION_MINUTES:g}"
+        )
+    second_start = planning_context_instant(
+        payload.get("second_session_start"),
+        field="split_preference.second_session_start",
+        local_timezone=local_timezone,
+        required=True,
+    )
+    if second_start.date().isoformat() != day:
+        raise argparse.ArgumentTypeError(
+            "split_preference.second_session_start must belong to date"
+        )
+    return {
+        "first_session_minutes": round(float(first_minutes), 1),
+        "second_session_start": second_start.isoformat(timespec="seconds"),
+    }
+
+
+def parse_calendar_context_payload(
+    payload: Any,
+    *,
+    local_timezone: Any,
+) -> dict[str, Any]:
+    """Parse only calendar facts needed to explain an already-resolved window."""
+
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json calendar must be an object"
+        )
+    unknown = sorted(
+        set(payload)
+        - {
+            "cleanup_buffer_minutes",
+            "assumptions",
+            "practical_stop",
+            "hard_stop",
+            "remainder_disposition",
+        }
+    )
     if unknown:
         raise argparse.ArgumentTypeError(
-            f"unsupported modalit{'y' if len(unknown) == 1 else 'ies'}: {', '.join(unknown)}"
+            "unsupported planning-context calendar field(s): " + ", ".join(unknown)
         )
-    if not modalities:
+    cleanup = payload.get("cleanup_buffer_minutes", 0)
+    if isinstance(cleanup, bool) or not isinstance(cleanup, (int, float)) or cleanup < 0:
         raise argparse.ArgumentTypeError(
-            "at least one modality must be supplied: indoor, outdoor, or indoor,outdoor"
+            "calendar.cleanup_buffer_minutes must be a non-negative number"
         )
-    return modalities
-
-
-def parse_unavailable_reason(raw: str) -> tuple[str, str]:
-    modality, separator, reason = raw.partition("=")
-    modality = modality.strip().lower()
-    reason = reason.strip()
-    if separator != "=" or not modality or not reason:
+    assumptions = payload.get("assumptions", [])
+    if not isinstance(assumptions, list) or any(
+        not isinstance(value, str) or not value.strip() for value in assumptions
+    ):
         raise argparse.ArgumentTypeError(
-            "expected modality=reason, for example indoor=no_trainer_at_location"
+            "calendar.assumptions must be an array of non-empty strings"
         )
-    if modality not in {"indoor", "outdoor"}:
+    stops = {}
+    for field in ("practical_stop", "hard_stop"):
+        stop = payload.get(field)
+        if stop is None:
+            stops[field] = None
+            continue
+        if not isinstance(stop, dict) or set(stop) != {"subject", "at"}:
+            raise argparse.ArgumentTypeError(
+                f"calendar.{field} must contain exactly subject and at"
+            )
+        subject = stop.get("subject")
+        if not isinstance(subject, str) or not subject.strip():
+            raise argparse.ArgumentTypeError(
+                f"calendar.{field}.subject must be a non-empty string"
+            )
+        at = parse_availability_instant(stop.get("at"), field=f"calendar.{field}.at")
+        if at.astimezone(local_timezone).utcoffset() != at.utcoffset():
+            raise argparse.ArgumentTypeError(
+                f"calendar.{field}.at UTC offset must match local_timezone"
+            )
+        stops[field] = {
+            "subject": subject.strip(),
+            "at": at.astimezone(local_timezone).isoformat(timespec="seconds"),
+        }
+    disposition = payload.get("remainder_disposition", "unscheduled")
+    if disposition == "none":
+        disposition = "unscheduled"
+    if disposition not in {"unscheduled", "dropped", "moved", "conditionally_split"}:
         raise argparse.ArgumentTypeError(
-            f"unsupported modality for unavailable reason: {modality}"
+            "calendar.remainder_disposition must be unscheduled, dropped, moved, or conditionally_split"
         )
-    return modality, reason
+    return {
+        "cleanup_buffer_minutes": float(cleanup),
+        "assumptions": [value.strip() for value in assumptions],
+        **stops,
+        "remainder_disposition": disposition,
+    }
 
 
-def unavailable_reason_map(reason_pairs: list[tuple[str, str]]) -> dict[str, str]:
-    reasons: dict[str, str] = {}
-    for modality, reason in reason_pairs:
-        reasons[modality] = reason
-    return reasons
+def planning_context_instant(
+    value: Any,
+    *,
+    field: str,
+    local_timezone: Any,
+    required: bool,
+) -> datetime | None:
+    if value is None and not required:
+        return None
+    instant = parse_availability_instant(value, field=field)
+    if instant.astimezone(local_timezone).utcoffset() != instant.utcoffset():
+        raise argparse.ArgumentTypeError(
+            f"{field} UTC offset does not match {local_timezone}"
+        )
+    return instant.astimezone(local_timezone)
 
 
 def validate_context(
@@ -701,12 +1354,12 @@ def validate_context(
     has_start_lng = args.start_anchor_lng is not None
     if has_start_lat != has_start_lng:
         parser.error(
-            "--start-anchor-lat and --start-anchor-lng must be provided together."
+            "planning_context route.start_anchor requires both lat and lng."
         )
     if outdoor_available and not (has_start_lat and has_start_lng):
         parser.error(
-            "--start-anchor-lat and --start-anchor-lng are required when "
-            "--available-modalities includes outdoor."
+            "planning_context route.start_anchor is required when "
+            "cycling.available_modalities includes outdoor_cycling."
         )
 def indoor_unavailable_packet(*, reason: str) -> dict[str, Any]:
     return {
@@ -726,6 +1379,35 @@ def indoor_unavailable_packet(*, reason: str) -> dict[str, Any]:
     }
 
 
+def indoor_gym_packet(*, target_minutes: float) -> dict[str, Any]:
+    """Describe a basic gym bike without pretending it supports Xert workouts."""
+    return {
+        "source": "indoor_cycling_gym",
+        "available": True,
+        "equipment": "gym_bike",
+        "policy": (
+            "Use continuous aerobic riding controlled by heart rate, breathing, "
+            "and RPE. Do not rank watt-based Xert workouts or use the gym bike "
+            "for structured threshold or VO2Max by default."
+        ),
+        "load_estimation": "estimated_without_reliable_power",
+        "xmb_candidates": [],
+        "other_candidates": [],
+        "higher_intensity_candidates": [],
+        "non_xmb_candidates_omitted_by_default": 0,
+        "recommended": {
+            "name": "Continuous aerobic gym-bike ride",
+            "duration_minutes": round(target_minutes, 1),
+            "control": "heart_rate_breathing_rpe",
+            "intensity": "vt1",
+            "xss": None,
+            "difficulty": None,
+            "url": None,
+        },
+        "relevant_options": [],
+    }
+
+
 def outdoor_unavailable_packet(*, reason: str) -> dict[str, Any]:
     return {
         "source": "outdoor_unavailable",
@@ -736,18 +1418,6 @@ def outdoor_unavailable_packet(*, reason: str) -> dict[str, Any]:
             "realistic in the current context."
         ),
         "recommendations": [],
-    }
-
-
-def progression_unavailable_packet(*, reason: str) -> dict[str, Any]:
-    return {
-        "source": "progression_unavailable",
-        "available": False,
-        "reason": reason,
-        "meaning": (
-            "Workout-family progression matching was skipped because indoor "
-            "workout recommendations are disabled for this context."
-        ),
     }
 
 
@@ -780,37 +1450,75 @@ def default_planned_at(day: str, *, now: datetime) -> datetime:
     return candidate
 
 
-def parse_available_windows(
-    values: list[str],
+def parse_availability_payload(
+    payload: Any,
     *,
-    default_day: str,
-    tzinfo: Any,
-) -> list[dict[str, datetime]]:
-    windows = [
-        parse_available_window(value, default_day=default_day, tzinfo=tzinfo)
-        for value in values
-    ]
+    expected_timezone: Any,
+    argument_name: str,
+) -> list[dict[str, Any]]:
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            f"{argument_name} must contain one JSON object"
+        )
+    rows = payload.get("windows")
+    if not isinstance(rows, list):
+        raise argparse.ArgumentTypeError(
+            f"{argument_name} requires a windows array"
+        )
+
+    expected_timezone_name = str(expected_timezone)
+    windows: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        label = f"{argument_name}.windows[{index}]"
+        if not isinstance(row, dict):
+            raise argparse.ArgumentTypeError(f"{label} must be an object")
+        time_zone = row.get("time_zone", expected_timezone_name)
+        if time_zone != expected_timezone_name:
+            raise argparse.ArgumentTypeError(
+                f"{label}.time_zone, when provided, must equal --local-timezone "
+                f"{expected_timezone_name!r}"
+            )
+        start = parse_availability_instant(row.get("start"), field=f"{label}.start")
+        end = parse_availability_instant(row.get("end"), field=f"{label}.end")
+        if end <= start:
+            raise argparse.ArgumentTypeError(
+                f"{label}.end must be later than start"
+            )
+        if (
+            start.astimezone(expected_timezone).utcoffset() != start.utcoffset()
+            or end.astimezone(expected_timezone).utcoffset() != end.utcoffset()
+        ):
+            raise argparse.ArgumentTypeError(
+                f"{label} UTC offsets do not match {expected_timezone_name}"
+            )
+        note = row.get("note")
+        if note is not None and not isinstance(note, str):
+            raise argparse.ArgumentTypeError(f"{label}.note must be a string or null")
+        windows.append(
+            {
+                "start": start.astimezone(expected_timezone),
+                "end": end.astimezone(expected_timezone),
+                "time_zone": time_zone,
+                "note": note.strip() if isinstance(note, str) and note.strip() else None,
+            }
+        )
     return sorted(windows, key=lambda window: window["start"])
 
 
-def parse_available_window(
-    value: str,
-    *,
-    default_day: str,
-    tzinfo: Any,
-) -> dict[str, datetime]:
-    time_part, separator, note_part = value.partition(";")
-    note = note_part.strip() if separator else None
-    match = re.fullmatch(r"\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*", time_part)
-    if not match:
-        raise SystemExit(
-            f"Invalid --available-window {value!r}; expected HH:MM-HH:MM[; note]."
+def parse_availability_instant(value: Any, *, field: str) -> datetime:
+    if not isinstance(value, str):
+        raise argparse.ArgumentTypeError(f"{field} must be an ISO-8601 string")
+    try:
+        instant = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"{field} must be a valid ISO-8601 timestamp"
+        ) from exc
+    if instant.tzinfo is None or instant.utcoffset() is None:
+        raise argparse.ArgumentTypeError(
+            f"{field} must include an explicit UTC offset"
         )
-    start = parse_cli_local_datetime(match.group(1), default_day=default_day).replace(tzinfo=tzinfo)
-    end = parse_cli_local_datetime(match.group(2), default_day=default_day).replace(tzinfo=tzinfo)
-    if end <= start:
-        end += timedelta(days=1)
-    return {"start": start, "end": end, "note": note or None}
+    return instant
 
 
 def validate_planned_at_in_available_windows(
@@ -824,7 +1532,8 @@ def validate_planned_at_in_available_windows(
     if any(window["start"] <= planned_at < window["end"] for window in available_windows):
         return
     parser.error(
-        "--planned-at must fall inside one of the supplied --available-window values."
+        "planning_context planned_at must fall inside one of the supplied "
+        "availability windows."
     )
 
 
@@ -838,6 +1547,7 @@ def serialize_available_window(window: dict[str, Any] | None) -> dict[str, Any] 
     return {
         "start": window["start"].isoformat(timespec="seconds"),
         "end": window["end"].isoformat(timespec="seconds"),
+        "time_zone": window.get("time_zone"),
         "minutes": round((window["end"] - window["start"]).total_seconds() / 60, 1),
         "label": f"{window['start'].strftime('%H:%M')}-{window['end'].strftime('%H:%M')}",
         "note": window.get("note"),
@@ -863,6 +1573,23 @@ def run_json(command: list[str]) -> Any:
         ) from exc
 
 
+def xert_readiness_command(*, planned_at: datetime, now: datetime) -> list[str]:
+    """Build planned-time Xert advice command for a recommendation decision."""
+
+    return [
+        sys.executable,
+        "-B",
+        "plugins/xert/scripts/xert_cli.py",
+        "readiness-input",
+        "--advice-source",
+        "recommended-training",
+        "--advice-at",
+        planned_at.isoformat(timespec="seconds"),
+        "--advice-now",
+        now.isoformat(timespec="seconds"),
+    ]
+
+
 def fetch_primary_live_inputs(
     *,
     day: str,
@@ -871,38 +1598,60 @@ def fetch_primary_live_inputs(
     latest_activity: dict[str, Any] | None,
     source_files: dict[str, Path],
     sources: set[str],
+    local_timezone: Any,
 ) -> None:
     """Fetch independent Garmin, Xert, and Intervals wellness inputs concurrently."""
 
     def fetch_garmin() -> None:
-        run_json_to_file(
+        garmin_day = garmin_source_day(day, now=now)
+        daily = run_json(
             [
                 sys.executable,
                 "-B",
                 "plugins/garmin-connect/scripts/garmin_connect_cli.py",
                 "day",
-                day,
+                garmin_day,
                 "--profile",
                 "readiness",
                 "--tolerate-errors",
-            ],
-            source_files["garmin"],
+                "--compact",
+            ]
         )
+        hrv_history = run_json(
+            [
+                sys.executable,
+                "-B",
+                "plugins/garmin-connect/scripts/garmin_connect_cli.py",
+                "recent",
+                "--days",
+                "7",
+                "--until",
+                garmin_day,
+                "--only",
+                "hrv",
+                "--tolerate-errors",
+            ]
+        )
+        daily["hrv_history"] = hrv_history
+        daily["projection_context"] = {
+            "requested_date": day,
+            "garmin_source_date": garmin_day,
+            "uses_latest_available_day": garmin_day != day,
+            "meaning": (
+                "For a future recommendation, timestamped Garmin Recovery Time "
+                "is taken from the latest available day and projected to the "
+                "planned start assuming no intervening training. Future overnight "
+                "HRV, sleep, resting HR, and Body Battery are not inferred."
+            ),
+        }
+        write_json(source_files["garmin"], daily)
 
     def fetch_xert() -> None:
-        xert_command = [
-            sys.executable,
-            "-B",
-            "plugins/xert/scripts/xert_cli.py",
-            "readiness-input",
-            "--advice-source",
-            "auto",
-            "--advice-at",
-            planned_at.isoformat(timespec="seconds"),
-            "--advice-now",
-            now.isoformat(timespec="seconds"),
-        ]
-        xert_activity_path = resolve_xert_activity_path(latest_activity)
+        xert_command = xert_readiness_command(planned_at=planned_at, now=now)
+        xert_activity_path = resolve_xert_activity_path(
+            latest_activity,
+            local_timezone=local_timezone,
+        )
         if xert_activity_path:
             xert_command.extend(["--activity", xert_activity_path])
         run_json_to_file(xert_command, source_files["xert"])
@@ -947,10 +1696,17 @@ def fetch_primary_live_inputs(
     run_parallel_steps(steps)
 
 
+def garmin_source_day(day: str, *, now: datetime) -> str:
+    """Use the latest real Garmin day when the recommendation date is in the future."""
+
+    requested = date.fromisoformat(day)
+    return min(requested, now.date()).isoformat()
+
+
 def fetch_weather_inputs(
     *,
     planned_at: datetime,
-    weather_timezone: str,
+    local_timezone: str,
     outdoor_available: bool,
     first_route: dict[str, Any] | None,
     home_weather_lat: float,
@@ -958,7 +1714,7 @@ def fetch_weather_inputs(
     source_files: dict[str, Path],
     sources: set[str],
 ) -> None:
-    """Fetch home and route weather concurrently once the route is known."""
+    """Fetch current-location and route weather concurrently once the route is known."""
 
     available_steps = {
         "weather_home": lambda: run_json_to_file(
@@ -968,7 +1724,7 @@ def fetch_weather_inputs(
                 lon=home_weather_lon,
                 planned_at=planned_at,
                 hours=4,
-                timezone_name=weather_timezone,
+                timezone_name=local_timezone,
             ),
             source_files["weather_home"],
         )
@@ -977,11 +1733,11 @@ def fetch_weather_inputs(
         available_steps["weather_route"] = lambda: run_json_to_file(
             weather_command(
                 None,
-                lat=route_weather_lat(first_route),
-                lon=route_weather_lon(first_route),
+                lat=route_weather_lat(first_route, fallback=home_weather_lat),
+                lon=route_weather_lon(first_route, fallback=home_weather_lon),
                 planned_at=planned_at,
                 hours=4,
-                timezone_name=weather_timezone,
+                timezone_name=local_timezone,
             ),
             source_files["weather_route"],
         )
@@ -1056,6 +1812,7 @@ def build_progression_advice(
     day: str,
     source_files: dict[str, Path],
     recommendations_dir: Path,
+    plan_progression: dict[str, Any],
 ) -> dict[str, Any]:
     """Run workout-family progression advisors as context, not as day readiness."""
 
@@ -1076,6 +1833,12 @@ def build_progression_advice(
             "--output",
             str(source_files[key]),
         ]
+        if workout_type == "vt2":
+            target_power_w = required_plan_target_power(
+                plan_progression,
+                workout_type="vt2",
+            )
+            command.extend(["--vt2-watts", f"{target_power_w:g}"])
         payload = run_json(command)
         write_json(source_files[key], payload)
         advice[workout_type] = payload
@@ -1087,6 +1850,20 @@ def build_progression_advice(
         ),
         **advice,
     }
+
+
+def required_plan_target_power(
+    plan_progression: dict[str, Any],
+    *,
+    workout_type: str,
+) -> float:
+    family = plan_progression.get(workout_type) or {}
+    value = number(family.get("target_power_w"))
+    if value is None or value <= 0:
+        raise SystemExit(
+            f"plan-state progression.{workout_type}.target_power_w must be an explicit positive number"
+        )
+    return value
 
 
 def write_json(path: Path, payload: Any) -> None:
@@ -1105,7 +1882,7 @@ def ensure_source_files_exist(
     missing = [str(source_files[key]) for key in required if not source_files[key].exists()]
     if missing:
         raise SystemExit(
-            f"--refresh {policy} requires source files after refresh planning. Missing: "
+            f"refresh mode {policy} requires source files after refresh planning. Missing: "
             + ", ".join(missing)
         )
 
@@ -1114,10 +1891,17 @@ def format_command(command: list[str]) -> str:
     return " ".join(str(part) for part in command)
 
 
-def resolve_xert_activity_path(activity: dict[str, Any] | None) -> str | None:
+def resolve_xert_activity_path(
+    activity: dict[str, Any] | None,
+    *,
+    local_timezone: Any,
+) -> str | None:
     if not activity or not activity.get("start_local"):
         return None
-    start_local = parse_local_datetime(str(activity["start_local"]))
+    start_local = parse_local_datetime(
+        str(activity["start_local"]),
+        local_timezone=local_timezone,
+    )
     day = start_local.date().isoformat()
     try:
         activities = run_json(
@@ -1138,7 +1922,10 @@ def resolve_xert_activity_path(activity: dict[str, Any] | None) -> str | None:
     for candidate in activities:
         if not isinstance(candidate, dict) or not candidate.get("path"):
             continue
-        candidate_start = xert_activity_start_local(candidate)
+        candidate_start = xert_activity_start_local(
+            candidate,
+            local_timezone=local_timezone,
+        )
         if candidate_start is None:
             continue
         delta = abs((candidate_start - start_local).total_seconds())
@@ -1280,7 +2067,7 @@ def download_xert_map_image(map_url: str, destination: Path) -> dict[str, Any]:
         return {"local_path": str(destination.resolve()), "status": "cached"}
     request = urllib.request.Request(
         map_url,
-        headers={"User-Agent": "training-ai-recommend-today/1.0"},
+        headers={"User-Agent": "training-ai-recommend-training/1.0"},
     )
     try:
         with urllib.request.urlopen(request, timeout=15) as response:
@@ -1373,7 +2160,11 @@ def xert_activity_url(path: Any) -> str | None:
     return f"https://www.xertonline.com/activity/{path}"
 
 
-def xert_activity_start_local(activity: dict[str, Any]) -> datetime | None:
+def xert_activity_start_local(
+    activity: dict[str, Any],
+    *,
+    local_timezone: Any,
+) -> datetime | None:
     start_date = activity.get("start_date")
     raw = None
     if isinstance(start_date, dict):
@@ -1385,7 +2176,7 @@ def xert_activity_start_local(activity: dict[str, Any]) -> datetime | None:
     parsed = datetime.fromisoformat(str(raw))
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone()
+    return parsed.astimezone(local_timezone)
 
 
 def home_weather_coordinates(
@@ -1432,18 +2223,22 @@ def weather_command(
     return command
 
 
-def parse_local_datetime(raw: str) -> datetime:
+def parse_local_datetime(raw: str, *, local_timezone: Any) -> datetime:
     parsed = datetime.fromisoformat(raw)
     if parsed.tzinfo is None:
-        return parsed.astimezone()
-    return parsed.astimezone()
+        return parsed.replace(tzinfo=local_timezone)
+    return parsed.astimezone(local_timezone)
 
 
-def parse_optional_local_datetime(raw: Any) -> datetime | None:
+def parse_optional_local_datetime(
+    raw: Any,
+    *,
+    local_timezone: Any,
+) -> datetime | None:
     if not raw:
         return None
     try:
-        return parse_local_datetime(str(raw))
+        return parse_local_datetime(str(raw), local_timezone=local_timezone)
     except ValueError:
         return None
 
@@ -1457,22 +2252,22 @@ def first_recommendation(route_packet: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
-def route_weather_lat(route: dict[str, Any] | None) -> float:
+def route_weather_lat(route: dict[str, Any] | None, *, fallback: float) -> float:
     bbox = (route or {}).get("bbox") or {}
     min_lat = bbox.get("min_lat")
     max_lat = bbox.get("max_lat")
     if isinstance(min_lat, (int, float)) and isinstance(max_lat, (int, float)):
         return (min_lat + max_lat) / 2
-    return SORKEDALEN_LAT
+    return fallback
 
 
-def route_weather_lon(route: dict[str, Any] | None) -> float:
+def route_weather_lon(route: dict[str, Any] | None, *, fallback: float) -> float:
     bbox = (route or {}).get("bbox") or {}
     min_lon = bbox.get("min_lng")
     max_lon = bbox.get("max_lng")
     if isinstance(min_lon, (int, float)) and isinstance(max_lon, (int, float)):
         return (min_lon + max_lon) / 2
-    return SORKEDALEN_LON
+    return fallback
 
 
 def load_json_if_exists(path: Path) -> Any:
@@ -1496,16 +2291,29 @@ def fetch_xert_activity_loads_for_recent_window(day: str, *, days: int = 14) -> 
     )
 
 
-def compact_xert_activity_load(activity: dict[str, Any], detail: dict[str, Any]) -> dict[str, Any]:
+def compact_xert_activity_load(
+    activity: dict[str, Any],
+    detail: dict[str, Any],
+    *,
+    local_timezone: Any,
+) -> dict[str, Any]:
     summary = detail.get("summary") if isinstance(detail, dict) else {}
     progression = (summary or {}).get("progression") or {}
     xss = (progression.get("xss") or {}).get("total")
     if xss is None:
         xss = (summary or {}).get("xss")
+    raw_start = (summary or {}).get("start_date") or activity.get("start_date")
     return {
         "path": activity.get("path") or (summary or {}).get("path"),
         "name": (summary or {}).get("name") or activity.get("name"),
-        "start_local": xert_start_local((summary or {}).get("start_date") or activity.get("start_date")),
+        "start_local": xert_start_local(
+            raw_start,
+            local_timezone=local_timezone,
+        ),
+        "start_utc": xert_start_utc(
+            raw_start,
+            local_timezone=local_timezone,
+        ),
         "distance_km": number((summary or {}).get("distance") or activity.get("distance")),
         "duration_minutes": minutes_from_seconds(number((summary or {}).get("duration"))),
         "xss": number(xss),
@@ -1516,7 +2324,25 @@ def compact_xert_activity_load(activity: dict[str, Any], detail: dict[str, Any])
     }
 
 
-def xert_start_local(raw: Any) -> str | None:
+def xert_start_local(raw: Any, *, local_timezone: Any) -> str | None:
+    parsed = xert_start_datetime(raw)
+    return (
+        format_local(parsed, local_timezone=local_timezone)
+        if parsed is not None
+        else None
+    )
+
+
+def xert_start_utc(raw: Any, *, local_timezone: Any) -> str | None:
+    parsed = xert_start_datetime(raw)
+    return (
+        format_utc(parsed, local_timezone=local_timezone)
+        if parsed is not None
+        else None
+    )
+
+
+def xert_start_datetime(raw: Any) -> datetime | None:
     value = raw.get("date") if isinstance(raw, dict) else raw
     if not value:
         return None
@@ -1526,7 +2352,7 @@ def xert_start_local(raw: Any) -> str | None:
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone().isoformat(timespec="seconds")
+    return parsed.astimezone(timezone.utc)
 
 
 def training_history_context(
@@ -1534,6 +2360,7 @@ def training_history_context(
     *,
     artifacts_dir: Path,
     xert_activity_loads: dict[str, Any] | None,
+    local_timezone: Any,
 ) -> dict[str, Any]:
     activities_dir = artifacts_dir / "activities"
     target_day = date.fromisoformat(day)
@@ -1568,7 +2395,11 @@ def training_history_context(
             )
             load = activity_xss_from_metadata(metadata)
             if load is None:
-                load = matched_xert_xss(metadata, xert_loads)
+                load = matched_xert_xss(
+                    metadata,
+                    xert_loads,
+                    local_timezone=local_timezone,
+                )
             if load is None:
                 continue
             rows.append(
@@ -1588,6 +2419,20 @@ def training_history_context(
     current_load = sum(row["load"] for row in current_rows)
     current_minutes = sum(row["moving_minutes"] for row in current_rows)
     current_count = len(current_rows)
+    rolling_duration = {}
+    for days in (14, 21):
+        start = target_day - timedelta(days=days - 1)
+        minutes = sum(
+            row["moving_minutes"]
+            for row in duration_rows
+            if start <= row["date"] <= target_day
+        )
+        rolling_duration[f"rolling_{days}d"] = {
+            "start_date": start.isoformat(),
+            "end_date": target_day.isoformat(),
+            "moving_hours": round(minutes / 60.0, 1),
+            "weekly_equivalent_hours": round(minutes / 60.0 / days * 7.0, 1),
+        }
 
     xss_history_start = min((row["date"] for row in rows), default=None)
     xss_history_end = max((row["date"] for row in rows), default=None)
@@ -1630,6 +2475,7 @@ def training_history_context(
             "xss_history_start": xss_history_start.isoformat() if xss_history_start else None,
             "xss_history_end": xss_history_end.isoformat() if xss_history_end else None,
         },
+        **rolling_duration,
         "typical_training_day_baseline": {
             "day_count": len(baseline_days),
             "selection": (
@@ -1649,6 +2495,48 @@ def training_history_context(
             "duration relative to this rider's own recent history. Typical-day "
             "baseline aggregates multiple activities on the same calendar day "
             "before taking median/mean."
+        ),
+    }
+
+
+def annotate_volume_density(
+    target_resolution: dict[str, Any],
+    *,
+    history_context: dict[str, Any],
+) -> None:
+    planned_hours = (number(target_resolution.get("target_minutes")) or 0.0) / 60.0
+    windows = []
+    for days in (14, 21):
+        history = history_context.get(f"rolling_{days}d") or {}
+        prior_hours = number(history.get("moving_hours")) or 0.0
+        projected_hours = prior_hours + planned_hours
+        weekly_equivalent = projected_hours / days * 7.0
+        windows.append(
+            {
+                "days": days,
+                "prior_moving_hours": round(prior_hours, 1),
+                "planned_hours": round(planned_hours, 1),
+                "projected_moving_hours": round(projected_hours, 1),
+                "projected_weekly_equivalent_hours": round(weekly_equivalent, 1),
+            }
+        )
+    equivalents = [row["projected_weekly_equivalent_hours"] for row in windows]
+    if all(15.0 <= value <= 17.0 for value in equivalents):
+        classification = "normal_density"
+    elif max(equivalents) > 17.0:
+        classification = "expansion"
+    elif max(equivalents) < 15.0:
+        classification = "reduced_density"
+    else:
+        classification = "transition_between_density_bands"
+    target_resolution["volume_density"] = {
+        "classification": classification,
+        "normal_weekly_equivalent_hours": {"min": 15.0, "max": 17.0},
+        "windows": windows,
+        "dose_is_automatically_capped": False,
+        "meaning": (
+            "Diagnostic 14-21 day moving-time density after adding the planned "
+            "session; readiness and response still decide whether expansion is appropriate."
         ),
     }
 
@@ -1702,10 +2590,18 @@ def xert_total_xss(row: dict[str, Any]) -> float | None:
     return number(xss)
 
 
-def matched_xert_xss(metadata: dict[str, Any], xert_loads: list[dict[str, Any]]) -> float | None:
+def matched_xert_xss(
+    metadata: dict[str, Any],
+    xert_loads: list[dict[str, Any]],
+    *,
+    local_timezone: Any,
+) -> float | None:
     if not xert_loads:
         return None
-    start = parse_optional_local_datetime(metadata.get("start_date_local"))
+    start = parse_optional_local_datetime(
+        metadata.get("start_date_local"),
+        local_timezone=local_timezone,
+    )
     name = normalize_activity_name(str(metadata.get("name") or ""))
     distance_km = None
     distance_m = number(metadata.get("distance")) or number(metadata.get("icu_distance"))
@@ -1713,7 +2609,10 @@ def matched_xert_xss(metadata: dict[str, Any], xert_loads: list[dict[str, Any]])
         distance_km = distance_m / 1000
     candidates: list[tuple[float, float]] = []
     for row in xert_loads:
-        row_start = parse_optional_local_datetime(row.get("start_local"))
+        row_start = parse_optional_local_datetime(
+            row.get("start_local"),
+            local_timezone=local_timezone,
+        )
         if start is None or row_start is None or start.date() != row_start.date():
             continue
         delta_minutes = abs((row_start - start).total_seconds()) / 60
@@ -1767,15 +2666,77 @@ def resolve_training_targets(
     xert_training_advice = inputs.get("xert_training_advice") or {}
     latest = inputs.get("latest_activity_load") or {}
     planned_day = str(readiness_packet.get("date") or "")
+    xert_remaining_xss = xert_training_advice.get("remaining_xss") or {}
+    remaining_parts = {
+        key: number(xert_remaining_xss.get(key))
+        for key in ("low", "high", "peak")
+        if number(xert_remaining_xss.get(key)) is not None
+    }
+    xert_target_xss = xert_training_advice.get("target_xss") or {}
+    target_parts = {
+        key: number(xert_target_xss.get(key))
+        for key in ("low", "high", "peak")
+        if number(xert_target_xss.get(key)) is not None
+    }
+    xert_original_xss = xert_training_advice.get("original_target_xss") or {}
+    original_parts = {
+        key: number(xert_original_xss.get(key))
+        for key in ("low", "high", "peak")
+        if number(xert_original_xss.get(key)) is not None
+    }
+    xert_completed_xss = xert_training_advice.get("completed_xss") or {}
+    completed_parts = {
+        key: number(xert_completed_xss.get(key))
+        for key in ("low", "high", "peak")
+        if number(xert_completed_xss.get(key)) is not None
+    }
+    xert_load_basis = "remaining_xss" if remaining_parts else "target_xss"
+    xert_load_parts = {
+        **(remaining_parts or target_parts)
+    }
+    xert_recommended_total_xss = (
+        sum(xert_load_parts.values()) if xert_load_parts else None
+    )
+    xert_planning_context = {
+        key: xert_training_advice.get(key)
+        for key in (
+            "xss_deficit",
+            "xss_goal",
+            "availability",
+            "is_availability_restricted",
+            "targets_source",
+            "based_on_day",
+            "improvement_rate",
+            "weekly_hours",
+            "training_gradient",
+            "phase",
+            "recommended_athlete",
+        )
+        if xert_training_advice.get(key) is not None
+    }
+    if xert_planning_context or xert_load_parts:
+        xert_planning_context["interpretation"] = (
+            "Xert target/remaining XSS is an adaptive planning and progression dose. "
+            "It is not total physiological need, maximum absorbable load, or the "
+            "source of the workout's intensity role."
+        )
 
     if explicit_minutes is not None and explicit_load is not None:
         return {
             "source": "explicit_cli",
             "target_minutes": round(explicit_minutes, 1),
             "target_load": round(explicit_load, 1),
+            "xert_recommended_target_xss": xert_load_parts or None,
+            "xert_recommended_total_xss": rounded_number(
+                xert_recommended_total_xss
+            ),
+            "xert_dose_basis": xert_load_basis,
+            "xert_original_target_xss": original_parts or target_parts or None,
+            "xert_completed_xss": completed_parts or None,
+            "xert_planning_context": xert_planning_context,
             "reason": (
-                "Both target minutes and target load were supplied on the command "
-                "line by the caller; they were not derived by the script."
+                "Both target minutes and target load were supplied by the caller; "
+                "they were not derived by the script."
             ),
         }
 
@@ -1789,7 +2750,7 @@ def resolve_training_targets(
     day_baseline_minutes = number(day_baseline.get("median_minutes")) or 90.0
     xss_per_min = number(day_baseline.get("xss_per_min_from_available_xert_window")) or 0.85
     caution = numeric_caution_score(
-        sleep_hours=seconds_to_hours(wellness.get("sleep_time_seconds")),
+        sleep_score=number(wellness.get("sleep_score")),
         hrv_risk=hrv_readiness_risk(wellness),
         resting_hr_risk=resting_hr_readiness_risk(wellness),
         body_battery_risk=body_battery_readiness_risk(wellness),
@@ -1808,25 +2769,17 @@ def resolve_training_targets(
         source = "explicit_load_derived_minutes"
         band = "explicit_load"
     else:
-        target_xss = xert_training_advice.get("target_xss") or {}
-        xert_load_parts = {
-            key: number(target_xss.get(key))
-            for key in ("low", "high", "peak")
-            if number(target_xss.get(key)) is not None
-        }
-        xert_target_load = (
-            sum(xert_load_parts.values()) if xert_load_parts else None
-        )
-        if xert_target_load is not None:
-            load = xert_target_load
+        if xert_recommended_total_xss is not None:
+            load = xert_recommended_total_xss
             minutes = clamp(load / xss_per_min, 30.0, 300.0)
             source = "xert_training_advice_target_xss"
             band = "xert_training_advice"
         else:
-            load = load_from_minutes(day_baseline_minutes)
-            minutes = day_baseline_minutes
-            source = "fallback_history_missing_xert_target"
-            band = "fallback_history"
+            raise SystemExit(
+                "Xert recommended XSS is unavailable. Supply an explicit "
+                "--training-target-json instead of substituting a "
+                "historical baseline automatically."
+            )
 
     dose_position = dose_position_vs_typical(
         target_minutes=minutes,
@@ -1836,7 +2789,7 @@ def resolve_training_targets(
     )
     if source == "xert_training_advice_target_xss":
         dose_position["reason"] = (
-            "target load comes from Xert's recommended XSS; duration is estimated "
+            f"target load comes from Xert's {xert_load_basis}; duration is estimated "
             "from local Xert XSS/min for candidate ranking"
         )
 
@@ -1851,7 +2804,7 @@ def resolve_training_targets(
         reasons.insert(
             0,
             (
-                f"target load from Xert's recommended XSS ({parts_text}; "
+                f"target load from Xert's {xert_load_basis} ({parts_text}; "
                 f"total {round(load, 1)} XSS)"
             ),
         )
@@ -1861,8 +2814,11 @@ def resolve_training_targets(
         reasons.append(
             "low high/peak XSS argues against over-TP/VO2/peak work, but does not by itself rule out subthreshold VT2"
         )
-    elif source == "fallback_history_missing_xert_target":
-        reasons.insert(0, "Xert recommended XSS was missing; used local baseline fallback")
+        if xert_training_advice.get("is_availability_restricted") is True:
+            reasons.append(
+                "XATA marks this planning dose as availability-restricted; the "
+                "larger deficit is context and is not added to today's dose"
+            )
     if latest_same_day:
         reasons.append("Xert's recommended XSS reflects activities Xert has already accounted for")
 
@@ -1871,6 +2827,14 @@ def resolve_training_targets(
         "band": band,
         "target_minutes": round(minutes, 1),
         "target_load": round(load, 1),
+        "xert_recommended_target_xss": xert_load_parts or None,
+        "xert_recommended_total_xss": rounded_number(
+            xert_recommended_total_xss
+        ),
+        "xert_dose_basis": xert_load_basis,
+        "xert_original_target_xss": original_parts or target_parts or None,
+        "xert_completed_xss": completed_parts or None,
+        "xert_planning_context": xert_planning_context,
         "caution_score": round(caution, 2),
         "dose_position_vs_typical": dose_position,
         "rolling_7d_xss": rolling.get("xss"),
@@ -1890,12 +2854,419 @@ def resolve_training_targets(
         "meaning": (
             "This is the dose target used to rank indoor workouts and route "
             "candidates. It is explicit when supplied by CLI; otherwise it is "
-            "taken from Xert's recommended XSS. Duration may be estimated from "
+            "taken from Xert's remaining_xss when available, with target_xss as "
+            "fallback. Xert deficit is preserved as progression context but is "
+            "never substituted for that planning dose. Duration may be estimated from "
             "local Xert XSS/min only so route and workout candidates can be "
             "ranked. Same-day activity context should scale ambition, but should "
             "not be subtracted again from Xert's recommended XSS."
         ),
     }
+
+
+def apply_quality_workout_vt1_composition(
+    target_resolution: dict[str, Any],
+    *,
+    quality_calculation: dict[str, Any],
+    selected_intensity: str,
+    quality_workout_status: str = "planned",
+    vt1_xss_per_hour: float = 60.0,
+) -> dict[str, Any]:
+    """Compose a calculated quality workout with enough VT1 to reach target XSS."""
+
+    if quality_workout_status not in {"planned", "completed"}:
+        raise ValueError("quality_workout_status must be planned or completed")
+    if (
+        quality_workout_status == "planned"
+        and selected_intensity not in {"vt2", "vo2max", "sprint", "mixed"}
+    ):
+        raise SystemExit(
+            "A quality-workout calculation was supplied, but the selected "
+            f"intensity is {selected_intensity or 'missing'}."
+        )
+    if vt1_xss_per_hour <= 0:
+        raise ValueError("vt1_xss_per_hour must be positive")
+
+    result = quality_calculation.get("result") or {}
+    stats = result.get("stats") if isinstance(result, dict) else None
+    if not isinstance(stats, dict):
+        stats = quality_calculation.get("stats")
+    compact_summary = quality_calculation.get("source") == "xert_workout_calculate"
+    if not isinstance(stats, dict) and compact_summary:
+        stats = {
+            "duration_minutes": quality_calculation.get("duration_minutes"),
+            "xss": quality_calculation.get("xss"),
+            "xlss": quality_calculation.get("low_xss"),
+            "xhss": quality_calculation.get("high_xss"),
+            "xpss": quality_calculation.get("peak_xss"),
+        }
+    if not isinstance(stats, dict):
+        raise SystemExit(
+            "Xert quality-workout calculation has no result.stats object."
+        )
+
+    quality_xss = number(stats.get("xss"))
+    quality_minutes = (
+        number(stats.get("duration_minutes"))
+        if compact_summary
+        else xert_calculation_duration_minutes(stats.get("duration"))
+    )
+    if quality_xss is None or quality_minutes is None:
+        raise SystemExit(
+            "Xert quality-workout calculation must contain numeric XSS and duration."
+        )
+
+    target_xss = number(target_resolution.get("target_load"))
+    if target_xss is None:
+        raise ValueError("target_resolution has no numeric target_load")
+
+    quality_xss_counted_in_remaining_plan = quality_workout_status == "planned"
+    filler_xss = (
+        max(0.0, target_xss - quality_xss)
+        if quality_xss_counted_in_remaining_plan
+        else target_xss
+    )
+    filler_minutes = filler_xss / vt1_xss_per_hour * 60.0
+    composed_minutes = (
+        quality_minutes + filler_minutes
+        if quality_xss_counted_in_remaining_plan
+        else filler_minutes
+    )
+    estimated_total_xss = (
+        quality_xss + filler_xss
+        if quality_xss_counted_in_remaining_plan
+        else filler_xss
+    )
+    original_target_minutes = number(target_resolution.get("target_minutes"))
+
+    composition = {
+        "method": "xert_calculated_quality_plus_vt1_filler",
+        "selected_intensity": selected_intensity,
+        "quality_workout_status": quality_workout_status,
+        "daily_target_xss": round(target_xss, 1),
+        "quality_base": {
+            "source": "xert_workout_calculate",
+            "status": quality_workout_status,
+            "counted_in_remaining_plan": quality_xss_counted_in_remaining_plan,
+            "includes": [
+                "warmup",
+                "work_intervals",
+                "recoveries",
+                "cooldown",
+            ],
+            "duration_minutes": round(quality_minutes, 1),
+            "xss": round(quality_xss, 1),
+            "low_xss": rounded_number(stats.get("xlss")),
+            "high_xss": rounded_number(stats.get("xhss")),
+            "peak_xss": rounded_number(stats.get("xpss")),
+        },
+        "vt1_filler": {
+            "xss": round(filler_xss, 1),
+            "duration_minutes": round(filler_minutes, 1),
+            "assumed_xss_per_hour": round(vt1_xss_per_hour, 1),
+            "execution": (
+                "The VT1 duration includes its easy start and easy finish. "
+                "Do not add separate uncounted warm-up or cool-down time."
+            ),
+        },
+        "estimated_total": {
+            "duration_minutes": round(composed_minutes, 1),
+            "xss": round(estimated_total_xss, 1),
+        },
+        "pre_composition_target_minutes": (
+            round(original_target_minutes, 1)
+            if original_target_minutes is not None
+            else None
+        ),
+    }
+    target_resolution["dose_composition"] = composition
+    target_resolution["target_minutes"] = round(composed_minutes, 1)
+    target_resolution["duration_source"] = (
+        "Xert-calculated complete quality workout plus VT1 at 60 XSS/hour"
+    )
+    target_resolution["reason"] = (
+        f"{target_resolution.get('reason') or ''}; complete quality workout "
+        f"calculated by Xert ({round(quality_xss, 1)} XSS) and "
+        f"{'included before' if quality_xss_counted_in_remaining_plan else 'already completed, not subtracted again from'} "
+        f"{round(filler_xss, 1)} XSS VT1 at {round(vt1_xss_per_hour, 1)} XSS/hour"
+    ).strip("; ")
+
+    final_plan = (target_resolution.get("plan_trace") or {}).get("final_plan")
+    if isinstance(final_plan, dict):
+        final_plan["minutes"] = round(composed_minutes, 1)
+        final_plan["dose_composition"] = composition
+    return composition
+
+
+def apply_xert_endurance_duration_solution(
+    target_resolution: dict[str, Any],
+    *,
+    calculation: dict[str, Any],
+    selected_intensity: str,
+) -> dict[str, Any]:
+    """Apply an Xert-solved endurance duration instead of mixed-history XSS/min."""
+
+    if selected_intensity not in {
+        "vt1",
+        "easy_vt1",
+        "recovery",
+        "active_recovery",
+    }:
+        raise ValueError(
+            "endurance-workout calculation requires a recovery or VT1 domain"
+        )
+    if calculation.get("source") != "local_xert_endurance_duration_solver":
+        raise ValueError(
+            "endurance-workout calculation must come from Xert solve-endurance"
+        )
+    if calculation.get("network_used") is not False:
+        raise ValueError("endurance-workout calculation must be offline")
+    if calculation.get("matched_within_tolerance") is not True:
+        raise ValueError("endurance-workout low XSS did not match within tolerance")
+    if not ((calculation.get("feasibility") or {}).get("valid")):
+        raise ValueError("endurance-workout calculation is not Xert-feasible")
+
+    achieved = calculation.get("achieved_xss") or {}
+    achieved_low = number(achieved.get("low"))
+    achieved_high = number(achieved.get("high"))
+    achieved_peak = number(achieved.get("peak"))
+    achieved_total = number(achieved.get("total"))
+    duration_seconds = number(calculation.get("duration_seconds"))
+    target_low = number(calculation.get("target_low_xss"))
+    if None in (achieved_low, achieved_high, achieved_peak, achieved_total, duration_seconds, target_low):
+        raise ValueError("endurance-workout calculation is missing numeric fields")
+    if duration_seconds <= 0:
+        raise ValueError("endurance-workout duration must be positive")
+    tolerance = number(calculation.get("tolerance_xss")) or 0.05
+    if achieved_high > tolerance or achieved_peak > tolerance:
+        raise ValueError("recovery/VT1 endurance solution must not add high/peak XSS")
+
+    recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
+    recommended_low = number(recommended_parts.get("low"))
+    capped_load = number(target_resolution.get("target_load"))
+    expected_low = recommended_low
+    if expected_low is not None and capped_load is not None:
+        expected_low = min(expected_low, capped_load)
+    if expected_low is None:
+        raise ValueError("target resolution has no applicable Xert low-XSS target")
+    if abs(target_low - expected_low) > tolerance:
+        raise ValueError(
+            "endurance-workout target_low_xss does not match the applicable "
+            "post-guardrail Xert low-XSS target"
+        )
+
+    previous_minutes = number(target_resolution.get("target_minutes"))
+    target_resolution["pre_endurance_solution_target_minutes"] = previous_minutes
+    target_resolution["target_minutes"] = round(duration_seconds / 60.0, 1)
+    target_resolution["target_load"] = round(achieved_total, 1)
+    target_resolution["duration_source"] = "xert_solved_plan_endurance_structure"
+    previous_position = target_resolution.get("dose_position_vs_typical")
+    if previous_position is not None:
+        target_resolution["pre_endurance_solution_dose_position_vs_typical"] = (
+            previous_position
+        )
+    target_resolution["dose_position_vs_typical"] = {
+        "label": "xert_solved_for_selected_domain",
+        "ratio": None,
+        "phrase": "duration solved for the selected endurance structure",
+        "reason": (
+            "Xert solve-endurance calculated the complete structured workout; "
+            "a mixed-domain historical XSS/min rate is not used for prescription"
+        ),
+    }
+    target_resolution["endurance_duration_solution"] = {
+        "source": calculation.get("source"),
+        "selected_intensity": selected_intensity,
+        "target_low_xss": round(target_low, 3),
+        "achieved_xss": {
+            key: round(float(achieved[key]), 3)
+            for key in ("total", "low", "high", "peak")
+        },
+        "duration_minutes": round(duration_seconds / 60.0, 1),
+        "adjustable_segment_index": calculation.get("adjustable_segment_index"),
+        "adjustable_duration_minutes": round(
+            (number(calculation.get("adjustable_duration_seconds")) or 0.0) / 60.0,
+            1,
+        ),
+        "segments": calculation.get("segments"),
+        "difficulty": calculation.get("difficulty"),
+        "model_basis": calculation.get("model_basis"),
+        "low_xss_error": calculation.get("low_xss_error"),
+        "tolerance_xss": tolerance,
+    }
+    parts_text = ", ".join(
+        f"{key} {round(value, 1)}"
+        for key, raw_value in recommended_parts.items()
+        if (value := number(raw_value)) is not None
+    )
+    target_resolution["reason"] = (
+        f"Xert recommended remaining dose ({parts_text}); Xert solve-endurance "
+        f"calculated the selected {selected_intensity} plan structure: "
+        f"{round(achieved_low, 1)} low XSS in "
+        f"{round(duration_seconds / 60.0, 1)} min; high/peak were not targeted"
+    )
+    return target_resolution["endurance_duration_solution"]
+
+
+def solve_endurance_structure(
+    target_resolution: dict[str, Any],
+    *,
+    structure: dict[str, Any],
+) -> dict[str, Any]:
+    """Solve an agent-selected endurance structure against the guarded target."""
+
+    recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
+    target_low = number(recommended_parts.get("low"))
+    capped_load = number(target_resolution.get("target_load"))
+    if target_low is not None and capped_load is not None:
+        target_low = min(target_low, capped_load)
+    if target_low is None or target_low <= 0:
+        raise ValueError("target resolution has no applicable Xert low-XSS target")
+
+    return solve_endurance_duration(
+        signature=structure.get("signature"),
+        segments=structure.get("segments"),
+        adjustable_segment_index=structure.get("adjustable_segment_index"),
+        target_low_xss=target_low,
+        minimum_duration_seconds=structure.get("minimum_duration_seconds", 1),
+        maximum_duration_seconds=structure.get(
+            "maximum_duration_seconds", 8 * 60 * 60
+        ),
+        tolerance_xss=structure.get("tolerance_xss", 0.05),
+    )
+
+
+def require_endurance_solution_for_selected_domain(
+    *,
+    intensity_decision: dict[str, Any],
+    target_resolution: dict[str, Any],
+) -> None:
+    selected = str(intensity_decision.get("selected_domain") or "")
+    if selected not in {"vt1", "easy_vt1", "recovery"}:
+        return
+    if target_resolution.get("endurance_duration_solution"):
+        return
+    raise SystemExit(
+        "A recovery/VT1 recommendation requires --endurance-workout-json from "
+        "xert_strain_cli.py solve-endurance. Mixed-history XSS/min cannot define "
+        "the prescribed endurance duration."
+    )
+
+
+def xert_calculation_duration_minutes(value: Any) -> float | None:
+    numeric = number(value)
+    if numeric is not None:
+        return numeric / 60.0
+    if not isinstance(value, str):
+        return None
+    parts = value.strip().split(":")
+    try:
+        parsed = [float(part) for part in parts]
+    except ValueError:
+        return None
+    if len(parsed) == 2:
+        return parsed[0] + parsed[1] / 60.0
+    if len(parsed) == 3:
+        return parsed[0] * 60.0 + parsed[1] + parsed[2] / 60.0
+    return None
+
+
+def annotate_dose_composition_window_fit(
+    target_resolution: dict[str, Any],
+    *,
+    planned_at: datetime,
+    now: datetime,
+    available_windows: list[dict[str, datetime]],
+) -> None:
+    composition = target_resolution.get("dose_composition")
+    if not isinstance(composition, dict):
+        return
+    intended_minutes = number(
+        (composition.get("estimated_total") or {}).get("duration_minutes")
+    )
+    if intended_minutes is None or not available_windows:
+        composition["calendar_fit"] = {
+            "available": False,
+            "reason": "no_available_windows",
+        }
+        return
+
+    execution_floor = max(planned_at, now)
+    available_minutes = sum(
+        max(
+            0.0,
+            (
+                window["end"] - max(window["start"], execution_floor)
+            ).total_seconds()
+            / 60.0,
+        )
+        for window in available_windows
+        if window["end"] > execution_floor
+    )
+    split = target_resolution.get("split") or {}
+    scheduled_from_allocations = number(split.get("scheduled_minutes"))
+    executable_minutes = (
+        min(intended_minutes, scheduled_from_allocations)
+        if scheduled_from_allocations is not None
+        else min(intended_minutes, available_minutes)
+    )
+    shortfall_minutes = max(0.0, intended_minutes - executable_minutes)
+
+    quality = composition.get("quality_base") or {}
+    filler = composition.get("vt1_filler") or {}
+    quality_is_counted = bool(quality.get("counted_in_remaining_plan", True))
+    quality_minutes = (
+        (number(quality.get("duration_minutes")) or 0.0)
+        if quality_is_counted
+        else 0.0
+    )
+    quality_xss = (
+        (number(quality.get("xss")) or 0.0)
+        if quality_is_counted
+        else 0.0
+    )
+    filler_xss_per_minute = (
+        (number(filler.get("assumed_xss_per_hour")) or 60.0) / 60.0
+    )
+    allocation_xss = [
+        number(allocation.get("estimated_xss"))
+        for allocation in split.get("allocations") or []
+    ]
+    executable_xss = (
+        sum(value for value in allocation_xss if value is not None)
+        if allocation_xss and all(value is not None for value in allocation_xss)
+        else None
+    )
+    shortfall_xss = None
+    if executable_xss is None and executable_minutes >= quality_minutes:
+        executable_filler_minutes = min(
+            max(0.0, executable_minutes - quality_minutes),
+            number(filler.get("duration_minutes")) or 0.0,
+        )
+        executable_xss = quality_xss + (
+            executable_filler_minutes * filler_xss_per_minute
+        )
+    intended_xss = number(
+        (composition.get("estimated_total") or {}).get("xss")
+    )
+    if executable_xss is not None and intended_xss is not None:
+        shortfall_xss = max(0.0, intended_xss - executable_xss)
+
+    composition["calendar_fit"] = {
+        "available": True,
+        "available_minutes": round(available_minutes, 1),
+        "intended_minutes": round(intended_minutes, 1),
+        "executable_minutes": round(executable_minutes, 1),
+        "shortfall_minutes": round(shortfall_minutes, 1),
+        "estimated_executable_xss": rounded_number(executable_xss),
+        "estimated_shortfall_xss": rounded_number(shortfall_xss),
+        "fits": shortfall_minutes < WINDOW_FIT_TOLERANCE_MINUTES,
+    }
+
+
+def rounded_number(value: Any, digits: int = 1) -> float | None:
+    parsed = number(value)
+    return round(parsed, digits) if parsed is not None else None
 
 
 def outdoor_target_distance_km(*, target_minutes: float, surface_preference: str) -> float:
@@ -1946,12 +3317,116 @@ def dose_position_vs_typical(
 
 
 WINDOW_FIT_TOLERANCE_MINUTES = 10.0
+MIN_SEPARATE_VT1_SESSION_MINUTES = 30.0
+
+
+def apply_split_preference_to_windows(
+    available_windows: list[dict[str, datetime]],
+    *,
+    planned_at: datetime,
+    split_preference: dict[str, Any],
+) -> list[dict[str, Any]]:
+    first_minutes = float(split_preference["first_session_minutes"])
+    first_end = planned_at + timedelta(minutes=first_minutes)
+    second_start = datetime.fromisoformat(split_preference["second_session_start"])
+    first_source = next(
+        (
+            window
+            for window in available_windows
+            if window["start"] <= planned_at and first_end <= window["end"]
+        ),
+        None,
+    )
+    second_source = next(
+        (
+            window
+            for window in available_windows
+            if window["start"] <= second_start < window["end"]
+        ),
+        None,
+    )
+    if first_source is None:
+        raise SystemExit(
+            "split_preference first session does not fit an availability window"
+        )
+    if second_source is None:
+        raise SystemExit(
+            "split_preference second_session_start is outside availability windows"
+        )
+    if second_start < first_end:
+        raise SystemExit(
+            "split_preference second_session_start must not overlap the first session"
+        )
+    return [
+        {
+            **first_source,
+            "start": planned_at,
+            "end": first_end,
+            "note": first_source.get("note") or "preferred first session",
+        },
+        {
+            **second_source,
+            "start": second_start,
+            "note": second_source.get("note") or "preferred second session",
+        },
+    ]
+
+
+def split_endurance_structure(
+    structure: dict[str, Any],
+    *,
+    first_session_minutes: float,
+) -> dict[str, Any]:
+    segments = [dict(segment) for segment in structure.get("segments") or []]
+    adjustable_index = structure.get("adjustable_segment_index")
+    if (
+        not segments
+        or isinstance(adjustable_index, bool)
+        or not isinstance(adjustable_index, int)
+        or not 0 <= adjustable_index < len(segments)
+    ):
+        raise SystemExit("split endurance structure requires one adjustable segment")
+    prefix = [dict(segment) for segment in segments[:adjustable_index]]
+    adjustable = dict(segments[adjustable_index])
+    suffix = [dict(segment) for segment in segments[adjustable_index + 1 :]]
+    fixed_seconds = sum(
+        number(segment.get("duration_seconds")) or 0.0
+        for segment in (*prefix, *suffix)
+    )
+    first_adjustable_seconds = first_session_minutes * 60.0 - fixed_seconds
+    if first_adjustable_seconds < MIN_SEPARATE_VT1_SESSION_MINUTES * 60:
+        raise SystemExit(
+            "split_preference first session leaves less than 30 minutes in the adjustable VT1 segment"
+        )
+    first_adjustable = {
+        **adjustable,
+        "duration_seconds": round(first_adjustable_seconds),
+    }
+    split_segments = [
+        *prefix,
+        first_adjustable,
+        *suffix,
+        *[dict(segment) for segment in prefix],
+        adjustable,
+        *[dict(segment) for segment in suffix],
+    ]
+    second_adjustable_index = len(prefix) + 1 + len(suffix) + len(prefix)
+    return {
+        **structure,
+        "segments": split_segments,
+        "adjustable_segment_index": second_adjustable_index,
+        "split_preference": {
+            "first_session_minutes": round(first_session_minutes, 1),
+            "extra_start_finish_segments": len(prefix) + len(suffix),
+        },
+    }
 
 
 def split_session_info(
     target_resolution: dict[str, Any],
     *,
     planned_at: datetime,
+    now: datetime,
     available_windows: list[dict[str, datetime]],
 ) -> dict[str, Any]:
     target_minutes = number(target_resolution.get("target_minutes"))
@@ -1975,51 +3450,295 @@ def split_session_info(
             ),
         }
 
-    current_window = current_available_window(planned_at, available_windows) or available_windows[0]
-    current_label = available_window_label(current_window, include_note=True)
-    available_minutes_now = max(
-        0.0,
-        (current_window["end"] - planned_at).total_seconds() / 60,
+    execution_start = max(planned_at, now)
+    usable_windows = []
+    for index, window in enumerate(available_windows):
+        start = max(window["start"], execution_start)
+        end = window["end"]
+        if end <= start:
+            continue
+        usable_windows.append(
+            {
+                "index": index,
+                "source": window,
+                "start": start,
+                "end": end,
+                "minutes": (end - start).total_seconds() / 60.0,
+            }
+        )
+
+    composition = target_resolution.get("dose_composition") or {}
+    quality = composition.get("quality_base") or {}
+    quality_counted = bool(quality.get("counted_in_remaining_plan", False))
+    quality_minutes = number(quality.get("duration_minutes")) or 0.0
+    domain = str(composition.get("selected_intensity") or "quality").upper()
+    allocations: list[dict[str, Any]] = []
+    filler_remaining = target_minutes
+    allocation_windows = usable_windows
+
+    if quality_counted:
+        quality_window = next(
+            (
+                window
+                for window in usable_windows
+                if window["minutes"] >= quality_minutes
+            ),
+            None,
+        )
+        if quality_window is None:
+            available_now = usable_windows[0]["minutes"] if usable_windows else 0.0
+            return {
+                "available": True,
+                "target_minutes": round(target_minutes, 1),
+                "current_window": (
+                    serialize_available_window(usable_windows[0]["source"])
+                    if usable_windows
+                    else None
+                ),
+                "available_minutes_from_planned": round(available_now, 1),
+                "fits_current_window": False,
+                "split_needed": True,
+                "first_session_minutes": 0.0,
+                "remaining_minutes": round(target_minutes, 1),
+                "next_window": None,
+                "allocations": [],
+                "sessions": [],
+                "scheduled_minutes": 0.0,
+                "unscheduled_minutes": round(target_minutes, 1),
+                "reason": "complete_quality_workout_does_not_fit",
+                "guidance": (
+                    f"No available window can contain the complete "
+                    f"{round(quality_minutes)} min {domain} workout, including its "
+                    "warm-up, recoveries, and cool-down. Do not split the quality "
+                    "workout; move it to a window where it fits before scheduling VT1."
+                ),
+            }
+        quality_end = quality_window["start"] + timedelta(minutes=quality_minutes)
+        allocations.append(
+            split_allocation(
+                window=quality_window,
+                role=str(composition.get("selected_intensity") or "quality"),
+                start=quality_window["start"],
+                end=quality_end,
+                minutes=quality_minutes,
+                xss=number(quality.get("xss")),
+                complete_workout=True,
+            )
+        )
+        filler_remaining = max(0.0, target_minutes - quality_minutes)
+        allocation_windows = [
+            {
+                **window,
+                "start": (
+                    quality_end
+                    if window["index"] == quality_window["index"]
+                    else window["start"]
+                ),
+                "minutes": (
+                    (
+                        window["end"]
+                        - (
+                            quality_end
+                            if window["index"] == quality_window["index"]
+                            else window["start"]
+                        )
+                    ).total_seconds()
+                    / 60.0
+                ),
+            }
+            for window in usable_windows
+            if window["index"] >= quality_window["index"]
+        ]
+
+    vt1_xss_per_minute = (
+        number((composition.get("vt1_filler") or {}).get("assumed_xss_per_hour"))
+        or 60.0
+    ) / 60.0
+    for window in allocation_windows:
+        if filler_remaining <= 0:
+            break
+        capacity = max(0.0, window["minutes"])
+        if capacity <= 0:
+            continue
+        minutes = min(capacity, filler_remaining)
+        has_quality_in_window = any(
+            allocation["window_index"] == window["index"]
+            and allocation["role"] != "vt1"
+            for allocation in allocations
+        )
+        if (
+            minutes < MIN_SEPARATE_VT1_SESSION_MINUTES
+            and not has_quality_in_window
+        ):
+            continue
+        end = window["start"] + timedelta(minutes=minutes)
+        allocations.append(
+            split_allocation(
+                window=window,
+                role="vt1",
+                start=window["start"],
+                end=end,
+                minutes=minutes,
+                xss=minutes * vt1_xss_per_minute,
+                complete_workout=False,
+            )
+        )
+        filler_remaining = max(0.0, filler_remaining - minutes)
+
+    sessions = group_split_allocations(allocations)
+    scheduled_minutes = sum(
+        number(allocation.get("duration_minutes")) or 0.0
+        for allocation in allocations
     )
-    first = max(0.0, min(available_minutes_now, target_minutes))
-    remaining = max(0.0, target_minutes - first)
-    later_windows = [window for window in available_windows if window["start"] > planned_at]
-    next_window = later_windows[0] if later_windows else None
-    split_needed = remaining >= 15
-    result = {
+    unscheduled_minutes = max(0.0, target_minutes - scheduled_minutes)
+    first_session = sessions[0] if sessions else None
+    second_session = sessions[1] if len(sessions) > 1 else None
+    first_session_minutes = (
+        number(first_session.get("duration_minutes")) or 0.0
+        if first_session
+        else 0.0
+    )
+    return {
         "available": True,
         "target_minutes": round(target_minutes, 1),
-        "current_window": serialize_available_window(current_window),
-        "available_minutes_from_planned": round(available_minutes_now, 1),
-        "fits_current_window": not split_needed,
-        "split_needed": split_needed,
-        "first_session_minutes": round(first, 1),
-        "remaining_minutes": round(remaining, 1),
-        "next_window": serialize_available_window(next_window) if next_window else None,
+        "current_window": (
+            first_session["window"]
+            if first_session
+            else (
+                serialize_available_window(usable_windows[0]["source"])
+                if usable_windows
+                else None
+            )
+        ),
+        "available_minutes_from_planned": round(
+            usable_windows[0]["minutes"] if usable_windows else 0.0,
+            1,
+        ),
+        "fits_current_window": len(sessions) <= 1 and unscheduled_minutes < 0.1,
+        "split_needed": len(sessions) > 1,
+        "first_session_minutes": round(first_session_minutes, 1),
+        "remaining_minutes": round(
+            max(0.0, target_minutes - first_session_minutes),
+            1,
+        ),
+        "next_window": (
+            second_session["window"]
+            if second_session
+            else None
+        ),
+        "allocations": allocations,
+        "sessions": sessions,
+        "scheduled_minutes": round(scheduled_minutes, 1),
+        "unscheduled_minutes": round(unscheduled_minutes, 1),
+        "guidance": split_allocation_guidance(
+            sessions,
+            unscheduled_minutes=unscheduled_minutes,
+            quality_domain=domain,
+            execution_start=execution_start,
+        ),
     }
-    if remaining < 15:
-        result["guidance"] = (
-            f"Available window {current_label} fits the day-dose: "
-            f"do about {round(target_minutes)} min now."
-        )
-        return result
 
-    if next_window is None:
-        result["unscheduled_minutes"] = round(remaining, 1)
-        result["guidance"] = (
-            f"Do about {round(first)} min now from {planned_at.strftime('%H:%M')}. "
-            f"The remaining {round(remaining)} min is unscheduled; do not invent or "
-            "assume another session without an actual available window."
-        )
-        return result
 
-    next_label = available_window_label(next_window, include_note=True)
-    result["guidance"] = (
-        f"Calendar/logistics split: do about {round(first)} min now from "
-        f"{planned_at.strftime('%H:%M')}, then about {round(remaining)} min after "
-        f"{next_label}. Keep both parts easy VT1."
+def split_allocation(
+    *,
+    window: dict[str, Any],
+    role: str,
+    start: datetime,
+    end: datetime,
+    minutes: float,
+    xss: float | None,
+    complete_workout: bool,
+) -> dict[str, Any]:
+    return {
+        "window_index": window["index"],
+        "window": serialize_available_window(window["source"]),
+        "role": role,
+        "start": start.isoformat(timespec="minutes"),
+        "end": end.isoformat(timespec="minutes"),
+        "duration_minutes": round(minutes, 1),
+        "estimated_xss": rounded_number(xss),
+        "complete_workout_required": complete_workout,
+    }
+
+
+def group_split_allocations(
+    allocations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    sessions: list[dict[str, Any]] = []
+    by_window: dict[int, dict[str, Any]] = {}
+    for allocation in allocations:
+        window_index = int(allocation["window_index"])
+        session = by_window.get(window_index)
+        if session is None:
+            session = {
+                "window_index": window_index,
+                "window": allocation["window"],
+                "start": allocation["start"],
+                "end": allocation["end"],
+                "duration_minutes": 0.0,
+                "estimated_xss": 0.0,
+                "segments": [],
+            }
+            by_window[window_index] = session
+            sessions.append(session)
+        session["end"] = allocation["end"]
+        session["duration_minutes"] = round(
+            (number(session["duration_minutes"]) or 0.0)
+            + (number(allocation["duration_minutes"]) or 0.0),
+            1,
+        )
+        if allocation.get("estimated_xss") is None:
+            session["estimated_xss"] = None
+        elif session.get("estimated_xss") is not None:
+            session["estimated_xss"] = round(
+                (number(session["estimated_xss"]) or 0.0)
+                + (number(allocation["estimated_xss"]) or 0.0),
+                1,
+            )
+        session["segments"].append(allocation)
+    return sessions
+
+
+def split_allocation_guidance(
+    sessions: list[dict[str, Any]],
+    *,
+    unscheduled_minutes: float,
+    quality_domain: str,
+    execution_start: datetime,
+) -> str:
+    descriptions = []
+    for session in sessions:
+        segment_descriptions = []
+        for segment in session.get("segments") or []:
+            minutes = round(number(segment.get("duration_minutes")) or 0.0)
+            if segment.get("role") == "vt1":
+                prefix = "remaining " if segment_descriptions == [] and descriptions else ""
+                segment_descriptions.append(
+                    f"{prefix}{minutes} min VT1 including its easy start and finish"
+                )
+            else:
+                segment_descriptions.append(
+                    f"complete {minutes} min {quality_domain} quality workout "
+                    "including its built-in warm-up, recoveries, and cool-down"
+                )
+        descriptions.append(
+            f"{str(session.get('start'))[11:16]}-{str(session.get('end'))[11:16]}: "
+            + ", then ".join(segment_descriptions)
+        )
+    guidance = (
+        "Calendar allocation: " + "; ".join(descriptions)
+        if descriptions
+        else (
+            f"No executable training allocation from "
+            f"{execution_start.strftime('%H:%M')}."
+        )
     )
-    return result
+    if unscheduled_minutes >= 0.1:
+        guidance += (
+            f" The remaining {round(unscheduled_minutes)} min VT1 is unscheduled; "
+            "do not invent another session without an actual available window."
+        )
+    return guidance
 
 
 def select_intensity_domain(
@@ -2028,16 +3747,24 @@ def select_intensity_domain(
     readiness_ceiling: str,
     intensity_goal: str,
     progression_advice: dict[str, Any],
+    plan_progression: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Select an intensity within the readiness ceiling."""
 
     ceiling_domains = {
         "rest": {"rest"},
         "active_recovery_only": {"active_recovery"},
-        "easy_vt1": {"easy_vt1"},
-        "normal_vt1": {"vt1"},
-        "intensity_ok": {
+        "easy_vt1": {"active_recovery", "easy_vt1"},
+        "normal_vt1": {"active_recovery", "easy_vt1", "vt1"},
+        "vt2_ok": {
             "active_recovery",
+            "easy_vt1",
+            "vt1",
+            "vt2",
+        },
+        "high_intensity_ok": {
+            "active_recovery",
+            "easy_vt1",
             "vt1",
             "vt2",
             "vo2max",
@@ -2063,6 +3790,7 @@ def select_intensity_domain(
             "active_recovery_only": "active_recovery",
             "easy_vt1": "easy_vt1",
             "normal_vt1": "vt1",
+            "vt2_ok": "vt2",
         }.get(readiness_ceiling, "easy_vt1")
         reason = "goal_reduced_to_readiness_ceiling"
     else:
@@ -2071,6 +3799,11 @@ def select_intensity_domain(
 
     progression = (
         progression_advice.get(intensity_goal) or {}
+        if intensity_goal in {"vt2", "vo2max"}
+        else {}
+    )
+    state_progression = (
+        (plan_progression or {}).get(intensity_goal) or {}
         if intensity_goal in {"vt2", "vo2max"}
         else {}
     )
@@ -2095,9 +3828,82 @@ def select_intensity_domain(
             latest_same_family_date.isoformat() if latest_same_family_date else None
         ),
         "days_since_same_family": days_since_same_family,
-        "progression_status": progression.get("status"),
-        "progression_next_step": (progression.get("next_step") or {}).get("prescription"),
+        "progression_status": (
+            state_progression.get("status") or progression.get("status")
+        ),
+        "progression_next_step": (
+            {
+                "summary": state_progression.get("next_step"),
+                "anchor": state_progression.get("anchor"),
+                "source": "plan_state",
+            }
+            if state_progression.get("next_step")
+            else (progression.get("next_step") or {}).get("prescription")
+        ),
     }
+
+
+def apply_readiness_domain_target_cap(
+    target_resolution: dict[str, Any],
+    *,
+    intensity_decision: dict[str, Any],
+) -> None:
+    """Keep a readiness downgrade from retaining an incompatible model dose."""
+
+    selected = str(intensity_decision.get("selected_domain") or "")
+    caps = {
+        "rest": {"minutes": 0.0, "load": 0.0},
+        "active_recovery": {"minutes": 45.0, "load": 30.0},
+    }
+    cap = caps.get(selected)
+    if cap is None:
+        return
+
+    previous_minutes = number(target_resolution.get("target_minutes")) or 0.0
+    previous_load = number(target_resolution.get("target_load")) or 0.0
+    capped_minutes = min(previous_minutes, cap["minutes"])
+    capped_load = min(previous_load, cap["load"])
+    if capped_minutes == previous_minutes and capped_load == previous_load:
+        return
+
+    target_resolution["pre_readiness_domain_cap_target_minutes"] = previous_minutes
+    target_resolution["pre_readiness_domain_cap_target_load"] = previous_load
+    target_resolution["target_minutes"] = capped_minutes
+    target_resolution["target_load"] = capped_load
+    target_resolution["readiness_domain_cap"] = {
+        "active": True,
+        "selected_domain": selected,
+        "max_minutes": cap["minutes"],
+        "max_load": cap["load"],
+        "discarded_minutes": round(previous_minutes - capped_minutes, 1),
+        "discarded_load": round(previous_load - capped_load, 1),
+        "remainder_disposition": "dropped_not_rescheduled",
+        "meaning": (
+            "The readiness-selected domain caps both intensity and dose. The "
+            "discarded model dose is diagnostic only and is not scheduled later."
+        ),
+    }
+
+
+def apply_execution_modality_constraint(
+    intensity_decision: dict[str, Any],
+    *,
+    indoor_gym_only: bool,
+) -> None:
+    """Cap a generic gym bike at continuous aerobic work for execution."""
+    if not indoor_gym_only:
+        return
+    selected = str(intensity_decision.get("selected_domain") or "")
+    intensity_decision["execution_modality"] = "indoor_cycling_gym"
+    intensity_decision["execution_control"] = "heart_rate_breathing_rpe"
+    intensity_decision["load_measurement"] = "estimated_without_reliable_power"
+    if selected in {"vt2", "vo2max", "sprint", "mixed"}:
+        intensity_decision["pre_modality_selected_domain"] = selected
+        intensity_decision["selected_domain"] = "vt1"
+        intensity_decision["selection_reason"] = (
+            "gym_bike_continuous_aerobic_only"
+        )
+        intensity_decision["quality_role_remains_queued"] = True
 
 
 def latest_progression_session_date(advice: dict[str, Any]) -> date | None:
@@ -2115,6 +3921,8 @@ def build_primary_decision(
     readiness_packet: dict[str, Any],
     target_resolution: dict[str, Any],
     intensity_decision: dict[str, Any],
+    cycling_available: bool = True,
+    remainder_disposition: str = "unscheduled",
 ) -> dict[str, Any]:
     """Expose the physiological plan as an explicit LLM decision contract."""
     inputs = readiness_packet.get("recommendation_inputs") or {}
@@ -2124,16 +3932,33 @@ def build_primary_decision(
     target_load = number(target_resolution.get("target_load")) or 0.0
 
     selected_intensity = str(intensity_decision.get("selected_domain") or "easy_vt1")
+    if selected_intensity == "active_recovery" and target_minutes > 60.0:
+        raise SystemExit(
+            "active_recovery primary decision cannot exceed 60 minutes; "
+            "apply the readiness-domain dose cap before calendar allocation"
+        )
     if events.get("current_day_illness") or selected_intensity == "rest" or target_minutes <= 0:
         action = "rest"
     elif events.get("illness_followup_needed"):
         action = "form_check"
+    elif not cycling_available:
+        action = "unavailable"
     else:
         action = "train"
 
+    if action == "train":
+        require_quality_workout_for_selected_domain(
+            intensity_decision=intensity_decision,
+            dose_composition=target_resolution.get("dose_composition"),
+        )
+
     intensity = selected_intensity
-    if action != "train":
-        intensity = "none" if action == "rest" else "pending_form_check"
+    if action == "rest":
+        intensity = "none"
+    elif action == "form_check":
+        intensity = "pending_form_check"
+    elif action == "unavailable":
+        intensity = "none_available"
 
     xert_remaining = str(target_resolution.get("source") or "").startswith(
         "xert_training_advice"
@@ -2146,6 +3971,25 @@ def build_primary_decision(
     unscheduled_minutes = number(split.get("unscheduled_minutes")) or 0.0
     if action != "train":
         executable_minutes = 0.0
+    if action == "unavailable":
+        unscheduled_minutes = target_minutes
+    executable_segments = executable_dose_segments(
+        target_resolution.get("dose_composition"),
+        executable_minutes=executable_minutes or 0.0,
+        fallback_intensity=intensity,
+        allocated_segments=(
+            ((split.get("sessions") or [{}])[0].get("segments") or [])
+            if split.get("available")
+            else []
+        ),
+    )
+    if action == "train" and intensity == "active_recovery":
+        executable_segments = [
+            {
+                "role": "active_recovery",
+                "duration_minutes": round(executable_minutes or 0.0, 1),
+            }
+        ]
 
     return {
         "action": action,
@@ -2155,13 +3999,18 @@ def build_primary_decision(
             "minutes": round(target_minutes, 1),
             "load_xss": round(target_load, 1),
         },
+        "dose_composition": target_resolution.get("dose_composition"),
         "executable_now": {
             "minutes": round(executable_minutes or 0.0, 1),
             "intensity": intensity,
+            "segments": executable_segments,
         },
-        "unscheduled_remainder": {
+        "unexecuted_remainder": {
             "minutes": round(unscheduled_minutes, 1),
             "schedule_automatically": False,
+            "disposition": (
+                "none" if unscheduled_minutes < 0.1 else remainder_disposition
+            ),
         },
         "dose_semantics": (
             "remaining_after_completed_activities"
@@ -2186,8 +4035,122 @@ def build_primary_decision(
     }
 
 
-def split_session_guidance(split_info: dict[str, Any]) -> str:
-    return str(split_info.get("guidance") or "")
+QUALITY_WORKOUT_REQUIRED_DOMAINS = {"vt2", "vo2max", "sprint", "mixed"}
+
+
+def require_quality_workout_for_selected_domain(
+    *,
+    intensity_decision: dict[str, Any],
+    dose_composition: Any,
+) -> None:
+    """Prevent a selected quality domain from degrading into an all-VT1 dose."""
+
+    selected_domain = str(intensity_decision.get("selected_domain") or "")
+    if selected_domain not in QUALITY_WORKOUT_REQUIRED_DOMAINS:
+        return
+    if isinstance(dose_composition, dict):
+        quality = dose_composition.get("quality_base")
+        if isinstance(quality, dict):
+            return
+    raise SystemExit(
+        f"Selected intensity domain {selected_domain!r} requires "
+        "--quality-workout-json with a complete Xert workout calculation. "
+        "Refusing to convert the quality dose into VT1 filler."
+    )
+
+
+def executable_dose_segments(
+    composition: Any,
+    *,
+    executable_minutes: float,
+    fallback_intensity: str,
+    allocated_segments: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    if executable_minutes <= 0:
+        return []
+    if not isinstance(composition, dict):
+        if allocated_segments:
+            return [
+                {
+                    "role": str(segment.get("role") or fallback_intensity),
+                    "duration_minutes": round(
+                        number(segment.get("duration_minutes")) or 0.0,
+                        1,
+                    ),
+                    **(
+                        {"complete_workout_required": True}
+                        if segment.get("complete_workout_required")
+                        else {}
+                    ),
+                }
+                for segment in allocated_segments
+                if (number(segment.get("duration_minutes")) or 0.0) > 0
+            ]
+        return [
+            {
+                "role": fallback_intensity,
+                "duration_minutes": round(executable_minutes, 1),
+            }
+        ]
+
+    quality = composition.get("quality_base") or {}
+    quality_counted = bool(quality.get("counted_in_remaining_plan", False))
+    quality_minutes = number(quality.get("duration_minutes")) or 0.0
+    quality_role = str(composition.get("selected_intensity") or "quality")
+    segments: list[dict[str, Any]] = []
+
+    if quality_counted:
+        if executable_minutes + WINDOW_FIT_TOLERANCE_MINUTES < quality_minutes:
+            return [
+                {
+                    "role": quality_role,
+                    "duration_minutes": round(quality_minutes, 1),
+                    "fits_executable_window": False,
+                    "available_minutes": round(executable_minutes, 1),
+                    "complete_workout_required": True,
+                }
+            ]
+        segments.append(
+            {
+                "role": quality_role,
+                "duration_minutes": round(quality_minutes, 1),
+                "complete_workout_required": True,
+                "includes": quality.get("includes"),
+            }
+        )
+        executable_minutes = max(0.0, executable_minutes - quality_minutes)
+
+    if executable_minutes > 0:
+        segments.append(
+            {
+                "role": "vt1",
+                "duration_minutes": round(executable_minutes, 1),
+                "includes_easy_start_and_finish": True,
+            }
+        )
+    return segments
+
+
+def split_session_guidance(
+    split_info: dict[str, Any],
+    *,
+    remainder_disposition: str = "unscheduled",
+) -> str:
+    guidance = str(split_info.get("guidance") or "")
+    unscheduled = number(split_info.get("unscheduled_minutes")) or 0.0
+    if unscheduled < 0.1 or remainder_disposition == "unscheduled":
+        return guidance
+    disposition_text = {
+        "dropped": "The unexecuted remainder is dropped today.",
+        "moved": "The unexecuted remainder is moved to another real window.",
+        "conditionally_split": "The unexecuted remainder is split only if the stated condition is met.",
+    }.get(remainder_disposition)
+    if not disposition_text:
+        return guidance
+    marker = " The remaining "
+    if marker in guidance:
+        guidance = guidance.split(marker, 1)[0]
+    return f"{guidance} {disposition_text}".strip()
 
 
 def current_available_window(
@@ -2243,9 +4206,13 @@ def annotate_indoor_window_fit(
     packet: dict[str, Any],
     *,
     planned_at: datetime,
+    now: datetime,
     available_windows: list[dict[str, datetime]],
 ) -> None:
-    window_minutes = current_window_minutes(planned_at=planned_at, available_windows=available_windows)
+    window_minutes = current_window_minutes(
+        planned_at=max(planned_at, now),
+        available_windows=available_windows,
+    )
     for key in ("recommended",):
         if isinstance(packet.get(key), dict):
             packet[key]["window_fit"] = window_fit(packet[key].get("duration_minutes"), window_minutes)
@@ -2265,21 +4232,63 @@ def annotate_indoor_window_fit(
 def annotate_route_window_fit(
     packet: dict[str, Any],
     *,
+    target_minutes: float,
     planned_at: datetime,
+    now: datetime,
     available_windows: list[dict[str, datetime]],
 ) -> None:
-    window_minutes = current_window_minutes(planned_at=planned_at, available_windows=available_windows)
+    window_minutes = current_window_minutes(
+        planned_at=max(planned_at, now),
+        available_windows=available_windows,
+    )
     recommendations = packet.get("recommendations") or []
     for route in recommendations:
         if isinstance(route, dict):
             route["window_fit"] = window_fit(route.get("moving_minutes"), window_minutes)
+            route["dose_fit"] = route_dose_fit(
+                route.get("moving_minutes"),
+                target_minutes,
+            )
     packet["first_window_minutes"] = round(window_minutes, 1) if window_minutes is not None else None
     packet["first_window_fit_tolerance_minutes"] = WINDOW_FIT_TOLERANCE_MINUTES
+    packet["prescribed_duration_minutes"] = round(target_minutes, 1)
     packet["shorter_window_options"] = shorter_fitting_options(
         recommendations,
         duration_key="moving_minutes",
         window_minutes=window_minutes,
     )
+
+
+def route_dose_fit(route_minutes: Any, prescribed_minutes: Any) -> dict[str, Any]:
+    route_duration = number(route_minutes)
+    prescribed_duration = number(prescribed_minutes)
+    if route_duration is None or prescribed_duration is None:
+        return {
+            "available": False,
+            "reason": "missing_route_or_prescribed_duration",
+        }
+
+    difference = route_duration - prescribed_duration
+    under_by = max(0.0, -difference)
+    over_by = max(0.0, difference)
+    matches = abs(difference) <= WINDOW_FIT_TOLERANCE_MINUTES
+    if matches:
+        action = "use_route_duration_as_is"
+    elif under_by > 0:
+        action = "extend_route_or_add_vt1_minutes"
+    else:
+        action = "shorten_route_or_use_turnaround"
+
+    return {
+        "available": True,
+        "route_minutes": round(route_duration, 1),
+        "prescribed_minutes": round(prescribed_duration, 1),
+        "tolerance_minutes": WINDOW_FIT_TOLERANCE_MINUTES,
+        "covers_prescribed_duration": matches,
+        "under_by_minutes": round(under_by, 1),
+        "over_by_minutes": round(over_by, 1),
+        "action": action,
+    }
 
 
 def shorter_fitting_options(
@@ -2368,12 +4377,17 @@ def compact_decision_inputs(
         "freshness_summary": compact_freshness_summary(
             freshness,
             garmin_recovery_readiness=inputs.get("garmin_recovery_readiness") or {},
+            wellness=inputs.get("wellness") or {},
+            target_date=readiness.get("date"),
+            snapshot_time_local=readiness.get("snapshot_time_local"),
         ),
         "latest_activity_load": inputs.get("latest_activity_load"),
         "xert_training_advice": inputs.get("xert_training_advice"),
         "xert_recovery": inputs.get("xert_recovery"),
         "garmin_recovery_readiness": inputs.get("garmin_recovery_readiness"),
+        "garmin_vo2max": inputs.get("garmin_vo2max"),
         "wellness": inputs.get("wellness"),
+        "intensity_signal_agreement": inputs.get("intensity_signal_agreement"),
         "intervals_wellness_events": inputs.get("intervals_wellness_events"),
         "garmin_load_focus": inputs.get("garmin_load_focus"),
         "top_route": routes if routes.get("available") is False else first_recommendation(routes),
@@ -2388,6 +4402,9 @@ def compact_freshness_summary(
     freshness: dict[str, Any],
     *,
     garmin_recovery_readiness: dict[str, Any],
+    wellness: dict[str, Any],
+    target_date: str | None = None,
+    snapshot_time_local: str | None = None,
 ) -> dict[str, Any]:
     stale = []
     details = {}
@@ -2404,7 +4421,35 @@ def compact_freshness_summary(
             stale.append(key)
 
     recovery_timestamp = garmin_recovery_readiness.get("recovery_time_timestamp_local")
-    if stale:
+    completed_daily_signals = [
+        label
+        for label, value in (
+            ("sleep", wellness.get("sleep_score")),
+            ("overnight_hrv", wellness.get("hrv_last_night_avg")),
+            ("resting_hr", wellness.get("resting_hr")),
+            ("body_battery_at_wake", wellness.get("body_battery_at_wake")),
+        )
+        if value is not None
+    ]
+    future_day = False
+    try:
+        if target_date and snapshot_time_local:
+            future_day = date.fromisoformat(target_date) > datetime.fromisoformat(
+                snapshot_time_local
+            ).date()
+    except ValueError:
+        future_day = False
+    future_daily_signals = (
+        ["sleep", "overnight_hrv", "resting_hr", "body_battery_at_wake"]
+        if future_day
+        else []
+    )
+    if future_day:
+        guidance = "current_sources_fresh_future_daily_signals_not_available_yet"
+        completed_daily_signals = []
+    elif stale and completed_daily_signals:
+        guidance = "dynamic_signals_stale_completed_daily_signals_usable"
+    elif stale:
         guidance = "sync_watch_before_hard_session"
     else:
         guidance = "fresh_enough_for_now_decision"
@@ -2412,12 +4457,16 @@ def compact_freshness_summary(
     return {
         "guidance": guidance,
         "stale_inputs": stale,
+        "stale_dynamic_inputs": stale,
+        "completed_daily_signals_usable": completed_daily_signals,
+        "future_daily_signals_not_available_yet": future_daily_signals,
         "details": details,
         "garmin_training_readiness_timestamp_local": recovery_timestamp,
         "meaning": (
-            "Freshness describes Garmin/Xert input recency for same-day decisions. "
-            "Stale Garmin time-series data should reduce confidence for intensity, "
-            "before intensity, independently of Garmin's composite Training Readiness score."
+            "Source freshness is evaluated at snapshot time. For a future target day, "
+            "that day's completed sleep, overnight HRV, resting HR, and Body Battery "
+            "at wake are not available yet and require a morning gate. Otherwise stale "
+            "dynamic Garmin values describe the current moment only."
         ),
     }
 
@@ -2472,11 +4521,30 @@ def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
             f"{illness.get('max_minutes')} min / {illness.get('max_load')} XSS."
         )
 
+    domain_cap = target_resolution.get("readiness_domain_cap") or {}
+    if domain_cap.get("active"):
+        adjustment_types.append("readiness_domain_cap")
+        reasons.append(
+            "The selected readiness domain capped the base plan at "
+            f"{domain_cap.get('max_minutes')} min / "
+            f"{domain_cap.get('max_load')} XSS; discarded model dose is not rescheduled."
+        )
+
+    endurance_solution = target_resolution.get("endurance_duration_solution") or {}
+    if endurance_solution:
+        adjustment_types.append("xert_endurance_duration_recalculation")
+        reasons.append(
+            "The provisional mixed-history duration estimate was replaced by "
+            "Xert's calculation of the selected endurance structure so low XSS "
+            "matches without targeting high or peak XSS."
+        )
+
     base_minutes = number(base.get("minutes"))
     base_load = number(base.get("load_xss"))
     changed = final_minutes != base_minutes or final_load != base_load
+    recalculated = bool(endurance_solution)
     trace["adjustment"] = {
-        "status": "reduced" if changed else "unchanged",
+        "status": "recalculated" if recalculated else "reduced" if changed else "unchanged",
         "types": adjustment_types,
         "reasons": reasons
         or [
@@ -2488,7 +4556,13 @@ def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
     trace["final_plan"] = {
         "minutes": final_minutes,
         "load_xss": final_load,
-        "relationship_to_base": "reduced_by_guardrail" if changed else "same_as_base",
+        "relationship_to_base": (
+            "recalculated_for_selected_domain"
+            if recalculated
+            else "reduced_by_guardrail"
+            if changed
+            else "same_as_base"
+        ),
     }
 
 
@@ -2545,16 +4619,19 @@ def apply_acute_readiness_target_guardrail(
     wellness = inputs.get("wellness") or {}
     load_focus = inputs.get("garmin_load_focus") or {}
     xert = inputs.get("xert_recovery") or {}
-    sleep_hours = seconds_to_hours(wellness.get("sleep_time_seconds"))
+    sleep_score = number(wellness.get("sleep_score"))
     hrv_risk = hrv_readiness_risk(wellness)
     resting_hr_risk = resting_hr_readiness_risk(wellness)
     body_battery_risk = body_battery_readiness_risk(wellness)
-    direct_domains = {
-        "autonomic": max_present(hrv_risk, resting_hr_risk),
-        "sleep": sleep_hours_caution(sleep_hours),
-        "energy": body_battery_risk,
+    autonomic_recovery_components = {
+        "hrv": hrv_risk,
+        "resting_hr": resting_hr_risk,
+        "sleep_score": sleep_score_caution(sleep_score),
     }
-    caution = sum(value for value in direct_domains.values() if value is not None)
+    direct_domains = {
+        "autonomic_recovery": max_present(*autonomic_recovery_components.values()),
+    }
+    caution = direct_domains["autonomic_recovery"] or 0.0
 
     acwr = number(load_focus.get("acwr"))
     recovery_load = xert.get("recovery_load") or {}
@@ -2580,16 +4657,10 @@ def apply_acute_readiness_target_guardrail(
     }
     xert_modeled_recovery_risk = max_present(*xert_recovery_components.values())
     acwr_risk = linear_risk_optional(acwr, good=0.8, bad=1.4)
-    cumulative_load_risk = (
-        xert_modeled_recovery_risk
-        if xert_modeled_recovery_risk is not None
-        else acwr_risk
-    )
+    cumulative_load_risk = xert_modeled_recovery_risk
     cumulative_load_source = (
         "xert_recovery_vs_training"
         if xert_modeled_recovery_risk is not None
-        else "garmin_acwr_fallback"
-        if acwr_risk is not None
         else None
     )
     target_resolution["xert_recovery_training_diagnostic"] = {
@@ -2604,13 +4675,13 @@ def apply_acute_readiness_target_guardrail(
         else None,
         "low_recovery_hours": low_recovery_hours,
         "garmin_acwr": acwr,
-        "garmin_acwr_risk_fallback": round(acwr_risk, 3)
+        "garmin_acwr_risk_diagnostic": round(acwr_risk, 3)
         if acwr_risk is not None
         else None,
         "meaning": (
             "Xert low-system recovery hours and Recovery Load versus Training Load "
-            "are the primary modeled-load gate. Garmin ACWR is retained only as a "
-            "fallback when Xert recovery context is unavailable."
+            "are the modeled-load gate. Garmin ACWR is retained as a separate "
+            "diagnostic and never substitutes for missing Xert recovery context."
         ),
     }
     strong_domains = [
@@ -2619,9 +4690,10 @@ def apply_acute_readiness_target_guardrail(
     moderate_domains = [
         key for key, value in direct_domains.items() if value is not None and value >= 0.4
     ]
+    grouped_risk = direct_domains["autonomic_recovery"]
     direct_signal = (
-        "poor" if len(strong_domains) >= 2 else "caution"
-        if len(moderate_domains) >= 1 else "normal"
+        "poor" if grouped_risk is not None and grouped_risk >= 0.75 else "caution"
+        if grouped_risk is not None and grouped_risk >= 0.4 else "normal"
     )
     garmin_score = number(readiness.get("training_readiness_score"))
     garmin_signal = (
@@ -2642,15 +4714,21 @@ def apply_acute_readiness_target_guardrail(
 
     cap = None
     level = None
+    autonomic_recovery_risk = direct_domains["autonomic_recovery"]
     if (
-        len(strong_domains) >= 2
+        autonomic_recovery_risk is not None
+        and autonomic_recovery_risk >= 0.75
         and cumulative_load_risk is not None
         and cumulative_load_risk >= 0.6
     ):
         cap = {"minutes": 45.0, "load": 30.0}
         level = "recovery_day"
-    elif len(strong_domains) >= 2 or (
-        len(moderate_domains) >= 2
+    elif (
+        autonomic_recovery_risk is not None
+        and autonomic_recovery_risk >= 0.75
+    ) or (
+        autonomic_recovery_risk is not None
+        and autonomic_recovery_risk >= 0.4
         and cumulative_load_risk is not None
         and cumulative_load_risk >= 0.35
     ):
@@ -2683,7 +4761,7 @@ def apply_acute_readiness_target_guardrail(
         if pre_minutes
         else None,
         "reason": (
-            "independent physiological domains agreed before workout and route ranking"
+            "grouped autonomic/recovery evidence and modeled load context supported a cap"
         ),
     }
     target_resolution["acute_readiness_guardrail"] = {
@@ -2695,6 +4773,13 @@ def apply_acute_readiness_target_guardrail(
         "decision_input": "direct_readiness_domains_and_xert_recovery_training_context",
         "training_readiness_used_for_dose": False,
         "direct_domains": rounded_optional_map(direct_domains),
+        "autonomic_recovery_components": rounded_optional_map(
+            autonomic_recovery_components
+        ),
+        "body_resources_support": round(body_battery_risk, 3)
+        if body_battery_risk is not None
+        else None,
+        "body_resources_used_as_independent_domain": False,
         "strong_domains": strong_domains,
         "cumulative_load_risk": round(cumulative_load_risk, 3)
         if cumulative_load_risk is not None
@@ -2707,14 +4792,16 @@ def apply_acute_readiness_target_guardrail(
         if low_training_to_recovery_ratio is not None
         else None,
         "xert_low_recovery_hours": low_recovery_hours,
-        "garmin_acwr_risk_fallback": round(acwr_risk, 3)
+        "garmin_acwr_risk_diagnostic": round(acwr_risk, 3)
         if acwr_risk is not None
         else None,
         "acwr": acwr,
         "meaning": (
-            "The practical dose is derived from independent physiological domains "
-            "and Xert recovery-versus-training context, with Garmin ACWR used only "
-            "as a fallback when Xert recovery context is unavailable. The previous "
+            "HRV, resting heart rate, and Sleep Score are grouped as one related "
+            "autonomic/recovery family. Body Battery is retained as supporting "
+            "diagnostic context rather than an additional independent vote. Xert "
+            "recovery-versus-training context remains the modeled-load gate. Garmin ACWR remains "
+            "diagnostic and does not replace missing Xert context. The previous "
             "day's individual workout is "
             "not a separate dose input. Garmin's composite Training "
             "Readiness score is retained for diagnostics but is not a dose input."
@@ -2828,6 +4915,7 @@ def build_llm_context(
     planned_at: datetime,
     planned_at_source: str,
     available_windows: list[dict[str, datetime]],
+    calendar_context: dict[str, Any],
 ) -> dict[str, Any]:
     latest = decision.get("latest_activity_load") or {}
     freshness = decision.get("freshness_summary") or {}
@@ -2861,6 +4949,11 @@ def build_llm_context(
             "available_windows": serialize_available_windows(available_windows),
             "evaluated_weather_window": weather_time_window(route_weather)
             or weather_time_window(home_weather),
+            "calendar": calendar_context_with_slack(
+                calendar_context,
+                planned_at=planned_at,
+                available_windows=available_windows,
+            ),
         },
         "same_day_activity_context": same_day_activity,
         "intervals_wellness_events": intervals_events,
@@ -2914,6 +5007,39 @@ def build_llm_context(
     }
 
 
+def calendar_context_with_slack(
+    calendar_context: dict[str, Any],
+    *,
+    planned_at: datetime,
+    available_windows: list[dict[str, datetime]],
+) -> dict[str, Any]:
+    result = dict(calendar_context)
+    window = current_available_window(planned_at, available_windows)
+    if window is None:
+        result["cleanup_ends_at"] = None
+        result["practical_stop_slack_minutes"] = None
+        result["hard_stop_slack_minutes"] = None
+        return result
+    cleanup_end = window["end"] + timedelta(
+        minutes=float(calendar_context.get("cleanup_buffer_minutes") or 0)
+    )
+    result["cleanup_ends_at"] = cleanup_end.isoformat(timespec="seconds")
+    for field, output_field in (
+        ("practical_stop", "practical_stop_slack_minutes"),
+        ("hard_stop", "hard_stop_slack_minutes"),
+    ):
+        stop = calendar_context.get(field)
+        if not stop:
+            result[output_field] = None
+            continue
+        stop_at = datetime.fromisoformat(stop["at"])
+        result[output_field] = round(
+            (stop_at - cleanup_end).total_seconds() / 60,
+            1,
+        )
+    return result
+
+
 def presentation_requirements() -> dict[str, Any]:
     return {
         "body_battery": {
@@ -2929,7 +5055,9 @@ def presentation_requirements() -> dict[str, Any]:
             ),
             "interpretation_rule": (
                 "Treat the wake value as overnight recovery context and the current "
-                "value as time-of-day energy context. Do not let either value decide "
+                "value as modeled time-of-day body-resource context. It is not "
+                "measured metabolic energy, glycogen, or calorie balance. Do not let "
+                "either value decide "
                 "the recommendation alone, and mention staleness when the latest "
                 "Body Battery datapoint is not fresh enough for the decision."
             ),
@@ -2967,50 +5095,31 @@ def recommendation_bias(
         return "easy_vt1"
     if intervals_events.get("return_to_training_active"):
         return "easy_vt1"
-    sleep_hours = seconds_to_hours(wellness.get("sleep_time_seconds"))
+    sleep_score = number(wellness.get("sleep_score"))
     hrv_risk = hrv_readiness_risk(wellness)
     resting_hr_risk = resting_hr_readiness_risk(wellness)
     body_battery_risk = body_battery_readiness_risk(wellness)
-    body_battery = number(wellness.get("body_battery_most_recent"))
     xert_projected = xert.get("projected_recovery_hours_at_planned_time") or {}
     xert_low = number(xert_projected.get("low"))
-    xert_intensity_ready = xert_supports_intensity(xert_projected)
     caution_score = numeric_caution_score(
-        sleep_hours=sleep_hours,
+        sleep_score=sleep_score,
         hrv_risk=hrv_risk,
         resting_hr_risk=resting_hr_risk,
         body_battery_risk=body_battery_risk,
     )
-    direct_inputs_only_caution = (
-        caution_score >= 0.75
-        and xert_intensity_ready is True
-        and (xert_low is None or xert_low <= 0)
-        and (sleep_hours is not None and sleep_hours >= 7.0)
-        and (hrv_risk is None or hrv_risk <= 0.15)
-        and (body_battery is None or body_battery >= 70)
-    )
-
-    if caution_score >= 2.7:
-        if xert_low is not None and xert_low <= 0 and (body_battery is None or body_battery >= 45):
-            return "active_recovery_only"
-        return "rest"
-
-    if caution_score >= 1.4:
-        return "active_recovery_only"
-
     if caution_score >= 0.75:
-        if direct_inputs_only_caution:
-            return "normal_vt1"
         return "easy_vt1"
     if xert_low is not None and xert_low > 4:
         return "rest"
-    if (
-        (hrv_risk is None or hrv_risk < 0.5)
-        and (resting_hr_risk is None or resting_hr_risk < 0.5)
-        and caution_score <= 0.35
-        and xert_intensity_ready is not False
-    ):
-        return "intensity_ok"
+    agreement = intensity_signal_agreement(
+        wellness=wellness,
+        xert=xert,
+        intervals_events=intervals_events,
+    )
+    if agreement["high_intensity_allowed"]:
+        return "high_intensity_ok"
+    if agreement["vt2_allowed"]:
+        return "vt2_ok"
     return "normal_vt1"
 
 
@@ -3114,7 +5223,7 @@ def coach_summary_reasons(
                 precip=weather.get("precipitation_range"),
             )
         )
-    if bias == "intensity_ok":
+    if bias in {"vt2_ok", "high_intensity_ok"}:
         reasons.append("No major readiness guardrail blocks intensity from the input packet.")
     return reasons[:6]
 
@@ -3129,8 +5238,14 @@ def same_day_activity_context(
     if not latest:
         return {"has_same_day_activity": False}
 
-    start = parse_optional_local_datetime(latest.get("start_local"))
-    end = parse_optional_local_datetime(latest.get("end_local"))
+    start = parse_optional_local_datetime(
+        latest.get("start_local"),
+        local_timezone=now.tzinfo,
+    )
+    end = parse_optional_local_datetime(
+        latest.get("end_local"),
+        local_timezone=now.tzinfo,
+    )
     if start is None or start.date().isoformat() != day:
         return {"has_same_day_activity": False}
 
@@ -3171,16 +5286,25 @@ def same_day_activity_context(
 def hrv_summary_line(wellness: dict[str, Any]) -> str:
     status = wellness.get("hrv_status")
     last = wellness.get("hrv_last_night_avg")
-    weekly = wellness.get("hrv_weekly_avg")
+    mean_3d = wellness.get("hrv_3day_mean")
+    mean_7d = wellness.get("hrv_7day_mean")
+    garmin_weekly = wellness.get("hrv_weekly_avg")
+    trend = wellness.get("hrv_trend_status")
     low = wellness.get("hrv_balanced_low")
     upper = wellness.get("hrv_balanced_upper")
     low_upper = wellness.get("hrv_low_upper")
 
     parts = []
     if last is not None:
-        parts.append(f"{last} ms")
-    if weekly is not None:
-        parts.append(f"weekly {weekly}")
+        parts.append(f"last night {last} ms")
+    if mean_3d is not None:
+        parts.append(f"3-day mean {mean_3d}")
+    if mean_7d is not None:
+        parts.append(f"7-day mean {mean_7d}")
+    elif garmin_weekly is not None:
+        parts.append(f"Garmin weekly {garmin_weekly} diagnostic")
+    if trend is not None:
+        parts.append(f"trend={trend}")
     if low is not None and upper is not None:
         parts.append(f"balanced {low}-{upper}")
     elif low_upper is not None:
@@ -3204,13 +5328,76 @@ def garmin_readiness_line(readiness: dict[str, Any]) -> str:
     if level:
         pieces.append(f"level={level}")
     if recovery is not None:
-        recovery_text = f"recovery {recovery} h"
+        recovery_text = (
+            f"Garmin Recovery Time {recovery} h to modeled full recovery for "
+            "the next hard workout; not a ban on easy or moderate activity"
+        )
         if recovery_factor:
             recovery_text += f"; recovery_factor={recovery_factor}"
         pieces.append(recovery_text)
     if status:
         pieces.append(f"training_status={status}")
+    driver_text = garmin_readiness_driver_line(readiness)
+    if driver_text:
+        pieces.append(driver_text)
     return ", ".join(pieces) + "."
+
+
+def garmin_readiness_driver_line(readiness: dict[str, Any]) -> str:
+    drivers = readiness.get("training_readiness_drivers") or {}
+    families = readiness.get("training_readiness_driver_families") or {}
+    labels = {
+        "sleep_score": "sleep score",
+        "hrv_status": "HRV status",
+        "sleep_history": "sleep history",
+        "stress_history": "stress history",
+        "acute_load": "acute load",
+        "recovery_time": "Recovery Time",
+    }
+    family_labels = {
+        "autonomic_lifestyle": "sleep/HRV/stress",
+        "load_recovery": "load/recovery",
+    }
+    summaries = []
+    for family in ("autonomic_lifestyle", "load_recovery"):
+        observations = []
+        for key in families.get(family) or []:
+            feedback = (drivers.get(key) or {}).get("feedback")
+            if feedback:
+                observations.append(f"{labels.get(key, key)}={feedback}")
+        if observations:
+            summaries.append(f"{family_labels[family]}: {', '.join(observations)}")
+    if not summaries:
+        return ""
+    return (
+        "grouped drivers (diagnostic only; overlapping signals): "
+        + "; ".join(summaries)
+    )
+
+
+def garmin_vo2max_line(vo2max: dict[str, Any] | None) -> str:
+    estimates = (vo2max or {}).get("estimates") or {}
+    parts = []
+    for category in ("cycling", "generic"):
+        estimate = estimates.get(category) or {}
+        value = estimate.get("precise_value")
+        if value is None:
+            value = estimate.get("value")
+        if value is None:
+            continue
+        detail = f"{category}={value} ml/kg/min"
+        if estimate.get("calendar_date"):
+            detail += f" on {estimate['calendar_date']}"
+        if estimate.get("age_days_at_requested_date") is not None:
+            detail += f" ({estimate['age_days_at_requested_date']} d old)"
+        parts.append(detail)
+    if not parts:
+        return "missing"
+    return (
+        ", ".join(parts)
+        + "; modeled sport-category estimates, trend context only—not acute "
+        "readiness or a workout-dose input"
+    )
 
 
 def sleep_summary_line(wellness: dict[str, Any], readiness: dict[str, Any] | None = None) -> str:
@@ -3269,6 +5456,13 @@ def xert_supports_intensity(projected: dict[str, Any]) -> bool | None:
     return all(value <= 0 for value in known)
 
 
+def xert_supports_vt2(projected: dict[str, Any]) -> bool | None:
+    low = number(projected.get("low"))
+    if low is None:
+        return None
+    return low <= 0
+
+
 def load_focus_summary_line(load_focus: dict[str, Any] | None) -> str:
     load_focus = load_focus or {}
     feedback = load_focus.get("feedback")
@@ -3301,80 +5495,217 @@ def load_focus_summary_line(load_focus: dict[str, Any] | None) -> str:
 
 
 def caution_summary_line(readiness: dict[str, Any], wellness: dict[str, Any]) -> str:
-    sleep_h = seconds_to_hours(wellness.get("sleep_time_seconds"))
+    sleep_score = number(wellness.get("sleep_score"))
     hrv = hrv_readiness_risk(wellness)
     resting_hr = resting_hr_readiness_risk(wellness)
     body_battery = body_battery_readiness_risk(wellness)
     parts = [
-        ("sleep", sleep_hours_caution(sleep_h)),
+        ("sleep_score", sleep_score_caution(sleep_score)),
         ("hrv", hrv),
         ("resting_hr", resting_hr),
-        ("body_battery", body_battery),
     ]
     visible = [f"{name} {round(value, 2)}" for name, value in parts if value is not None]
     total = numeric_caution_score(
-        sleep_hours=sleep_h,
+        sleep_score=sleep_score,
         hrv_risk=hrv,
         resting_hr_risk=resting_hr,
         body_battery_risk=body_battery,
     )
     if not visible:
-        return "missing"
-    return f"total {round(total, 2)} ({', '.join(visible)})"
+        return (
+            f"grouped autonomic/recovery missing; body_resources_support "
+            f"{round(body_battery, 2)} (diagnostic only)"
+            if body_battery is not None
+            else "missing"
+        )
+    body_support = (
+        f"; body_resources_support {round(body_battery, 2)} (diagnostic only)"
+        if body_battery is not None
+        else ""
+    )
+    return (
+        f"grouped autonomic/recovery {round(total, 2)} "
+        f"({', '.join(visible)}){body_support}"
+    )
 
 
 def hrv_readiness_risk(wellness: dict[str, Any]) -> float | None:
     """Return a continuous HRV caution score from 0.0 to 1.0.
 
-    Garmin's status can jump at the balanced-range threshold. Prefer the
-    numeric weekly HRV average against the balanced range when available. If
-    numeric HRV context is missing, return None instead of using the enum as a
-    decision input.
+    Use the actual three-night mean as the acute decision signal. Garmin's
+    rounded weekly average remains diagnostic-only. Fall back to last night
+    when three valid nights are unavailable.
     """
 
-    weekly = number(wellness.get("hrv_weekly_avg"))
+    acute = number(wellness.get("hrv_3day_mean"))
+    nights_used = number(wellness.get("hrv_nights_used_3d"))
     last = number(wellness.get("hrv_last_night_avg"))
     low = number(wellness.get("hrv_balanced_low"))
     upper = number(wellness.get("hrv_balanced_upper"))
 
-    value = weekly if weekly is not None else last
-    if value is not None and low is not None and upper is not None:
-        if low <= value <= upper:
-            return 0.0
-        if value < low:
-            # About 12% below the lower balanced boundary is treated as a
-            # strong HRV caution; just below the boundary is only mild.
-            return min(1.0, max(0.0, (low - value) / max(1.0, low * 0.12)))
-        return min(0.75, max(0.0, (value - upper) / max(1.0, upper * 0.12)))
+    value = acute if acute is not None and nights_used == 3 else last
+    return hrv_value_risk(value=value, low=low, upper=upper)
 
-    return None
+
+def hrv_last_night_risk(wellness: dict[str, Any]) -> float | None:
+    return hrv_value_risk(
+        value=number(wellness.get("hrv_last_night_avg")),
+        low=number(wellness.get("hrv_balanced_low")),
+        upper=number(wellness.get("hrv_balanced_upper")),
+    )
+
+
+def hrv_value_risk(
+    *,
+    value: float | None,
+    low: float | None,
+    upper: float | None,
+) -> float | None:
+    if value is None or low is None or upper is None:
+        return None
+    if low <= value <= upper:
+        return 0.0
+    if value < low:
+        return min(1.0, max(0.0, (low - value) / max(1.0, low * 0.12)))
+    return min(0.75, max(0.0, (value - upper) / max(1.0, upper * 0.12)))
+
+
+def hrv_trend_status(wellness: dict[str, Any]) -> str:
+    value = number(wellness.get("hrv_7day_mean"))
+    low = number(wellness.get("hrv_balanced_low"))
+    upper = number(wellness.get("hrv_balanced_upper"))
+    if value is None or low is None or upper is None:
+        return "unavailable"
+    if value < low:
+        return "below_balanced_trend"
+    if value > upper:
+        return "above_balanced_trend"
+    return "within_balanced_trend"
+
+
+def intensity_signal_agreement(
+    *,
+    wellness: dict[str, Any],
+    xert: dict[str, Any],
+    intervals_events: dict[str, Any],
+) -> dict[str, Any]:
+    """Require agreement before direct signals block hard intensity."""
+
+    risks = {
+        "hrv_3day": hrv_readiness_risk(wellness),
+        "hrv_last_night": hrv_last_night_risk(wellness),
+        "sleep": sleep_score_caution(number(wellness.get("sleep_score"))),
+        "resting_hr": resting_hr_readiness_risk(wellness),
+        "body_battery": body_battery_readiness_risk(wellness),
+    }
+    autonomic_recovery_risk = max_present(
+        risks["hrv_3day"],
+        risks["hrv_last_night"],
+        risks["sleep"],
+        risks["resting_hr"],
+    )
+    moderate = [
+        key
+        for key in ("hrv_3day", "sleep", "resting_hr")
+        if risks[key] is not None and risks[key] >= 0.25
+    ]
+    severe = [
+        key
+        for key in ("hrv_3day", "hrv_last_night", "sleep", "resting_hr")
+        if risks[key] is not None and risks[key] >= 0.75
+    ]
+    projected = xert.get("projected_recovery_hours_at_planned_time") or {}
+    xert_vt2_ready = xert_supports_vt2(projected)
+    xert_high_ready = xert_supports_intensity(projected)
+    soreness = number(intervals_events.get("current_day_soreness"))
+
+    direct_blockers = []
+    if autonomic_recovery_risk is not None and autonomic_recovery_risk >= 0.75:
+        direct_blockers.append("severe_direct_signal")
+    if soreness is not None and soreness >= 3:
+        direct_blockers.append("high_soreness")
+
+    vt2_blockers = list(direct_blockers)
+    if xert_vt2_ready is False:
+        vt2_blockers.append("xert_low_system_recovery")
+
+    high_intensity_blockers = list(vt2_blockers)
+    if xert_high_ready is False and "xert_low_system_recovery" not in high_intensity_blockers:
+        high_intensity_blockers.append("xert_high_or_peak_system_recovery")
+
+    return {
+        "vt2_allowed": not vt2_blockers,
+        "high_intensity_allowed": not high_intensity_blockers,
+        "blockers": high_intensity_blockers,
+        "vt2_blockers": vt2_blockers,
+        "high_intensity_blockers": high_intensity_blockers,
+        "moderate_signals": moderate,
+        "severe_signals": severe,
+        "risks": rounded_optional_map(risks),
+        "grouped_families": {
+            "autonomic_recovery": round(autonomic_recovery_risk, 3)
+            if autonomic_recovery_risk is not None
+            else None,
+            "body_resources_support": round(risks["body_battery"], 3)
+            if risks["body_battery"] is not None
+            else None,
+        },
+        "body_resources_used_as_independent_signal": False,
+        "xert_vt2_ready": xert_vt2_ready,
+        "xert_high_intensity_ready": xert_high_ready,
+        "soreness": soreness,
+        "rule": (
+            "HRV, resting heart rate, and Sleep Score are one overlapping "
+            "autonomic/recovery family; a severe family signal may block VT2 and "
+            "high intensity. Body Battery is supporting diagnostic context, not an "
+            "additional independent signal. Xert system recovery or high soreness "
+            "can block independently. VT2 requires "
+            "low-system recovery; high intensity additionally requires high- "
+            "and peak-system recovery."
+        ),
+    }
+
+
+def annotate_hrv_decision_context(readiness_packet: dict[str, Any]) -> None:
+    inputs = readiness_packet.get("recommendation_inputs") or {}
+    wellness = inputs.get("wellness") or {}
+    wellness["hrv_acute_risk"] = hrv_readiness_risk(wellness)
+    wellness["hrv_last_night_risk"] = hrv_last_night_risk(wellness)
+    wellness["hrv_trend_status"] = hrv_trend_status(wellness)
+    wellness["hrv_decision_source"] = (
+        "three_night_mean"
+        if number(wellness.get("hrv_nights_used_3d")) == 3
+        else "last_night_fallback"
+    )
+    inputs["intensity_signal_agreement"] = intensity_signal_agreement(
+        wellness=wellness,
+        xert=inputs.get("xert_recovery") or {},
+        intervals_events=inputs.get("intervals_wellness_events") or {},
+    )
 
 
 def numeric_caution_score(
     *,
-    sleep_hours: float | None,
+    sleep_score: float | None,
     hrv_risk: float | None,
     resting_hr_risk: float | None,
     body_battery_risk: float | None,
 ) -> float:
-    # Use independent direct-input domains. Garmin Training Readiness is a
-    # composite diagnostic and must not be counted again as a dose input.
-    autonomic = max_present(hrv_risk, resting_hr_risk)
-    return sum(
-        value
-        for value in (
-            sleep_hours_caution(sleep_hours),
-            autonomic,
-            body_battery_risk,
-        )
-        if value is not None
-    )
+    # These signals share upstream autonomic and overnight-recovery evidence.
+    # Keep Body Battery visible elsewhere as support, but do not count it as an
+    # additional independent vote after HRV, resting HR, and sleep are used.
+    _ = body_battery_risk
+    return max_present(
+        sleep_score_caution(sleep_score),
+        hrv_risk,
+        resting_hr_risk,
+    ) or 0.0
 
 
-def sleep_hours_caution(hours: float | None) -> float | None:
-    if hours is None:
+def sleep_score_caution(score: float | None) -> float | None:
+    if score is None:
         return None
-    return inverse_linear_risk(hours, good=7.0, bad=5.5)
+    return inverse_linear_risk(score, good=80.0, bad=50.0)
 
 
 def resting_hr_readiness_risk(wellness: dict[str, Any]) -> float | None:
@@ -3474,11 +5805,12 @@ def primary_indoor_option(
         return {
             "option_label": "optional",
             "name": "Active recovery spin",
-            "duration_minutes": "30-60",
+            "duration_minutes": 45.0,
             "xss": None,
             "difficulty": None,
             "execution_note": (
-                "Very easy recovery ride, roughly 130-165 W, "
+                "Very easy recovery ride, normally 45 min within a 30-60 min range, "
+                "roughly 130-165 W, "
                 "no structured workout and no added training target."
             ),
         }
@@ -3501,7 +5833,8 @@ def primary_indoor_option(
         "rest": ("shorter", "conservative", "normal", "longer"),
         "easy_vt1": easy_vt1_order,
         "normal_vt1": ("normal", "conservative", "longer", "shorter"),
-        "intensity_ok": ("normal", "longer", "conservative", "shorter"),
+        "vt2_ok": ("normal", "longer", "conservative", "shorter"),
+        "high_intensity_ok": ("normal", "longer", "conservative", "shorter"),
     }.get(bias, ("normal", "conservative", "shorter", "longer"))
     target_load = number(target_resolution.get("target_load"))
     if bias == "easy_vt1" and target_load is not None:
@@ -3533,11 +5866,11 @@ def primary_outdoor_option(
     if bias == "active_recovery_only":
         return {
             "name": "Active recovery only",
-            "moving_minutes": "20-45",
+            "moving_minutes": 45.0,
             "distance_km": None,
             "training_load": None,
             "execution_note": (
-                "Optional only: flat, very easy spin or walk. Avoid turning it "
+                "Optional only: 30-60 min, normally 45 min, flat and very easy. Avoid turning it "
                 "into a second endurance workout."
             ),
             "weather": compact_weather_signal(route_weather),
@@ -3564,7 +5897,7 @@ def primary_outdoor_option(
     }
     if bias in {"rest", "easy_vt1"}:
         option["execution_note"] = "Keep it easier than the historical route load; avoid threshold/VO2 work."
-    elif bias == "intensity_ok":
+    elif bias in {"vt2_ok", "high_intensity_ok"}:
         option["execution_note"] = "Outdoor route is viable if it matches the session goal."
     else:
         option["execution_note"] = "Use as controlled endurance/VT1 unless a harder goal is explicit."
@@ -3643,7 +5976,7 @@ def timing_guidance(
         guidance_parts.append("A meaningful same-day ride is already done; only active recovery is sensible now.")
     elif bias == "easy_vt1":
         guidance_parts.append("For easy VT1, indoor timing is flexible; for anything harder, sync Garmin first.")
-    elif bias == "intensity_ok":
+    elif bias in {"vt2_ok", "high_intensity_ok"}:
         guidance_parts.append("Intensity is best placed after a normal warmup window, not squeezed in late.")
     else:
         guidance_parts.append("Indoor timing is flexible; choose the slot that leaves time to eat and cool down.")
@@ -3689,7 +6022,10 @@ def parse_hourly_time(row: dict[str, Any]) -> datetime | None:
     raw = row.get("time_local")
     if not raw:
         return None
-    return parse_local_datetime(str(raw))
+    parsed = datetime.fromisoformat(str(raw))
+    if parsed.tzinfo is None:
+        raise ValueError("Weather time_local must include an explicit UTC offset.")
+    return parsed
 
 
 def compact_xert_workout_recommendations(
@@ -4073,14 +6409,55 @@ def workout_rank_key(
     )
 
 
+def freshness_summary_lines(freshness: dict[str, Any]) -> list[str]:
+    guidance = freshness.get("guidance") or "missing"
+    lines = [f"  Freshness: {guidance}"]
+    stale = freshness.get("stale_dynamic_inputs") or freshness.get("stale_inputs") or []
+    completed = freshness.get("completed_daily_signals_usable") or []
+    future = freshness.get("future_daily_signals_not_available_yet") or []
+    if stale:
+        lines.append("  Stale dynamic inputs: " + ", ".join(map(str, stale)))
+    if completed:
+        lines.append("  Completed daily signals still usable: " + ", ".join(map(str, completed)))
+    if future:
+        lines.append(
+            "  Future-day signals not available yet: " + ", ".join(map(str, future))
+        )
+    return lines
+
+
+def calendar_summary_lines(calendar: dict[str, Any]) -> list[str]:
+    if not isinstance(calendar, dict) or not calendar:
+        return []
+    lines = [f"  Calendar assumption: {value}" for value in calendar.get("assumptions") or []]
+    for field, slack_field, label in (
+        ("practical_stop", "practical_stop_slack_minutes", "Practical stop"),
+        ("hard_stop", "hard_stop_slack_minutes", "Hard stop"),
+    ):
+        stop = calendar.get(field)
+        if not stop:
+            continue
+        lines.append(
+            "  {label}: {subject} at {at}; slack after cleanup={slack} min".format(
+                label=label,
+                subject=stop.get("subject"),
+                at=stop.get("at"),
+                slack=calendar.get(slack_field),
+            )
+        )
+    return lines
+
+
 def format_summary(packet: dict[str, Any]) -> str:
     decision = packet.get("decision_inputs") or {}
     context = packet.get("llm_context") or {}
     fueling = packet.get("fueling_defaults") or {}
     freshness = decision.get("freshness_summary") or {}
     readiness = decision.get("garmin_recovery_readiness") or {}
+    vo2max = decision.get("garmin_vo2max") or {}
     load_focus = decision.get("garmin_load_focus") or {}
     wellness = decision.get("wellness") or {}
+    intensity_agreement = decision.get("intensity_signal_agreement") or {}
     intervals_events = decision.get("intervals_wellness_events") or {}
     latest = decision.get("latest_activity_load") or {}
     xert_training_advice = decision.get("xert_training_advice") or {}
@@ -4103,35 +6480,60 @@ def format_summary(packet: dict[str, Any]) -> str:
     form_check_needed = bool(health_constraints.get("form_check_needed"))
     return_to_training_active = bool(health_constraints.get("return_to_training_active"))
     primary = packet.get("primary_decision") or context.get("primary_decision") or {}
+    intensity_decision = primary.get("intensity_decision") or {}
+    plan_context = packet.get("plan_context") or context.get("plan_context") or {}
+    calendar_context = time_context.get("calendar") or packet.get("calendar") or {}
+    remainder = primary.get("unexecuted_remainder") or {}
+    remainder_minutes = number(remainder.get("minutes"))
+    remainder_line = (
+        "REMAINDER: none"
+        if remainder_minutes is not None and remainder_minutes < 0.1
+        else "REMAINDER: {minutes} min; disposition={disposition}; do not schedule automatically".format(
+            minutes=remainder.get("minutes"),
+            disposition=remainder.get("disposition") or "unscheduled",
+        )
+    )
 
     lines = [
         "PRIMARY DECISION: {action}".format(
             action=str(primary.get("action") or "missing").upper()
         ),
-        "DO NOW: {minutes} min {intensity}".format(
-            minutes=(primary.get("executable_now") or {}).get("minutes"),
-            intensity=(primary.get("executable_now") or {}).get("intensity"),
+        "DO NOW: {dose}".format(dose=executable_now_line(primary)),
+        "READINESS CEILING: {ceiling}".format(
+            ceiling=intensity_decision.get("readiness_ceiling") or "missing",
         ),
+        "WORKOUT GOAL: {goal}".format(
+            goal=intensity_decision.get("requested_goal") or "missing",
+        ),
+        "PLAN ROLE: {role}; next quality={quality}; goal matches state={matches}".format(
+            role=plan_context.get("next_role") or "missing",
+            quality=plan_context.get("next_quality_role") or "missing",
+            matches=plan_context.get("goal_matches_state"),
+        ),
+        *dose_composition_summary_lines(target_resolution),
         "DOSE SEMANTICS: {semantics}; completed activities already accounted for={accounted}".format(
             semantics=primary.get("dose_semantics"),
             accounted=primary.get("completed_activities_already_accounted_for"),
         ),
-        "UNSCHEDULED REMAINDER: {minutes} min; do not schedule automatically".format(
-            minutes=(primary.get("unscheduled_remainder") or {}).get("minutes")
+        "XATA PLANNING CONTEXT: {context}".format(
+            context=xert_planning_context_line(target_resolution),
         ),
-        "LLM DEFAULT: follow PRIMARY DECISION; deviations require a labelled coaching override.",
+        remainder_line,
+        (
+            "LLM DEFAULT: follow PRIMARY DECISION; show READINESS CEILING and "
+            "WORKOUT GOAL to the user; deviations require a labelled coaching override."
+        ),
         "",
         f"Recommendation context packet: {packet.get('date')} planned {packet.get('planned_at')}",
         "",
         "LLM context:",
         "  Purpose: PRIMARY DECISION is the default recommendation; supporting data explains and executes it.",
-        "  Freshness: {freshness}".format(
-            freshness=freshness.get("guidance"),
-        ),
+        *freshness_summary_lines(freshness),
         "  Planned time: {planned} ({source})".format(
             planned=time_context.get("planned_at_local") or packet.get("planned_at"),
             source=time_context.get("planned_at_source") or packet.get("planned_at_source"),
         ),
+        *calendar_summary_lines(calendar_context),
         "  Activity context: {context}".format(
             context=same_day_activity_line(same_day_activity),
         ),
@@ -4169,6 +6571,9 @@ def format_summary(packet: dict[str, Any]) -> str:
         "  Dose vs typical: {position}".format(
             position=dose_position_line(target_resolution),
         ),
+        "  Volume density: {density}".format(
+            density=volume_density_line(target_resolution),
+        ),
         "  Dose split: {split}".format(
             split=target_resolution.get("split_note") or "one ride or split if practical",
         ),
@@ -4194,13 +6599,26 @@ def format_summary(packet: dict[str, Any]) -> str:
             candidates=indoor_higher_intensity_line(workouts, higher_intensity_options),
         ),
         "  Presentation target watts: {targets}".format(
-            targets=presentation_target_watts_line(presentation),
+            targets=(
+                "not applicable for indoor_cycling_gym; prescribe heart rate, "
+                "breathing, and RPE"
+                if workouts.get("source") == "indoor_cycling_gym"
+                else presentation_target_watts_line(presentation)
+            ),
         ),
         "  VT2 progression: {progression}".format(
-            progression=progression_context_line(progression, "vt2"),
+            progression=authoritative_progression_line(
+                plan_context,
+                progression,
+                "vt2",
+            ),
         ),
         "  VO2Max progression: {progression}".format(
-            progression=progression_context_line(progression, "vo2max"),
+            progression=authoritative_progression_line(
+                plan_context,
+                progression,
+                "vo2max",
+            ),
         ),
         "  Fueling: {fueling}".format(
             fueling=fueling_modalities_line(
@@ -4220,7 +6638,7 @@ def format_summary(packet: dict[str, Any]) -> str:
         "  Dose basis: {dose}".format(
             dose=dose_target_line(target_resolution),
         ),
-        "  Garmin composite diagnostics (not dose inputs): readiness {score}/100; projected recovery {recovery} h; level={level}, recovery_factor={factor}, training_status={status}".format(
+        "  Garmin composite diagnostics (not dose inputs): readiness {score}/100; Garmin Recovery Time {recovery} h at planned start to modeled full recovery for the next hard workout, not a ban on easy or moderate activity (projection assumes no intervening training); level={level}, recovery_factor={factor}, training_status={status}".format(
             score=readiness.get("training_readiness_score"),
             recovery=readiness.get("projected_recovery_time_hours_at_planned")
             if readiness.get("projected_recovery_time_hours_at_planned") is not None
@@ -4229,8 +6647,21 @@ def format_summary(packet: dict[str, Any]) -> str:
             factor=readiness.get("recovery_time_factor_feedback"),
             status=readiness.get("training_status_feedback"),
         ),
+        "  Training Readiness explanation: {drivers}".format(
+            drivers=garmin_readiness_driver_line(readiness) or "missing",
+        ),
+        "  Garmin VO2max context: {vo2max}".format(
+            vo2max=garmin_vo2max_line(vo2max),
+        ),
         "  Numeric caution: {caution}".format(
             caution=caution_summary_line(readiness, wellness),
+        ),
+        "  Intensity signal agreement: vt2_allowed={vt2_allowed}; high_intensity_allowed={high_allowed}; blockers={blockers}; moderate={moderate}; severe={severe}".format(
+            vt2_allowed=intensity_agreement.get("vt2_allowed"),
+            high_allowed=intensity_agreement.get("high_intensity_allowed"),
+            blockers=intensity_agreement.get("blockers"),
+            moderate=intensity_agreement.get("moderate_signals"),
+            severe=intensity_agreement.get("severe_signals"),
         ),
         "  Load focus: {load_focus}".format(
             load_focus=load_focus_summary_line(load_focus),
@@ -4320,8 +6751,16 @@ def format_summary(packet: dict[str, Any]) -> str:
         lines.extend(["", "Progression advice:"])
         for workout_type in ("vt2", "vo2max"):
             advice = progression.get(workout_type) or {}
-            if advice:
-                lines.append(f"  {workout_type.upper()}: {progression_summary_line(advice)}")
+            plan_family = (plan_context.get("progression") or {}).get(workout_type) or {}
+            if advice or plan_family:
+                lines.append(
+                    f"  {workout_type.upper()}: "
+                    + authoritative_progression_line(
+                        plan_context,
+                        progression,
+                        workout_type,
+                    )
+                )
     lines.extend(["", "Outdoor candidate:"])
     if routes_packet.get("available") is False:
         lines.append(
@@ -4345,6 +6784,9 @@ def format_summary(packet: dict[str, Any]) -> str:
         fit = window_fit_line(route.get("window_fit"))
         if fit:
             lines[-1] += f" | {fit}"
+        dose_fit = route_dose_fit_line(route.get("dose_fit"))
+        if dose_fit:
+            lines[-1] += f" | {dose_fit}"
         shorter = routes_packet.get("shorter_window_options") or []
         if route.get("window_fit", {}).get("fits_first_window") is False and shorter:
             lines.append(
@@ -4417,6 +6859,11 @@ def indoor_availability_line(workouts: dict[str, Any], recommended: dict[str, An
 def indoor_execution_line(workouts: dict[str, Any], recommended: dict[str, Any]) -> str:
     if workouts.get("available") is False:
         return "Indoor workouts were not fetched or ranked for this location context."
+    if workouts.get("source") == "indoor_cycling_gym":
+        return (
+            "Use continuous aerobic riding controlled by heart rate, breathing, "
+            "and RPE; watts and ERG instructions do not apply."
+        )
     return workout_execution_line(recommended)
 
 
@@ -4575,6 +7022,22 @@ def progression_context_line(progression: dict[str, Any], workout_type: str) -> 
     return progression_summary_line((progression.get(workout_type) or {}))
 
 
+def authoritative_progression_line(
+    plan_context: dict[str, Any],
+    progression: dict[str, Any],
+    workout_type: str,
+) -> str:
+    plan_family = (plan_context.get("progression") or {}).get(workout_type) or {}
+    plan_step = plan_family.get("next_step") or plan_family.get("anchor")
+    historical = progression_context_line(progression, workout_type)
+    if not plan_step:
+        return historical
+    parts = [f"PLAN STATE (authoritative): {plan_step}"]
+    if plan_family.get("status"):
+        parts.append(f"status={plan_family.get('status')}")
+    return "; ".join(parts)
+
+
 def workout_execution_line(option: dict[str, Any] | None) -> str:
     if not isinstance(option, dict) or not option:
         return "missing"
@@ -4599,7 +7062,9 @@ def outdoor_line(option: dict[str, Any] | None) -> str:
         xss=option.get("xss"),
     )
     fit = window_fit_line(option.get("window_fit"))
-    return f"{line}; {fit}" if fit else line
+    dose_fit = route_dose_fit_line(option.get("dose_fit"))
+    details = [detail for detail in (fit, dose_fit) if detail]
+    return f"{line}; {'; '.join(details)}" if details else line
 
 
 def window_fit_line(fit: Any) -> str | None:
@@ -4612,6 +7077,27 @@ def window_fit_line(fit: Any) -> str | None:
         )
     if fit.get("fits_first_window") is False:
         return f"does not fit first window (over by {fit.get('over_by_minutes')} min)"
+    return None
+
+
+def route_dose_fit_line(fit: Any) -> str | None:
+    if not isinstance(fit, dict) or fit.get("available") is False:
+        return None
+    if fit.get("covers_prescribed_duration") is True:
+        return (
+            "covers prescribed duration "
+            f"({fit.get('route_minutes')} vs {fit.get('prescribed_minutes')} min)"
+        )
+    if (fit.get("under_by_minutes") or 0) > 0:
+        return (
+            f"short of prescribed duration by {fit.get('under_by_minutes')} min; "
+            "extend route or add VT1 time"
+        )
+    if (fit.get("over_by_minutes") or 0) > 0:
+        return (
+            f"over prescribed duration by {fit.get('over_by_minutes')} min; "
+            "shorten route or use a turnaround"
+        )
     return None
 
 
@@ -4647,6 +7133,37 @@ def same_day_activity_line(context: dict[str, Any]) -> str:
     )
 
 
+def executable_now_line(primary: dict[str, Any]) -> str:
+    executable = primary.get("executable_now") or {}
+    segments = executable.get("segments") or []
+    if not segments:
+        return "{minutes} min {intensity}".format(
+            minutes=executable.get("minutes"),
+            intensity=executable.get("intensity"),
+        )
+
+    labels = []
+    for segment in segments:
+        role = str(segment.get("role") or "unknown")
+        minutes = segment.get("duration_minutes")
+        if segment.get("fits_executable_window") is False:
+            labels.append(
+                "{minutes} min {role} complete workout required, but only "
+                "{available} min available".format(
+                    minutes=minutes,
+                    role=role.upper(),
+                    available=segment.get("available_minutes"),
+                )
+            )
+        elif role == "active_recovery":
+            labels.append(f"{minutes} min ACTIVE_RECOVERY")
+        elif role == "vt1":
+            labels.append(f"{minutes} min VT1")
+        else:
+            labels.append(f"{minutes} min {role.upper()} quality workout")
+    return " + ".join(labels)
+
+
 def dose_target_line(target_resolution: dict[str, Any]) -> str:
     if not isinstance(target_resolution, dict) or not target_resolution:
         return "missing"
@@ -4655,6 +7172,98 @@ def dose_target_line(target_resolution: dict[str, Any]) -> str:
         load=target_resolution.get("target_load"),
         reason=target_resolution.get("reason") or "missing reason",
     )
+
+
+def xert_planning_context_line(target_resolution: dict[str, Any]) -> str:
+    context = target_resolution.get("xert_planning_context") or {}
+    if not isinstance(context, dict) or not context:
+        return "missing"
+    return (
+        "source={source}; planning target={goal}; deficit={deficit}; "
+        "availability={availability}; restricted={restricted}; phase={phase}; "
+        "intensity role remains plan-owned"
+    ).format(
+        source=context.get("targets_source") or "unknown",
+        goal=context.get("xss_goal"),
+        deficit=context.get("xss_deficit"),
+        availability=context.get("availability"),
+        restricted=context.get("is_availability_restricted"),
+        phase=context.get("phase") or "unknown",
+    )
+
+
+def dose_composition_summary_lines(
+    target_resolution: dict[str, Any],
+) -> list[str]:
+    composition = target_resolution.get("dose_composition") or {}
+    if not isinstance(composition, dict) or not composition:
+        return []
+    xert_parts = target_resolution.get("xert_recommended_target_xss") or {}
+    xert_total = target_resolution.get("xert_recommended_total_xss")
+    xert_original = target_resolution.get("xert_original_target_xss") or {}
+    xert_completed = target_resolution.get("xert_completed_xss") or {}
+    quality = composition.get("quality_base") or {}
+    filler = composition.get("vt1_filler") or {}
+    total = composition.get("estimated_total") or {}
+    calendar_fit = composition.get("calendar_fit") or {}
+    parts = ", ".join(
+        f"{key}={rounded_number(value)}"
+        for key, value in xert_parts.items()
+    )
+    lines = [
+        "XERT REMAINING DOSE: {total} XSS{parts} (basis={basis})".format(
+            total=xert_total if xert_total is not None else "unavailable",
+            parts=f" ({parts})" if parts else "",
+            basis=target_resolution.get("xert_dose_basis") or "unknown",
+        ),
+        "XERT ORIGINAL/COMPLETED: {original}/{completed} XSS".format(
+            original=xss_triplet_total(xert_original),
+            completed=xss_triplet_total(xert_completed),
+        ),
+        "CHOSEN DAILY TARGET: {target} XSS".format(
+            target=composition.get("daily_target_xss"),
+        ),
+        (
+            "QUALITY BASE: {minutes} min / {xss} XSS "
+            "(low={low}, high={high}, peak={peak}; complete workout)"
+        ).format(
+            minutes=quality.get("duration_minutes"),
+            xss=quality.get("xss"),
+            low=quality.get("low_xss"),
+            high=quality.get("high_xss"),
+            peak=quality.get("peak_xss"),
+        ),
+        "VT1 FILLER: {minutes} min / {xss} XSS at {rate} XSS/hour".format(
+            minutes=filler.get("duration_minutes"),
+            xss=filler.get("xss"),
+            rate=filler.get("assumed_xss_per_hour"),
+        ),
+        "EXPECTED TOTAL: {minutes} min / {xss} XSS".format(
+            minutes=total.get("duration_minutes"),
+            xss=total.get("xss"),
+        ),
+    ]
+    if calendar_fit.get("available"):
+        lines.append(
+            (
+                "CALENDAR DOSE: executable {executable}/{intended} min; "
+                "shortfall {shortfall} min / {shortfall_xss} XSS"
+            ).format(
+                executable=calendar_fit.get("executable_minutes"),
+                intended=calendar_fit.get("intended_minutes"),
+                shortfall=calendar_fit.get("shortfall_minutes"),
+                shortfall_xss=(
+                    calendar_fit.get("estimated_shortfall_xss")
+                    if calendar_fit.get("estimated_shortfall_xss") is not None
+                    else "not estimable before quality base fits"
+                ),
+            )
+        )
+    else:
+        lines.append(
+            "CALENDAR DOSE: no explicit available windows; fit not verified"
+        )
+    return lines
 
 
 def base_plan_line(target_resolution: dict[str, Any]) -> str:
@@ -4732,6 +7341,18 @@ def dose_position_line(target_resolution: dict[str, Any]) -> str:
     )
 
 
+def volume_density_line(target_resolution: dict[str, Any]) -> str:
+    density = target_resolution.get("volume_density") or {}
+    windows = density.get("windows") or []
+    if not density or not windows:
+        return "missing"
+    equivalents = ", ".join(
+        f"{row.get('days')}d={row.get('projected_weekly_equivalent_hours')} h/week"
+        for row in windows
+    )
+    return f"{density.get('classification')} ({equivalents}); diagnostic, not an automatic cap"
+
+
 def weather_range(hourly: list[dict[str, Any]]) -> str:
     if not hourly:
         return "missing"
@@ -4742,9 +7363,11 @@ def weather_range(hourly: list[dict[str, Any]]) -> str:
     winds = [value for value in winds if value is not None]
     precip = [value for value in precip if value is not None]
     symbols = [row.get("symbol_code_next_1h") for row in hourly if row.get("symbol_code_next_1h")]
+    start_time = parse_hourly_time(hourly[0])
+    end_time = parse_hourly_time(hourly[-1])
     return "{start}-{end}, {temp}, wind {wind}, precip {precip}, {symbol}".format(
-        start=str(hourly[0].get("time_local") or "")[11:16],
-        end=str(hourly[-1].get("time_local") or "")[11:16],
+        start=start_time.strftime("%H:%M") if start_time else "missing",
+        end=end_time.strftime("%H:%M") if end_time else "missing",
         temp=range_text(temps, "C"),
         wind=range_text(winds, "m/s"),
         precip=range_text(precip, "mm"),

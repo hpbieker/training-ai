@@ -9,8 +9,9 @@ instead of ad hoc one-off snippets or oversized terminal output.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timezone
 import json
+import math
 from pathlib import Path
 import re
 from typing import Any
@@ -51,6 +52,8 @@ DEFAULT_FIELDS = [
     "RuuviTemperature",
     "Humidity",
     "RuuviHumidity",
+    "dewpoint_c",
+    "skin_air_vapor_pressure_gradient_kpa",
 ]
 
 
@@ -141,6 +144,14 @@ def main() -> None:
         help="Omit saved Intervals.icu interval summaries from the output",
     )
     parser.add_argument(
+        "--garmin-json",
+        type=Path,
+        help=(
+            "Normalized output from garmin_connect_cli.py activity --summary-only. "
+            "Adds Training Effect, Stamina, and explicit Garmin blind-spot context."
+        ),
+    )
+    parser.add_argument(
         "--output",
         help="Write JSON to this path. Defaults to outputs/activity-inspect/<activity>_<timestamp>.json",
     )
@@ -188,8 +199,9 @@ def main() -> None:
 def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[SavedActivity, dict[str, Any]]:
     activity = resolve_activity_ref(activity_ref, artifacts_dir=args.artifacts_dir)
     requested_fields = [field.strip() for field in args.fields.split(",") if field.strip()]
-    fields = usable_analysis_fields(activity, requested_fields)
     rows = activity.streams
+    add_environmental_derivatives(rows)
+    fields = usable_analysis_fields(activity, requested_fields)
 
     result: dict[str, Any] = {
         "activity": activity_metadata(activity),
@@ -208,6 +220,14 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
             "recovery_reoxygenation": recovery_reoxygenation(activity),
         },
     }
+    garmin_metrics = load_garmin_metrics(args.garmin_json, activity)
+    if garmin_metrics is not None:
+        result["garmin"] = garmin_analysis_context(
+            garmin_metrics,
+            activity_metadata(activity),
+            rows,
+            result["streams"]["data_quality"],
+        )
     if not args.no_intervals:
         result["intervals"] = interval_summaries(activity, fields)
 
@@ -303,8 +323,11 @@ def activity_metadata(activity) -> dict[str, Any]:
         "weighted_average_watts": metadata.get("weighted_average_watts"),
         "average_heartrate": metadata.get("average_heartrate"),
         "max_heartrate": metadata.get("max_heartrate"),
+        "average_altitude": metadata.get("average_altitude"),
         "icu_ignore_hr": metadata.get("icu_ignore_hr"),
         "icu_ignore_power": metadata.get("icu_ignore_power"),
+        "feel": metadata.get("feel"),
+        "icu_rpe": metadata.get("icu_rpe"),
     }
 
 
@@ -390,6 +413,8 @@ def compact_result(result: dict[str, Any], fields: list[str]) -> dict[str, Any]:
             }
             for interval in result["intervals"]
         ]
+    if "garmin" in result:
+        compact["garmin"] = result["garmin"]
     return compact
 
 
@@ -538,7 +563,243 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
     )
     if vt2_quality_result:
         brief["vt2_quality"] = vt2_quality_result
+    if "garmin" in result:
+        brief["garmin"] = result["garmin"]
     return brief
+
+
+def load_garmin_metrics(path: Path | None, activity: SavedActivity) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("metrics_summary"), dict):
+        raise ValueError("--garmin-json must contain a metrics_summary object")
+    resolved = payload.get("resolved_activity") or {}
+    supplied_id = str(resolved.get("garmin_id") or payload["metrics_summary"].get("activityId") or "")
+    expected_id = str(activity.metadata.get("external_id") or "").removesuffix(".fit")
+    if supplied_id and expected_id and supplied_id != expected_id:
+        raise ValueError(
+            f"Garmin activity mismatch: expected {expected_id}, got {supplied_id}"
+        )
+    return payload["metrics_summary"]
+
+
+def garmin_analysis_context(
+    metrics: dict[str, Any],
+    activity: dict[str, Any],
+    rows: list[dict[str, str]],
+    data_quality: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Place Garmin models in their proper analysis dimensions and expose blind spots."""
+
+    stamina = metrics.get("stamina") if isinstance(metrics.get("stamina"), dict) else None
+    training_effect = (
+        metrics.get("training_effect")
+        if isinstance(metrics.get("training_effect"), dict)
+        else None
+    )
+    subjective = {
+        key: activity.get(key)
+        for key in ("feel", "icu_rpe")
+        if activity.get(key) is not None
+    }
+    environment_fields = sorted(
+        field
+        for field in ("temp", "RuuviTemperature", "Humidity", "RuuviHumidity")
+        if any(row.get(field) not in (None, "") for row in rows)
+    )
+    return {
+        "modeled_stimulus": {
+            "training_effect": training_effect,
+            "available_stamina": stamina.get("available_stamina") if stamina else None,
+            "available_potential_gap": (
+                stamina.get("largest_available_potential_gap") if stamina else None
+            ),
+            "interpretation": (
+                "Available Stamina is intensity-sensitive pacing context. A rebound "
+                "does not prove physiological or glycogen restoration."
+            ),
+        },
+        "total_cost_and_recovery": {
+            "potential_stamina": stamina.get("potential_stamina") if stamina else None,
+            "end_gap": stamina.get("end_gap") if stamina else None,
+            "interpretation": (
+                "Potential Stamina is Garmin's slower-changing depletion estimate, "
+                "not a complete recovery-demand measure."
+            ),
+        },
+        "stamina": stamina,
+        "blind_spot_control": garmin_blind_spot_control(
+            subjective=subjective,
+            environment_fields=environment_fields,
+        ),
+        "training_effect_context": training_effect_context_assessments(
+            activity=activity,
+            rows=rows,
+            data_quality=data_quality or {},
+        ),
+        "decision_rule": (
+            "Do not determine workout quality, recovery need, or plan progression "
+            "from Training Effect or Stamina alone."
+        ),
+    }
+
+
+def training_effect_context_assessments(
+    *,
+    activity: dict[str, Any],
+    rows: list[dict[str, str]],
+    data_quality: dict[str, Any],
+) -> dict[str, Any]:
+    """Return graded, evidence-bearing context instead of causal boolean flags."""
+
+    temperature = context_stream_stats(rows, ("RuuviTemperature", "temp"))
+    humidity = context_stream_stats(rows, ("RuuviHumidity", "Humidity"))
+    core_temperature = context_stream_stats(rows, ("core_temperature",))
+    altitude = number_or_none(activity.get("average_altitude"))
+
+    heat_evidence = []
+    if temperature.get("max") is not None and temperature["max"] >= 28:
+        heat_evidence.append({"signal": "temperature_high", "value": temperature["max"], "unit": "C"})
+    if humidity.get("max") is not None and humidity["max"] >= 75:
+        heat_evidence.append({"signal": "humidity_high", "value": humidity["max"], "unit": "%"})
+    heat_response = (
+        core_temperature.get("max") is not None and core_temperature["max"] >= 38.5
+    )
+    if heat_response:
+        heat_evidence.append(
+            {"signal": "core_temperature_high", "value": core_temperature["max"], "unit": "C"}
+        )
+    heat_status = "not_assessed"
+    heat_confidence = "none"
+    if heat_evidence:
+        heat_status = "supported" if heat_response and len(heat_evidence) >= 2 else "context_present"
+        heat_confidence = "moderate" if heat_status == "supported" else "low"
+
+    altitude_evidence = []
+    if altitude is not None and altitude >= 1500:
+        altitude_evidence.append({"signal": "average_altitude_high", "value": altitude, "unit": "m"})
+
+    limiting_streams = [
+        field
+        for field in ("watts", "heartrate")
+        if isinstance(data_quality.get(field), dict)
+        and data_quality[field].get("meaningful_gap")
+    ]
+    sensor_evidence = [
+        {
+            "signal": "meaningful_stream_gap",
+            "stream": field,
+            "missing_fraction": data_quality[field].get("missing_fraction"),
+            "longest_gap": data_quality[field].get("longest_gap"),
+        }
+        for field in limiting_streams
+    ]
+
+    return {
+        "scale": {
+            "not_assessed": "Required evidence is unavailable or no relevant context was detected.",
+            "context_present": "The factor is present, but its effect on Training Effect is not demonstrated.",
+            "supported": "Multiple aligned signals support a likely influence; this is not causal proof.",
+        },
+        "assessments": {
+            "heat_or_humidity": context_assessment(
+                status=heat_status,
+                confidence=heat_confidence,
+                evidence=heat_evidence,
+                effect="training_effect_may_be_elevated" if heat_evidence else None,
+            ),
+            "altitude": context_assessment(
+                status="context_present" if altitude_evidence else "not_assessed",
+                confidence="low" if altitude_evidence else "none",
+                evidence=altitude_evidence,
+                effect="training_effect_may_be_elevated" if altitude_evidence else None,
+            ),
+            "illness": context_assessment(status="not_assessed", confidence="none", evidence=[]),
+            "incomplete_recovery": context_assessment(
+                status="not_assessed", confidence="none", evidence=[]
+            ),
+            "sensor_quality": context_assessment(
+                status="supported" if sensor_evidence else "not_assessed",
+                confidence="high" if sensor_evidence else "none",
+                evidence=sensor_evidence,
+                effect="training_effect_reliability_limited" if sensor_evidence else None,
+            ),
+        },
+        "rule": (
+            "Context is not causation. Use supported only when multiple aligned signals "
+            "exist, except directly observed sensor-quality limitations."
+        ),
+    }
+
+
+def context_assessment(
+    *, status: str, confidence: str, evidence: list[dict[str, Any]], effect: str | None = None
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "confidence": confidence,
+        "evidence": evidence,
+        "effect": effect,
+    }
+
+
+def context_stream_stats(
+    rows: list[dict[str, str]], fields: tuple[str, ...]
+) -> dict[str, float | None]:
+    for field in fields:
+        values = [value(row, field) for row in rows]
+        numbers = [item for item in values if item is not None]
+        if numbers:
+            return {"avg": round(sum(numbers) / len(numbers), 2), "max": max(numbers)}
+    return {"avg": None, "max": None}
+
+
+def number_or_none(raw: Any) -> float | None:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return float(raw)
+
+
+def garmin_blind_spot_control(
+    *, subjective: dict[str, Any], environment_fields: list[str]
+) -> dict[str, Any]:
+    checks = {
+        "local_muscular_fatigue_or_soreness": {
+            "status": "requires_athlete_report",
+            "captured_by_garmin_models": False,
+        },
+        "neuromuscular_or_strength_cost": {
+            "status": "not_directly_captured",
+            "captured_by_garmin_models": False,
+        },
+        "unfamiliar_training_or_terrain": {
+            "status": "requires_context",
+            "captured_by_garmin_models": False,
+        },
+        "heat_humidity_or_dehydration": {
+            "status": "environment_data_available" if environment_fields else "requires_context",
+            "available_stream_fields": environment_fields,
+            "captured_completely_by_garmin_models": False,
+        },
+        "illness_or_infection": {
+            "status": "requires_athlete_or_wellness_context",
+            "captured_by_activity_metrics": False,
+        },
+        "feel_and_rpe": {
+            "status": "available" if subjective else "requires_athlete_report",
+            "values": subjective,
+            "captured_by_garmin_models": False,
+        },
+    }
+    return {
+        "checks": checks,
+        "unresolved": [name for name, check in checks.items() if check["status"].startswith("requires_")],
+        "meaning": (
+            "Unresolved means the analysis needs athlete, wellness, or environmental "
+            "context; it does not mean the factor was normal."
+        ),
+    }
 
 
 def vt2_quality(
@@ -580,6 +841,7 @@ def vt2_quality(
     for block in blocks:
         limiter_hints.extend(block.get("limiter_hints") or [])
     best = max(blocks, key=lambda block: block.get("duration_s") or 0)
+    session_quality = vt2_session_quality(blocks, recoveries)
 
     return drop_none(
         {
@@ -593,6 +855,7 @@ def vt2_quality(
             "mode": "trainer" if activity.get("trainer") else "outdoor_or_variable",
             "block_count": len(blocks),
             "best_duration_block": best,
+            "session_quality": session_quality,
             "avg_combined_score": rounded(sum(ratings) / len(ratings), digits=1) if ratings else None,
             "avg_heat_adjusted_response_score": (
                 rounded(sum(heat_adjusted) / len(heat_adjusted), digits=1) if heat_adjusted else None
@@ -601,6 +864,118 @@ def vt2_quality(
             "blocks": blocks,
         }
     )
+
+
+def vt2_session_quality(
+    blocks: list[dict[str, Any]],
+    recoveries: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Summarize VT2 stability across the complete comparable work series."""
+
+    comparable = [
+        block
+        for block in blocks
+        if isinstance(block.get("watts_avg"), (int, float))
+        and isinstance(block.get("duration_s"), (int, float))
+    ]
+    if not comparable:
+        return None
+
+    first = comparable[0]
+    last = comparable[-1]
+    total_duration = sum(float(block["duration_s"]) for block in comparable)
+    weighted_watts = (
+        sum(float(block["watts_avg"]) * float(block["duration_s"]) for block in comparable)
+        / total_duration
+        if total_duration > 0
+        else None
+    )
+    watts_start = float(first["watts_avg"])
+    watts_end = float(last["watts_avg"])
+    power_fade_pct = (
+        (watts_start - watts_end) / watts_start * 100
+        if watts_start
+        else None
+    )
+    worst = min(comparable, key=vt2_block_control_key)
+    relevant_recoveries = [
+        recovery
+        for recovery in recoveries
+        if isinstance(recovery.get("after_work_block"), int)
+        and 1 <= recovery["after_work_block"] <= len(comparable)
+    ]
+    first_recovery = relevant_recoveries[0] if relevant_recoveries else {}
+    last_recovery = relevant_recoveries[-1] if relevant_recoveries else {}
+    limiter_hints = unique(
+        hint
+        for block in comparable
+        for hint in block.get("limiter_hints") or []
+    )
+
+    return drop_none(
+        {
+            "verdict": worst.get("verdict"),
+            "rating": worst.get("rating"),
+            "block_count": len(comparable),
+            "total_duration_s": rounded(total_duration, digits=0),
+            "watts_avg": rounded(weighted_watts, digits=0),
+            "watts_start": rounded(watts_start, digits=0),
+            "watts_end": rounded(watts_end, digits=0),
+            "power_fade_pct": rounded(power_fade_pct, digits=1),
+            "execution_score": minimum_numeric(comparable, "execution_score"),
+            "response_score": minimum_numeric(comparable, "response_score"),
+            "heat_adjusted_response_score": minimum_numeric(
+                comparable,
+                "heat_adjusted_response_score",
+            ),
+            "recovery_score": minimum_numeric(comparable, "recovery_score"),
+            "combined_score": minimum_numeric(comparable, "combined_score"),
+            "combined_score_start": rounded(first.get("combined_score"), digits=1),
+            "combined_score_end": rounded(last.get("combined_score"), digits=1),
+            "worst_block": {
+                "n": worst.get("n"),
+                "label": worst.get("label"),
+                "verdict": worst.get("verdict"),
+                "combined_score": worst.get("combined_score"),
+                "limiter_hints": worst.get("limiter_hints") or [],
+            },
+            "recovery_trend": drop_none(
+                {
+                    "hr_drop_start": first_recovery.get("hr_drop_start_to_min"),
+                    "hr_drop_end": last_recovery.get("hr_drop_start_to_min"),
+                    "smo2_peak_start": first_recovery.get("smo2_peak"),
+                    "smo2_peak_end": last_recovery.get("smo2_peak"),
+                }
+            ),
+            "limiter_hints": limiter_hints,
+        }
+    )
+
+
+def vt2_block_control_key(block: dict[str, Any]) -> tuple[int, float]:
+    order = {
+        "above_control_limit": 0,
+        "variable_or_off_target_vt2": 1,
+        "near_upper_control_limit": 2,
+        "controlled_high_cost_vt2": 3,
+        "heat_limited_controlled_vt2": 4,
+        "controlled_vt2": 5,
+    }
+    verdict_rank = order.get(str(block.get("verdict") or ""), -1)
+    combined_score = block.get("combined_score")
+    return (
+        verdict_rank,
+        float(combined_score) if isinstance(combined_score, (int, float)) else -1.0,
+    )
+
+
+def minimum_numeric(items: list[dict[str, Any]], key: str) -> float | int | None:
+    values = [
+        float(item[key])
+        for item in items
+        if isinstance(item.get(key), (int, float))
+    ]
+    return rounded(min(values), digits=1) if values else None
 
 
 def vt2_candidate_blocks(
@@ -691,6 +1066,16 @@ def vt2_block_quality(
         core_temp_drift=drift.get("core_temperature"),
         vt_drift=drift.get("tidal_volume"),
     )
+    response["thermal_evidence"] = thermal_evidence_assessment(
+        core_temp_max=stat(summary, "core_temperature", "max", digits=2),
+        core_temp_drift=drift.get("core_temperature"),
+        ambient_temp_max=stat(summary, "RuuviTemperature", "max", digits=1),
+        humidity_max=stat(summary, "RuuviHumidity", "max", digits=1),
+        hr_per_w_drift=relative_drift.get("heartrate"),
+        ve_per_w_drift=relative_drift.get("tidal_volume_min"),
+        br_per_w_drift=relative_drift.get("respiration"),
+        execution_score=stability.get("execution_score"),
+    )
     recovery = hr_recovery_after_block(rows, block)
     recovery_score = vt2_recovery_score(recovery)
     execution_score = stability.get("execution_score")
@@ -737,6 +1122,13 @@ def vt2_block_quality(
                     "vt_avg": stat(summary, "tidal_volume", "avg", digits=0),
                     "smo2_avg": stat(summary, "smo2", "avg", digits=1),
                     "core_temp_avg": stat(summary, "core_temperature", "avg", digits=2),
+                    "dewpoint_c": stat(summary, "dewpoint_c", "avg", digits=2),
+                    "skin_air_vapor_pressure_gradient_kpa": stat(
+                        summary,
+                        "skin_air_vapor_pressure_gradient_kpa",
+                        "avg",
+                        digits=3,
+                    ),
                 }
             ),
             "recovery": recovery,
@@ -799,7 +1191,6 @@ def vt2_response_scores(
     vt_drift: Any,
 ) -> dict[str, Any]:
     penalty = 0.0
-    heat_penalty = 0.0
     limiter_hints: list[str] = []
     watch_notes: list[str] = []
 
@@ -829,25 +1220,18 @@ def vt2_response_scores(
         penalty += min(10, abs(vt_drift + 12) * 0.7)
         limiter_hints.append("falling_tidal_volume")
     if isinstance(core_temp_max, (int, float)):
-        if core_temp_max >= 38.3:
-            heat_penalty += 14
-            limiter_hints.append("heat_cost")
-        elif core_temp_max >= 38.0:
-            heat_penalty += 8
-            watch_notes.append("heat_cost_watch")
+        watch_notes.append("wearable_core_temperature_present")
     if isinstance(core_temp_drift, (int, float)) and core_temp_drift > 0.4:
-        heat_penalty += min(10, (core_temp_drift - 0.4) * 20)
-        if "heat_cost" not in limiter_hints:
-            limiter_hints.append("heat_cost")
+        watch_notes.append("wearable_core_temperature_rising")
 
-    raw_penalty = penalty + heat_penalty
-    response_score = clamp(100 - raw_penalty, 0, 100)
-    heat_adjusted_score = clamp(100 - penalty - heat_penalty * 0.35, 0, 100)
+    response_score = clamp(100 - penalty, 0, 100)
     return drop_none(
         {
             "response_score": rounded(response_score, digits=1),
-            "heat_adjusted_response_score": rounded(heat_adjusted_score, digits=1),
-            "heat_penalty_points": rounded(heat_penalty, digits=1),
+            # Kept for output compatibility. Thermal context no longer changes
+            # the physiological score without aligned evidence.
+            "heat_adjusted_response_score": rounded(response_score, digits=1),
+            "heat_penalty_points": 0.0,
             "hr_per_watt_drift_pct": rounded(hr_per_w_drift, digits=1),
             "ve_per_watt_drift_pct": rounded(ve_per_w_drift, digits=1),
             "br_per_watt_drift_pct": rounded(br_per_w_drift, digits=1),
@@ -860,6 +1244,76 @@ def vt2_response_scores(
             "watch_notes": unique(watch_notes),
         }
     )
+
+
+def thermal_evidence_assessment(
+    *,
+    core_temp_max: Any,
+    core_temp_drift: Any,
+    ambient_temp_max: Any = None,
+    humidity_max: Any = None,
+    hr_per_w_drift: Any = None,
+    ve_per_w_drift: Any = None,
+    br_per_w_drift: Any = None,
+    execution_score: Any = None,
+    athlete_heat_report: bool = False,
+) -> dict[str, Any]:
+    """Grade thermal evidence without treating a wearable cutoff as causal proof."""
+
+    observations: list[dict[str, Any]] = []
+    wearable_present = isinstance(core_temp_max, (int, float))
+    progressive_pattern = (
+        isinstance(core_temp_drift, (int, float)) and core_temp_drift > 0.4
+    )
+    environment_present = (
+        (isinstance(ambient_temp_max, (int, float)) and ambient_temp_max >= 28)
+        or (isinstance(humidity_max, (int, float)) and humidity_max >= 75)
+    )
+    acute_cost_present = any(
+        isinstance(value, (int, float)) and value > threshold
+        for value, threshold in (
+            (hr_per_w_drift, 8),
+            (ve_per_w_drift, 12),
+            (br_per_w_drift, 14),
+        )
+    )
+    mechanical_deterioration = (
+        isinstance(execution_score, (int, float)) and execution_score < 82
+    )
+
+    if wearable_present:
+        observations.append(
+            {"signal": "wearable_core_temperature", "max": rounded(core_temp_max, digits=2)}
+        )
+    if progressive_pattern:
+        observations.append(
+            {"signal": "wearable_core_temperature_rise", "drift": rounded(core_temp_drift, digits=2)}
+        )
+    if isinstance(ambient_temp_max, (int, float)):
+        observations.append({"signal": "ambient_temperature", "max": rounded(ambient_temp_max, digits=1)})
+    if isinstance(humidity_max, (int, float)):
+        observations.append({"signal": "relative_humidity", "max": rounded(humidity_max, digits=1)})
+    if acute_cost_present:
+        observations.append({"signal": "corroborating_acute_physiology"})
+    if mechanical_deterioration:
+        observations.append({"signal": "mechanical_deterioration"})
+    if athlete_heat_report:
+        observations.append({"signal": "athlete_reported_heat_strain"})
+
+    grade = "not_assessed"
+    if wearable_present or environment_present:
+        grade = "thermal_context_present"
+    if progressive_pattern and environment_present and acute_cost_present:
+        grade = "thermal_cost_supported"
+    if grade == "thermal_cost_supported" and mechanical_deterioration and athlete_heat_report:
+        grade = "heat_limited"
+
+    return {
+        "grade": grade,
+        "observations": observations,
+        "wearable_estimate_not_direct_core_measurement": wearable_present,
+        "rule": "An absolute wearable temperature or HSI alone cannot establish thermal cost or heat limitation.",
+    }
 
 
 def vt2_recovery_score(recovery: dict[str, Any] | None) -> float | None:
@@ -883,28 +1337,22 @@ def vt2_verdict(
     combined_score: float | None,
 ) -> str | None:
     execution = stability.get("execution_score")
-    heat_penalty = response.get("heat_penalty_points")
-    heat_adjusted = response.get("heat_adjusted_response_score")
-    raw_response = response.get("response_score")
+    thermal_grade = (response.get("thermal_evidence") or {}).get("grade")
     if not isinstance(combined_score, (int, float)):
         return None
     if isinstance(execution, (int, float)) and execution < 65:
         return "variable_or_off_target_vt2"
-    if (
-        isinstance(heat_penalty, (int, float))
-        and heat_penalty >= 8
-        and isinstance(heat_adjusted, (int, float))
-        and isinstance(raw_response, (int, float))
-        and heat_adjusted - raw_response >= 5
-    ):
-        return "heat_limited_controlled_vt2"
     if combined_score >= 82:
-        return "controlled_vt2"
-    if combined_score >= 68:
-        return "controlled_high_cost_vt2"
-    if combined_score >= 55:
-        return "near_upper_control_limit"
-    return "above_control_limit"
+        base_verdict = "controlled_vt2"
+    elif combined_score >= 68:
+        base_verdict = "controlled_high_cost_vt2"
+    elif combined_score >= 55:
+        base_verdict = "near_upper_control_limit"
+    else:
+        base_verdict = "above_control_limit"
+    if base_verdict == "controlled_vt2" and thermal_grade == "heat_limited":
+        return "heat_limited_controlled_vt2"
+    return base_verdict
 
 
 def vt2_score_rating(score: float | None) -> str | None:
@@ -2923,6 +3371,41 @@ def average_field(rows: list[dict[str, str]], field: str) -> float | None:
     return sum(values) / len(values) if values else None
 
 
+def add_environmental_derivatives(rows: list[dict[str, str]]) -> None:
+    """Add standard humidity and skin-to-air vapor-pressure metrics per sample."""
+
+    for row in rows:
+        air_temp_c = value(row, "RuuviTemperature")
+        relative_humidity = value(row, "RuuviHumidity")
+        if relative_humidity is None:
+            relative_humidity = value(row, "Humidity")
+        if (
+            air_temp_c is None
+            or relative_humidity is None
+            or not 0 < relative_humidity <= 100
+        ):
+            continue
+
+        air_vapor_pressure_kpa = (
+            relative_humidity / 100 * saturation_vapor_pressure_kpa(air_temp_c)
+        )
+        gamma = math.log(air_vapor_pressure_kpa / 0.61094)
+        row["dewpoint_c"] = str(243.04 * gamma / (17.625 - gamma))
+
+        skin_temp_c = value(row, "skin_temperature")
+        if skin_temp_c is not None:
+            row["skin_air_vapor_pressure_gradient_kpa"] = str(
+                saturation_vapor_pressure_kpa(skin_temp_c)
+                - air_vapor_pressure_kpa
+            )
+
+
+def saturation_vapor_pressure_kpa(temp_c: float) -> float:
+    """Return saturation vapor pressure using the Magnus approximation."""
+
+    return 0.61094 * math.exp(17.625 * temp_c / (temp_c + 243.04))
+
+
 def min_field(rows: list[dict[str, str]], field: str) -> float | None:
     values = [parsed for row in rows if (parsed := value(row, field)) is not None]
     return min(values) if values else None
@@ -2981,9 +3464,19 @@ def beta_summary(
 
     assessments = beta_stability.get("blocks") or []
     parts = beta_zone_parts(assessments)
+    detected_zones = {
+        str(assessment.get("intended_zone") or "")
+        for assessment in assessments
+    }
+    has_vt2 = bool(detected_zones & {"vt2", "vt2_like"})
+    has_vt1 = bool(detected_zones & {"vt1", "vt1_like"})
     if "vt2" in lower_name:
         category = "VT2"
     elif "vt1" in lower_name or lower_name.startswith("vt "):
+        category = "VT1"
+    elif has_vt2:
+        category = "VT2"
+    elif has_vt1:
         category = "VT1"
     else:
         category = "Beta"
@@ -3076,18 +3569,23 @@ def beta_vo2_debug(
     """Return experimental VO2Max repeatability signals for short hard reps."""
 
     activity_name = str(activity.get("name") or "")
-    if not vo2_activity_name(activity_name):
-        return None
-
     reps, source = vo2_rep_blocks(
         rows,
         saved_work_intervals,
         activity_name=activity_name,
     )
+    detection = vo2_intensity_detection(
+        activity_name=activity_name,
+        rep_source=source,
+        rep_count=len(reps),
+    )
+    if not detection["name_signal"] and len(reps) < 3:
+        return None
     if not reps:
         return {
             "status": "experimental",
             "meaning": "Experimental VO2Max repeatability assessment.",
+            "intensity_detection": detection,
             "reps": [],
             "summary": {"verdict": "no_vo2_reps_detected"},
         }
@@ -3104,8 +3602,10 @@ def beta_vo2_debug(
             "and rep-to-rep pattern checks, not threshold diagnosis."
         ),
         "rep_source": source,
+        "intensity_detection": detection,
         "assumptions": [
-            "VO2Max intent is inferred from the activity name.",
+            "VO2Max-like work may be detected from the activity name, saved work intervals, or observed power repetitions.",
+            "A name-independent classification requires at least three qualifying short hard repetitions.",
             "Short hard reps are taken from saved WORK intervals when available.",
             "If saved reps are not available, reps are detected from high-power stream sections.",
             "Power repeatability uses a robust first-vs-last portion comparison for short reps.",
@@ -3114,6 +3614,35 @@ def beta_vo2_debug(
         "rep_count": summary.get("rep_count"),
         "summary": summary,
         "reps": assessments,
+    }
+
+
+def vo2_intensity_detection(
+    *,
+    activity_name: str,
+    rep_source: str,
+    rep_count: int,
+) -> dict[str, Any]:
+    name_signal = vo2_activity_name(activity_name)
+    structured_interval_signal = (
+        rep_count >= 3
+        and rep_source.startswith("intervals_icu_work_intervals")
+    )
+    observed_power_signal = rep_count >= 3
+    sources = []
+    if name_signal:
+        sources.append("activity_name")
+    if structured_interval_signal:
+        sources.append("saved_work_intervals")
+    if observed_power_signal:
+        sources.append("observed_power_pattern")
+    return {
+        "zone": "vo2max",
+        "sources": sources,
+        "name_signal": name_signal,
+        "structured_interval_signal": structured_interval_signal,
+        "observed_power_signal": observed_power_signal,
+        "classification": "intent" if name_signal else "vo2max_like",
     }
 
 
@@ -3557,7 +4086,9 @@ def beta_block_stability(
     ve = stat(summary, "tidal_volume_min", "avg", digits=1)
     br = stat(summary, "respiration", "avg", digits=1)
     w_per_hr = beta_w_per_hr(summary)
-    intended_zone, intent_reasons = beta_intended_zone(activity_name, watts)
+    intensity_detection = beta_intensity_detection(activity_name, watts)
+    intended_zone = str(intensity_detection["zone"])
+    intent_reasons = list(intensity_detection["reasons"])
     signals = beta_stability_signals(summary, drift, relative_drift)
     verdict, confidence, verdict_reasons = beta_stability_verdict(intended_zone, signals)
     return drop_none(
@@ -3566,6 +4097,7 @@ def beta_block_stability(
             "label": block.get("label"),
             "intended_zone": intended_zone,
             "intent_reasons": intent_reasons,
+            "intensity_detection": intensity_detection,
             "verdict": verdict,
             "confidence": confidence,
             "reasons": verdict_reasons,
@@ -3581,25 +4113,66 @@ def beta_block_stability(
 
 
 def beta_intended_zone(activity_name: str, watts: float | int | None) -> tuple[str, list[str]]:
+    detection = beta_intensity_detection(activity_name, watts)
+    return str(detection["zone"]), list(detection["reasons"])
+
+
+def beta_intensity_detection(activity_name: str, watts: float | int | None) -> dict[str, Any]:
     reasons: list[str] = []
     name = activity_name.lower()
     if watts is None:
-        return "unknown", ["missing power average"]
+        return {
+            "zone": "unknown",
+            "sources": [],
+            "name_signal": False,
+            "observed_power_signal": False,
+            "reasons": ["missing power average"],
+        }
 
     if "vt2" in name and watts >= 260:
         reasons.append("activity name contains VT2 and block power is high")
-        return "vt2", reasons
+        return {
+            "zone": "vt2",
+            "sources": ["activity_name", "observed_power_level"],
+            "name_signal": True,
+            "observed_power_signal": True,
+            "reasons": reasons,
+        }
     if ("vt1" in name or name.startswith("vt ")) and 170 <= watts <= 230:
         reasons.append("activity name contains VT1/VT and block power is in known steady range")
-        return "vt1", reasons
+        return {
+            "zone": "vt1",
+            "sources": ["activity_name", "observed_power_level"],
+            "name_signal": True,
+            "observed_power_signal": True,
+            "reasons": reasons,
+        }
     if 185 <= watts <= 220:
         reasons.append("stable power is near the user's typical VT1 range")
-        return "vt1_like", reasons
+        return {
+            "zone": "vt1_like",
+            "sources": ["observed_power_level"],
+            "name_signal": False,
+            "observed_power_signal": True,
+            "reasons": reasons,
+        }
     if 270 <= watts <= 315:
         reasons.append("stable power is near the user's typical VT2 range")
-        return "vt2_like", reasons
+        return {
+            "zone": "vt2_like",
+            "sources": ["observed_power_level"],
+            "name_signal": False,
+            "observed_power_signal": True,
+            "reasons": reasons,
+        }
     reasons.append("power does not match a configured VT1/VT2 heuristic")
-    return "unknown_stable", reasons
+    return {
+        "zone": "unknown_stable",
+        "sources": ["observed_power_level"],
+        "name_signal": False,
+        "observed_power_signal": False,
+        "reasons": reasons,
+    }
 
 
 def beta_stability_signals(
@@ -3846,6 +4419,13 @@ def brief_total(block: dict[str, Any]) -> dict[str, Any]:
             "skin_temp_avg": stat(summary, "skin_temperature", "avg", digits=2),
             "environment_temp_avg": stat(summary, "RuuviTemperature", "avg", digits=1),
             "humidity_avg": stat(summary, "RuuviHumidity", "avg", digits=1),
+            "dewpoint_c": stat(summary, "dewpoint_c", "avg", digits=2),
+            "skin_air_vapor_pressure_gradient_kpa": stat(
+                summary,
+                "skin_air_vapor_pressure_gradient_kpa",
+                "avg",
+                digits=3,
+            ),
             "watts_drift": rounded(drift.get("watts"), digits=1),
             "hr_drift": rounded(drift.get("heartrate"), digits=1),
             "hr_per_watt_drift_pct": rounded(relative_drift.get("heartrate"), digits=1),
@@ -4209,7 +4789,7 @@ def parse_duration(raw: str) -> int:
 
 def default_output_path(activity) -> Path:
     activity_id = sanitize_filename(activity.id or activity.activity_dir.name)
-    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S%f")
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     return Path("outputs/activity-inspect") / f"{activity_id}_{timestamp}.json"
 
 

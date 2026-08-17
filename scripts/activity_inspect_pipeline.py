@@ -9,7 +9,7 @@ import json
 import subprocess
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,87 @@ from analysis import ARTIFACTS_DIR, resolve_activity_ref
 PIPELINE_SCHEMA = "training-ai-activity-inspect-pipeline-v1"
 PIPELINE_VERSION = "v1"
 DEFAULT_OUTPUT_DIR = Path("outputs/activity-inspect")
+ANALYSIS_OPTION_FIELDS = {
+    "shape",
+    "mode",
+    "vt1_watts",
+    "vt2_watts",
+    "target",
+    "threshold",
+    "tolerance",
+    "min_block",
+    "max_gap",
+    "smoothing",
+    "auto_blocks",
+    "auto_min_power",
+    "auto_min_block",
+    "auto_max_gap",
+    "auto_smoothing",
+    "auto_tolerance",
+    "steady_vt1",
+    "no_auto_outdoor_vt1",
+    "no_auto_indoor_vt1",
+    "fields",
+    "include_intervals",
+    "garmin_json",
+}
+
+
+def parse_analysis_options_json(raw: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise argparse.ArgumentTypeError(
+            f"--analysis-options-json must be valid JSON: {exc.msg}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise argparse.ArgumentTypeError(
+            "--analysis-options-json must contain one JSON object"
+        )
+    unknown = sorted(set(payload) - ANALYSIS_OPTION_FIELDS)
+    if unknown:
+        raise argparse.ArgumentTypeError(
+            f"unsupported analysis-option field: {unknown[0]}"
+        )
+    if payload.get("shape", "brief") not in {"brief", "compact", "full"}:
+        raise argparse.ArgumentTypeError(
+            "analysis-option shape must be brief, compact, or full"
+        )
+    if payload.get("mode", "default") not in {
+        "default", "vt2", "vo2max", "indoor-vt1", "outdoor-vt1"
+    }:
+        raise argparse.ArgumentTypeError(
+            "analysis-option mode is unsupported"
+        )
+    numeric_fields = {
+        "vt1_watts", "vt2_watts", "target", "threshold", "tolerance",
+        "auto_min_power", "auto_tolerance",
+    }
+    for field in numeric_fields & payload.keys():
+        value = payload[field]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+            raise argparse.ArgumentTypeError(
+                f"analysis-option {field} must be a non-negative number"
+            )
+    boolean_fields = {
+        "auto_blocks", "steady_vt1", "no_auto_outdoor_vt1",
+        "no_auto_indoor_vt1", "include_intervals",
+    }
+    for field in boolean_fields & payload.keys():
+        if not isinstance(payload[field], bool):
+            raise argparse.ArgumentTypeError(
+                f"analysis-option {field} must be boolean"
+            )
+    string_fields = {
+        "min_block", "max_gap", "smoothing", "auto_min_block",
+        "auto_max_gap", "auto_smoothing", "fields", "garmin_json",
+    }
+    for field in string_fields & payload.keys():
+        if not isinstance(payload[field], str) or not payload[field].strip():
+            raise argparse.ArgumentTypeError(
+                f"analysis-option {field} must be a non-empty string"
+            )
+    return {"shape": "brief", "mode": "default", **payload}
 
 
 def main() -> None:
@@ -32,32 +113,12 @@ def main() -> None:
     parser.add_argument("--artifacts-dir", default=str(ARTIFACTS_DIR))
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument(
-        "--shape",
-        choices=("brief", "compact", "full"),
-        default="brief",
-        help="activity_inspect output shape to cache.",
-    )
-    parser.add_argument(
-        "--mode",
-        choices=("default", "vt2", "vo2max", "indoor-vt1", "outdoor-vt1"),
-        default="default",
-        help="Named analysis mode. The mode is part of the cache key.",
-    )
-    parser.add_argument("--vt1-watts", type=float)
-    parser.add_argument("--vt2-watts", type=float)
-    parser.add_argument("--target", type=float)
-    parser.add_argument("--threshold", type=float)
-    parser.add_argument("--tolerance", type=float)
-    parser.add_argument("--min-block")
-    parser.add_argument("--auto-blocks", action="store_true")
-    parser.add_argument("--no-intervals", action="store_true")
-    parser.add_argument(
-        "--inspect-arg",
-        action="append",
-        default=[],
+        "--analysis-options-json",
+        type=parse_analysis_options_json,
+        default={"shape": "brief", "mode": "default"},
         help=(
-            "Additional raw argument for activity_inspect.py. Repeat for each token, "
-            "for example --inspect-arg --auto-min-block --inspect-arg 10m."
+            "Validated JSON analysis options. Supports shape, mode, watt anchors, "
+            "block detection, smoothing, fields, and include_intervals."
         ),
     )
     parser.add_argument(
@@ -86,14 +147,17 @@ def main() -> None:
 def inspect_with_cache(activity_ref: str, args: argparse.Namespace) -> dict[str, Any]:
     activity = resolve_activity_ref(activity_ref, artifacts_dir=args.artifacts_dir)
     source_files = source_file_metadata(activity.activity_dir)
-    inspect_args = build_inspect_args(args)
+    options = args.analysis_options_json
+    if options.get("garmin_json"):
+        source_files["garmin_json"] = file_metadata(Path(options["garmin_json"]))
+    inspect_args = build_inspect_args(options)
     cache_key_payload = {
         "pipeline_schema": PIPELINE_SCHEMA,
         "pipeline_version": PIPELINE_VERSION,
         "activity_id": activity.id,
         "activity_dir": str(activity.activity_dir),
-        "shape": args.shape,
-        "mode": args.mode,
+        "shape": options["shape"],
+        "mode": options["mode"],
         "inspect_args": inspect_args,
         "activity_inspect_mtime_ns": script_mtime_ns(activity_inspect_script()),
     }
@@ -101,8 +165,8 @@ def inspect_with_cache(activity_ref: str, args: argparse.Namespace) -> dict[str,
     cache_path = cache_output_path(
         args.output_dir,
         activity_id=activity.id,
-        mode=args.mode,
-        shape=args.shape,
+        mode=options["mode"],
+        shape=options["shape"],
         cache_key=cache_key,
     )
     cached = None if args.force else fresh_cached_payload(
@@ -121,7 +185,9 @@ def inspect_with_cache(activity_ref: str, args: argparse.Namespace) -> dict[str,
     payload = {
         "schema": PIPELINE_SCHEMA,
         "pipeline_version": PIPELINE_VERSION,
-        "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "generated_at": datetime.now(timezone.utc).isoformat(
+            timespec="seconds"
+        ).replace("+00:00", "Z"),
         "cache_key": cache_key,
         "cache_key_payload": cache_key_payload,
         "source_files": source_files,
@@ -138,41 +204,53 @@ def inspect_with_cache(activity_ref: str, args: argparse.Namespace) -> dict[str,
     return manifest_row(payload, cache_path=cache_path, cache_hit=False)
 
 
-def build_inspect_args(args: argparse.Namespace) -> list[str]:
+def build_inspect_args(options: dict[str, Any]) -> list[str]:
     inspect_args: list[str] = []
-    if args.shape == "brief":
+    if options["shape"] == "brief":
         inspect_args.append("--brief")
-    elif args.shape == "compact":
+    elif options["shape"] == "compact":
         inspect_args.append("--compact")
 
-    if args.mode == "vt2":
+    mode = options["mode"]
+    if mode == "vt2":
         inspect_args.extend(["--auto-blocks"])
-        if args.vt2_watts is not None:
-            inspect_args.extend(["--vt2-watts", format_number(args.vt2_watts)])
-    elif args.mode == "vo2max":
+    elif mode == "vo2max":
         inspect_args.extend(["--auto-blocks"])
-    elif args.mode == "indoor-vt1":
+    elif mode == "indoor-vt1":
         inspect_args.append("--indoor-vt1")
-        if args.vt1_watts is not None:
-            inspect_args.extend(["--vt1-watts", format_number(args.vt1_watts)])
-    elif args.mode == "outdoor-vt1":
+    elif mode == "outdoor-vt1":
         inspect_args.append("--outdoor-vt1")
-        if args.vt1_watts is not None:
-            inspect_args.extend(["--vt1-watts", format_number(args.vt1_watts)])
 
-    if args.auto_blocks and "--auto-blocks" not in inspect_args:
+    if options.get("auto_blocks") and "--auto-blocks" not in inspect_args:
         inspect_args.append("--auto-blocks")
     for flag, value in (
-        ("--target", args.target),
-        ("--threshold", args.threshold),
-        ("--tolerance", args.tolerance),
-        ("--min-block", args.min_block),
+        ("--vt1-watts", options.get("vt1_watts")),
+        ("--vt2-watts", options.get("vt2_watts")),
+        ("--target", options.get("target")),
+        ("--threshold", options.get("threshold")),
+        ("--tolerance", options.get("tolerance")),
+        ("--min-block", options.get("min_block")),
+        ("--max-gap", options.get("max_gap")),
+        ("--smoothing", options.get("smoothing")),
+        ("--auto-min-power", options.get("auto_min_power")),
+        ("--auto-min-block", options.get("auto_min_block")),
+        ("--auto-max-gap", options.get("auto_max_gap")),
+        ("--auto-smoothing", options.get("auto_smoothing")),
+        ("--auto-tolerance", options.get("auto_tolerance")),
+        ("--fields", options.get("fields")),
+        ("--garmin-json", options.get("garmin_json")),
     ):
         if value is not None:
             inspect_args.extend([flag, format_number(value) if isinstance(value, float) else str(value)])
-    if args.no_intervals:
+    if options.get("include_intervals") is False:
         inspect_args.append("--no-intervals")
-    inspect_args.extend(args.inspect_arg or [])
+    for flag, enabled in (
+        ("--steady-vt1", options.get("steady_vt1")),
+        ("--no-auto-outdoor-vt1", options.get("no_auto_outdoor_vt1")),
+        ("--no-auto-indoor-vt1", options.get("no_auto_indoor_vt1")),
+    ):
+        if enabled:
+            inspect_args.append(flag)
     return inspect_args
 
 
