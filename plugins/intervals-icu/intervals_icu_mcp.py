@@ -113,26 +113,26 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "list_activities",
         "description": (
             "List all Intervals.icu activities in an inclusive local-date range. "
-            "Use the same date for since and until to resolve today's exact activity; "
+            "Use the same start_date and end_date to resolve today's exact activity; "
             "do not substitute a latest-activity lookup."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "since": {"type": "string", "format": "date", "description": "Inclusive local start date."},
-                "until": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
             },
-            "required": ["since", "until"],
+            "required": ["start_date", "end_date"],
             "additionalProperties": False,
         },
         "outputSchema": {
             "type": "object",
             "properties": {
-                "since": {"type": "string"}, "until": {"type": "string"},
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "count": {"type": "integer"},
                 "activities": {"type": "array", "items": _object("Intervals.icu activity summary.")},
             },
-            "required": ["since", "until", "count", "activities"],
+            "required": ["start_date", "end_date", "count", "activities"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activities"],
@@ -365,20 +365,20 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
-                "since": {"type": "string", "format": "date", "description": "Inclusive local start date."},
-                "until": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
             },
-            "required": ["since", "until"],
+            "required": ["start_date", "end_date"],
             "additionalProperties": False,
         },
         "outputSchema": {
             "type": "object",
             "properties": {
-                "since": {"type": "string"}, "until": {"type": "string"},
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "count": {"type": "integer"},
                 "wellness": {"type": "array", "items": _object("Intervals.icu wellness row.")},
             },
-            "required": ["since", "until", "count", "wellness"],
+            "required": ["start_date", "end_date", "count", "wellness"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_wellness"],
@@ -447,20 +447,20 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
-                "since": {"type": "string", "format": "date", "description": "Inclusive local start date."},
-                "until": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
             },
-            "required": ["since", "until"],
+            "required": ["start_date", "end_date"],
             "additionalProperties": False,
         },
         "outputSchema": {
             "type": "object",
             "properties": {
-                "since": {"type": "string"}, "until": {"type": "string"},
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "count": {"type": "integer"},
                 "events": {"type": "array", "items": _object("Intervals.icu calendar event.")},
             },
-            "required": ["since", "until", "count", "events"],
+            "required": ["start_date", "end_date", "count", "events"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_events"],
@@ -468,8 +468,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "create_event": {
         "name": "create_event",
         "description": (
-            "Create one all-day Intervals.icu calendar event and verify it. since and "
-            "until are inclusive user dates; Intervals.icu receives an exclusive end "
+            "Create one all-day Intervals.icu calendar event and verify it. start_date and "
+            "end_date are inclusive user dates; Intervals.icu receives an exclusive end "
             "boundary. Record sickness with category SICK, never as a wellness comment."
         ),
         "inputSchema": {
@@ -477,10 +477,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "category": {"type": "string", "minLength": 1, "description": "Intervals.icu event category, for example SICK."},
                 "name": {"type": "string", "minLength": 1, "description": "Event name, for example Syk."},
-                "since": {"type": "string", "format": "date", "description": "First event day, inclusive."},
-                "until": {"type": "string", "format": "date", "description": "Last event day, inclusive."},
+                "start_date": {"type": "string", "format": "date", "description": "First event day, inclusive."},
+                "end_date": {"type": "string", "format": "date", "description": "Last event day, inclusive."},
             },
-            "required": ["category", "name", "since", "until"],
+            "required": ["category", "name", "start_date", "end_date"],
             "additionalProperties": False,
         },
         "outputSchema": {
@@ -488,14 +488,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "action": {"type": "string", "enum": ["created", "unchanged"]},
                 "category": {"type": "string"}, "name": {"type": "string"},
-                "since": {"type": "string"}, "until": {"type": "string"},
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "stored_end_exclusive": {"type": "string"},
                 "event": _object("Created or already-existing calendar event."),
                 "verified_event": _object("Fresh calendar event readback."),
                 "verified": {"type": "boolean"},
             },
             "required": [
-                "action", "category", "name", "since", "until",
+                "action", "category", "name", "start_date", "end_date",
                 "stored_end_exclusive", "event", "verified_event", "verified",
             ],
             "additionalProperties": False,
@@ -506,7 +506,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "update_event",
         "description": (
             "Replace the supported all-day state of one Intervals.icu calendar event "
-            "and verify it by id. since and until are inclusive user dates; the stored "
+            "and verify it by id. start_date and end_date are inclusive user dates; the stored "
             "end boundary is exclusive. Use list_events to resolve the exact event id first."
         ),
         "inputSchema": {
@@ -515,10 +515,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "event_id": {"type": ["string", "integer"], "description": "Exact Intervals.icu event id from list_events."},
                 "category": {"type": "string", "minLength": 1, "description": "Complete desired event category."},
                 "name": {"type": "string", "minLength": 1, "description": "Complete desired event name."},
-                "since": {"type": "string", "format": "date", "description": "Complete desired first day, inclusive."},
-                "until": {"type": "string", "format": "date", "description": "Complete desired last day, inclusive."},
+                "start_date": {"type": "string", "format": "date", "description": "Complete desired first day, inclusive."},
+                "end_date": {"type": "string", "format": "date", "description": "Complete desired last day, inclusive."},
             },
-            "required": ["event_id", "category", "name", "since", "until"],
+            "required": ["event_id", "category", "name", "start_date", "end_date"],
             "additionalProperties": False,
         },
         "outputSchema": {
@@ -527,14 +527,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "action": {"type": "string", "enum": ["updated"]},
                 "event_id": {"type": ["string", "integer"]},
                 "category": {"type": "string"}, "name": {"type": "string"},
-                "since": {"type": "string"}, "until": {"type": "string"},
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "stored_end_exclusive": {"type": "string"},
                 "event": _object("Updated calendar event response."),
                 "verified_event": _object("Fresh calendar event readback."),
                 "verified": {"type": "boolean"},
             },
             "required": [
-                "action", "event_id", "category", "name", "since", "until",
+                "action", "event_id", "category", "name", "start_date", "end_date",
                 "stored_end_exclusive", "event", "verified_event", "verified",
             ],
             "additionalProperties": False,
@@ -551,11 +551,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "event_id": {"type": ["string", "integer"], "description": "Exact event id returned by list_events."},
-                "since": {"type": "string", "format": "date", "description": "Inclusive lookup start date containing the event."},
-                "until": {"type": "string", "format": "date", "description": "Inclusive lookup end date containing the event."},
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive lookup start date containing the event."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive lookup end date containing the event."},
                 "confirm": {"type": ["string", "integer"], "description": "Must exactly match event_id."},
             },
-            "required": ["event_id", "since", "until", "confirm"],
+            "required": ["event_id", "start_date", "end_date", "confirm"],
             "additionalProperties": False,
         },
         "outputSchema": {
@@ -625,7 +625,7 @@ class IntervalsIcuToolService:
         *, event_id: str | int | None = None,
     ) -> dict[str, Any]:
         readback = self._event_lister(
-            oldest=event_state["since"], newest=event_state["until"],
+            oldest=event_state["start_date"], newest=event_state["end_date"],
             categories=event_state["category"], **self._auth.api_kwargs(),
         )
         expected_id = event_id if event_id is not None else saved.get("id")
@@ -653,13 +653,13 @@ class IntervalsIcuToolService:
         try:
             auth = self._auth.api_kwargs()
             if name == "list_activities":
-                since = _required_date(arguments, "since")
-                until = _required_date(arguments, "until")
-                if until < since:
-                    raise ToolFailure("until must not be before since", "invalid_arguments")
-                activities = self._activity_lister(oldest=since, newest=until, **auth)
+                start_date = _required_date(arguments, "start_date")
+                end_date = _required_date(arguments, "end_date")
+                if end_date < start_date:
+                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+                activities = self._activity_lister(oldest=start_date, newest=end_date, **auth)
                 return {
-                    "since": since.isoformat(), "until": until.isoformat(),
+                    "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     "count": len(activities), "activities": activities,
                 }
             if name == "search_activities":
@@ -793,15 +793,15 @@ class IntervalsIcuToolService:
                     "verified_activity": verified_activity, "verified": True,
                 }
             if name == "list_wellness":
-                since = _required_date(arguments, "since")
-                until = _required_date(arguments, "until")
-                if until < since:
-                    raise ToolFailure("until must not be before since", "invalid_arguments")
+                start_date = _required_date(arguments, "start_date")
+                end_date = _required_date(arguments, "end_date")
+                if end_date < start_date:
+                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
                 wellness = self._wellness_lister(
-                    oldest=since, newest=until, **auth,
+                    oldest=start_date, newest=end_date, **auth,
                 )
                 return {
-                    "since": since.isoformat(), "until": until.isoformat(),
+                    "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     "count": len(wellness), "wellness": wellness,
                 }
             if name == "update_wellness":
@@ -841,21 +841,21 @@ class IntervalsIcuToolService:
                     "overwritten_fields": overwritten_fields, "verified": True,
                 }
             if name == "list_events":
-                since = _required_date(arguments, "since")
-                until = _required_date(arguments, "until")
-                if until < since:
-                    raise ToolFailure("until must not be before since", "invalid_arguments")
+                start_date = _required_date(arguments, "start_date")
+                end_date = _required_date(arguments, "end_date")
+                if end_date < start_date:
+                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
                 events = self._event_lister(
-                    oldest=since, newest=until, categories=None, **auth,
+                    oldest=start_date, newest=end_date, categories=None, **auth,
                 )
                 return {
-                    "since": since.isoformat(), "until": until.isoformat(),
+                    "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     "count": len(events), "events": events,
                 }
             if name == "create_event":
                 event_state = _event_state(arguments)
                 existing_events = self._event_lister(
-                    oldest=event_state["since"], newest=event_state["until"],
+                    oldest=event_state["start_date"], newest=event_state["end_date"],
                     categories=event_state["category"], **auth,
                 )
                 exact = next(
@@ -870,8 +870,9 @@ class IntervalsIcuToolService:
                 verified_event = self._verified_event(event_state, saved)
                 return {
                     "action": action, "category": event_state["category"],
-                    "name": event_state["name"], "since": event_state["since"].isoformat(),
-                    "until": event_state["until"].isoformat(),
+                    "name": event_state["name"],
+                    "start_date": event_state["start_date"].isoformat(),
+                    "end_date": event_state["end_date"].isoformat(),
                     "stored_end_exclusive": event_state["exclusive_end"].isoformat(),
                     "event": saved, "verified_event": verified_event, "verified": True,
                 }
@@ -887,8 +888,8 @@ class IntervalsIcuToolService:
                 return {
                     "action": "updated", "event_id": event_id,
                     "category": event_state["category"], "name": event_state["name"],
-                    "since": event_state["since"].isoformat(),
-                    "until": event_state["until"].isoformat(),
+                    "start_date": event_state["start_date"].isoformat(),
+                    "end_date": event_state["end_date"].isoformat(),
                     "stored_end_exclusive": event_state["exclusive_end"].isoformat(),
                     "event": saved, "verified_event": verified_event, "verified": True,
                 }
@@ -898,12 +899,12 @@ class IntervalsIcuToolService:
                     raise ToolFailure("event_id must be a non-empty string or integer", "invalid_arguments")
                 if str(arguments.get("confirm")) != str(event_id):
                     raise ToolFailure("confirm must exactly match event_id", "confirmation_required")
-                since = _required_date(arguments, "since")
-                until = _required_date(arguments, "until")
-                if until < since:
-                    raise ToolFailure("until must not be before since", "invalid_arguments")
+                start_date = _required_date(arguments, "start_date")
+                end_date = _required_date(arguments, "end_date")
+                if end_date < start_date:
+                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
                 before_rows = self._event_lister(
-                    oldest=since, newest=until, categories=None, **auth,
+                    oldest=start_date, newest=end_date, categories=None, **auth,
                 )
                 before = next(
                     (event for event in before_rows if str(event.get("id")) == str(event_id)),
@@ -913,7 +914,7 @@ class IntervalsIcuToolService:
                     raise ToolFailure("Event id not found in supplied date range", "not_found")
                 deleted_response = self._event_deleter(event_id=event_id, **auth)
                 after_rows = self._event_lister(
-                    oldest=since, newest=until, categories=None, **auth,
+                    oldest=start_date, newest=end_date, categories=None, **auth,
                 )
                 verified_deleted = not any(
                     str(event.get("id")) == str(event_id) for event in after_rows
@@ -1059,21 +1060,21 @@ def _has_value(value: Any) -> bool:
 def _event_state(arguments: dict[str, Any]) -> dict[str, Any]:
     category = _required_string(arguments, "category")
     name = _required_string(arguments, "name")
-    since = _required_date(arguments, "since")
-    until = _required_date(arguments, "until")
-    if until < since:
-        raise ToolFailure("until must not be before since", "invalid_arguments")
-    exclusive_end = until + timedelta(days=1)
+    start_date = _required_date(arguments, "start_date")
+    end_date = _required_date(arguments, "end_date")
+    if end_date < start_date:
+        raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+    exclusive_end = end_date + timedelta(days=1)
     return {
         "category": category,
         "name": name,
-        "since": since,
-        "until": until,
+        "start_date": start_date,
+        "end_date": end_date,
         "exclusive_end": exclusive_end,
         "payload": {
             "category": category,
             "name": name,
-            "start_date_local": f"{since.isoformat()}T00:00:00",
+            "start_date_local": f"{start_date.isoformat()}T00:00:00",
             "end_date_local": f"{exclusive_end.isoformat()}T00:00:00",
         },
     }

@@ -11,6 +11,9 @@ Use this skill for Intervals.icu-specific source access, source semantics, and w
 
 Choose the narrowest workflow that answers the request:
 
+- Date-bounded tools use `start_date` and `end_date` for inclusive local
+  calendar dates in `YYYY-MM-DD` format. They do not accept date-times.
+
 - Today's or a bounded period's activities: call MCP `list_activities` first. Verify local date and activity identity before analysis.
 - Latest activity when no date is implied: use MCP `list_activities` over an explicit lookback range and select the newest result.
 - Text or tag search: call MCP `search_activities`; use `list_activities`

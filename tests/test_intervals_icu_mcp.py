@@ -63,11 +63,28 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             ],
         )
 
+    def test_date_bounded_tools_use_start_and_end_date_only(self):
+        tools = {tool["name"]: tool for tool in self.service().list_tools()}
+        for name in (
+            "list_activities", "list_wellness", "list_events",
+            "create_event", "update_event", "delete_event",
+        ):
+            properties = tools[name]["inputSchema"]["properties"]
+            self.assertIn("start_date", properties)
+            self.assertIn("end_date", properties)
+            self.assertNotIn("since", properties)
+            self.assertNotIn("until", properties)
+
+        with self.assertRaisesRegex(MCP.ToolFailure, "Unsupported argument: since"):
+            self.service().call_tool(
+                "list_activities", {"since": "2026-08-17", "until": "2026-08-17"}
+            )
+
     def test_list_activities_uses_inclusive_date_bounds(self):
         calls = []
         service = self.service(activity_lister=lambda **kwargs: calls.append(kwargs) or [{"id": "i1"}])
         result = service.call_tool(
-            "list_activities", {"since": "2026-08-17", "until": "2026-08-17"}
+            "list_activities", {"start_date": "2026-08-17", "end_date": "2026-08-17"}
         )
         self.assertEqual(result["count"], 1)
         self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-17")
@@ -85,8 +102,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             credential_factory=discover,
             activity_lister=lambda **kwargs: calls.append(kwargs) or [],
         )
-        service.call_tool("list_activities", {"since": "2026-08-17", "until": "2026-08-17"})
-        service.call_tool("list_activities", {"since": "2026-08-17", "until": "2026-08-17"})
+        service.call_tool("list_activities", {"start_date": "2026-08-17", "end_date": "2026-08-17"})
+        service.call_tool("list_activities", {"start_date": "2026-08-17", "end_date": "2026-08-17"})
 
         self.assertEqual(len(discoveries), 1)
         self.assertEqual([call["api_key"] for call in calls], ["cached-key", "cached-key"])
@@ -239,7 +256,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             wellness_lister=lambda **kwargs: calls.append(kwargs) or [{"id": "2026-08-17"}]
         )
         result = service.call_tool(
-            "list_wellness", {"since": "2026-08-10", "until": "2026-08-17"}
+            "list_wellness", {"start_date": "2026-08-10", "end_date": "2026-08-17"}
         )
         self.assertEqual(result["count"], 1)
         self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-10")
@@ -310,7 +327,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             event_lister=lambda **kwargs: calls.append(kwargs) or [{"id": 10, "category": "SICK"}]
         )
         result = service.call_tool(
-            "list_events", {"since": "2026-08-17", "until": "2026-08-18"}
+            "list_events", {"start_date": "2026-08-17", "end_date": "2026-08-18"}
         )
         self.assertEqual(result["count"], 1)
         self.assertIsNone(calls[0]["categories"])
@@ -329,7 +346,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         result = service.call_tool(
             "create_event",
-            {"category": "SICK", "name": "Syk", "since": "2026-08-17", "until": "2026-08-18"},
+            {"category": "SICK", "name": "Syk", "start_date": "2026-08-17", "end_date": "2026-08-18"},
         )
         self.assertEqual(writes[0]["event"]["end_date_local"], "2026-08-19T00:00:00")
         self.assertEqual(result["stored_end_exclusive"], "2026-08-19")
@@ -348,7 +365,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         result = service.call_tool(
             "create_event",
-            {"category": "SICK", "name": "Syk", "since": "2026-08-17", "until": "2026-08-17"},
+            {"category": "SICK", "name": "Syk", "start_date": "2026-08-17", "end_date": "2026-08-17"},
         )
         self.assertEqual(result["action"], "unchanged")
         self.assertEqual(writes, [])
@@ -366,7 +383,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         result = service.call_tool(
             "update_event",
-            {"event_id": 10, "category": "SICK", "name": "Syk", "since": "2026-08-17", "until": "2026-08-19"},
+            {"event_id": 10, "category": "SICK", "name": "Syk", "start_date": "2026-08-17", "end_date": "2026-08-19"},
         )
         self.assertEqual(writes[0]["updates"]["end_date_local"], "2026-08-20T00:00:00")
         self.assertEqual(result["verified_event"]["id"], 10)
@@ -381,7 +398,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         result = service.call_tool(
             "delete_event",
-            {"event_id": 10, "since": "2026-08-17", "until": "2026-08-18", "confirm": 10},
+            {"event_id": 10, "start_date": "2026-08-17", "end_date": "2026-08-18", "confirm": 10},
         )
         self.assertEqual(deletes[0]["event_id"], 10)
         self.assertTrue(result["verified_deleted"])
@@ -390,12 +407,12 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         with self.assertRaisesRegex(MCP.ToolFailure, "confirm"):
             self.service().call_tool(
                 "delete_event",
-                {"event_id": 10, "since": "2026-08-17", "until": "2026-08-18", "confirm": 11},
+                {"event_id": 10, "start_date": "2026-08-17", "end_date": "2026-08-18", "confirm": 11},
             )
 
     def test_rejects_bad_dates_and_unknown_arguments(self):
         with self.assertRaisesRegex(MCP.ToolFailure, "YYYY-MM-DD"):
-            self.service().call_tool("list_activities", {"since": "bad", "until": "2026-08-17"})
+            self.service().call_tool("list_activities", {"start_date": "bad", "end_date": "2026-08-17"})
         with self.assertRaisesRegex(MCP.ToolFailure, "Unsupported argument"):
             self.service().call_tool("get_activity", {"activity_id": "i1", "extra": True})
 
