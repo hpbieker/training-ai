@@ -274,8 +274,54 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(MCP.ToolFailure, "Unsupported activity field"):
             service.call_tool(
-                "update_activity", {"activity_id": "i1", "updates": {"description": "x"}}
+                "update_activity", {"activity_id": "i1", "updates": {"max_heartrate": 180}}
             )
+
+    def test_update_activity_accepts_supported_metadata_and_ignore_fields(self):
+        updates = {
+            "description": "Corrected metadata",
+            "tags": ["quality", "indoor"],
+            "sub_type": "RACE",
+            "icu_color": "#dd0447",
+            "carbs_ingested": 90,
+            "kg_lifted": 1250.5,
+            "icu_ignore_time": False,
+            "icu_ignore_hr": True,
+            "icu_ignore_power": False,
+            "ignore_velocity": True,
+            "ignore_pace": False,
+        }
+        reads = [{"id": "i1"}, {"id": "i1", **updates}]
+        writes = []
+        service = self.service(
+            activity_getter=lambda **kwargs: reads.pop(0),
+            activity_updater=lambda **kwargs: writes.append(kwargs) or {},
+        )
+        result = service.call_tool(
+            "update_activity", {"activity_id": "i1", "updates": updates}
+        )
+        self.assertEqual(writes[0]["updates"], updates)
+        self.assertTrue(result["verified"])
+
+    def test_update_activity_validates_new_field_types(self):
+        invalid_updates = (
+            ({"description": 3}, "description"),
+            ({"tags": ["same", "same"]}, "tags"),
+            ({"tags": [""]}, "tags"),
+            ({"sub_type": "TRAINING"}, "sub_type"),
+            ({"icu_color": ""}, "icu_color"),
+            ({"carbs_ingested": 1.5}, "carbs_ingested"),
+            ({"carbs_ingested": -1}, "carbs_ingested"),
+            ({"kg_lifted": -0.1}, "kg_lifted"),
+            ({"icu_ignore_hr": 1}, "icu_ignore_hr"),
+        )
+        for updates, field in invalid_updates:
+            with self.subTest(updates=updates), self.assertRaisesRegex(
+                MCP.ToolFailure, field
+            ):
+                self.service().call_tool(
+                    "update_activity", {"activity_id": "i1", "updates": updates}
+                )
 
     def test_update_activity_accepts_numeric_feel_scale_only(self):
         reads = [

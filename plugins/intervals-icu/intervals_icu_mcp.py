@@ -50,6 +50,9 @@ def _object(description: str) -> dict[str, object]:
 
 _ACTIVITY_LIST_INCLUDE_FIELDS = (
     "moving_time", "trainer", "strava_id", "device_name", "gear",
+    "description", "tags", "sub_type", "icu_color", "carbs_ingested", "kg_lifted",
+    "icu_ignore_time",
+    "icu_ignore_hr", "icu_ignore_power", "ignore_velocity", "ignore_pace",
     "icu_training_load", "icu_intensity", "icu_average_watts",
     "icu_weighted_avg_watts", "average_heartrate", "max_heartrate",
     "average_cadence", "average_temp", "decoupling", "icu_rpe", "feel",
@@ -303,6 +306,24 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": "object", "minProperties": 1, "additionalProperties": False,
                     "properties": {
                         "name": {"type": "string", "minLength": 1},
+                        "description": {"type": ["string", "null"]},
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string", "minLength": 1},
+                            "uniqueItems": True,
+                        },
+                        "sub_type": {
+                            "type": "string",
+                            "enum": ["NONE", "COMMUTE", "WARMUP", "COOLDOWN", "RACE"],
+                        },
+                        "icu_color": {"type": ["string", "null"]},
+                        "carbs_ingested": {"type": "integer", "minimum": 0},
+                        "kg_lifted": {"type": "number", "minimum": 0},
+                        "icu_ignore_time": {"type": "boolean"},
+                        "icu_ignore_hr": {"type": "boolean"},
+                        "icu_ignore_power": {"type": "boolean"},
+                        "ignore_velocity": {"type": "boolean"},
+                        "ignore_pace": {"type": "boolean"},
                         "feel": {
                             "type": ["integer", "null"],
                             "minimum": 1,
@@ -1047,6 +1068,7 @@ _ACTIVITY_SUMMARY_FIELDS = (
     "external_id", "strava_id", "device_name", "gear", "icu_ignore_time",
     "icu_ignore_hr", "icu_ignore_power", "ignore_velocity", "ignore_pace",
     "ignore_parts", "icu_average_watts", "icu_weighted_avg_watts",
+    "tags", "sub_type", "icu_color", "kg_lifted",
     "average_heartrate", "max_heartrate", "average_cadence", "average_temp",
     "icu_intensity", "icu_training_load", "power_load", "hr_load", "trimp",
     "icu_joules", "calories", "carbs_used", "carbs_ingested", "decoupling",
@@ -1103,7 +1125,17 @@ def _required_date(arguments: dict[str, Any], key: str) -> date:
 
 
 WELLNESS_FIELDS = {"soreness", "fatigue", "motivation", "comments"}
-ACTIVITY_FIELDS = {"name", "feel", "icu_rpe"}
+ACTIVITY_FIELDS = {
+    "name", "description", "tags", "sub_type", "icu_color", "carbs_ingested",
+    "kg_lifted", "feel", "icu_rpe",
+    "icu_ignore_time", "icu_ignore_hr", "icu_ignore_power", "ignore_velocity",
+    "ignore_pace",
+}
+ACTIVITY_BOOLEAN_FIELDS = {
+    "icu_ignore_time", "icu_ignore_hr", "icu_ignore_power", "ignore_velocity",
+    "ignore_pace",
+}
+ACTIVITY_SUB_TYPES = {"NONE", "COMMUTE", "WARMUP", "COOLDOWN", "RACE"}
 
 
 def _activity_updates(value: Any) -> dict[str, Any]:
@@ -1116,6 +1148,56 @@ def _activity_updates(value: Any) -> dict[str, Any]:
     name = updates.get("name")
     if "name" in updates and (not isinstance(name, str) or not name.strip()):
         raise ToolFailure("updates.name must be a non-empty string", "invalid_arguments")
+    description = updates.get("description")
+    if (
+        "description" in updates
+        and description is not None
+        and not isinstance(description, str)
+    ):
+        raise ToolFailure("updates.description must be a string or null", "invalid_arguments")
+    tags = updates.get("tags")
+    if "tags" in updates and (
+        not isinstance(tags, list)
+        or any(not isinstance(tag, str) or not tag.strip() for tag in tags)
+        or len(tags) != len(set(tags))
+    ):
+        raise ToolFailure(
+            "updates.tags must be an array of unique non-empty strings", "invalid_arguments"
+        )
+    sub_type = updates.get("sub_type")
+    if "sub_type" in updates and sub_type not in ACTIVITY_SUB_TYPES:
+        raise ToolFailure(
+            "updates.sub_type must be NONE, COMMUTE, WARMUP, COOLDOWN, or RACE",
+            "invalid_arguments",
+        )
+    color = updates.get("icu_color")
+    if "icu_color" in updates and color is not None and (
+        not isinstance(color, str) or not color.strip()
+    ):
+        raise ToolFailure(
+            "updates.icu_color must be a non-empty string or null", "invalid_arguments"
+        )
+    carbs_ingested = updates.get("carbs_ingested")
+    if "carbs_ingested" in updates and (
+        isinstance(carbs_ingested, bool)
+        or not isinstance(carbs_ingested, int)
+        or carbs_ingested < 0
+    ):
+        raise ToolFailure(
+            "updates.carbs_ingested must be a non-negative integer", "invalid_arguments"
+        )
+    kg_lifted = updates.get("kg_lifted")
+    if "kg_lifted" in updates and (
+        isinstance(kg_lifted, bool)
+        or not isinstance(kg_lifted, (int, float))
+        or kg_lifted < 0
+    ):
+        raise ToolFailure(
+            "updates.kg_lifted must be a non-negative number", "invalid_arguments"
+        )
+    for field in ACTIVITY_BOOLEAN_FIELDS:
+        if field in updates and not isinstance(updates[field], bool):
+            raise ToolFailure(f"updates.{field} must be a boolean", "invalid_arguments")
     feel = updates.get("feel")
     if "feel" in updates and feel is not None and (
         isinstance(feel, bool) or not isinstance(feel, int) or not 1 <= feel <= 5

@@ -11,13 +11,17 @@ Read this file before any Intervals.icu mutation.
   explicit confirmation. Use `confirm_overwrite=true` only after that
   confirmation.
 
-## Activity Metadata And Subjective Fields
+## Activity Metadata, Ignore Flags, And Subjective Fields
 
-- Use MCP `update_activity` for renames and subjective fields. Its closed patch
-  supports `name`, `feel`, and `icu_rpe`; only supplied fields change. Write
-  `icu_rpe`; Intervals.icu derives `session_rpe` and rejects direct
-  `session_rpe` writes. Require `confirm_overwrite=true` for an existing
-  different value and verify by fresh readback.
+- Use MCP `update_activity` for names, descriptions, tags, subtype, color,
+  whole-activity ignore flags, and subjective fields. Its closed patch supports
+  `name`, `description`, `tags`, `sub_type`, `icu_color`, `carbs_ingested`,
+  `kg_lifted`, `icu_ignore_time`, `icu_ignore_hr`, `icu_ignore_power`,
+  `ignore_velocity`, `ignore_pace`, `feel`, and `icu_rpe`; only supplied fields
+  change. Write `icu_rpe`; Intervals.icu
+  derives `session_rpe` and rejects direct `session_rpe` writes. Require
+  `confirm_overwrite=true` for an existing different value and verify by fresh
+  readback.
 
 ## Upload, Delete, And Repair
 

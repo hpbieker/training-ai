@@ -39,7 +39,8 @@ Choose the narrowest workflow that answers the request:
   `get_activity_streams` saves selected streams to a private temporary file;
   `get_activity_file` saves the original upload or reconstructed FIT file to a
   private temporary file.
-- `update_activity` patches supported metadata and requires
+- `update_activity` patches supported metadata, tags, subtype, color, fueling,
+  strength load, and whole-activity ignore flags, and requires
   `confirm_overwrite=true` before replacing an existing non-empty value;
   `delete_activity` requires `confirm` to equal the exact activity id;
   `upload_activity` uploads one local activity file. Every completed write is
