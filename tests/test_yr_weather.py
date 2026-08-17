@@ -1,4 +1,3 @@
-from datetime import datetime
 from pathlib import Path
 import sys
 import unittest
@@ -7,10 +6,9 @@ from urllib.error import URLError
 from zoneinfo import ZoneInfo
 
 
-YR_SCRIPTS = Path(__file__).resolve().parents[1] / "plugins" / "yr" / "scripts"
-sys.path.insert(0, str(YR_SCRIPTS))
+YR_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "yr"
+sys.path.insert(0, str(YR_ROOT))
 
-from yr_cli import parse_local_datetime
 from yr_weather import compact_hourly_forecast, fetch_locationforecast
 
 
@@ -43,15 +41,6 @@ class YrWeatherTests(unittest.TestCase):
         self.assertEqual(rows[0]["precipitation_amount_next_1h"], 0.2)
         self.assertEqual(rows[0]["symbol_code_next_1h"], "lightrain")
         self.assertIsNone(rows[0]["precipitation_amount_next_6h"])
-
-    def test_naive_filter_bounds_use_selected_timezone(self):
-        timezone = ZoneInfo("Europe/Lisbon")
-        parsed = parse_local_datetime(
-            "2026-07-25T08:00",
-            local_timezone=timezone,
-        )
-
-        self.assertEqual(parsed, datetime(2026, 7, 25, 8, 0, tzinfo=timezone))
 
     def test_library_rejects_invalid_coordinates_before_network_access(self):
         with self.assertRaisesRegex(ValueError, "latitude"):

@@ -1,4 +1,6 @@
-# Locationforecast Semantics
+# Forecast Semantics
+
+The source is MET Norway Locationforecast 2.0 compact.
 
 ## Interpreting Fields
 
@@ -21,6 +23,9 @@
 - Keep source timestamps in UTC; use the forecast location's explicit timezone
   for filtering and presentation.
 - Model route weather as separate relevant time/place point forecasts.
+- Route samples may be spaced every 15 minutes to follow changing geography,
+  but this does not increase MET Norway's forecast time resolution. Preserve
+  both the requested local time and the returned forecast timestamp.
 - Long-range periods may lack `next_1_hours`; do not relabel a 6- or 12-hour
   precipitation total as hourly rain.
 - The caller owns caching and should respect MET Norway's response headers.

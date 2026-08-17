@@ -5,28 +5,25 @@ description: Use when working with Yr/MET Norway Locationforecast data, weather 
 
 # Yr
 
-## Network Execution
-
-Live Yr/MET Norway forecast reads require external network access. Run live
-`yr_cli.py` commands with escalated network permission on the first attempt; do
-not first try them in a network-isolated sandbox. Offline help and local
-forecast-artifact inspection do not require escalation.
-
 ## Start Here
 
-```bash
-python3 -B plugins/yr/scripts/yr_cli.py
-python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000 --timezone Europe/Oslo --hourly --from-local YYYY-MM-DDT08:00 --to-local YYYY-MM-DDT20:00
-```
+Use the `get_forecast` MCP tool for all live Yr/MET Norway access. Supply
+explicit coordinates, the forecast location's IANA timezone, and `from_local`.
+Omit `to_local` for one forecast at or immediately after that time; provide it
+for an inclusive local-time window.
 
-The CLI prints live Locationforecast JSON. Use `--hourly` with the forecast
-location's IANA timezone for compact time-window rows. Use explicit coordinates
-for each materially different route area rather than treating one point as a
-whole-route forecast.
+Use `get_forecasts` when several already-selected points need forecasts at
+different local times, such as estimated arrivals along a route. Provide one
+shared timezone and one to 25 requests with unique IDs. This accommodates a
+six-hour route sampled at the start and every 15 minutes. The caller still owns
+point selection, arrival-time estimates, route meaning, and aggregation.
+
+Pass normalized MCP output to repo helpers through their source-input
+interfaces; helpers must not import or invoke the Yr plugin directly.
 
 ## Source Semantics
 
-Read [references/locationforecast.md](references/locationforecast.md) before
+Read [references/forecast.md](references/forecast.md) before
 interpreting fields, units, periods, uncertainty, or route limitations.
 
 ## Boundaries

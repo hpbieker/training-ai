@@ -1,11 +1,12 @@
 {
   "name": "yr",
-  "version": "0.1.0+codex.20260722151803",
+  "version": "0.2.0+codex.20260817",
   "description": "Yr/MET Norway source semantics and live forecast access.",
   "author": {
     "name": "Hans Petter Bieker"
   },
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Yr",
     "shortDescription": "Fetch and interpret Yr/MET Norway forecasts.",
@@ -13,15 +14,14 @@
     "developerName": "Hans Petter Bieker",
     "category": "Productivity",
     "capabilities": [
-      "Data Analysis",
-      "Command Line"
+      "Data Analysis"
     ],
     "composerIcon": "./assets/yr-icon.png",
     "logo": "./assets/yr-icon.png",
     "defaultPrompt": [
       "Fetch a weather forecast for a place.",
       "Fetch point forecasts for the times and places along a planned route.",
-      "Help me interpret a Yr Locationforecast payload."
+      "Help me interpret a Yr forecast payload."
     ]
   }
 }

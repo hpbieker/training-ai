@@ -61,7 +61,6 @@ from recommend_training import (
     split_endurance_structure,
     split_session_info,
     split_session_guidance,
-    weather_command,
     xert_readiness_command,
 )
 from route_recommendations import score_route, surface_classification
@@ -501,19 +500,6 @@ class WeatherCommandTests(unittest.TestCase):
                 expected_timezone=lisbon,
                 argument_name="test availability",
             )
-
-    def test_passes_explicit_location_timezone_to_yr(self):
-        command = weather_command(
-            None,
-            planned_at=datetime.fromisoformat("2026-07-25T08:00:00+01:00"),
-            hours=4,
-            timezone_name="Europe/Lisbon",
-            lat=37.125,
-            lon=-8.5833,
-        )
-
-        self.assertIn("--timezone", command)
-        self.assertEqual(command[command.index("--timezone") + 1], "Europe/Lisbon")
 
     def test_future_recommendation_fetches_latest_real_garmin_day(self):
         now = datetime.fromisoformat("2026-07-27T12:38:00+02:00")

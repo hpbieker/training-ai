@@ -40,19 +40,12 @@ checks or recommendations.
 
 ## Use Yr / MET Norway
 
-Yr/MET Norway forecast access, source semantics and CLI examples live in the
-local plugin. Start with `plugins/yr/skills/yr/SKILL.md`.
+Yr/MET Norway forecast access and source semantics live in the local plugin.
+Start with `plugins/yr/skills/yr/SKILL.md` and use its `get_forecast` or bounded
+batch `get_forecasts` MCP tool for live forecast reads. Pass normalized MCP
+output to repo helpers through their source-input arguments.
 
-```bash
-python3 -B plugins/yr/scripts/yr_cli.py
-python3 -B plugins/yr/scripts/yr_cli.py <known-location>
-python3 -B plugins/yr/scripts/yr_cli.py --lat 60.0000 --lon 10.0000
-```
-
-Forecasts are fetched live and printed to stdout. The Yr plugin does not write
-local weather files.
-
-The API requires a non-generic User-Agent. The plugin client sets one by
+The API requires a non-generic User-Agent. The MCP's source client sets one by
 default.
 
 Source documentation:

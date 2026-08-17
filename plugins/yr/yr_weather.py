@@ -1,8 +1,4 @@
-"""Utilities for downloading weather forecasts from MET Norway / Yr.
-
-Yr uses MET Norway's public Locationforecast API. The API requires a
-non-generic User-Agent with contact information.
-"""
+"""Download and normalize forecasts from MET Norway Locationforecast."""
 
 from __future__ import annotations
 
@@ -15,7 +11,7 @@ from urllib.request import Request, urlopen
 
 
 MET_LOCATIONFORECAST_URL = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
-DEFAULT_USER_AGENT = "codex-yr-plugin/0.1 github.com/hpbieker"
+DEFAULT_USER_AGENT = "codex-yr-plugin/0.2 github.com/hpbieker"
 
 
 def fetch_locationforecast(
@@ -25,7 +21,7 @@ def fetch_locationforecast(
     altitude: int | None = None,
     user_agent: str = DEFAULT_USER_AGENT,
 ) -> dict[str, Any]:
-    """Fetch a compact Locationforecast from MET Norway / Yr."""
+    """Fetch a compact Locationforecast from MET Norway."""
 
     if not -90 <= latitude <= 90:
         raise ValueError("latitude must be between -90 and 90")
@@ -58,7 +54,7 @@ def fetch_locationforecast(
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RuntimeError("MET/Yr returned an invalid JSON response") from exc
     if not isinstance(payload, dict) or "properties" not in payload:
-        raise TypeError("Expected MET/Yr locationforecast endpoint to return GeoJSON")
+        raise TypeError("Expected MET/Yr Locationforecast to return GeoJSON")
     return payload
 
 

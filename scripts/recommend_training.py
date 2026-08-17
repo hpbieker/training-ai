@@ -43,8 +43,6 @@ from route_recommendations import parse_date, recommend_routes
 
 
 DEFAULT_OUTPUT_DIR = Path("outputs/recommendations")
-SLEMDAL_LAT = 59.9556
-SLEMDAL_LON = 10.6875
 REFRESH_GROUPS = frozenset({"garmin", "xert", "intervals", "weather"})
 SOURCE_REFRESH_POLICY = {
     "garmin": ("garmin", 15),
@@ -732,25 +730,16 @@ def main() -> None:
         write_json(source_files["xert_route_maps"], route_packet.get("xert_route_maps") or {})
     first_route = first_recommendation(route_packet)
 
-    weather_sources = {
+    weather_sources_requiring_mcp = {
         key for key in ("weather_home", "weather_route")
         if source_refresh.get(key, {}).get("refresh")
         and (key != "weather_route" or first_route is not None)
     }
-    if weather_sources:
-        home_weather_lat, home_weather_lon = home_weather_coordinates(
-            start_anchor_lat=args.start_anchor_lat,
-            start_anchor_lng=args.start_anchor_lng,
-        )
-        fetch_weather_inputs(
-            planned_at=planned_at,
-            local_timezone=args.local_timezone,
-            outdoor_available=outdoor_available,
-            first_route=first_route,
-            home_weather_lat=home_weather_lat,
-            home_weather_lon=home_weather_lon,
-            source_files=source_files,
-            sources=weather_sources,
+    if weather_sources_requiring_mcp:
+        raise SystemExit(
+            "Yr live access is MCP-only. Fetch get_forecast for: "
+            + ", ".join(sorted(weather_sources_requiring_mcp))
+            + "; then pass each normalized JSON file through --source-overrides-json."
         )
 
     ensure_source_files_exist(
@@ -1703,47 +1692,6 @@ def garmin_source_day(day: str, *, now: datetime) -> str:
     return min(requested, now.date()).isoformat()
 
 
-def fetch_weather_inputs(
-    *,
-    planned_at: datetime,
-    local_timezone: str,
-    outdoor_available: bool,
-    first_route: dict[str, Any] | None,
-    home_weather_lat: float,
-    home_weather_lon: float,
-    source_files: dict[str, Path],
-    sources: set[str],
-) -> None:
-    """Fetch current-location and route weather concurrently once the route is known."""
-
-    available_steps = {
-        "weather_home": lambda: run_json_to_file(
-            weather_command(
-                None,
-                lat=home_weather_lat,
-                lon=home_weather_lon,
-                planned_at=planned_at,
-                hours=4,
-                timezone_name=local_timezone,
-            ),
-            source_files["weather_home"],
-        )
-    }
-    if outdoor_available:
-        available_steps["weather_route"] = lambda: run_json_to_file(
-            weather_command(
-                None,
-                lat=route_weather_lat(first_route, fallback=home_weather_lat),
-                lon=route_weather_lon(first_route, fallback=home_weather_lon),
-                planned_at=planned_at,
-                hours=4,
-                timezone_name=local_timezone,
-            ),
-            source_files["weather_route"],
-        )
-    run_parallel_steps({key: available_steps[key] for key in sources})
-
-
 def run_parallel_steps(steps: dict[str, Any]) -> None:
     if not steps:
         return
@@ -2179,50 +2127,6 @@ def xert_activity_start_local(
     return parsed.astimezone(local_timezone)
 
 
-def home_weather_coordinates(
-    *,
-    start_anchor_lat: float | None,
-    start_anchor_lng: float | None,
-) -> tuple[float, float]:
-    if start_anchor_lat is not None and start_anchor_lng is not None:
-        return start_anchor_lat, start_anchor_lng
-    return SLEMDAL_LAT, SLEMDAL_LON
-
-
-def weather_command(
-    location: str | None,
-    *,
-    planned_at: datetime,
-    hours: int,
-    timezone_name: str,
-    lat: float | None = None,
-    lon: float | None = None,
-) -> list[str]:
-    start = planned_at - timedelta(hours=1)
-    end = planned_at + timedelta(hours=hours)
-    command = [
-        sys.executable,
-        "-B",
-        "plugins/yr/scripts/yr_cli.py",
-    ]
-    if location:
-        command.append(location)
-    else:
-        command.extend(["--lat", f"{lat:.4f}", "--lon", f"{lon:.4f}"])
-    command.extend(
-        [
-            "--timezone",
-            timezone_name,
-            "--hourly",
-            "--from-local",
-            start.isoformat(timespec="seconds"),
-            "--to-local",
-            end.isoformat(timespec="seconds"),
-        ]
-    )
-    return command
-
-
 def parse_local_datetime(raw: str, *, local_timezone: Any) -> datetime:
     parsed = datetime.fromisoformat(raw)
     if parsed.tzinfo is None:
@@ -2250,24 +2154,6 @@ def first_recommendation(route_packet: dict[str, Any]) -> dict[str, Any] | None:
         if isinstance(first, dict):
             return first
     return None
-
-
-def route_weather_lat(route: dict[str, Any] | None, *, fallback: float) -> float:
-    bbox = (route or {}).get("bbox") or {}
-    min_lat = bbox.get("min_lat")
-    max_lat = bbox.get("max_lat")
-    if isinstance(min_lat, (int, float)) and isinstance(max_lat, (int, float)):
-        return (min_lat + max_lat) / 2
-    return fallback
-
-
-def route_weather_lon(route: dict[str, Any] | None, *, fallback: float) -> float:
-    bbox = (route or {}).get("bbox") or {}
-    min_lon = bbox.get("min_lng")
-    max_lon = bbox.get("max_lng")
-    if isinstance(min_lon, (int, float)) and isinstance(max_lon, (int, float)):
-        return (min_lon + max_lon) / 2
-    return fallback
 
 
 def load_json_if_exists(path: Path) -> Any:
