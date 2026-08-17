@@ -19,12 +19,16 @@ from garmin_connect_api import (  # noqa: E402
     DAILY_SPEC_CHOICES,
     compact_day_payload,
     compact_recent_payload,
+    delete_course,
     fetch_activity,
+    fetch_course,
+    fetch_courses,
     fetch_day,
     fetch_recent_days,
     garmin_activity_search,
     local_now,
     resolve_gccli,
+    upload_course,
 )
 
 
@@ -33,9 +37,13 @@ ALL_TOOL_NAMES = (
     "list_health_days",
     "list_activities",
     "get_activity",
+    "list_courses",
+    "get_course",
+    "create_course",
+    "delete_course",
 )
 
-ANNOTATIONS = {
+ANNOTATIONS: dict[str, dict[str, object]] = {
     name: {
         "title": " ".join(part.capitalize() for part in name.split("_")),
         "readOnlyHint": True,
@@ -45,6 +53,12 @@ ANNOTATIONS = {
     }
     for name in ALL_TOOL_NAMES
 }
+ANNOTATIONS["create_course"].update(readOnlyHint=False, idempotentHint=False)
+ANNOTATIONS["delete_course"].update(
+    readOnlyHint=False,
+    destructiveHint=True,
+    idempotentHint=False,
+)
 
 
 def _object(description: str) -> dict[str, object]:
@@ -137,7 +151,6 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "description": (
             "Get normalized Garmin model context for one activity: Training Effect, "
             "load, Stamina, and Performance Condition. Accepts a Garmin activity ID, "
-            "an Intervals.icu activity ID, or a saved Intervals activity directory. "
             "Raw Garmin chart samples are used internally but are not returned."
         ),
         "inputSchema": {
@@ -150,6 +163,71 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "outputSchema": _object("Normalized Garmin activity model summary."),
         "annotations": ANNOTATIONS["get_activity"],
+    },
+    "list_courses": {
+        "name": "list_courses",
+        "description": (
+            "List the Garmin Connect user's saved courses (planned routes), including "
+            "IDs, names, sport types, distance, elevation, start coordinates, and source."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": _object("Garmin saved-course list."),
+        "annotations": ANNOTATIONS["list_courses"],
+    },
+    "get_course": {
+        "name": "get_course",
+        "description": (
+            "Get one saved Garmin course with its full geometry and named course points. "
+            "Use this immediately before copying or deleting a course."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"course_id": {"type": "string", "minLength": 1}},
+            "required": ["course_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": _object("Full Garmin saved-course payload."),
+        "annotations": ANNOTATIONS["get_course"],
+    },
+    "create_course": {
+        "name": "create_course",
+        "description": (
+            "Create a Garmin course from a raw Garmin course object or the wrapper "
+            "returned by get_course. Preserves accepted geometry and course points, "
+            "then reads the new course back and reports verification mismatches. "
+            "Use a distinct name for a copy unless explicitly requested otherwise."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "course": _object("Raw Garmin course or get_course wrapper."),
+                "name": {"type": "string", "minLength": 1},
+                "privacy": {"type": "integer", "enum": [1, 2, 4], "default": 2},
+            },
+            "required": ["course"],
+            "additionalProperties": False,
+        },
+        "outputSchema": _object("Created Garmin course and read-back verification."),
+        "annotations": ANNOTATIONS["create_course"],
+    },
+    "delete_course": {
+        "name": "delete_course",
+        "description": (
+            "Permanently delete exactly one Garmin course. Resolve it with get_course "
+            "immediately beforehand and pass the identical ID as confirm_course_id. "
+            "Success requires a post-delete course-list verification."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "course_id": {"type": "string", "minLength": 1},
+                "confirm_course_id": {"type": "string", "minLength": 1},
+            },
+            "required": ["course_id", "confirm_course_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": _object("Verified Garmin course-deletion result."),
+        "annotations": ANNOTATIONS["delete_course"],
     },
 }
 
@@ -223,13 +301,43 @@ class GarminConnectToolService:
                 "count": len(activities),
                 "activities": activities,
             }
-        activity = str(arguments["activity_id"]).strip()
-        if not activity:
-            raise ValueError("activity_id must not be empty")
-        payload = fetch_activity(activity, gccli=gccli, include_details=True)
-        payload.pop("summary", None)
-        payload.pop("details", None)
-        return payload
+        if name == "get_activity":
+            activity = _required_id(arguments, "activity_id")
+            payload = fetch_activity(activity, gccli=gccli, include_details=True)
+            payload.pop("summary", None)
+            payload.pop("details", None)
+            return payload
+        if name == "list_courses":
+            return fetch_courses(gccli=gccli)
+        if name == "get_course":
+            return fetch_course(_required_id(arguments, "course_id"), gccli=gccli)
+        if name == "create_course":
+            course = arguments["course"]
+            if not isinstance(course, dict):
+                raise TypeError("course must be an object")
+            name_override = arguments.get("name")
+            if name_override is not None and (
+                not isinstance(name_override, str) or not name_override.strip()
+            ):
+                raise ValueError("name must be a non-empty string when supplied")
+            return upload_course(
+                course,
+                gccli=gccli,
+                course_name=name_override.strip() if name_override else None,
+                course_privacy=arguments.get("privacy", 2),
+            )
+        course_id = _required_id(arguments, "course_id")
+        confirmed_course_id = _required_id(arguments, "confirm_course_id")
+        if confirmed_course_id != course_id:
+            raise ToolFailure(
+                "confirm_course_id must exactly match course_id",
+                "confirmation_required",
+            )
+        return delete_course(
+            course_id,
+            gccli=gccli,
+            confirmed_course_id=confirmed_course_id,
+        )
 
 
 def _iso_date(value: Any, field: str) -> str:
@@ -239,6 +347,13 @@ def _iso_date(value: Any, field: str) -> str:
         return date.fromisoformat(value).isoformat()
     except ValueError as exc:
         raise ValueError(f"{field} must be a valid YYYY-MM-DD date") from exc
+
+
+def _required_id(arguments: dict[str, Any], field: str) -> str:
+    value = arguments[field]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{field} must be a non-empty string")
+    return value.strip()
 
 
 def _sources(arguments: dict[str, Any]) -> list[str] | None:
@@ -261,9 +376,10 @@ def create_sdk_server(service: GarminConnectToolService) -> Any:
         "garmin-connect",
         version="0.1.0",
         instructions=(
-            "Read compact Garmin Connect health/readiness days and activity model "
-            "context. Garmin signals are timestamped vendor estimates; the caller "
-            "owns persistence, cross-source composition, and training decisions."
+            "Read compact Garmin Connect health/readiness days, activity model "
+            "context, and saved courses; create and permanently delete courses with "
+            "read-back verification. Garmin signals are timestamped vendor estimates; "
+            "the caller owns persistence, cross-source composition, and training decisions."
         ),
     )
 

@@ -7,18 +7,15 @@ description: Use when working with Garmin Connect live health, readiness, Body B
 
 Use this skill for Garmin Connect access, Garmin-specific field interpretation,
 sync/freshness behavior, and tightly scoped course writes. The plugin uses local
-`gccli` for authentication and its primary transport boundary. Health and
-activity reads are exposed through MCP; the remaining CLI is only for course
-operations and authentication status.
+`gccli` for authentication and its primary transport boundary. Health, activity,
+and course operations are exposed through MCP.
 
 ## Network Execution
 
 Live Garmin Connect reads and writes require external network access. Use the
-Garmin Connect MCP tools for health and activity reads. Run the remaining live
-`garmin_connect_cli.py` course/status commands with escalated network permission
-on the first attempt; do not first try them in a network-isolated sandbox.
-Offline help, local artifact inspection, and cache-only workflows do not require
-escalation.
+Garmin Connect MCP tools for health, activity, and course operations. Offline
+help, local artifact inspection, and cache-only workflows do not require
+external access.
 
 ## Choose The Narrowest Command
 
@@ -27,16 +24,10 @@ get_health_day(date=<YYYY-MM-DD>)
 list_health_days(until=<YYYY-MM-DD>, days=7, sources=["hrv"])
 list_activities(since=<YYYY-MM-DD>, until=<YYYY-MM-DD>)
 get_activity(activity_id=<garmin-id>)
-```
-
-Course and authentication operations remain CLI-only:
-
-```bash
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py status
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py courses
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course <course-id>
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-upload <course.json> --name "<new name>"
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-delete <course-id> --confirm-course-id <course-id>
+list_courses()
+get_course(course_id=<course-id>)
+create_course(course=<get-course-result>, name=<new-name>)
+delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
 ```
 
 - Use `get_health_day` for normal same-day readiness input. Its stable compact
@@ -63,20 +54,20 @@ python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-delete <c
   drawdown without returning the raw chart series. It may therefore fetch
   activity chart details internally even though the MCP result omits them
   from its output.
-- Use `courses` to list saved Garmin Connect courses (routes), including course
+- Use `list_courses` to list saved Garmin Connect courses (routes), including course
   IDs, names, sport types, distances, elevation, start coordinates, and source
   applications.
-- Use `course <course-id>` to fetch one saved course with its full Garmin
+- Use `get_course` to fetch one saved course with its full Garmin
   payload. The `course.geoPoints` array contains the route geometry and normally
   includes latitude, longitude, elevation, cumulative distance, and timestamp.
   `coursePoints` contains Garmin course/navigation points when the source route
   provides them.
-- Use `course-upload` for a metadata-preserving course copy. Its input may be a
-  raw Garmin course object or the wrapper emitted by `course`. It posts Garmin's
+- Use `create_course` for a metadata-preserving course copy. Its input may be a
+  raw Garmin course object or the wrapper emitted by `get_course`. It posts Garmin's
   accepted save fields directly, then reads the new course back and reports
   geometry and named-point verification. Prefer this over GPX import when route
   points or named course points must survive.
-- Use `course-delete` only for the exact course the user authorized. The command
+- Use `delete_course` only for the exact course the user authorized. The tool
   requires the same ID twice, reads the target before deletion, and verifies
   that the ID disappeared from the course list afterward.
 - Courses are planned routes and must not be described or analysed as completed
@@ -88,12 +79,10 @@ python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-delete <c
 
 The MCP tools return structured content and do not own persistence. When a repo
 helper needs Garmin data, persist the normalized MCP result explicitly and pass
-that file as a source override. The remaining CLI emits JSON and does not save
-files; redirect a full course response to an explicit temporary file:
+that file as a source override:
 
 ```bash
 python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD> --local-timezone <IANA-timezone> --garmin-json /tmp/garmin-day.json
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course <course-id> > /tmp/garmin-course.json
 ```
 
 Authentication is managed outside the repo with

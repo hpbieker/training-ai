@@ -63,12 +63,6 @@ def resolve_gccli() -> str:
     raise SystemExit("gccli not found. Install it and run `gccli auth login` first.")
 
 
-def show_auth_status(*, gccli: str) -> None:
-    """Print gccli's Garmin auth status."""
-
-    subprocess.run([gccli, "auth", "status"], check=True)
-
-
 def fetch_day(
     day: str,
     *,
@@ -489,7 +483,7 @@ def fetch_course(course_id: str, *, gccli: str) -> dict[str, Any]:
 
 
 def upload_course(
-    course_json: str,
+    course_json: str | dict[str, Any],
     *,
     gccli: str,
     course_name: str | None = None,
@@ -497,7 +491,11 @@ def upload_course(
 ) -> dict[str, Any]:
     """Create a Garmin course directly from saved course JSON."""
 
-    payload = load_course_for_upload(Path(course_json))
+    payload = (
+        prepare_course_for_upload(course_json)
+        if isinstance(course_json, dict)
+        else load_course_for_upload(Path(course_json))
+    )
     if course_name:
         payload["courseName"] = course_name
     payload["coursePrivacy"] = course_privacy
@@ -564,16 +562,22 @@ def delete_course(
 
 
 def load_course_for_upload(path: Path) -> dict[str, Any]:
-    """Load and sanitize a raw course or the wrapper emitted by `course`."""
+    """Load and sanitize a raw course or the wrapper emitted by get_course."""
 
     try:
         source = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"Could not read Garmin course JSON from {path}: {exc}") from exc
-    if isinstance(source, dict) and isinstance(source.get("course"), dict):
-        source = source["course"]
     if not isinstance(source, dict):
         raise SystemExit(f"Expected a Garmin course JSON object in {path}.")
+    return prepare_course_for_upload(source)
+
+
+def prepare_course_for_upload(source: dict[str, Any]) -> dict[str, Any]:
+    """Sanitize a raw course or the wrapper emitted by get_course."""
+
+    if isinstance(source.get("course"), dict):
+        source = source["course"]
     payload = {
         key: value
         for key, value in source.items()

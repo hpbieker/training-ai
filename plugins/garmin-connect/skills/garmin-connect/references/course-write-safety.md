@@ -2,8 +2,8 @@
 
 ## Upload
 
-- Fetch and save the source with `course <course-id>` before creating a copy.
-- Use `course-upload` with that JSON. Do not round-trip through GPX when exact
+- Fetch the source with `get_course` before creating a copy.
+- Use `create_course` with that object. Do not round-trip through GPX when exact
   Garmin geometry or named course points matter.
 - Give a copy a distinct name unless the user explicitly asks for the same one.
 - The uploader removes server-owned fields such as `courseId`, timestamps, and
@@ -18,8 +18,8 @@
 ## Delete
 
 - Deletion is permanent in Garmin Connect. Resolve the course ID and name with
-  `course <course-id>` immediately before deletion.
+  `get_course` immediately before deletion.
 - Require explicit user authorization for that target. Pass the same numeric ID
-  to both `<course-id>` and `--confirm-course-id`.
+  to both `course_id` and `confirm_course_id`.
 - Do not delete the source route merely because a copy was created.
 - Report the deleted ID and name only after the post-delete list check succeeds.

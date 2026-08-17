@@ -18,14 +18,18 @@ class GarminConnectMcpTests(unittest.TestCase):
     def setUp(self) -> None:
         self.service = MCP.GarminConnectToolService(lambda: "/mock/gccli")
 
-    def test_lists_exactly_four_read_only_tools_with_closed_inputs(self) -> None:
+    def test_lists_exactly_eight_tools_with_closed_inputs(self) -> None:
         tools = self.service.list_tools()
 
         self.assertEqual([tool["name"] for tool in tools], list(MCP.ALL_TOOL_NAMES))
         for tool in tools:
             self.assertFalse(tool["inputSchema"]["additionalProperties"])
+        for tool in tools[:6]:
             self.assertTrue(tool["annotations"]["readOnlyHint"])
             self.assertFalse(tool["annotations"]["destructiveHint"])
+        self.assertFalse(MCP.ANNOTATIONS["create_course"]["readOnlyHint"])
+        self.assertFalse(MCP.ANNOTATIONS["create_course"]["destructiveHint"])
+        self.assertTrue(MCP.ANNOTATIONS["delete_course"]["destructiveHint"])
 
     @patch.object(MCP, "compact_day_payload")
     @patch.object(MCP, "fetch_day")
@@ -106,11 +110,88 @@ class GarminConnectMcpTests(unittest.TestCase):
         self.assertNotIn("details", result)
         self.assertIn("metrics_summary", result)
 
+    @patch.object(MCP, "fetch_courses")
+    def test_list_courses_uses_course_service(self, fetch_courses) -> None:
+        fetch_courses.return_value = {"courses": [{"courseId": 123}]}
+
+        result = self.service.call_tool("list_courses", {})
+
+        fetch_courses.assert_called_once_with(gccli="/mock/gccli")
+        self.assertEqual(result["courses"][0]["courseId"], 123)
+
+    @patch.object(MCP, "fetch_course")
+    def test_get_course_uses_exact_id(self, fetch_course) -> None:
+        fetch_course.return_value = {"course_id": "123", "course": {}}
+
+        self.service.call_tool("get_course", {"course_id": "123"})
+
+        fetch_course.assert_called_once_with("123", gccli="/mock/gccli")
+
+    @patch.object(MCP, "upload_course")
+    def test_create_course_passes_object_and_name_to_verified_uploader(self, upload) -> None:
+        upload.return_value = {"course_id": "456", "verification": {"verified": True}}
+        course = {"course": {"courseName": "Old", "geoPoints": [{"lat": 1}]}}
+
+        result = self.service.call_tool(
+            "create_course", {"course": course, "name": "Copy", "privacy": 2}
+        )
+
+        upload.assert_called_once_with(
+            course,
+            gccli="/mock/gccli",
+            course_name="Copy",
+            course_privacy=2,
+        )
+        self.assertTrue(result["verification"]["verified"])
+
+    @patch.object(MCP, "delete_course")
+    def test_delete_course_passes_both_exact_ids(self, delete) -> None:
+        delete.return_value = {"course_id": "123", "deleted": True}
+
+        result = self.service.call_tool(
+            "delete_course", {"course_id": "123", "confirm_course_id": "123"}
+        )
+
+        delete.assert_called_once_with(
+            "123", gccli="/mock/gccli", confirmed_course_id="123"
+        )
+        self.assertTrue(result["deleted"])
+
+    def test_delete_course_rejects_mismatched_confirmation_before_source_call(self) -> None:
+        with self.assertRaises(MCP.ToolFailure) as caught:
+            self.service.call_tool(
+                "delete_course", {"course_id": "123", "confirm_course_id": "321"}
+            )
+
+        self.assertEqual(caught.exception.code, "confirmation_required")
+
     def test_invalid_date_becomes_structured_tool_failure(self) -> None:
         with self.assertRaises(MCP.ToolFailure) as caught:
             self.service.call_tool("get_health_day", {"date": "17-08-2026"})
 
         self.assertEqual(caught.exception.code, "invalid_arguments")
+
+    def test_sdk_accepts_every_tool_definition(self) -> None:
+        server = MCP.create_sdk_server(self.service)
+        self.assertIsNotNone(server)
+
+
+class GarminConnectMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_stdio_initialize_and_list_tools(self) -> None:
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+
+        parameters = StdioServerParameters(
+            command=sys.executable,
+            args=["-B", "./garmin_connect_mcp.py"],
+            cwd=str(MCP_PATH.parent),
+        )
+        async with stdio_client(parameters) as (read_stream, write_stream):
+            async with ClientSession(read_stream, write_stream) as session:
+                await session.initialize()
+                result = await session.list_tools()
+
+        self.assertEqual([tool.name for tool in result.tools], list(MCP.ALL_TOOL_NAMES))
 
 
 if __name__ == "__main__":
