@@ -23,6 +23,12 @@ Prefer the Xert MCP tools when they are available:
   local-date range. Use `includeFields` to add selected details. Requesting
   `xss`, signature, Difficulty, focus, specificity, freshness, or XEP fields
   performs the heavier per-activity detail read; ordinary discovery does not.
+- `list_activities`, `list_workouts`, `list_notes`,
+  `list_recommended_workouts`, and `get_training_forecast` accept closed
+  `filters` (`field`, `op`, `value`), ordered `sort` keys, and a post-filter
+  `limit`. Filters use AND; operators are `eq`, `ne`, `gt`, `gte`, `lt`,
+  `lte`, `in`, `not_in`, `contains`, and `exists`. Nested normalized fields
+  such as `xss.low` use documented dotted names.
 - `get_activity` always returns a compact activity summary. Set
   `save_full=true` to save the complete activity document to a private
   temporary JSON file. Set `save_session=true` only when Xert-specific

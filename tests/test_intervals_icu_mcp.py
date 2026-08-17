@@ -102,6 +102,53 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-17")
         self.assertEqual(calls[0]["newest"].isoformat(), "2026-08-17")
 
+    def test_list_activities_filters_sorts_and_limits_with_query_fields(self):
+        rows = [
+            {"id": "i1", "name": "Low", "max_heartrate": 160},
+            {"id": "i2", "name": "High", "max_heartrate": 172},
+            {"id": "i3", "name": "Middle", "max_heartrate": 168},
+        ]
+        result = self.service(activity_lister=lambda **kwargs: rows).call_tool(
+            "list_activities",
+            {
+                "start_date": "2026-01-01", "end_date": "2026-08-17",
+                "filters": [{"field": "max_heartrate", "op": "gt", "value": 165}],
+                "sort": [{"field": "max_heartrate", "direction": "desc"}],
+                "limit": 1,
+            },
+        )
+        self.assertEqual([row["id"] for row in result["activities"]], ["i2"])
+        self.assertEqual(result["source_count"], 3)
+        self.assertEqual(result["matched_count"], 2)
+        self.assertEqual(result["activities"][0]["max_heartrate"], 172)
+
+    def test_search_wellness_and_events_support_general_queries(self):
+        search = self.service(activity_searcher=lambda **kwargs: [
+            {"id": "i1", "name": "VT1"}, {"id": "i2", "name": "VO2Max"},
+        ]).call_tool("search_activities", {
+            "query": "ride", "limit": 10,
+            "filters": [{"field": "name", "op": "contains", "value": "vo2"}],
+        })
+        self.assertEqual([row["id"] for row in search["activities"]], ["i2"])
+        self.assertTrue(search["source_limited"])
+
+        wellness = self.service(wellness_lister=lambda **kwargs: [
+            {"id": "2026-08-16", "fatigue": 1},
+            {"id": "2026-08-17", "fatigue": 3},
+        ]).call_tool("list_wellness", {
+            "start_date": "2026-08-16", "end_date": "2026-08-17",
+            "filters": [{"field": "fatigue", "op": "gte", "value": 2}],
+        })
+        self.assertEqual([row["id"] for row in wellness["wellness"]], ["2026-08-17"])
+
+        events = self.service(event_lister=lambda **kwargs: [
+            {"id": 1, "category": "NOTE"}, {"id": 2, "category": "SICK"},
+        ]).call_tool("list_events", {
+            "start_date": "2026-08-16", "end_date": "2026-08-17",
+            "filters": [{"field": "category", "op": "eq", "value": "SICK"}],
+        })
+        self.assertEqual([row["id"] for row in events["events"]], [2])
+
     def test_list_activities_adds_only_requested_fields(self):
         service = self.service(activity_lister=lambda **kwargs: [{
             "id": "i1", "elapsed_time": 3600, "moving_time": 3590,

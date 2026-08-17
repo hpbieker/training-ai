@@ -32,6 +32,7 @@ from garmin_connect_api import (  # noqa: E402
     resolve_gccli,
     upload_course,
 )
+from list_query import apply_list_query, query_fields, query_properties  # noqa: E402
 
 
 ALL_TOOL_NAMES = (
@@ -88,6 +89,29 @@ _COURSE_LIST_INCLUDE_FIELDS = (
     "startPoint", "sourceTypeId", "speedMeterPerSecond", "createdDate",
     "updatedDate", "privacyRule", "userProfilePk",
 )
+_ACTIVITY_LIST_FILTER_FIELDS = (
+    "activity_id", "name", "start_local", "type", "duration_s", "distance_m",
+    "source", *_ACTIVITY_LIST_INCLUDE_FIELDS,
+)
+_COURSE_LIST_FILTER_FIELDS = (
+    "course_id", "name", "sport_type", "distance_m", "source",
+    *_COURSE_LIST_INCLUDE_FIELDS,
+)
+_HEALTH_DAY_FILTER_FIELDS = (
+    "date", "training_readiness.score", "training_readiness.level",
+    "training_readiness.drivers.recovery_time.value",
+    "training_readiness.drivers.recovery_time.hours",
+    "training_readiness.drivers.sleep_score.value",
+    "training_readiness.drivers.hrv_status.value",
+    "training_readiness.drivers.acute_load.value", "sources.hrv.lastNightAvg",
+    "sources.hrv.weeklyAvg", "sources.hrv.status", "sources.sleep.sleepTimeSeconds",
+    "sources.sleep.sleep_score", "sources.heart_rate.restingHeartRate",
+    "sources.stress.avgStressLevel", "sources.summary.totalSteps",
+    "sources.summary.averageStressLevel", "sources.body_battery.highestValue",
+    "sources.body_battery.lowestValue", "sources.body_battery.charged",
+    "sources.body_battery.drained", "sources.training_status.trainingStatus",
+    "sources.training_status.acuteTrainingLoad", "training_status_context.sport",
+)
 
 TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "get_health_day": {
@@ -106,6 +130,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "date": {"type": "string", "format": "date"},
                 "sources": _SOURCE_ARRAY,
                 "tolerate_errors": {"type": "boolean", "default": True},
+                **query_properties(_HEALTH_DAY_FILTER_FIELDS),
                 "save_full": {
                     "type": "boolean",
                     "default": False,
@@ -162,6 +187,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": [],
                     "description": "Optional Garmin activity fields added to every compact summary.",
                 },
+                **query_properties(_ACTIVITY_LIST_FILTER_FIELDS, include_limit=False),
             },
             "required": ["since", "until"],
             "additionalProperties": False,
@@ -176,6 +202,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "includeFields": {"type": "array", "items": {"type": "string"}},
                 "count": {"type": "integer"},
                 "activities": {"type": "array", "items": _object("Garmin activity summary.")},
+                "source_count": {"type": "integer"}, "matched_count": {"type": "integer"},
+                "filters": {"type": "array", "items": {}},
+                "sort": {"type": "array", "items": {}},
+                "source_limited": {"type": "boolean"},
             },
             "required": [
                 "source", "source_time_local", "since", "until",
@@ -218,7 +248,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "uniqueItems": True,
                     "default": [],
                     "description": "Optional course detail fields added to every compact row.",
-                }
+                },
+                **query_properties(_COURSE_LIST_FILTER_FIELDS),
             },
             "additionalProperties": False,
         },
@@ -367,6 +398,11 @@ class GarminConnectToolService:
             result = compact_recent_payload(payload)
             if "body_battery_range" in payload:
                 result["body_battery_range"] = payload["body_battery_range"]
+            rows, query_meta = apply_list_query(
+                result.get("days", []), arguments, _HEALTH_DAY_FILTER_FIELDS
+            )
+            result["days"] = rows
+            result.update(query_meta)
             return result
         if name == "list_activities":
             since = _iso_date(arguments["since"], "since")
@@ -377,18 +413,31 @@ class GarminConnectToolService:
             if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 500:
                 raise ValueError("limit must be an integer from 1 to 500")
             include_fields = _include_fields(arguments.get("includeFields", []))
-            activities = garmin_activity_search(gccli, since, until, limit=limit)
+            query_include = tuple(
+                field for field in query_fields(arguments, _ACTIVITY_LIST_FILTER_FIELDS)
+                if field in _ACTIVITY_LIST_INCLUDE_FIELDS
+            )
+            effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
+            has_query = bool(arguments.get("filters") or arguments.get("sort"))
+            fetch_limit = 500 if has_query else limit
+            activities = garmin_activity_search(gccli, since, until, limit=fetch_limit)
+            summaries = [
+                _activity_list_summary(activity, effective_fields)
+                for activity in activities
+            ]
+            summaries, query_meta = apply_list_query(
+                summaries, arguments, _ACTIVITY_LIST_FILTER_FIELDS,
+                default_limit=limit,
+            )
             return {
                 "source": "garmin_connect_gccli",
                 "source_time_local": local_now(),
                 "since": since,
                 "until": until,
                 "includeFields": list(include_fields),
-                "count": len(activities),
-                "activities": [
-                    _activity_list_summary(activity, include_fields)
-                    for activity in activities
-                ],
+                "count": len(summaries), "activities": summaries,
+                "source_limited": len(activities) >= fetch_limit,
+                **{key: value for key, value in query_meta.items() if key != "limit"},
             }
         if name == "get_activity":
             activity = _required_id(arguments, "activity_id")
@@ -401,15 +450,23 @@ class GarminConnectToolService:
             include_fields = _include_fields(
                 arguments.get("includeFields", []), _COURSE_LIST_INCLUDE_FIELDS
             )
+            query_include = tuple(
+                field for field in query_fields(arguments, _COURSE_LIST_FILTER_FIELDS)
+                if field in _COURSE_LIST_INCLUDE_FIELDS
+            )
+            effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
+            summaries = [
+                _course_list_summary(course, effective_fields)
+                for course in payload["courses"]
+            ]
+            summaries, query_meta = apply_list_query(
+                summaries, arguments, _COURSE_LIST_FILTER_FIELDS
+            )
             return {
                 "source": payload["source"],
                 "source_time_local": payload["source_time_local"],
                 "includeFields": list(include_fields),
-                "count": len(payload["courses"]),
-                "courses": [
-                    _course_list_summary(course, include_fields)
-                    for course in payload["courses"]
-                ],
+                "count": len(summaries), "courses": summaries, **query_meta,
             }
         if name == "get_course":
             return fetch_course(_required_id(arguments, "course_id"), gccli=gccli)

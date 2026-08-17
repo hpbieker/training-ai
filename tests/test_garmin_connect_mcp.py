@@ -110,6 +110,20 @@ class GarminConnectMcpTests(unittest.TestCase):
         )
         self.assertEqual(result["body_battery_range"], [{"value": 50}])
 
+    @patch.object(MCP, "compact_recent_payload")
+    @patch.object(MCP, "fetch_recent_days")
+    def test_list_health_days_filters_nested_metrics(self, fetch_recent, compact_recent) -> None:
+        fetch_recent.return_value = {"days": []}
+        compact_recent.return_value = {"days": [
+            {"date": "2026-08-16", "sources": {"hrv": {"lastNightAvg": 45}}},
+            {"date": "2026-08-17", "sources": {"hrv": {"lastNightAvg": 30}}},
+        ]}
+        result = self.service.call_tool("list_health_days", {
+            "until": "2026-08-17", "days": 2,
+            "filters": [{"field": "sources.hrv.lastNightAvg", "op": "lt", "value": 40}],
+        })
+        self.assertEqual([row["date"] for row in result["days"]], ["2026-08-17"])
+
     @patch.object(MCP, "local_now", return_value="2026-08-17T12:00:00+02:00")
     @patch.object(MCP, "garmin_activity_search")
     def test_list_activities_returns_count(self, search, _local_now) -> None:
@@ -204,6 +218,37 @@ class GarminConnectMcpTests(unittest.TestCase):
             "list_courses", {"includeFields": ["elevationGainMeter"]}
         )
         self.assertEqual(detailed["courses"][0]["elevationGainMeter"], 500)
+
+    @patch.object(MCP, "garmin_activity_search")
+    def test_list_activities_filters_sorts_and_limits(self, search) -> None:
+        search.return_value = [
+            {"activityId": 1, "activityName": "Easy", "maxHR": 150},
+            {"activityId": 2, "activityName": "Hard", "maxHR": 172},
+            {"activityId": 3, "activityName": "Medium", "maxHR": 168},
+        ]
+        result = self.service.call_tool("list_activities", {
+            "since": "2026-01-01", "until": "2026-08-17", "limit": 1,
+            "filters": [{"field": "maxHR", "op": "gt", "value": 165}],
+            "sort": [{"field": "maxHR", "direction": "desc"}],
+        })
+        self.assertEqual([row["activity_id"] for row in result["activities"]], [2])
+        search.assert_called_once_with(
+            "/mock/gccli", "2026-01-01", "2026-08-17", limit=500
+        )
+
+    @patch.object(MCP, "fetch_courses")
+    def test_list_courses_filters_and_sorts(self, fetch_courses) -> None:
+        fetch_courses.return_value = {
+            "source": "garmin_connect_gccli", "source_time_local": "now",
+            "courses": [
+                {"courseId": 1, "courseName": "Short", "distanceMeter": 20000},
+                {"courseId": 2, "courseName": "Long", "distanceMeter": 80000},
+            ],
+        }
+        result = self.service.call_tool("list_courses", {
+            "filters": [{"field": "distance_m", "op": "gte", "value": 50000}],
+        })
+        self.assertEqual([row["course_id"] for row in result["courses"]], [2])
 
     @patch.object(MCP, "fetch_course")
     def test_get_course_uses_exact_id(self, fetch_course) -> None:

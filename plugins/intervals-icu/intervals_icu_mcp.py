@@ -36,6 +36,7 @@ from intervals_icu_api import (  # noqa: E402
     update_event,
     upload_activity_file,
 )
+from list_query import apply_list_query, query_fields, query_properties  # noqa: E402
 
 
 class ToolFailure(RuntimeError):
@@ -57,6 +58,20 @@ _ACTIVITY_LIST_INCLUDE_FIELDS = (
     "icu_weighted_avg_watts", "average_heartrate", "max_heartrate",
     "average_cadence", "average_temp", "decoupling", "icu_rpe", "feel",
     "interval_summary", "stream_types",
+)
+_ACTIVITY_LIST_FILTER_FIELDS = (
+    "id", "name", "start_date_local", "type", "duration_s", "distance_m",
+    "source", "external_id", *_ACTIVITY_LIST_INCLUDE_FIELDS,
+)
+_WELLNESS_FILTER_FIELDS = (
+    "id", "weight", "restingHR", "resting_hr", "hrv", "hrvSDNN", "ctl", "atl",
+    "rampRate", "sleepSecs", "sleep_secs", "sleepQuality", "soreness", "fatigue",
+    "stress", "mood", "motivation", "injury", "hydration", "comments", "steps",
+    "vo2max", "locked",
+)
+_EVENT_FILTER_FIELDS = (
+    "id", "category", "name", "description", "type", "start_date_local",
+    "end_date_local", "icu_training_load", "paired_activity_id", "external_id",
 )
 
 
@@ -140,6 +155,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": [],
                     "description": "Optional activity detail fields added to every compact summary.",
                 },
+                **query_properties(_ACTIVITY_LIST_FILTER_FIELDS),
             },
             "required": ["start_date", "end_date"],
             "additionalProperties": False,
@@ -151,6 +167,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "includeFields": {"type": "array", "items": {"type": "string"}},
                 "count": {"type": "integer"},
                 "activities": {"type": "array", "items": _object("Intervals.icu activity summary.")},
+                "source_count": {"type": "integer"},
+                "matched_count": {"type": "integer"},
+                "filters": {"type": "array", "items": {}},
+                "sort": {"type": "array", "items": {}},
+                "limit": {"type": ["integer", "null"]},
             },
             "required": ["start_date", "end_date", "includeFields", "count", "activities"],
             "additionalProperties": False,
@@ -182,6 +203,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": [],
                     "description": "Optional activity detail fields added to every compact summary.",
                 },
+                **query_properties(_ACTIVITY_LIST_FILTER_FIELDS, include_limit=False),
             },
             "required": ["query"],
             "additionalProperties": False,
@@ -194,6 +216,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "includeFields": {"type": "array", "items": {"type": "string"}},
                 "count": {"type": "integer"},
                 "activities": {"type": "array", "items": _object("Intervals.icu search result.")},
+                "source_count": {"type": "integer"},
+                "matched_count": {"type": "integer"},
+                "filters": {"type": "array", "items": {}},
+                "sort": {"type": "array", "items": {}},
+                "source_limited": {"type": "boolean"},
             },
             "required": ["query", "limit", "includeFields", "count", "activities"],
             "additionalProperties": False,
@@ -420,6 +447,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
                 "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                **query_properties(_WELLNESS_FILTER_FIELDS),
             },
             "required": ["start_date", "end_date"],
             "additionalProperties": False,
@@ -430,6 +458,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "count": {"type": "integer"},
                 "wellness": {"type": "array", "items": _object("Intervals.icu wellness row.")},
+                "source_count": {"type": "integer"}, "matched_count": {"type": "integer"},
+                "filters": {"type": "array", "items": {}},
+                "sort": {"type": "array", "items": {}},
+                "limit": {"type": ["integer", "null"]},
             },
             "required": ["start_date", "end_date", "count", "wellness"],
             "additionalProperties": False,
@@ -502,6 +534,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
                 "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                **query_properties(_EVENT_FILTER_FIELDS),
             },
             "required": ["start_date", "end_date"],
             "additionalProperties": False,
@@ -512,6 +545,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "count": {"type": "integer"},
                 "events": {"type": "array", "items": _object("Intervals.icu calendar event.")},
+                "source_count": {"type": "integer"}, "matched_count": {"type": "integer"},
+                "filters": {"type": "array", "items": {}},
+                "sort": {"type": "array", "items": {}},
+                "limit": {"type": ["integer", "null"]},
             },
             "required": ["start_date", "end_date", "count", "events"],
             "additionalProperties": False,
@@ -714,14 +751,22 @@ class IntervalsIcuToolService:
                     arguments.get("includeFields", []), _ACTIVITY_LIST_INCLUDE_FIELDS
                 )
                 activities = self._activity_lister(oldest=start_date, newest=end_date, **auth)
+                query_include = tuple(
+                    field for field in query_fields(arguments, _ACTIVITY_LIST_FILTER_FIELDS)
+                    if field in _ACTIVITY_LIST_INCLUDE_FIELDS
+                )
+                effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
+                summaries = [
+                    _activity_list_summary(activity, effective_fields)
+                    for activity in activities
+                ]
+                summaries, query_meta = apply_list_query(
+                    summaries, arguments, _ACTIVITY_LIST_FILTER_FIELDS
+                )
                 return {
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     "includeFields": list(include_fields),
-                    "count": len(activities),
-                    "activities": [
-                        _activity_list_summary(activity, include_fields)
-                        for activity in activities
-                    ],
+                    "count": len(summaries), "activities": summaries, **query_meta,
                 }
             if name == "search_activities":
                 query = _required_string(arguments, "query")
@@ -734,14 +779,25 @@ class IntervalsIcuToolService:
                 activities = self._activity_searcher(
                     query=query, limit=limit, **auth,
                 )
+                query_include = tuple(
+                    field for field in query_fields(arguments, _ACTIVITY_LIST_FILTER_FIELDS)
+                    if field in _ACTIVITY_LIST_INCLUDE_FIELDS
+                )
+                effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
+                summaries = [
+                    _activity_list_summary(activity, effective_fields)
+                    for activity in activities
+                ]
+                summaries, query_meta = apply_list_query(
+                    summaries, arguments, _ACTIVITY_LIST_FILTER_FIELDS,
+                    default_limit=limit,
+                )
                 return {
                     "query": query, "limit": limit,
                     "includeFields": list(include_fields),
-                    "count": len(activities),
-                    "activities": [
-                        _activity_list_summary(activity, include_fields)
-                        for activity in activities
-                    ],
+                    "count": len(summaries), "activities": summaries,
+                    "source_limited": True,
+                    **{key: value for key, value in query_meta.items() if key != "limit"},
                 }
             if name == "get_activity_file":
                 activity_id = _required_string(arguments, "activity_id")
@@ -869,9 +925,12 @@ class IntervalsIcuToolService:
                 wellness = self._wellness_lister(
                     oldest=start_date, newest=end_date, **auth,
                 )
+                wellness, query_meta = apply_list_query(
+                    wellness, arguments, _WELLNESS_FILTER_FIELDS
+                )
                 return {
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
-                    "count": len(wellness), "wellness": wellness,
+                    "count": len(wellness), "wellness": wellness, **query_meta,
                 }
             if name == "update_wellness":
                 day = _required_date(arguments, "date")
@@ -917,9 +976,12 @@ class IntervalsIcuToolService:
                 events = self._event_lister(
                     oldest=start_date, newest=end_date, categories=None, **auth,
                 )
+                events, query_meta = apply_list_query(
+                    events, arguments, _EVENT_FILTER_FIELDS
+                )
                 return {
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
-                    "count": len(events), "events": events,
+                    "count": len(events), "events": events, **query_meta,
                 }
             if name == "create_event":
                 event_state = _event_state(arguments)

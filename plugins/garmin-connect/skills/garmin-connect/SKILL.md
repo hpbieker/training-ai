@@ -48,6 +48,11 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
 - Use `list_health_days` when trend context across several days matters. Pass
   `sources=["hrv"]` when the caller needs actual nightly HRV values without fetching
   unrelated daily sources or Body Battery history.
+- `list_health_days`, `list_activities`, and `list_courses` accept closed
+  `filters` (`field`, `op`, `value`), ordered `sort` keys, and a post-filter
+  `limit`. Filters use AND; operators are `eq`, `ne`, `gt`, `gte`, `lt`,
+  `lte`, `in`, `not_in`, `contains`, and `exists`. Health fields use documented
+  dotted names such as `sources.hrv.lastNightAvg`.
 - Use `list_activities` to resolve an activity from compact identity summaries.
   Use `includeFields` to add only selected Garmin training details to each row;
   moving duration and account or profile fields are not part of the default.

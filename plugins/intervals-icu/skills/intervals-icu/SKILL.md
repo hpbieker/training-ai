@@ -33,6 +33,11 @@ Choose the narrowest workflow that answers the request:
   compact identity summaries. Use `includeFields` to add only selected allowed
   detail fields to each row; `search_activities` performs source text or tag
   search with the same compact rows and `includeFields` choices.
+- `list_activities`, `search_activities`, `list_wellness`, and `list_events`
+  accept closed `filters` (`field`, `op`, `value`), ordered `sort` keys, and a
+  post-filter `limit` where applicable. Filters use AND; operators are `eq`,
+  `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `contains`, and `exists`.
+  Inspect `source_count` and `matched_count`; searches are `source_limited`.
 - `get_activity` returns compact metadata and interval orientation. With
   `save_full=true`, it also saves the complete source activity in the standard
   activity envelope to a private temporary JSON file;

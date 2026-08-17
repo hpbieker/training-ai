@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from xert_service import XertService
+from list_query import apply_list_query, query_fields, query_properties
 
 
 ALL_TOOL_NAMES = (
@@ -163,6 +164,29 @@ _ACTIVITY_LIST_DETAIL_FIELDS = frozenset(
 _WORKOUT_LIST_INCLUDE_FIELDS = (
     "work_watts", "xss", "xlss", "xhss", "xpss", "difficulty", "rating",
 )
+_ACTIVITY_LIST_FILTER_FIELDS = (
+    "path", "name", "start_local", "duration_s", "distance_m", "source",
+    *_ACTIVITY_LIST_INCLUDE_FIELDS,
+)
+_WORKOUT_LIST_FILTER_FIELDS = (
+    "path", "name", "duration_s", *_WORKOUT_LIST_INCLUDE_FIELDS,
+)
+_NOTE_FILTER_FIELDS = ("date", "text")
+_RECOMMENDED_WORKOUT_FILTER_FIELDS = (
+    "path", "name", "duration_s", "focus", "specificity", "difficulty", "rating",
+    "suitability", "xss.total", "xss.low", "xss.high", "xss.peak",
+)
+_FORECAST_FILTER_FIELDS = (
+    "date", "at", "name", "focus", "high_intensity", "xss.total", "xss.low",
+    "xss.high", "xss.peak", "t", "xlss", "xhss", "xpss",
+)
+_QUERY_OUTPUT_PROPERTIES = {
+    "source_count": {"type": "integer"},
+    "matched_count": {"type": "integer"},
+    "filters": {"type": "array", "items": {}},
+    "sort": {"type": "array", "items": {}},
+    "limit": {"type": ["integer", "null"]},
+}
 
 
 def _array(description: str) -> dict[str, object]:
@@ -256,6 +280,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": [],
                     "description": "Optional activity detail fields added to every compact summary.",
                 },
+                **query_properties(_ACTIVITY_LIST_FILTER_FIELDS),
             },
             "required": ["start_date", "end_date"],
             "additionalProperties": False,
@@ -271,6 +296,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 },
                 "count": {"type": "integer", "description": "Number of returned activities."},
                 "activities": _array("Activities in source order."),
+                **_QUERY_OUTPUT_PROPERTIES,
             },
             "required": ["start_date", "end_date", "includeFields", "count", "activities"],
             "additionalProperties": False,
@@ -351,6 +377,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": [],
                     "description": "Optional workout detail fields added to every compact summary.",
                 },
+                **query_properties(_WORKOUT_LIST_FILTER_FIELDS),
             },
             "additionalProperties": False,
         },
@@ -367,6 +394,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 },
                 "count": {"type": "integer", "description": "Number of returned workouts."},
                 "workouts": _array("Matching workouts in source order."),
+                **_QUERY_OUTPUT_PROPERTIES,
             },
             "required": ["includeFields", "name_keywords", "count", "workouts"],
             "additionalProperties": False,
@@ -427,6 +455,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "format": "date",
                     "description": "Inclusive local end date in YYYY-MM-DD format.",
                 },
+                **query_properties(_NOTE_FILTER_FIELDS),
             },
             "required": ["start_date", "end_date"],
             "additionalProperties": False,
@@ -450,6 +479,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                         "additionalProperties": False,
                     },
                 },
+                **_QUERY_OUTPUT_PROPERTIES,
             },
             "required": ["start_date", "end_date", "count", "notes"],
             "additionalProperties": False,
@@ -623,6 +653,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                         "Maximum number of ranked workout recommendations to return."
                     ),
                 },
+                **query_properties(_RECOMMENDED_WORKOUT_FILTER_FIELDS, include_limit=False),
             },
             "additionalProperties": False,
         },
@@ -632,6 +663,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "at": {"type": ["string", "null"]},
                 "count": {"type": "integer"},
                 "workouts": {"type": "array", "items": _object("Recommended workout.")},
+                **_QUERY_OUTPUT_PROPERTIES,
             },
             "required": ["at", "count", "workouts"],
             "additionalProperties": False,
@@ -663,6 +695,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": "summary",
                     "description": "summary returns normalized days; full retains source day fields.",
                 },
+                **query_properties(_FORECAST_FILTER_FIELDS),
             },
             "required": ["start_date", "end_date"],
             "additionalProperties": False,
@@ -674,6 +707,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "end_date": {"type": "string", "description": "Requested inclusive end date."},
                 "view": {"type": "string", "description": "Returned forecast representation."},
                 "forecast": _object("Filtered normalized or source-native forecast."),
+                **_QUERY_OUTPUT_PROPERTIES,
             },
             "required": ["start_date", "end_date", "view", "forecast"],
             "additionalProperties": False,
@@ -971,22 +1005,30 @@ class XertToolService:
             start = arguments["start_date"]
             end = arguments["end_date"]
             include_fields = _validate_include_fields(arguments.get("includeFields", []))
+            query_include = tuple(
+                field for field in query_fields(arguments, _ACTIVITY_LIST_FILTER_FIELDS)
+                if field in _ACTIVITY_LIST_INCLUDE_FIELDS
+            )
+            effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
             view = (
                 "loads"
-                if any(field in _ACTIVITY_LIST_DETAIL_FIELDS for field in include_fields)
+                if any(field in _ACTIVITY_LIST_DETAIL_FIELDS for field in effective_fields)
                 else "summary"
             )
             result = service.list_activities(start, end, view=view)
             activities = result["activities"] if view == "loads" else result
+            summaries = [
+                _activity_list_summary(activity, effective_fields)
+                for activity in activities
+            ]
+            summaries, query_meta = apply_list_query(
+                summaries, arguments, _ACTIVITY_LIST_FILTER_FIELDS
+            )
             return {
                 "start_date": start,
                 "end_date": end,
                 "includeFields": list(include_fields),
-                "count": len(activities),
-                "activities": [
-                    _activity_list_summary(activity, include_fields)
-                    for activity in activities
-                ],
+                "count": len(summaries), "activities": summaries, **query_meta,
             }
         if name == "get_activity":
             path = arguments["activity_path"]
@@ -1028,21 +1070,33 @@ class XertToolService:
                 allowed=_WORKOUT_LIST_INCLUDE_FIELDS,
                 parameter="includeFields",
             )
+            query_include = tuple(
+                field for field in query_fields(arguments, _WORKOUT_LIST_FILTER_FIELDS)
+                if field in _WORKOUT_LIST_INCLUDE_FIELDS
+            )
+            effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
             workouts = service.list_workouts(name_keywords=keywords, view="summary")
+            summaries = [
+                _workout_list_summary(workout, effective_fields)
+                for workout in workouts
+            ]
+            summaries, query_meta = apply_list_query(
+                summaries, arguments, _WORKOUT_LIST_FILTER_FIELDS
+            )
             return {
                 "includeFields": list(include_fields),
                 "name_keywords": keywords,
-                "count": len(workouts),
-                "workouts": [
-                    _workout_list_summary(workout, include_fields)
-                    for workout in workouts
-                ],
+                "count": len(summaries), "workouts": summaries, **query_meta,
             }
         if name == "list_notes":
             start = arguments["start_date"]
             end = arguments["end_date"]
             notes = service.list_notes(start, end)
-            return {"start_date": start, "end_date": end, "count": len(notes), "notes": notes}
+            notes, query_meta = apply_list_query(notes, arguments, _NOTE_FILTER_FIELDS)
+            return {
+                "start_date": start, "end_date": end,
+                "count": len(notes), "notes": notes, **query_meta,
+            }
         if name == "get_note":
             return service.get_note(arguments["date"])
         if name == "set_note":
@@ -1061,19 +1115,35 @@ class XertToolService:
             }
         if name == "list_recommended_workouts":
             at = arguments.get("at")
+            requested_limit = arguments.get("limit", 10)
+            has_query = bool(arguments.get("filters") or arguments.get("sort"))
             workouts = service.list_recommended_workouts(
-                at=at, limit=arguments.get("limit", 10)
+                at=at, limit=100 if has_query else requested_limit
             )
-            return {"at": at, "count": len(workouts), "workouts": workouts}
+            workouts, query_meta = apply_list_query(
+                workouts, arguments, _RECOMMENDED_WORKOUT_FILTER_FIELDS,
+                default_limit=requested_limit,
+            )
+            return {
+                "at": at, "count": len(workouts), "workouts": workouts, **query_meta,
+            }
         if name == "get_training_forecast":
             start = arguments["start_date"]
             end = arguments["end_date"]
             view = arguments.get("view", "summary")
+            forecast = service.get_training_forecast(start, end, view=view)
+            days = forecast.get("days", []) if isinstance(forecast, dict) else []
+            filtered_days, query_meta = apply_list_query(
+                days, arguments, _FORECAST_FILTER_FIELDS
+            )
+            filtered_forecast = dict(forecast)
+            filtered_forecast["days"] = filtered_days
             return {
                 "start_date": start,
                 "end_date": end,
                 "view": view,
-                "forecast": service.get_training_forecast(start, end, view=view),
+                "forecast": filtered_forecast,
+                **query_meta,
             }
         if name == "calculate_workout_capacity":
             return service.calculate_workout_capacity(

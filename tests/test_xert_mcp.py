@@ -381,6 +381,58 @@ class XertMcpDispatchTests(unittest.TestCase):
         )
         self.assertEqual(result["forecast"], {"days": []})
 
+    def test_all_xert_list_tools_support_general_queries(self) -> None:
+        self.fake.list_activities = lambda *args, **kwargs: [
+            {"path": "a1", "name": "Easy", "elapsed_minutes": 60, "distance_km": 30},
+            {"path": "a2", "name": "Hard", "elapsed_minutes": 90, "distance_km": 45},
+        ]
+        activities = self.tools.call_tool("list_activities", {
+            "start_date": "2026-08-01", "end_date": "2026-08-17",
+            "filters": [{"field": "duration_s", "op": "gte", "value": 5000}],
+        })
+        self.assertEqual([row["path"] for row in activities["activities"]], ["a2"])
+
+        self.fake.list_workouts = lambda **kwargs: [
+            {"path": "w1", "name": "Easy", "duration_min": 60, "difficulty": 20},
+            {"path": "w2", "name": "Hard", "duration_min": 45, "difficulty": 80},
+        ]
+        workouts = self.tools.call_tool("list_workouts", {
+            "filters": [{"field": "difficulty", "op": "gt", "value": 50}],
+        })
+        self.assertEqual([row["path"] for row in workouts["workouts"]], ["w2"])
+
+        self.fake.list_notes = lambda *args: [
+            {"date": "2026-08-16", "text": "Easy"},
+            {"date": "2026-08-17", "text": "Sick today"},
+        ]
+        notes = self.tools.call_tool("list_notes", {
+            "start_date": "2026-08-16", "end_date": "2026-08-17",
+            "filters": [{"field": "text", "op": "contains", "value": "sick"}],
+        })
+        self.assertEqual([row["date"] for row in notes["notes"]], ["2026-08-17"])
+
+        self.fake.list_recommended_workouts = lambda **kwargs: [
+            {"path": "w1", "name": "Low", "xss": {"total": 40}},
+            {"path": "w2", "name": "High", "xss": {"total": 90}},
+        ]
+        recommended = self.tools.call_tool("list_recommended_workouts", {
+            "limit": 1,
+            "sort": [{"field": "xss.total", "direction": "desc"}],
+        })
+        self.assertEqual([row["path"] for row in recommended["workouts"]], ["w2"])
+
+        self.fake.get_training_forecast = lambda *args, **kwargs: {"days": [
+            {"date": "2026-08-18", "xss": {"total": 40}},
+            {"date": "2026-08-19", "xss": {"total": 80}},
+        ]}
+        forecast = self.tools.call_tool("get_training_forecast", {
+            "start_date": "2026-08-18", "end_date": "2026-08-19",
+            "filters": [{"field": "xss.total", "op": "gte", "value": 60}],
+        })
+        self.assertEqual(
+            [row["date"] for row in forecast["forecast"]["days"]], ["2026-08-19"]
+        )
+
     def test_create_workout_dispatches_complete_rows(self) -> None:
         result = self.tools.call_tool(
             "create_workout",
