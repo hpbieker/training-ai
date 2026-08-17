@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import matplotlib
 
@@ -29,10 +30,19 @@ def main() -> None:
         help="Optional saved activity directory to mark workout start/stop",
     )
     parser.add_argument(
+        "--local-timezone",
+        required=True,
+        help="IANA timezone used for the plotted local clock, for example Europe/Oslo.",
+    )
+    parser.add_argument(
         "--output",
         help="Output PNG path. Defaults to outputs/plots/garmin_body_battery_<date>.png",
     )
     args = parser.parse_args()
+    try:
+        local_timezone = ZoneInfo(args.local_timezone)
+    except ZoneInfoNotFoundError as exc:
+        parser.error(f"unknown IANA timezone: {args.local_timezone}")
 
     garmin = _load_json(Path(args.garmin_json))
     day = str(garmin.get("date") or "garmin-connect")
@@ -40,8 +50,12 @@ def main() -> None:
     stress = sources.get("stress") or {}
     body_battery = _body_battery_payload(sources, stress=stress)
     sleep = sources.get("sleep") or {}
-    activity_window = _activity_window(args.activity_dir) if args.activity_dir else None
-    sleep_window = _sleep_window(sleep)
+    activity_window = (
+        _activity_window(args.activity_dir, local_timezone=local_timezone)
+        if args.activity_dir
+        else None
+    )
+    sleep_window = _sleep_window(sleep, local_timezone=local_timezone)
 
     output = (
         Path(args.output)
@@ -55,6 +69,7 @@ def main() -> None:
         stress=stress,
         sleep_window=sleep_window,
         activity_window=activity_window,
+        local_timezone=local_timezone,
         output=output,
     )
     print(output.resolve())
@@ -67,14 +82,21 @@ def plot_body_battery(
     stress: dict[str, Any],
     sleep_window: tuple[datetime, datetime] | None,
     activity_window: tuple[datetime, datetime] | None,
+    local_timezone: ZoneInfo,
     output: Path,
 ) -> None:
     """Create the plot."""
 
-    bb_points = _time_value_points(body_battery.get("bodyBatteryValuesArray") or [])
+    bb_points = _time_value_points(
+        body_battery.get("bodyBatteryValuesArray") or [],
+        local_timezone=local_timezone,
+    )
     stress_points = [
         point
-        for point in _time_value_points(stress.get("stressValuesArray") or [])
+        for point in _time_value_points(
+            stress.get("stressValuesArray") or [],
+            local_timezone=local_timezone,
+        )
         if point[1] >= 0
     ]
 
@@ -171,14 +193,27 @@ def _mark_window(
     ax.text(end_hour, 98, label_end, rotation=90, va="top", ha="left", color=end_color)
 
 
-def _activity_window(activity_dir: str) -> tuple[datetime, datetime]:
+def _activity_window(
+    activity_dir: str,
+    *,
+    local_timezone: ZoneInfo,
+) -> tuple[datetime, datetime]:
     activity = _load_json(Path(activity_dir) / "activity.json")
     start = datetime.fromisoformat(activity["start_date_local"])
-    end = datetime.fromtimestamp(start.timestamp() + float(activity.get("moving_time") or 0))
+    start = (
+        start.replace(tzinfo=local_timezone)
+        if start.tzinfo is None
+        else start.astimezone(local_timezone)
+    )
+    end = start + timedelta(seconds=float(activity.get("moving_time") or 0))
     return start, end
 
 
-def _sleep_window(sleep: dict[str, Any]) -> tuple[datetime, datetime] | None:
+def _sleep_window(
+    sleep: dict[str, Any],
+    *,
+    local_timezone: ZoneInfo,
+) -> tuple[datetime, datetime] | None:
     daily_sleep = sleep.get("dailySleepDTO", {})
     start = sleep.get("sleepStartTimestampLocal") or daily_sleep.get(
         "sleepStartTimestampLocal"
@@ -186,7 +221,10 @@ def _sleep_window(sleep: dict[str, Any]) -> tuple[datetime, datetime] | None:
     end = sleep.get("sleepEndTimestampLocal") or daily_sleep.get("sleepEndTimestampLocal")
     if not start or not end:
         return None
-    return _parse_garmin_local_datetime(start), _parse_garmin_local_datetime(end)
+    return (
+        _parse_garmin_local_datetime(start, local_timezone=local_timezone),
+        _parse_garmin_local_datetime(end, local_timezone=local_timezone),
+    )
 
 
 def _body_battery_payload(
@@ -220,7 +258,11 @@ def _body_battery_points_from_stress(stress: dict[str, Any]) -> list[list[float]
     return points
 
 
-def _time_value_points(rows: list[Any]) -> list[tuple[datetime, float]]:
+def _time_value_points(
+    rows: list[Any],
+    *,
+    local_timezone: ZoneInfo,
+) -> list[tuple[datetime, float]]:
     points = []
     for row in rows:
         if (
@@ -229,16 +271,35 @@ def _time_value_points(rows: list[Any]) -> list[tuple[datetime, float]]:
             and isinstance(row[0], (int, float))
             and isinstance(row[1], (int, float))
         ):
-            points.append((datetime.fromtimestamp(row[0] / 1000), float(row[1])))
+            points.append(
+                (
+                    datetime.fromtimestamp(row[0] / 1000, tz=timezone.utc).astimezone(
+                        local_timezone
+                    ),
+                    float(row[1]),
+                )
+            )
     return points
 
 
-def _parse_garmin_local_datetime(raw: str | int | float) -> datetime:
+def _parse_garmin_local_datetime(
+    raw: str | int | float,
+    *,
+    local_timezone: ZoneInfo,
+) -> datetime:
     if isinstance(raw, (int, float)):
         # Garmin's *Local millisecond fields encode local clock time as if it
-        # were UTC. utcfromtimestamp therefore preserves the intended HH:MM.
-        return datetime.utcfromtimestamp(raw / 1000)
-    return datetime.fromisoformat(raw.replace(".0", ""))
+        # were UTC. Decode that clock representation, then attach its real zone.
+        clock = datetime.fromtimestamp(raw / 1000, tz=timezone.utc).replace(
+            tzinfo=None
+        )
+        return clock.replace(tzinfo=local_timezone)
+    parsed = datetime.fromisoformat(raw.replace(".0", ""))
+    return (
+        parsed.replace(tzinfo=local_timezone)
+        if parsed.tzinfo is None
+        else parsed.astimezone(local_timezone)
+    )
 
 
 def _hour_of_day(value: datetime) -> float:

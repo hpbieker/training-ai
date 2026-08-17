@@ -1,0 +1,69 @@
+{
+  "source": "garmin_connect_gccli",
+  "source_time_local": "2026-08-08T09:00:00+02:00",
+  "date": "2026-08-08",
+  "sources": {
+    "training_readiness": [
+      {
+        "calendarDate": "2026-08-08",
+        "deviceId": 12345,
+        "primaryActivityTracker": true,
+        "score": 47,
+        "level": "LOW",
+        "feedbackShort": "RECOVERY_TIME",
+        "feedbackLong": "RECOVERY_TIME_LONG",
+        "inputContext": "AFTER_WAKEUP_RESET",
+        "timestamp": "2026-08-08T04:49:04.0",
+        "timestampLocal": "2026-08-08T06:49:04.0",
+        "validSleep": true,
+        "sleepScore": 81,
+        "sleepScoreFactorFeedback": "MODERATE",
+        "sleepScoreFactorPercent": 68,
+        "recoveryTime": 1260,
+        "recoveryTimeChangePhrase": "NO_CHANGE_SLEEP",
+        "recoveryTimeFactorFeedback": "POOR",
+        "recoveryTimeFactorPercent": 44,
+        "hrvWeeklyAverage": 58,
+        "hrvFactorFeedback": "GOOD",
+        "hrvFactorPercent": 79,
+        "acuteLoad": 850,
+        "acwrFactorFeedback": "GOOD",
+        "acwrFactorPercent": 76,
+        "sleepHistoryFactorFeedback": "GOOD",
+        "sleepHistoryFactorPercent": 72,
+        "stressHistoryFactorFeedback": "GOOD",
+        "stressHistoryFactorPercent": 91
+      }
+    ],
+    "training_status": {
+      "mostRecentVO2Max": {
+        "cycling": {
+          "calendarDate": "2026-08-07",
+          "vo2MaxPreciseValue": 53.4,
+          "vo2MaxValue": 53.0,
+          "maxMetCategory": 1,
+          "fitnessAge": null
+        },
+        "generic": {
+          "calendarDate": "2026-08-06",
+          "vo2MaxPreciseValue": 49.6,
+          "vo2MaxValue": 50.0,
+          "maxMetCategory": 0,
+          "fitnessAge": 38
+        }
+      },
+      "mostRecentTrainingStatus": {
+        "latestTrainingStatusData": {
+          "12345": {
+            "calendarDate": "2026-08-08",
+            "timestamp": 1786168800000,
+            "deviceId": 12345,
+            "primaryTrainingDevice": true,
+            "sport": "CYCLING",
+            "fitnessTrendSport": "CYCLING"
+          }
+        }
+      }
+    }
+  }
+}
