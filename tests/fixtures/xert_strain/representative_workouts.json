@@ -1,0 +1,79 @@
+{
+  "signature": {
+    "tp": 300,
+    "hie": 14000,
+    "pp": 800
+  },
+  "cases": {
+    "vt1": {
+      "segments": [
+        {"name": "VT1", "duration_seconds": 3600, "power": 180}
+      ]
+    },
+    "tempo": {
+      "segments": [
+        {"name": "Tempo", "duration_seconds": 2700, "power": 250}
+      ]
+    },
+    "vt2": {
+      "segments": [
+        {"name": "Warm-up", "duration_seconds": 600, "power": 170},
+        {"name": "VT2 1", "duration_seconds": 720, "power": 285},
+        {"name": "Recovery 1", "duration_seconds": 300, "power": 120},
+        {"name": "VT2 2", "duration_seconds": 720, "power": 285},
+        {"name": "Recovery 2", "duration_seconds": 300, "power": 120},
+        {"name": "VT2 3", "duration_seconds": 720, "power": 285},
+        {"name": "Cool-down", "duration_seconds": 600, "power": 140}
+      ]
+    },
+    "vo2max": {
+      "segments": [
+        {"name": "Warm-up", "duration_seconds": 600, "power": 170},
+        {"name": "VO2 1", "duration_seconds": 240, "power": 340},
+        {"name": "Recovery 1", "duration_seconds": 180, "power": 120},
+        {"name": "VO2 2", "duration_seconds": 240, "power": 340},
+        {"name": "Recovery 2", "duration_seconds": 180, "power": 120},
+        {"name": "VO2 3", "duration_seconds": 240, "power": 340},
+        {"name": "Recovery 3", "duration_seconds": 180, "power": 120},
+        {"name": "VO2 4", "duration_seconds": 240, "power": 340},
+        {"name": "Cool-down", "duration_seconds": 600, "power": 140}
+      ]
+    },
+    "sprint": {
+      "segments": [
+        {"name": "Warm-up", "duration_seconds": 600, "power": 170},
+        {"name": "Sprint 1", "duration_seconds": 10, "power": 700},
+        {"name": "Recovery 1", "duration_seconds": 290, "power": 100},
+        {"name": "Sprint 2", "duration_seconds": 10, "power": 700},
+        {"name": "Recovery 2", "duration_seconds": 290, "power": 100},
+        {"name": "Sprint 3", "duration_seconds": 10, "power": 700},
+        {"name": "Recovery 3", "duration_seconds": 290, "power": 100},
+        {"name": "Sprint 4", "duration_seconds": 10, "power": 700},
+        {"name": "Cool-down", "duration_seconds": 600, "power": 140}
+      ]
+    },
+    "work_under_fatigue": {
+      "segments": [
+        {"name": "Opener", "duration_seconds": 180, "power": 350},
+        {"name": "Short recovery", "duration_seconds": 60, "power": 180},
+        {"name": "Tempo under fatigue", "duration_seconds": 600, "power": 270}
+      ]
+    },
+    "recovery": {
+      "segments": [
+        {"name": "Deplete", "duration_seconds": 180, "power": 350},
+        {"name": "Recover", "duration_seconds": 600, "power": 100}
+      ]
+    },
+    "ramp": {
+      "segments": [
+        {
+          "name": "Ramp through TP",
+          "duration_seconds": 300,
+          "power": 150,
+          "end_power": 350
+        }
+      ]
+    }
+  }
+}

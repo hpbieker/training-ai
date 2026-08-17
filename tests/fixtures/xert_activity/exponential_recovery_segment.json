@@ -1,0 +1,13 @@
+{
+  "fixture_provenance": "dimensionless uniform scaling of five consecutive recovery samples from a completed Xert activity; identity, date, location, and original signature removed",
+  "summary": {
+    "sig": {"ftp": 100, "atc": 4635.698824462675, "pp": 256.9759613553556}
+  },
+  "session_data": [
+    {"time": 0, "power": 97.93930772063808, "wexp": 2225.3221664739585, "mpa": 225.87888168188715, "xssr": 127.37415788830025},
+    {"time": 1, "power": 70.73394446490528, "wexp": 2224.3331710068255, "mpa": 224.7492441694331, "xssr": 83.96653059875864},
+    {"time": 2, "power": 45.1674585137347, "wexp": 2210.334763011759, "mpa": 223.62401513776416, "xssr": 49.639746870398625},
+    {"time": 3, "power": 19.73208274692909, "wexp": 2184.3442254887777, "mpa": 222.54812470028943, "xssr": 20.212059201315082},
+    {"time": 4, "power": 4.129970807496786, "wexp": 2146.847499923845, "mpa": 221.50582343051022, "xssr": 4.074720905404505}
+  ]
+}

@@ -122,6 +122,26 @@ def fetch_ir_params(opener) -> dict[str, Any]:
         raise TypeError("Expected ir_params JSON object in Xert profile settings")
     return ir_params
 
+
+def fetch_fitness_measures_with_login(*, username: str, password: str) -> dict[str, Any]:
+    """Fetch Xert's progression/calendar history including pre-activity loads."""
+
+    opener = xert_web_login(username=username, password=password)
+    payload = _open_text(
+        opener,
+        Request(
+            f"{XERT_API_BASE_URL}/my-fitness/measures?check_quality=1&period=all&show_all=1",
+            headers={"User-Agent": "xert-plugin/0.1 (+Xert fitness measures)"},
+        ),
+        "Xert fitness measures",
+    )
+    import json
+
+    value = json.loads(payload)
+    if not isinstance(value, dict) or not isinstance(value.get("history"), list):
+        raise TypeError("Expected Xert fitness measures to contain history")
+    return value
+
 def calculate_recovery_days(
     *,
     ir_params: dict[str, Any],

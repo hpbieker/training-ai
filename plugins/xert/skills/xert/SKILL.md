@@ -1,6 +1,6 @@
 ---
 name: xert
-description: Use when working with Xert live data, recovery and XSS semantics, activity or workout fields, Workout Designer rows, calendar notes, or Xert writes.
+description: Use when working with Xert live data, Training Load, Recovery Load, Form or freshness, Training Status, Fitness Signature development (TP, HIE, PP), required XSS to build fitness, offline strain calculations, MPA and XSS semantics, activity or workout fields, Workout Designer rows, calendar notes, or Xert writes.
 ---
 
 # Xert
@@ -8,20 +8,39 @@ description: Use when working with Xert live data, recovery and XSS semantics, a
 Use this skill for Xert access, field interpretation, API quirks, and safe
 writes. The plugin is stateless and returns normalized data to callers.
 
+## Network Execution
+
+Live Xert reads and writes require external network access. Run live
+`xert_cli.py` commands with escalated network permission on the first attempt;
+do not first try them in a network-isolated sandbox. Offline help and local
+artifact inspection do not require escalation.
+
 ## Choose The Narrowest Command
 
 ```bash
 python3 -B plugins/xert/scripts/xert_cli.py activities <start-date> <end-date>
 python3 -B plugins/xert/scripts/xert_cli.py activity-loads <start-date> <end-date>
 python3 -B plugins/xert/scripts/xert_cli.py activity <path> --summary-only
+python3 -B plugins/xert/scripts/xert_cli.py training-info
+python3 -B plugins/xert/scripts/xert_cli.py workout-capacity --as-of <ISO-datetime> --fresh-at <ISO-datetime>
 python3 -B plugins/xert/scripts/xert_cli.py readiness-input [--activity <path>]
 python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto --advice-at <ISO-local-datetime>
+python3 -B plugins/xert/scripts/xert_cli.py load-model --target-at <ISO-datetime> --workout-after-hours <H> --low-xss <XSS> --high-xss <XSS> --peak-xss <XSS>
 python3 -B plugins/xert/scripts/xert_cli.py recommended-training --date <YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_cli.py workouts --summary
+python3 -B plugins/xert/scripts/xert_cli.py workouts [--name <name-keywords>] [--summary]
 python3 -B plugins/xert/scripts/xert_cli.py workout <path>
 python3 -B plugins/xert/scripts/xert_cli.py workout-rows <path>
+python3 -B plugins/xert/scripts/xert_cli.py workout-row-add <path> <row-number> --duration <MM:SS> --power <watts> --dry-run
+python3 -B plugins/xert/scripts/xert_cli.py workout-row-update <path> <row-number> --power <watts> --dry-run
+python3 -B plugins/xert/scripts/xert_cli.py workout-row-remove <path> <row-number> --dry-run
+python3 -B plugins/xert/scripts/xert_cli.py workout-replace <path> --rows-json <rows.json> --dry-run
 python3 -B plugins/xert/scripts/xert_cli.py training-forecast
+python3 -B plugins/xert/scripts/xert_cli.py calendar-events <YYYY-MM-DD>
+python3 -B plugins/xert/scripts/xert_cli.py calendar-event <path> --date <YYYY-MM-DD>
 python3 -B plugins/xert/scripts/xert_cli.py calendar-notes
+python3 -B plugins/xert/scripts/xert_strain_cli.py calculate --signature-tp <W> --signature-hie <J> --signature-pp <W> --segment <MM:SS@W>
+python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <plan-structure.json>
+python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <designer-rows.json> --adjustable-row <one-based-row> --target-low-xss <XSS> --signature-tp <W> --signature-hie <J> --signature-pp <W>
 ```
 
 - Use `activities` for activity discovery. Pass the intended inclusive local
@@ -31,14 +50,127 @@ python3 -B plugins/xert/scripts/xert_cli.py calendar-notes
 - Use `activity --summary-only` for normal activity analysis. It includes the
   XSS split, XEP, focus, specificity, difficulty, freshness, and fitness
   signature.
+- Use `training-info` as the narrow first choice when a local strain calculation
+  needs the current Fitness Signature and no fresh, time-appropriate signature
+  is already available. Map `signature.ftp` to TP, convert `signature.hie` from
+  kJ to J, and map `signature.pp` to PP. Then pass all three values to
+  `xert_strain_cli.py calculate`. Do not call live `workout-calculate` solely to
+  obtain a signature.
 - Use `readiness-input` for normalized recovery and training-advice context.
   Do not pass raw Xert payloads to readiness consumers.
+- Use `solve-endurance` after the plan role and complete workout format have
+  been resolved. Mark exactly one sub-TP segment as adjustable and supply the
+  applicable target low XSS. The solver preserves every fixed quality,
+  warm-up, recovery, and cool-down segment and changes only the endurance
+  duration. Pass its normalized result to the recommendation helper; do not
+  convert XSS to minutes with a mixed-activity historical rate.
+  It also accepts the JSON array returned by `workout-rows`; select the
+  adjustable Designer row with the one-based `--adjustable-row` option and pass
+  the target and signature flags explicitly. Designer LTP power is derived as
+  `TP - HIE(J) / 400` from that signature.
+- Use `workout-capacity` when asking how much Low/High/Peak XSS can be added at
+  an explicit time while still arriving fresh at another explicit time. Require
+  both `--as-of` and `--fresh-at`; there is deliberately no duration alternative
+  or default horizon. The command projects the fresh live state to `--as-of`
+  assuming no intervening training. The timestamps may be equal. Naive values
+  use the machine timezone, while `Z` and explicit offsets are accepted.
+- Use `load-model` to project low/high/peak Training Load, capped Recovery
+  Load, Form, star category, system readiness, and marginal TP/HIE/PP response.
+  Require `--target-at`; values without an offset use the machine timezone,
+  while `Z` and explicit offsets are accepted. There is deliberately no
+  duration alternative or default horizon.
+  Set `--workout-after-hours` explicitly when the XSS impulse occurs later than
+  the current Xert state; it must fall within the resolved horizon.
+  Add `--validate-history` to verify against pre-activity Fitness Measures
+  states. The `--build-*` results are system-equivalent XSS requirements, not
+  workout prescriptions. Add `--summary` for compact source/workout/target
+  timing, current and no-training signatures, planned-dose projections, and
+  required XSS; omit it when the complete model state is needed.
+  For an absolute TP target over many workouts, use `--target-tp` with both
+  `--distribution linear` and `--frequency daily`. The default first dose is
+  the Low XSS that maintains current Low TL; override it with
+  `--start-low-xss`. Treat the result as a mathematical ramp, not a training
+  prescription, and resync it after completed activities.
+- Read [references/training-load-model.md](references/training-load-model.md)
+  whenever the task asks how training changes Training Load, Recovery Load,
+  Form/freshness, TP, HIE, or PP; compares the lasting effect of different XSS
+  splits; asks what is required to build a Fitness Signature component; or
+  needs a multi-workout projection. Use its mental model for explanation and
+  `load-model`/`simulate_calendar_sequence` for numbers.
 - Use `recommended-training` when candidate workouts or activities are needed,
   and filter workout selection to `exerciseType == "Workout"`.
+- Use `workouts --name <name-keywords>` to filter the freshly fetched workout
+  library by case-insensitive keywords. All supplied words must occur in the
+  name, in any order.
 - Use `workout-rows` for editable Workout Designer structure, especially for
   repeat or slope rows. The resolved OAuth workout can be incomplete for these.
+- In a repeat row, Xert's `Rest in between` (`rib_duration`/`rib_power`) is
+  appended after every work interval, including the final repetition. For
+  example, `interval_count=4` with a five-minute RIB produces four work
+  intervals and four five-minute recovery intervals. Do not add a separate
+  recovery row after the repeat block unless an additional recovery is
+  intentionally required.
+- Use `workout-row-add`, `workout-row-update`, or `workout-row-remove` for one
+  structural row operation. Row numbers are one-based. Add and update expose
+  the same row field options; add requires duration and power, while update
+  leaves every omitted field unchanged.
+- Use `workout-replace` when the complete workout structure changes. Calculate
+  one complete row array with `--dry-run`, then save the same file once with
+  `--yes`; the command replaces all rows atomically and verifies fresh readback.
+- Workout create/copy, update/replace/row operations, and calculate results
+  include `timeline_summary`: a chronological expansion with numeric
+  `start`/`end`/`duration` values in seconds and a compact text `power` value.
+  Inspect it to verify repetitions, final RIB recovery, and transitions.
+- For empirical Workout Designer analysis, pass
+  `workout-calculate --series-output /tmp/<name>.json`. The file includes the
+  Fitness Signature used by Xert and second-by-second `power`, `mpa`,
+  `proximity`, `xssr`, cumulative `xss`, and `xds` fields, plus the raw
+  calculation statistics containing Xert's system work and strain totals.
+  Keep the verbose series out of terminal and chat output.
+- For controlled cross-signature probes, pass all three of `--signature-tp`,
+  `--signature-hie`, and `--signature-pp`. They override the Designer form for
+  the unsaved calculation only and do not change the user's Xert profile.
+- Analyze a saved Calculate series with
+  `python3 -B plugins/xert/scripts/xert_calculate_analyze.py /tmp/<name>.json`.
+  Its default output is a concise analysis summary. Add `--detailed` for
+  equation residuals, empirical recovery residuals, and full validation
+  diagnostics. Treat its summary-integration XSS and
+  reconstructed-Difficulty residuals as open diagnostics, not as reasons to
+  alter the validated per-sample MPA or XSSR equations.
+- For MPA feasibility, read the analyzer's `feasibility.valid`, minimum positive
+  reserve, first failure index/reserve, and `validity` fields together. Reject
+  an ordinary workout design that reaches `P >= MPA` under the supplied
+  signature. The analyzer can model Calculate's continued series, but that
+  continuation is hypothetical and is not a detected breakthrough or a new
+  Fitness Signature.
+- Read [references/field-semantics.md](references/field-semantics.md), section
+  `Workout Designer Calculate Model`, when interpreting formulas, the HIE/TP
+  floor, completed-activity MPA, or the evidence status of the model.
+- Read [references/strain-model.md](references/strain-model.md) when explaining how
+  XSS works, relating low/high/peak XSS to workout structure, comparing XSS
+  profiles, or calculating a known workout without network access. Prefer the
+  offline `xert_strain_cli.py` whenever the segments can be resolved. If only
+  the current signature is missing, obtain it with `training-info` and continue
+  locally; a missing signature alone is not a reason to use live Calculate. Its
+  default output is the analysis-ready summary; add `--detailed` only when
+  segment diagnostics or model limitations are needed.
 
 Credentials come from `XERT_USERNAME` and `XERT_PASSWORD` in `.env`.
+
+## Load Reasoning Defaults
+
+When no numerical projection is requested, reason directionally with three
+parallel systems: Low XSS builds Low TL and the TP-linked component; High XSS
+builds High TL and the HIE-linked component; Peak XSS builds Peak TL and the
+PP-linked component. A workout raises both TL and RL. RL normally decays faster,
+so recovery improves Form while retaining more TL. Signature response depends
+on net change in the matching TL at the observation time, not raw XSS alone.
+
+Do not equate training status with freshness: total TL controls stars/category,
+while per-system RL and Recovery Demand control readiness. Describe exact
+TP/HIE/PP outputs as marginal Training-Load-matched projections and keep
+breakthrough, near-breakthrough, and private decay adjustments outside the
+claimed model boundary.
 
 ## Planned-Time Advice
 
@@ -69,6 +201,9 @@ python3 -B plugins/xert/scripts/xert_cli.py activity <path> --session-data --out
 
 ## Semantics And Writes
 
+- Read [references/sources.md](references/sources.md) before making evidence or
+  validation claims about Xert, and use its claim boundaries when official
+  product documentation and local empirical findings have different scopes.
 - Read [references/field-semantics.md](references/field-semantics.md) before
   interpreting recovery, XSS, activity, forecast, workout, or calendar fields.
 - Read [references/write-safety.md](references/write-safety.md) before any
