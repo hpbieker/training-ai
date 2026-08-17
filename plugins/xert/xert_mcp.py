@@ -25,6 +25,7 @@ ALL_TOOL_NAMES = (
     "set_note",
     "get_training_state",
     "get_training_advice",
+    "list_recommended_workouts",
     "create_workout",
     "delete_workout",
     "update_workout",
@@ -90,6 +91,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     },
     "get_training_advice": {
         "title": "Get Xert Training Advice",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "list_recommended_workouts": {
+        "title": "List Xert Recommended Workouts",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -559,14 +567,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": "string",
                     "enum": ["summary", "full"],
                     "default": "summary",
-                    "description": "summary returns normalized advice; full returns the selected source payload.",
-                },
-                "include_recommendations": {
-                    "type": "boolean",
-                    "default": False,
                     "description": (
-                        "Include normalized recommended workouts. This performs the "
-                        "additional recommended-training read when advice is for now."
+                        "summary returns normalized advice; full returns the selected "
+                        "advice payload without workout candidates."
                     ),
                 },
             },
@@ -582,6 +585,48 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["get_training_advice"],
+    },
+    "list_recommended_workouts": {
+        "name": "list_recommended_workouts",
+        "description": (
+            "List XATA's ranked recommended workouts for now or a planned time. "
+            "Omit at for recommendations resolved now; provide at to resolve them "
+            "immediately before a planned start."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": (
+                        "Optional planned ISO date-time. Naive values use the user's "
+                        "local timezone; omit for recommendations now."
+                    ),
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "default": 10,
+                    "description": (
+                        "Maximum number of ranked workout recommendations to return."
+                    ),
+                },
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "at": {"type": ["string", "null"]},
+                "count": {"type": "integer"},
+                "workouts": {"type": "array", "items": _object("Recommended workout.")},
+            },
+            "required": ["at", "count", "workouts"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["list_recommended_workouts"],
     },
     "get_training_forecast": {
         "name": "get_training_forecast",
@@ -935,9 +980,14 @@ class XertToolService:
                 "advice": service.get_training_advice(
                     at=arguments.get("at"),
                     view=view,
-                    include_recommendations=arguments.get("include_recommendations", False),
                 ),
             }
+        if name == "list_recommended_workouts":
+            at = arguments.get("at")
+            workouts = service.list_recommended_workouts(
+                at=at, limit=arguments.get("limit", 10)
+            )
+            return {"at": at, "count": len(workouts), "workouts": workouts}
         if name == "get_training_forecast":
             start = arguments["start_date"]
             end = arguments["end_date"]

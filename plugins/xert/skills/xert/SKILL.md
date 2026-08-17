@@ -49,10 +49,13 @@ Prefer the Xert MCP tools when they are available:
 - `get_training_advice` returns Xert advice. Omit `at` for current advice from
   `/my-fitness`; supply an ISO date-time for planned-time advice from
   `/recommended-training`, resolved immediately before that planned start.
-  Use `view=summary` normally and `view=full` only for the selected raw source
-  payload. Set `include_recommendations=true` only when candidate workouts are
-  needed; summary output filters candidates to `exerciseType == "Workout"`.
+  Use `view=summary` normally and `view=full` only for the selected advice
+  payload. Neither view returns recommended workouts.
   This tool does not add activity load or cross-source readiness.
+- `list_recommended_workouts` returns XATA's ranked workout candidates. Omit
+  `at` for recommendations now or supply the same planned-time ISO date-time
+  used for advice. `limit` defaults to 10 and accepts 1 through 100. Output is
+  restricted to `exerciseType == "Workout"` before the ranked limit is applied.
 - `get_training_forecast` returns Xert forecast days in an inclusive local-date
   range. Use `view=summary` normally and `view=full` when source day fields are
   needed. It reads the forecast endpoint, not the mixed activity/Planner feed.
@@ -137,8 +140,7 @@ python3 -B plugins/xert/scripts/xert_strain_cli.py solve-endurance --input <desi
   splits; asks what is required to build a Fitness Signature component; or
   needs a multi-workout projection. Use its mental model for explanation and
   `load-model`/`simulate_calendar_sequence` for numbers.
-- Use MCP `get_training_advice(include_recommendations=true)` when candidate
-  workouts are needed.
+- Use MCP `list_recommended_workouts` when candidate workouts are needed.
 - Use MCP `list_workouts(name_keywords=...)` to filter the freshly fetched
   workout library. All supplied words must occur in the name, in any order.
 - Use MCP `get_workout(view=editable)` for Workout Designer structure,

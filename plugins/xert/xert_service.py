@@ -372,35 +372,15 @@ class XertService:
         *,
         at: str | None = None,
         view: str = "summary",
-        include_recommendations: bool = False,
     ) -> dict[str, Any]:
         if view not in {"summary", "full"}:
             raise ValueError("view must be 'summary' or 'full'")
         credentials = self._credentials()
-        if not isinstance(include_recommendations, bool):
-            raise ValueError("include_recommendations must be a boolean")
         if at is None:
             payload = fetch_recovery_model_with_opener(self._auth.web_opener())
-            recommendations_payload = None
-            if include_recommendations:
-                recommendations_payload = fetch_recommended_training_with_opener(
-                    self._auth.web_opener(),
-                    date_value=_planned_advice_value(datetime.now(LOCAL_TIMEZONE).isoformat()),
-                    recent=True,
-                    additional=False,
-                    sport=None,
-                )
             if view == "full":
-                result = {"source_scope": "current", "at": None, "payload": payload}
-                if recommendations_payload is not None:
-                    result["recommendations_payload"] = recommendations_payload
-                return result
-            result = compact_current_training_advice(payload)
-            if recommendations_payload is not None:
-                result["recommendations"] = compact_workout_recommendations(
-                    recommendations_payload
-                )
-            return result
+                return {"source_scope": "current", "at": None, "payload": payload}
+            return compact_current_training_advice(payload)
 
         advice_value = _planned_advice_value(at)
         payload = fetch_recommended_training_with_opener(
@@ -411,11 +391,25 @@ class XertService:
             sport=None,
         )
         if view == "full":
-            return {"source_scope": "planned_time", "at": at, "payload": payload}
-        result = compact_planned_training_advice(payload, at=at)
-        if include_recommendations:
-            result["recommendations"] = compact_workout_recommendations(payload)
-        return result
+            advice_payload = dict(payload)
+            advice_payload.pop("exercises", None)
+            return {"source_scope": "planned_time", "at": at, "payload": advice_payload}
+        return compact_planned_training_advice(payload, at=at)
+
+    def list_recommended_workouts(
+        self, *, at: str | None = None, limit: int = 10
+    ) -> list[dict[str, Any]]:
+        if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 100:
+            raise ValueError("limit must be an integer from 1 to 100")
+        advice_at = at or datetime.now(LOCAL_TIMEZONE).isoformat()
+        payload = fetch_recommended_training_with_opener(
+            self._auth.web_opener(),
+            date_value=_planned_advice_value(advice_at),
+            recent=True,
+            additional=False,
+            sport=None,
+        )
+        return compact_workout_recommendations(payload)[:limit]
 
     def get_training_forecast(
         self, start_date: str, end_date: str, *, view: str = "summary"

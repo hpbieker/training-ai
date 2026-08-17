@@ -62,13 +62,16 @@ class FakeXertService:
         self.calls.append(("get_training_state", view))
         return {"as_of": "2026-08-17T09:00:00+02:00"} if view == "summary" else {"training_info": {}}
 
-    def get_training_advice(self, *, at=None, view="summary", include_recommendations=False):
-        self.calls.append(("get_training_advice", at, view, include_recommendations))
+    def get_training_advice(self, *, at=None, view="summary"):
+        self.calls.append(("get_training_advice", at, view))
         return {
             "source_scope": "planned_time" if at else "current",
             "at": at,
-            "recommendations": [] if include_recommendations else None,
         }
+
+    def list_recommended_workouts(self, *, at=None, limit=10):
+        self.calls.append(("list_recommended_workouts", at, limit))
+        return [{"path": "w1", "name": "Workout"}]
 
     def get_training_forecast(self, start_date, end_date, *, view="summary"):
         self.calls.append(("get_training_forecast", start_date, end_date, view))
@@ -101,6 +104,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "set_note",
                 "get_training_state",
                 "get_training_advice",
+                "list_recommended_workouts",
                 "create_workout",
                 "delete_workout",
                 "update_workout",
@@ -332,12 +336,19 @@ class XertMcpDispatchTests(unittest.TestCase):
             {
                 "at": "2026-08-18T09:00:00+02:00",
                 "view": "full",
-                "include_recommendations": True,
             },
         )
         self.assertEqual(result["view"], "full")
         self.assertEqual(result["advice"]["source_scope"], "planned_time")
-        self.assertEqual(result["advice"]["recommendations"], [])
+
+    def test_recommended_workouts_dispatches_optional_time(self) -> None:
+        result = self.tools.call_tool(
+            "list_recommended_workouts",
+            {"at": "2026-08-18T09:00:00+02:00", "limit": 5},
+        )
+        self.assertEqual(result["at"], "2026-08-18T09:00:00+02:00")
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["workouts"][0]["path"], "w1")
 
     def test_training_forecast_dispatches_range_and_view(self) -> None:
         result = self.tools.call_tool(
@@ -531,7 +542,7 @@ class XertServiceTests(unittest.TestCase):
             sport=None,
         )
 
-    def test_training_advice_filters_recommendations_to_workouts(self) -> None:
+    def test_list_recommended_workouts_filters_to_workouts(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
         service = self._service(credentials)
         payload = {
@@ -544,11 +555,52 @@ class XertServiceTests(unittest.TestCase):
         with patch.object(
             SERVICE, "fetch_recommended_training_with_opener", return_value=payload
         ):
-            result = service.get_training_advice(
-                at="2026-08-18T09:00:00+02:00",
-                include_recommendations=True,
+            result = service.list_recommended_workouts(
+                at="2026-08-18T09:00:00+02:00", limit=1
             )
-        self.assertEqual([row["path"] for row in result["recommendations"]], ["w1"])
+        self.assertEqual([row["path"] for row in result], ["w1"])
+
+    def test_list_recommended_workouts_applies_limit_after_workout_filter(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = self._service(credentials)
+        payload = {
+            "exercises": [
+                {"exerciseType": "Activity", "path": "a1"},
+                {"exerciseType": "Workout", "path": "w1"},
+                {"exerciseType": "Workout", "path": "w2"},
+            ]
+        }
+        with patch.object(
+            SERVICE, "fetch_recommended_training_with_opener", return_value=payload
+        ):
+            result = service.list_recommended_workouts(limit=1)
+        self.assertEqual([row["path"] for row in result], ["w1"])
+
+    def test_list_recommended_workouts_rejects_invalid_limit(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = self._service(credentials)
+        for limit in (0, 101, True, "10"):
+            with self.subTest(limit=limit), self.assertRaisesRegex(
+                ValueError, "limit must be an integer from 1 to 100"
+            ):
+                service.list_recommended_workouts(limit=limit)
+
+    def test_full_planned_advice_excludes_workout_candidates(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = self._service(credentials)
+        payload = {
+            "training_advice": {"training_status": "Fresh"},
+            "exercises": [{"exerciseType": "Workout", "path": "w1"}],
+        }
+        with patch.object(
+            SERVICE, "fetch_recommended_training_with_opener", return_value=payload
+        ):
+            result = service.get_training_advice(
+                at="2026-08-18T09:00:00+02:00", view="full"
+            )
+
+        self.assertIn("training_advice", result["payload"])
+        self.assertNotIn("exercises", result["payload"])
 
     def test_training_forecast_filters_epoch_days_by_local_date(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
