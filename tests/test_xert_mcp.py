@@ -36,12 +36,32 @@ class FakeXertService:
         self.calls.append(("get_workout", path, view))
         return [{"name": "Warm-up"}] if view == "editable" else {"path": path}
 
+    def list_notes(self, start_date, end_date):
+        self.calls.append(("list_notes", start_date, end_date))
+        return [{"date": start_date, "text": "Easy day"}]
+
+    def get_note(self, note_date):
+        self.calls.append(("get_note", note_date))
+        return {"date": note_date, "exists": False, "text": None}
+
+    def set_note(self, note_date, text):
+        self.calls.append(("set_note", note_date, text))
+        return {"date": note_date, "exists": bool(text), "text": text or None, "success": True}
+
 
 class XertMcpSchemaTests(unittest.TestCase):
-    def test_exposes_only_activity_and_workout_tools(self) -> None:
+    def test_exposes_only_selected_activity_workout_and_note_tools(self) -> None:
         self.assertEqual(
             MCP.ALL_TOOL_NAMES,
-            ("list_activities", "get_activity", "list_workouts", "get_workout"),
+            (
+                "list_activities",
+                "get_activity",
+                "list_workouts",
+                "get_workout",
+                "list_notes",
+                "get_note",
+                "set_note",
+            ),
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
 
@@ -52,12 +72,13 @@ class XertMcpSchemaTests(unittest.TestCase):
             for field, schema in definition["inputSchema"]["properties"].items():
                 self.assertTrue(schema.get("description"), f"{name}.{field}")
             writes_session_file = name == "get_activity"
+            writes_note = name == "set_note"
             self.assertEqual(
                 definition["annotations"],
                 {
                     "title": MCP.TOOL_ANNOTATIONS[name]["title"],
-                    "readOnlyHint": not writes_session_file,
-                    "destructiveHint": False,
+                    "readOnlyHint": not (writes_session_file or writes_note),
+                    "destructiveHint": writes_note,
                     "idempotentHint": not writes_session_file,
                     "openWorldHint": True,
                 },
@@ -123,6 +144,18 @@ class XertMcpDispatchTests(unittest.TestCase):
         with self.assertRaisesRegex(MCP.ToolFailure, "missing required"):
             self.tools.call_tool("get_activity", {})
 
+    def test_note_tools_dispatch_normalized_contracts(self) -> None:
+        listed = self.tools.call_tool(
+            "list_notes", {"start_date": "2026-08-01", "end_date": "2026-08-31"}
+        )
+        missing = self.tools.call_tool("get_note", {"date": "2026-08-17"})
+        saved = self.tools.call_tool(
+            "set_note", {"date": "2026-08-17", "text": "Recovery day"}
+        )
+        self.assertEqual(listed["count"], 1)
+        self.assertFalse(missing["exists"])
+        self.assertEqual(saved["text"], "Recovery day")
+
 
 class XertServiceTests(unittest.TestCase):
     def test_service_routes_activity_and_workout_views(self) -> None:
@@ -160,6 +193,42 @@ class XertServiceTests(unittest.TestCase):
                 credentials = SERVICE.discover_xert_credentials()
         self.assertEqual(credentials.username, "environment-user")
         self.assertEqual(credentials.password, "environment-password")
+
+    def test_note_service_filters_normalizes_and_sets_without_weight(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = SERVICE.XertService(lambda: credentials)
+        notes = {
+            "2026-08-01": {"notes": "First", "weight": 80},
+            "2026-08-02": {"notes": ""},
+            "2026-09-01": {"notes": "Outside"},
+        }
+        with (
+            patch.object(SERVICE, "xert_web_login", return_value=object()),
+            patch.object(SERVICE, "fetch_calendar_notes_with_opener", return_value=notes),
+            patch.object(
+                SERVICE,
+                "set_calendar_note",
+                return_value={"success": True, "verified_notes": "Changed"},
+            ) as set_note,
+        ):
+            self.assertEqual(
+                service.list_notes("2026-08-01", "2026-08-31"),
+                [{"date": "2026-08-01", "text": "First"}],
+            )
+            self.assertEqual(
+                service.get_note("2026-08-02"),
+                {"date": "2026-08-02", "exists": False, "text": None},
+            )
+            self.assertEqual(
+                service.set_note("2026-08-03", "Changed"),
+                {"date": "2026-08-03", "exists": True, "text": "Changed", "success": True},
+            )
+        set_note.assert_called_once_with(
+            SERVICE.date(2026, 8, 3),
+            "Changed",
+            username="user",
+            password="secret",
+        )
 
 
 if __name__ == "__main__":

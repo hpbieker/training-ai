@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -21,6 +21,7 @@ from xert_activities import (  # noqa: E402
     list_activities as fetch_activities,
     list_activity_details,
 )
+from xert_calendar import fetch_calendar_notes_with_opener, set_calendar_note  # noqa: E402
 from xert_common import (  # noqa: E402
     LOCAL_TIMEZONE,
     DEFAULT_XERT_OAUTH_CLIENT_ID,
@@ -179,6 +180,53 @@ class XertService:
         )
         return fetch_workout_designer_rows(opener, path)
 
+    def list_notes(self, start_date: str, end_date: str) -> list[dict[str, str]]:
+        start, end = _validate_date_range(start_date, end_date)
+        notes = self._calendar_notes()
+        result = []
+        for raw_date, payload in notes.items():
+            try:
+                note_date = date.fromisoformat(str(raw_date))
+            except ValueError:
+                continue
+            text = payload.get("notes") if isinstance(payload, dict) else None
+            if start <= note_date <= end and isinstance(text, str) and text:
+                result.append({"date": note_date.isoformat(), "text": text})
+        return sorted(result, key=lambda note: note["date"])
+
+    def get_note(self, note_date: str) -> dict[str, Any]:
+        day = _validate_date(note_date, "date")
+        payload = self._calendar_notes().get(day.isoformat())
+        text = payload.get("notes") if isinstance(payload, dict) else None
+        exists = isinstance(text, str) and bool(text)
+        return {"date": day.isoformat(), "exists": exists, "text": text if exists else None}
+
+    def set_note(self, note_date: str, text: str) -> dict[str, Any]:
+        day = _validate_date(note_date, "date")
+        if not isinstance(text, str):
+            raise ValueError("text must be a string")
+        credentials = self._credentials()
+        result = set_calendar_note(
+            day,
+            text,
+            username=credentials.username,
+            password=credentials.password,
+        )
+        return {
+            "date": day.isoformat(),
+            "exists": bool(text),
+            "text": result.get("verified_notes") if text else None,
+            "success": bool(result.get("success")),
+        }
+
+    def _calendar_notes(self) -> dict[str, Any]:
+        credentials = self._credentials()
+        opener = xert_web_login(
+            username=_required_credential(credentials.username, "XERT_USERNAME"),
+            password=_required_credential(credentials.password, "XERT_PASSWORD"),
+        )
+        return fetch_calendar_notes_with_opener(opener)
+
     def _credentials(self) -> XertCredentials:
         credentials = self._credential_factory()
         _required_credential(credentials.username, "XERT_USERNAME")
@@ -235,16 +283,19 @@ def filter_workouts(
     ]
 
 
-def _validate_date_range(start_date: str, end_date: str) -> None:
-    from datetime import date
-
-    try:
-        start = date.fromisoformat(start_date)
-        end = date.fromisoformat(end_date)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("start_date and end_date must use YYYY-MM-DD") from exc
+def _validate_date_range(start_date: str, end_date: str) -> tuple[date, date]:
+    start = _validate_date(start_date, "start_date")
+    end = _validate_date(end_date, "end_date")
     if end < start:
         raise ValueError("end_date must not precede start_date")
+    return start, end
+
+
+def _validate_date(value: str, label: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must use YYYY-MM-DD") from exc
 
 
 def _require_identifier(value: str, label: str) -> str:

@@ -20,6 +20,9 @@ ALL_TOOL_NAMES = (
     "get_activity",
     "list_workouts",
     "get_workout",
+    "list_notes",
+    "get_note",
+    "set_note",
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
@@ -48,6 +51,27 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "title": "Get Xert Workout",
         "readOnlyHint": True,
         "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "list_notes": {
+        "title": "List Xert Calendar Notes",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_note": {
+        "title": "Get Xert Calendar Note",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "set_note": {
+        "title": "Set Xert Calendar Note",
+        "readOnlyHint": False,
+        "destructiveHint": True,
         "idempotentHint": True,
         "openWorldHint": True,
     },
@@ -233,6 +257,119 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["get_workout"],
     },
+    "list_notes": {
+        "name": "list_notes",
+        "description": "List non-empty Xert calendar notes for an inclusive local-date range.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Inclusive local start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Inclusive local end date in YYYY-MM-DD format.",
+                },
+            },
+            "required": ["start_date", "end_date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "description": "Requested inclusive start date."},
+                "end_date": {"type": "string", "description": "Requested inclusive end date."},
+                "count": {"type": "integer", "description": "Number of non-empty notes."},
+                "notes": {
+                    "type": "array",
+                    "description": "Calendar notes sorted by date.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "date": {"type": "string", "description": "Local calendar date."},
+                            "text": {"type": "string", "description": "Note text."},
+                        },
+                        "required": ["date", "text"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["start_date", "end_date", "count", "notes"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["list_notes"],
+    },
+    "get_note": {
+        "name": "get_note",
+        "description": "Get the Xert calendar note for one local date.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Local calendar date in YYYY-MM-DD format.",
+                },
+            },
+            "required": ["date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "Requested local calendar date."},
+                "exists": {"type": "boolean", "description": "Whether a non-empty note exists."},
+                "text": {
+                    "type": ["string", "null"],
+                    "description": "Note text, or null when no non-empty note exists.",
+                },
+            },
+            "required": ["date", "exists", "text"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["get_note"],
+    },
+    "set_note": {
+        "name": "set_note",
+        "description": (
+            "Set or replace the Xert calendar note for one local date. Pass an empty "
+            "text string to clear the note. The saved value is read back and verified."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Local calendar date in YYYY-MM-DD format.",
+                },
+                "text": {
+                    "type": "string",
+                    "description": "Desired note text; an empty string clears the note.",
+                },
+            },
+            "required": ["date", "text"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {"type": "string", "description": "Updated local calendar date."},
+                "exists": {"type": "boolean", "description": "Whether a non-empty note now exists."},
+                "text": {
+                    "type": ["string", "null"],
+                    "description": "Verified saved text, or null after clearing.",
+                },
+                "success": {"type": "boolean", "description": "Whether readback matched the requested text."},
+            },
+            "required": ["date", "exists", "text", "success"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["set_note"],
+    },
 }
 
 
@@ -329,6 +466,15 @@ class XertToolService:
                 "count": len(workouts),
                 "workouts": workouts,
             }
+        if name == "list_notes":
+            start = arguments["start_date"]
+            end = arguments["end_date"]
+            notes = service.list_notes(start, end)
+            return {"start_date": start, "end_date": end, "count": len(notes), "notes": notes}
+        if name == "get_note":
+            return service.get_note(arguments["date"])
+        if name == "set_note":
+            return service.set_note(arguments["date"], arguments["text"])
         path = arguments["workout_path"]
         view = arguments.get("view", "resolved")
         workout = service.get_workout(path, view=view)
@@ -361,9 +507,9 @@ def create_sdk_server(service: XertToolService) -> Any:
         "xert",
         version="0.1.0",
         instructions=(
-            "Read Xert cycling activities and workouts. Inclusive activity dates "
-            "use the user's local calendar. Use editable workout view when complete "
-            "Workout Designer rows are required."
+            "Read Xert cycling activities, workouts, and calendar notes, and set "
+            "calendar-note text. Inclusive dates use the user's local calendar. Use "
+            "editable workout view when complete Workout Designer rows are required."
         ),
     )
 

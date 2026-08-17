@@ -30,10 +30,16 @@ Prefer the Xert MCP tools when they are available:
 - `get_workout` uses `view=resolved` for the workout calculated with the current
   Fitness Signature and `view=editable` for authoritative Workout Designer
   rows, including repeats, slopes, and rest-in-between fields.
+- `list_notes` lists non-empty calendar-note text in an inclusive local-date
+  range. `get_note` reads one date and distinguishes an absent note from text.
+- `set_note` sets the complete calendar-note text for one local date and reads
+  it back. It overwrites existing text; an empty string clears the note. Use it
+  only when the user explicitly asks for that write. It does not update weight,
+  freshness, program, forecast, or training-plan fields.
 
 The CLI remains the development/fallback interface and exposes Xert operations
 that have not yet been added to MCP. Both transports call the same Python
-service for activities and workouts.
+service for activities, workouts, and calendar notes.
 
 ## Choose The Narrowest Command
 
