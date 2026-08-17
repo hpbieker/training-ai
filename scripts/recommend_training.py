@@ -422,16 +422,16 @@ def main() -> None:
         checked_at=generated_at,
         overrides=set(args.source_overrides_json),
     )
-    intervals_sources_requiring_mcp = {
-        key for key in ("intervals_wellness", "intervals_events")
+    sources_requiring_mcp = {
+        key for key in ("garmin", "intervals_wellness", "intervals_events")
         if source_refresh.get(key, {}).get("refresh")
     }
-    if intervals_sources_requiring_mcp:
+    if sources_requiring_mcp:
         raise SystemExit(
-            "Intervals.icu live access is MCP-only. Fetch list_wellness and "
-            "list_events for the required date range, persist each normalized "
-            "result as JSON, then pass the files through --source-overrides-json: "
-            + ", ".join(sorted(intervals_sources_requiring_mcp))
+            "Garmin Connect and Intervals.icu live access is MCP-only. Fetch the "
+            "required normalized MCP result, persist it as JSON, then pass the "
+            "file through --source-overrides-json: "
+            + ", ".join(sorted(sources_requiring_mcp))
         )
     latest_activity = latest_activity_on_or_before(
         args.date,
@@ -439,7 +439,7 @@ def main() -> None:
         local_timezone=local_timezone,
     )
     primary_sources = {
-        key for key in ("garmin", "xert")
+        key for key in ("xert",)
         if source_refresh.get(key, {}).get("refresh")
     }
     if primary_sources:
@@ -1592,51 +1592,7 @@ def fetch_primary_live_inputs(
     sources: set[str],
     local_timezone: Any,
 ) -> None:
-    """Fetch independent Garmin and Xert inputs concurrently."""
-
-    def fetch_garmin() -> None:
-        garmin_day = garmin_source_day(day, now=now)
-        daily = run_json(
-            [
-                sys.executable,
-                "-B",
-                "plugins/garmin-connect/scripts/garmin_connect_cli.py",
-                "day",
-                garmin_day,
-                "--profile",
-                "readiness",
-                "--tolerate-errors",
-                "--compact",
-            ]
-        )
-        hrv_history = run_json(
-            [
-                sys.executable,
-                "-B",
-                "plugins/garmin-connect/scripts/garmin_connect_cli.py",
-                "recent",
-                "--days",
-                "7",
-                "--until",
-                garmin_day,
-                "--only",
-                "hrv",
-                "--tolerate-errors",
-            ]
-        )
-        daily["hrv_history"] = hrv_history
-        daily["projection_context"] = {
-            "requested_date": day,
-            "garmin_source_date": garmin_day,
-            "uses_latest_available_day": garmin_day != day,
-            "meaning": (
-                "For a future recommendation, timestamped Garmin Recovery Time "
-                "is taken from the latest available day and projected to the "
-                "planned start assuming no intervening training. Future overnight "
-                "HRV, sleep, resting HR, and Body Battery are not inferred."
-            ),
-        }
-        write_json(source_files["garmin"], daily)
+    """Fetch primary inputs that still have a repo-local live interface."""
 
     def fetch_xert() -> None:
         xert_command = xert_readiness_command(planned_at=planned_at, now=now)
@@ -1649,7 +1605,6 @@ def fetch_primary_live_inputs(
         run_json_to_file(xert_command, source_files["xert"])
 
     available_steps = {
-        "garmin": fetch_garmin,
         "xert": fetch_xert,
     }
     steps = {key: available_steps[key] for key in sources}

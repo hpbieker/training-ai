@@ -147,7 +147,7 @@ def main() -> None:
         "--garmin-json",
         type=Path,
         help=(
-            "Normalized output from garmin_connect_cli.py activity --summary-only. "
+            "Normalized output from Garmin Connect MCP get_activity. "
             "Adds Training Effect, Stamina, and explicit Garmin blind-spot context."
         ),
     )

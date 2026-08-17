@@ -1,11 +1,12 @@
 {
   "name": "garmin-connect",
-  "version": "0.1.0+codex.20260710112029",
+  "version": "0.1.0+codex.20260817163923",
   "description": "Garmin Connect source semantics and live access for training readiness and activity context.",
   "author": {
     "name": "Hans Petter Bieker"
   },
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Garmin Connect",
     "shortDescription": "Fetch and interpret Garmin Connect health, readiness, and activity data.",
@@ -14,7 +15,7 @@
     "category": "Health & Fitness",
     "capabilities": [
       "Data Analysis",
-      "Command Line"
+      "MCP Server"
     ],
     "composerIcon": "./assets/garmin-connect-icon.png",
     "logo": "./assets/garmin-connect-icon.png",

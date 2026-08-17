@@ -31,7 +31,6 @@ from recommend_training import (
     compact_freshness_summary,
     executable_now_line,
     finalize_plan_trace,
-    fetch_primary_live_inputs,
     format_summary,
     garmin_readiness_line,
     garmin_readiness_driver_line,
@@ -2347,31 +2346,18 @@ class ExecutionModalityConstraintTests(unittest.TestCase):
 
 
 class SourceRefreshPolicyTests(unittest.TestCase):
-    @patch("recommend_training.write_json")
-    @patch("recommend_training.run_json")
-    def test_garmin_refresh_requests_compact_plugin_contract(
-        self,
-        run_json_mock,
-        write_json_mock,
-    ):
-        run_json_mock.side_effect = [
-            {"source": "garmin_connect_gccli", "date": "2026-08-08"},
-            {"source": "garmin_connect_gccli", "days": []},
-        ]
+    def test_garmin_refresh_is_mcp_only(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "garmin.json"
+            plan = build_source_refresh_plan(
+                {"garmin": source},
+                required={"garmin"},
+                refresh_spec=parse_refresh_json('{"mode":"selected","sources":["garmin"]}'),
+                checked_at=datetime.now(timezone.utc),
+            )
 
-        fetch_primary_live_inputs(
-            day="2026-08-08",
-            now=datetime.fromisoformat("2026-08-08T09:00:00+02:00"),
-            planned_at=datetime.fromisoformat("2026-08-08T10:00:00+02:00"),
-            latest_activity=None,
-            source_files={"garmin": Path("/tmp/garmin-test.json")},
-            sources={"garmin"},
-            local_timezone=ZoneInfo("Europe/Oslo"),
-        )
-
-        daily_command = run_json_mock.call_args_list[0].args[0]
-        self.assertIn("--compact", daily_command)
-        write_json_mock.assert_called_once()
+        self.assertTrue(plan["garmin"]["refresh"])
+        self.assertEqual(plan["garmin"]["status"], "forced")
 
     def test_auto_reuses_fresh_source_and_fetches_missing_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:

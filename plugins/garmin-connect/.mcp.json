@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "garmin-connect": {
+      "command": "python3",
+      "args": ["-B", "./garmin_connect_mcp.py"],
+      "cwd": "."
+    }
+  }
+}

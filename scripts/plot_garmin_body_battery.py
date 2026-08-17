@@ -23,7 +23,7 @@ def main() -> None:
     )
     parser.add_argument(
         "garmin_json",
-        help="JSON from plugins/garmin-connect/scripts/garmin_connect_cli.py day",
+        help="JSON from Garmin Connect MCP get_health_day",
     )
     parser.add_argument(
         "--activity-dir",

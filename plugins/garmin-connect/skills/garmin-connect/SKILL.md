@@ -7,35 +7,40 @@ description: Use when working with Garmin Connect live health, readiness, Body B
 
 Use this skill for Garmin Connect access, Garmin-specific field interpretation,
 sync/freshness behavior, and tightly scoped course writes. The plugin uses local
-`gccli` for authentication and its primary transport boundary.
+`gccli` for authentication and its primary transport boundary. Health and
+activity reads are exposed through MCP; the remaining CLI is only for course
+operations and authentication status.
 
 ## Network Execution
 
-Live Garmin Connect reads and writes require external network access. Run live
-`garmin_connect_cli.py` commands with escalated network permission on the first
-attempt; do not first try them in a network-isolated sandbox. Offline help,
-local artifact inspection, and cache-only workflows do not require escalation.
+Live Garmin Connect reads and writes require external network access. Use the
+Garmin Connect MCP tools for health and activity reads. Run the remaining live
+`garmin_connect_cli.py` course/status commands with escalated network permission
+on the first attempt; do not first try them in a network-isolated sandbox.
+Offline help, local artifact inspection, and cache-only workflows do not require
+escalation.
 
 ## Choose The Narrowest Command
 
 ```bash
+get_health_day(date=<YYYY-MM-DD>)
+list_health_days(until=<YYYY-MM-DD>, days=7, sources=["hrv"])
+list_activities(since=<YYYY-MM-DD>, until=<YYYY-MM-DD>)
+get_activity(activity_id=<garmin-id>)
+```
+
+Course and authentication operations remain CLI-only:
+
+```bash
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py status
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day <YYYY-MM-DD> --profile readiness
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day <YYYY-MM-DD> --profile readiness --compact
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day <YYYY-MM-DD> --only <source>
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py recent --days 7 --until <YYYY-MM-DD>
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py recent --days 7 --until <YYYY-MM-DD> --only hrv
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activities --since <YYYY-MM-DD> --until <YYYY-MM-DD>
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity <garmin-id> --summary-only
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py courses
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course <course-id>
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-upload <course.json> --name "<new name>"
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-delete <course-id> --confirm-course-id <course-id>
 ```
 
-- Use `day --profile readiness` for normal same-day readiness input.
-- Add `--compact` when the caller needs stable normalized Training Readiness
-  drivers and VO2max context. The compact output retains supporting daily
+- Use `get_health_day` for normal same-day readiness input. Its stable compact
+  output includes normalized Training Readiness drivers and VO2max context and retains supporting daily
   source signals needed for readiness composition and preserves all normalized
   readiness observations so a historical cutoff can select the correct row.
   Compact VO2max preserves Garmin's `cycling` and `generic` categories; it does
@@ -46,17 +51,17 @@ python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-delete <c
   start. Do not fetch the empty future day as the only Garmin input, and do not
   carry the latest day's HRV, sleep, resting HR, Body Battery, or aggregate
   Training Readiness forward as future observations.
-- Use repeated `--only` values when only selected daily sources are needed.
-- Use `recent` when trend context across several days matters. Add
-  `--only hrv` when the caller needs actual nightly HRV values without fetching
+- Use `sources` when only selected daily sources are needed.
+- Use `list_health_days` when trend context across several days matters. Pass
+  `sources=["hrv"]` when the caller needs actual nightly HRV values without fetching
   unrelated daily sources or Body Battery history.
-- Use `activities` to resolve an activity and `activity --summary-only` for
+- Use `list_activities` to resolve an activity and `get_activity` for
   compact Training Effect, load, Stamina, and performance metrics. The compact
   Stamina analysis resolves Garmin's per-activity descriptor indexes, which can
   vary between activities, and reports aligned coverage, start/end/minimum,
   minimum context, Available-versus-Potential gap, rebound, and Potential
   drawdown without returning the raw chart series. It may therefore fetch
-  activity chart details internally even though `--summary-only` omits them
+  activity chart details internally even though the MCP result omits them
   from its output.
 - Use `courses` to list saved Garmin Connect courses (routes), including course
   IDs, names, sport types, distances, elevation, start coordinates, and source
@@ -81,12 +86,12 @@ python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course-delete <c
   artifact contains Garmin's `external_id`. Creating that artifact belongs to
   the caller.
 
-The CLI emits JSON and does not save files. Redirect large `day`, `recent`, full
-activity, or full course responses to an explicit temporary file rather than
-printing them into chat:
+The MCP tools return structured content and do not own persistence. When a repo
+helper needs Garmin data, persist the normalized MCP result explicitly and pass
+that file as a source override. The remaining CLI emits JSON and does not save
+files; redirect a full course response to an explicit temporary file:
 
 ```bash
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day <YYYY-MM-DD> --profile readiness > /tmp/garmin-day.json
 python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD> --local-timezone <IANA-timezone> --garmin-json /tmp/garmin-day.json
 python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py course <course-id> > /tmp/garmin-course.json
 ```
