@@ -102,6 +102,12 @@ accepting a circular goal choice. Readiness still determines the highest
 intensity the recommendation may select and may downgrade the session without
 advancing or rewriting the queue.
 
+Fetch Intervals.icu wellness and calendar events through MCP `list_wellness`
+and `list_events` before invoking the helper. Persist each complete MCP result
+as normalized JSON and pass the paths as `intervals_wellness` and
+`intervals_events` in `--source-overrides-json`. `recommend_training.py` must
+not import the Intervals transport or invoke its CLI.
+
 Before composing the final recommendation, reject any source or recommendation
 packet whose snapshot date/time is stale for the current run, whose local date
 does not match the requested training date, or whose recorded plan provenance

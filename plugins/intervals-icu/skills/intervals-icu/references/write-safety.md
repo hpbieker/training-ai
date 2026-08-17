@@ -47,11 +47,15 @@ Read this file before any Intervals.icu mutation.
 
 ## Wellness And Sickness
 
-- Use `wellness-update <date> --soreness ... --fatigue ... --motivation ...`
-  only for confirmed values.
-- Record sickness as a calendar event with `category=SICK`, not a wellness
-  comment. `sick-set` accepts an inclusive user end date but stores an exclusive
-  end boundary. Verify the resulting event.
+- Use MCP `update_wellness` with a closed `updates` object for `soreness`,
+  `fatigue`, `motivation`, or explicit user-provided `comments`. Only supplied
+  fields change. Read first, require `confirm_overwrite=true` for an existing
+  different value, and verify with a fresh readback.
+- Record sickness through MCP calendar-event tools with `category=SICK`, not a
+  wellness comment. Call `list_events` first and use the exact event id for an
+  update or deletion. `create_event` and `update_event` accept an inclusive user
+  end date but store an exclusive end boundary. Verify every result; deletion
+  additionally requires `confirm` to match the event id.
 
 ## Authentication
 

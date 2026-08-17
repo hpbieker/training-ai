@@ -422,16 +422,24 @@ def main() -> None:
         checked_at=generated_at,
         overrides=set(args.source_overrides_json),
     )
-    intervals_cache_refresh = None
-    if source_group_will_refresh(source_refresh, "intervals"):
-        intervals_cache_refresh = refresh_recent_intervals_cache()
+    intervals_sources_requiring_mcp = {
+        key for key in ("intervals_wellness", "intervals_events")
+        if source_refresh.get(key, {}).get("refresh")
+    }
+    if intervals_sources_requiring_mcp:
+        raise SystemExit(
+            "Intervals.icu live access is MCP-only. Fetch list_wellness and "
+            "list_events for the required date range, persist each normalized "
+            "result as JSON, then pass the files through --source-overrides-json: "
+            + ", ".join(sorted(intervals_sources_requiring_mcp))
+        )
     latest_activity = latest_activity_on_or_before(
         args.date,
         artifacts_dir=ARTIFACTS_DIR,
         local_timezone=local_timezone,
     )
     primary_sources = {
-        key for key in ("garmin", "xert", "intervals_wellness", "intervals_events")
+        key for key in ("garmin", "xert")
         if source_refresh.get(key, {}).get("refresh")
     }
     if primary_sources:
@@ -807,7 +815,6 @@ def main() -> None:
         "unavailable_reasons": unavailable_reasons,
         "source_files": {key: str(path) for key, path in source_files.items()},
         "source_refresh": source_refresh,
-        "intervals_cache_refresh": intervals_cache_refresh,
         "readiness": readiness_packet,
         "plan_context": plan_context,
         "primary_decision": primary_decision,
@@ -999,10 +1006,6 @@ def source_file_age_minutes(path: Path, *, checked_at: datetime) -> float | None
         return None
     modified_at = datetime.fromtimestamp(path.stat().st_mtime, tz=checked_at.tzinfo)
     return max(0.0, (checked_at - modified_at).total_seconds() / 60)
-
-
-def source_group_will_refresh(plan: dict[str, dict[str, Any]], group: str) -> bool:
-    return any(row["group"] == group and row["refresh"] for row in plan.values())
 
 
 def parse_planning_context_json(raw: str) -> dict[str, Any]:
@@ -1589,7 +1592,7 @@ def fetch_primary_live_inputs(
     sources: set[str],
     local_timezone: Any,
 ) -> None:
-    """Fetch independent Garmin, Xert, and Intervals wellness inputs concurrently."""
+    """Fetch independent Garmin and Xert inputs concurrently."""
 
     def fetch_garmin() -> None:
         garmin_day = garmin_source_day(day, now=now)
@@ -1645,41 +1648,9 @@ def fetch_primary_live_inputs(
             xert_command.extend(["--activity", xert_activity_path])
         run_json_to_file(xert_command, source_files["xert"])
 
-    def fetch_intervals_wellness() -> None:
-        end = date.fromisoformat(day)
-        start = end - timedelta(days=13)
-        run_json_to_file(
-            [
-                sys.executable,
-                "-B",
-                "plugins/intervals-icu/scripts/intervals_icu_cli.py",
-                "wellness",
-                "--since",
-                start.isoformat(),
-                "--until",
-                day,
-            ],
-            source_files["intervals_wellness"],
-        )
-
-    def fetch_intervals_events() -> None:
-        end = date.fromisoformat(day)
-        start = end - timedelta(days=13)
-        run_json_to_file(
-            [
-                sys.executable, "-B",
-                "plugins/intervals-icu/scripts/intervals_icu_cli.py", "events",
-                "--since", start.isoformat(), "--until", day,
-                "--category", "SICK,INJURED,HOLIDAY",
-            ],
-            source_files["intervals_events"],
-        )
-
     available_steps = {
         "garmin": fetch_garmin,
         "xert": fetch_xert,
-        "intervals_wellness": fetch_intervals_wellness,
-        "intervals_events": fetch_intervals_events,
     }
     steps = {key: available_steps[key] for key in sources}
     run_parallel_steps(steps)
@@ -1702,52 +1673,6 @@ def run_parallel_steps(steps: dict[str, Any]) -> None:
                 future.result()
             except Exception as exc:
                 raise SystemExit(f"{name} failed: {exc}") from exc
-
-
-def refresh_recent_intervals_cache(*, count: int = 5, lookback_days: int = 14) -> dict[str, Any]:
-    """Save recent Intervals activities that are missing from local artifacts."""
-
-    payload = run_json(
-        [
-            sys.executable,
-            "-B",
-            "plugins/intervals-icu/scripts/intervals_icu_cli.py",
-            "recent",
-            "--count",
-            str(count),
-            "--lookback-days",
-            str(lookback_days),
-        ]
-    )
-    activities = payload.get("activities") if isinstance(payload, dict) else None
-    if not isinstance(activities, list):
-        return {"checked": 0, "saved": [], "skipped": [], "reason": "no_recent_activities"}
-    saved: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
-    for activity in activities:
-        if not isinstance(activity, dict):
-            continue
-        activity_id = str(activity.get("id") or "")
-        start = str(activity.get("start_date_local") or "")
-        if not activity_id or len(start) < 10:
-            continue
-        activity_dir = ARTIFACTS_DIR / "activities" / f"{start[:10]}_{activity_id}"
-        if (activity_dir / "activity.json").exists() and (activity_dir / "streams.csv").exists():
-            skipped.append({"id": activity_id, "reason": "already_cached"})
-            continue
-        artifact_paths = run_json(
-            [
-                sys.executable,
-                "-B",
-                "plugins/intervals-icu/scripts/intervals_icu_cli.py",
-                "save-activity",
-                activity_id,
-                "--output-dir",
-                str(ARTIFACTS_DIR),
-            ]
-        )
-        saved.append({"id": activity_id, "artifacts": artifact_paths})
-    return {"checked": len(activities), "saved": saved, "skipped": skipped}
 
 
 def run_json_to_file(command: list[str], path: Path) -> None:

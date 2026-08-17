@@ -35,6 +35,7 @@ class IntervalsIcuCredentials:
 
     api_key: str | None = None
     bearer_token: str | None = None
+    cookie: str | None = None
 
     def auth_header(self) -> str:
         if self.bearer_token:
@@ -42,6 +43,13 @@ class IntervalsIcuCredentials:
         if self.api_key:
             token = base64.b64encode(f"API_KEY:{self.api_key}".encode()).decode()
             return f"Basic {token}"
+        raise ValueError("Set either api_key or bearer_token")
+
+    def api_kwargs(self) -> dict[str, str]:
+        if self.bearer_token:
+            return {"bearer_token": self.bearer_token}
+        if self.api_key:
+            return {"api_key": self.api_key}
         raise ValueError("Set either api_key or bearer_token")
 
 
@@ -537,6 +545,23 @@ def update_event(
     return updated
 
 
+def delete_event(
+    *, event_id: str | int, api_key: str | None = None,
+    bearer_token: str | None = None, athlete_id: str | int = 0,
+) -> dict[str, Any]:
+    """Delete one Intervals.icu calendar event and return the API response."""
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    body = _request_bytes(
+        f"/athlete/{athlete_id}/events/{event_id}", credentials, method="DELETE"
+    )
+    if not body:
+        return {"id": event_id}
+    deleted = json.loads(body.decode("utf-8"))
+    if not isinstance(deleted, dict):
+        raise TypeError("Expected Intervals.icu delete event endpoint to return an object")
+    return deleted
+
+
 def list_activities(
     *,
     api_key: str | None = None,
@@ -691,8 +716,10 @@ def upload_activity_file(
     return uploaded
 
 
-def load_intervals_icu_api_key(config_path: str | Path | None = None) -> str:
-    """Discover the API key without exposing it through tool arguments.
+def discover_intervals_icu_credentials(
+    config_path: str | Path | None = None,
+) -> IntervalsIcuCredentials:
+    """Discover all authentication state without exposing it through tool arguments.
 
     An explicit environment variable wins. Otherwise read the user-owned
     ``~/.intervals_icu_mcp.json`` file, matching the Xert and OmniFocus MCP
@@ -700,33 +727,45 @@ def load_intervals_icu_api_key(config_path: str | Path | None = None) -> str:
     config file for tests or controlled deployments.
     """
 
-    environment_value = os.environ.get("INTERVALS_ICU_API_KEY")
-    if environment_value:
-        return environment_value
-
     selected_path = Path(
         config_path
         or os.environ.get(CONFIG_ENV)
         or DEFAULT_CONFIG_PATH
     ).expanduser()
-    try:
-        payload = json.loads(selected_path.read_text(encoding="utf-8"))
-    except FileNotFoundError as exc:
-        raise KeyError(
-            "Set INTERVALS_ICU_API_KEY or apiKey in "
-            f"{selected_path}"
-        ) from exc
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid Intervals.icu MCP config JSON: {selected_path}") from exc
-    if not isinstance(payload, dict):
-        raise ValueError(f"Intervals.icu MCP config must contain one JSON object: {selected_path}")
-    unknown = set(payload) - {"apiKey"}
+    payload: dict[str, Any] = {}
+    if selected_path.exists():
+        try:
+            loaded = json.loads(selected_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Invalid Intervals.icu MCP config JSON: {selected_path}") from exc
+        if not isinstance(loaded, dict):
+            raise ValueError(f"Intervals.icu MCP config must contain one JSON object: {selected_path}")
+        payload = loaded
+    unknown = set(payload) - {"apiKey", "bearerToken", "cookie"}
     if unknown:
         raise ValueError(f"Unknown setting in {selected_path}: {sorted(unknown)[0]}")
-    api_key = payload.get("apiKey")
-    if not isinstance(api_key, str) or not api_key:
-        raise ValueError(f"apiKey in {selected_path} must be a non-empty string")
-    return api_key
+    api_key = os.environ.get("INTERVALS_ICU_API_KEY") or payload.get("apiKey")
+    bearer_token = os.environ.get("INTERVALS_ICU_BEARER_TOKEN") or payload.get("bearerToken")
+    cookie = os.environ.get("INTERVALS_ICU_COOKIE") or payload.get("cookie")
+    for key, value in (("apiKey", api_key), ("bearerToken", bearer_token), ("cookie", cookie)):
+        if value is not None and (not isinstance(value, str) or not value):
+            raise ValueError(f"{key} in {selected_path} must be a non-empty string")
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+        cookie=cookie,
+    )
+    credentials.auth_header()
+    return credentials
+
+
+def load_intervals_icu_api_key(config_path: str | Path | None = None) -> str:
+    """Load the configured API key for remaining CLI-only workflows."""
+
+    credentials = discover_intervals_icu_credentials(config_path)
+    if not credentials.api_key:
+        raise KeyError("An Intervals.icu API key is required for this CLI workflow")
+    return credentials.api_key
 
 
 def load_intervals_icu_cookie(env_path: str | Path = ".env") -> str:

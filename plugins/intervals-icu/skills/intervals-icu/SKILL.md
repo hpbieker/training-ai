@@ -18,13 +18,22 @@ local artifact inspection, and cache-only workflows do not require escalation.
 
 Choose the narrowest workflow that answers the request:
 
-- Today's or a bounded period's activities: run `activities --since ... --until ...` first. Verify local date and activity identity before analysis.
+- Today's or a bounded period's activities: call MCP `list_activities` first. Verify local date and activity identity before analysis.
 - Latest activity when no date is implied: run `latest`; use `save-latest` only when a downstream helper needs a local package.
-- Workout analysis: resolve the activity id, run `save-activity <id>`, then pass the returned `activity_dir` to the repo analysis helper. Do not analyze metadata alone when streams are available and relevant.
-- Metadata or interval orientation only: run `activity <id> --summary-only`; use full `activity` only when the extra fields are needed.
-- Raw stream export without a package: run `streams <id> --output <file>`; never print streams to the terminal.
-- Readiness context: fetch bounded `wellness` and `events`; let the caller
+- Workout analysis: resolve the activity id, then call MCP `get_activity` and `get_activity_streams`. Do not analyze metadata alone when streams are available and relevant.
+- Metadata or interval orientation only: call MCP `get_activity`; omit intervals only when they are not needed.
+- Raw stream access: call MCP `get_activity_streams`; it returns a private temporary CSV path and never prints streams to the terminal.
+- Readiness context: call MCP `list_wellness` and `list_events`; let the caller
   resolve source priority and compose readiness.
+- Wellness updates: call MCP `update_wellness` with `date`, a non-empty `updates`
+  object, and `confirm_overwrite=true` only after the user explicitly confirms
+  replacing an existing different value. The tool reads first and verifies by
+  readback.
+- Calendar events: call MCP `list_events` first, then use `create_event`,
+  `update_event`, or `delete_event` on the exact event. These tools accept
+  inclusive all-day `since`/`until` dates and convert the end to Intervals.icu's
+  exclusive boundary. Record sickness with `category=SICK`, never as a wellness
+  comment. Verify every event write through the tool's readback.
 - Subjective follow-up: read current activity fields first; write only user-confirmed `feel` or RPE and verify afterward.
 - Any remote mutation: read
   [references/write-safety.md](references/write-safety.md) first and perform a
@@ -40,10 +49,16 @@ For a completed-activity analysis through MCP, use exactly this sequence:
 `get_activity_streams` returns a private temporary CSV path rather than placing
 large stream samples in model context.
 
+Use `search_activities` for Intervals.icu's own text or tag search. It takes
+only `query` and an optional positive `limit`, performs exactly one source
+search call, and preserves source order and duplicates. Use `list_activities`
+instead when complete coverage of a local-date range is required.
+
 ## Authentication
 
-The MCP server and CLI read `apiKey` from the user-owned
-`~/.intervals_icu_mcp.json`, which survives plugin reinstalls:
+The MCP server discovers authentication once at process startup and reuses it
+for every tool call, matching the Xert service pattern. It reads authentication
+from the user-owned `~/.intervals_icu_mcp.json`, which survives plugin reinstalls:
 
 ```json
 {"apiKey":"..."}
@@ -53,37 +68,20 @@ The MCP server and CLI read `apiKey` from the user-owned
 may select another JSON file with `INTERVALS_ICU_MCP_CONFIG`. Never pass or
 print the API key as a tool argument.
 
-## CLI
+## CLI-Only Workflows
 
-Use the local CLI when Intervals.icu access is needed:
+Use the local CLI only for operations not exposed through MCP:
 
 ```bash
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py latest
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activities --since <YYYY-MM-DD> --until <YYYY-MM-DD>
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activity <activity-id>
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py activity <activity-id> --summary-only
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py save-activity <activity-id>
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py save-latest
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py streams <activity-id> --output /tmp/intervals-streams.csv
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py search <query> --limit 10
 python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py named <name-fragment> --since <YYYY-MM-DD> --until <YYYY-MM-DD>
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py wellness --since <YYYY-MM-DD> --until <YYYY-MM-DD>
-python3 -B plugins/intervals-icu/scripts/intervals_icu_cli.py events --since <YYYY-MM-DD> --until <YYYY-MM-DD> --category SICK
 ```
 
-The `activity` command fetches metadata and intervals, not stream samples.
-`save-activity <activity-id>` returns the canonical `activity_dir` for repo
-helpers. Prefer it over separate metadata and stream calls for normal workout
-analysis. Refresh the selected activity package when the live activity has just
-synced or changed; do not rewrite unrelated cached packages.
-
-Use `activities --since ... --until ...` for date-bounded lists and recent-load
-checks. Treat `latest` as a source-selection convenience, not proof that an
-activity belongs to the user's requested local day. `search <query>` uses
-Intervals.icu name search by default. Prefix the query with `#` for an exact
-tag search. When both `--since` and `--until` are provided, the returned
-results are inclusively bounded by those dates. Use `named <fragment> --since
-... --until ...` only for a deliberate date-bounded name filter.
+Treat `latest` as a source-selection convenience, not proof that an activity
+belongs to the user's requested local day. Use `named <fragment> --since ...
+--until ...` only for a deliberate date-bounded local name filter; prefer MCP
+`search_activities` for Intervals.icu's source search.
 When the API payload has an activity `id` but no URL field, build the web link
 as `https://intervals.icu/activities/<activity-id>`, for example
 `https://intervals.icu/activities/i158694373`.

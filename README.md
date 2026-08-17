@@ -143,8 +143,9 @@ referenced by `--source-inputs-json`.
 ## Same-day training recommendation
 
 For daily or future-date training recommendations, use `recommend_training.py` as the primary
-orchestrator. It fetches the standard live inputs, writes the full source packet
-under `outputs/recommendations/<date>/`, ranks indoor XMB workouts, selects a
+composer. The agent fetches MCP-owned live inputs first and supplies them as
+normalized source overrides; the helper writes the full source packet under
+`outputs/recommendations/<date>/`, ranks indoor XMB workouts, selects a
 saved-history outdoor route, adds timing guidance, and prints a compact
 chat-oriented summary with `--summary`.
 
@@ -155,7 +156,9 @@ example, `{"mode":"selected","sources":["garmin","xert"]}`. The packet records t
 age, TTL, and reason for each source under `source_refresh`. An explicit
 `--source-overrides-json` maps normalized source names to JSON file paths. An
 overridden source cannot be combined with a refresh policy that forces its
-source group.
+source group. Intervals.icu wellness and calendar events are MCP-only and must
+be supplied as `intervals_wellness` and `intervals_events` overrides whenever
+their cached snapshots require refresh.
 
 ```bash
 python3 -B scripts/recommend_training.py \

@@ -9,22 +9,14 @@ from datetime import date
 from pathlib import Path
 
 from intervals_icu_api import (
-    create_event,
     delete_activity,
     download_activity_file,
-    download_activity_streams_csv,
     get_activity,
-    get_wellness,
     list_activities,
-    list_events,
-    list_wellness,
     load_intervals_icu_api_key,
     save_activity_streams,
     save_latest_activity_streams,
-    search_activities,
     update_activity,
-    update_event,
-    update_wellness,
     upload_activity_file,
 )
 
@@ -46,26 +38,6 @@ def main() -> None:
     recent.add_argument("--count", type=int, default=2)
     recent.add_argument("--lookback-days", type=int, default=365)
     _add_output_arg(recent)
-
-    activities = subparsers.add_parser(
-        "activities",
-        help="Fetch activity summaries for a date range",
-    )
-    activities.add_argument("--since", required=True, help="Start date formatted YYYY-MM-DD")
-    activities.add_argument("--until", required=True, help="End date formatted YYYY-MM-DD")
-    _add_output_arg(activities)
-
-    activity = subparsers.add_parser("activity", help="Fetch one activity")
-    activity.add_argument("activity_id")
-    activity.add_argument(
-        "--summary-only",
-        "--no-intervals",
-        dest="omit_intervals",
-        action="store_true",
-        default=False,
-        help="Omit Intervals.icu interval summaries from the activity payload",
-    )
-    _add_output_arg(activity)
 
     save_activity = subparsers.add_parser(
         "save-activity",
@@ -123,42 +95,6 @@ def main() -> None:
         help="Explicit file path or directory for the downloaded artifact",
     )
 
-    streams = subparsers.add_parser(
-        "streams",
-        help="Download activity streams CSV for one activity id",
-    )
-    streams.add_argument("activity_id")
-    streams.add_argument(
-        "--type",
-        dest="stream_types",
-        action="append",
-        help="Stream type to include. Can be repeated.",
-    )
-    streams.add_argument(
-        "--output",
-        required=True,
-        type=Path,
-        help="Explicit CSV file path or directory for the downloaded streams",
-    )
-
-    search = subparsers.add_parser(
-        "search",
-        help="Search activities by query text",
-    )
-    search.add_argument("query")
-    search.add_argument("--limit", type=_positive_int, default=10)
-    search.add_argument(
-        "--since",
-        type=_iso_date,
-        help="Optional inclusive start date formatted YYYY-MM-DD",
-    )
-    search.add_argument(
-        "--until",
-        type=_iso_date,
-        help="Optional inclusive end date formatted YYYY-MM-DD",
-    )
-    _add_output_arg(search)
-
     named = subparsers.add_parser(
         "named",
         help="Fetch activities whose names contain a case-insensitive text fragment",
@@ -197,24 +133,6 @@ def main() -> None:
         help="Case-insensitive name fragment. Can be repeated.",
     )
     _add_output_arg(hard_indoor)
-
-    wellness = subparsers.add_parser("wellness", help="Fetch wellness data")
-    wellness.add_argument("--since", default=f"{date.today().year}-01-01")
-    wellness.add_argument("--until", default=date.today().isoformat())
-    _add_output_arg(wellness)
-
-    events = subparsers.add_parser("events", help="Fetch calendar events")
-    events.add_argument("--since", required=True)
-    events.add_argument("--until", required=True)
-    events.add_argument("--category", help="Comma-separated categories, e.g. SICK")
-    _add_output_arg(events)
-
-    sick_set = subparsers.add_parser(
-        "sick-set", help="Create or extend one SICK calendar event"
-    )
-    sick_set.add_argument("--since", required=True, help="First sick day")
-    sick_set.add_argument("--until", required=True, help="Last sick day, inclusive")
-    sick_set.add_argument("--confirm", required=True, help="Must equal START:END")
 
     rename = subparsers.add_parser("rename", help="Rename one activity")
     rename.add_argument("activity_id")
@@ -259,36 +177,6 @@ def main() -> None:
         help="RPE value to store in Intervals.icu's icu_rpe field",
     )
 
-    wellness_update = subparsers.add_parser(
-        "wellness-update",
-        help="Update one daily wellness record",
-    )
-    wellness_update.add_argument("date", help="Local date formatted YYYY-MM-DD")
-    wellness_update.add_argument(
-        "--soreness",
-        type=int,
-        help="Daily soreness value to store in Intervals.icu's soreness field",
-    )
-    wellness_update.add_argument(
-        "--fatigue",
-        type=int,
-        help="Daily fatigue value to store in Intervals.icu's fatigue field",
-    )
-    wellness_update.add_argument(
-        "--motivation",
-        type=int,
-        help="Daily motivation value to store in Intervals.icu's motivation field",
-    )
-    wellness_update.add_argument(
-        "--comments",
-        help="Daily wellness comments. Only use for explicit user-provided notes.",
-    )
-    wellness_update.add_argument(
-        "--force",
-        action="store_true",
-        help="Allow overwriting an existing wellness value with a different value.",
-    )
-
     args = parser.parse_args()
     api_key = load_intervals_icu_api_key()
 
@@ -324,24 +212,6 @@ def main() -> None:
         )
         return
 
-    if args.command == "activities":
-        activities = list_activities(
-            api_key=api_key,
-            oldest=args.since,
-            newest=args.until,
-        )
-        _print_activity_matches(activities, source_activities=activities, output=args.output)
-        return
-
-    if args.command == "activity":
-        activity_payload = get_activity(
-            activity_id=args.activity_id,
-            api_key=api_key,
-            include_intervals=not args.omit_intervals,
-        )
-        _emit_json({"activity": activity_payload}, output=args.output)
-        return
-
     if args.command == "save-activity":
         artifacts = save_activity_streams(
             activity_id=args.activity_id,
@@ -370,35 +240,6 @@ def main() -> None:
             output_path=args.output,
         )
         _emit_json({"activity_file": activity_file})
-        return
-
-    if args.command == "streams":
-        streams_csv = download_activity_streams_csv(
-            activity_id=args.activity_id,
-            api_key=api_key,
-            stream_types=args.stream_types,
-            output_path=args.output,
-        )
-        _emit_json({"streams_csv": streams_csv})
-        return
-
-    if args.command == "search":
-        activities = search_activities(
-            query=args.query,
-            limit=args.limit,
-            api_key=api_key,
-        )
-        if args.since or args.until:
-            if not args.since or not args.until:
-                parser.error("search requires both --since and --until when date bounds are used")
-            if args.until < args.since:
-                parser.error("search --until must not be before --since")
-            activities = _filter_activity_dates(
-                activities,
-                since=args.since,
-                until=args.until,
-            )
-        _print_activity_matches(activities, output=args.output)
         return
 
     if args.command == "named":
@@ -490,71 +331,6 @@ def main() -> None:
         _print_activity_matches(matches, source_activities=activities, output=args.output)
         return
 
-    if args.command == "wellness":
-        wellness_rows = list_wellness(
-            api_key=api_key,
-            oldest=args.since,
-            newest=args.until,
-        )
-        _emit_json(
-            {"wellness": wellness_rows, "matched_count": len(wellness_rows)},
-            output=args.output,
-        )
-        return
-
-    if args.command == "events":
-        rows = list_events(
-            api_key=api_key, oldest=args.since, newest=args.until,
-            categories=args.category,
-        )
-        _emit_json({"events": rows, "matched_count": len(rows)}, output=args.output)
-        return
-
-    if args.command == "sick-set":
-        if args.confirm != f"{args.since}:{args.until}":
-            parser.error("--confirm must exactly match START:END")
-        start = date.fromisoformat(args.since)
-        inclusive_end = date.fromisoformat(args.until)
-        if inclusive_end < start:
-            parser.error("--until must not be before --since")
-        exclusive_end = date.fromordinal(inclusive_end.toordinal() + 1)
-        sick_events = list_events(
-            api_key=api_key,
-            oldest=date.fromordinal(start.toordinal() - 1),
-            newest=exclusive_end,
-            categories="SICK",
-        )
-        mergeable = [
-            event for event in sick_events
-            if str(event.get("end_date_local") or "")[:10] >= start.isoformat()
-            and str(event.get("start_date_local") or "")[:10] <= exclusive_end.isoformat()
-        ]
-        if len(mergeable) > 1:
-            parser.error("multiple adjacent/overlapping SICK events require manual reconciliation")
-        payload = {
-            "category": "SICK", "name": "Syk",
-            "start_date_local": f"{start.isoformat()}T00:00:00",
-            "end_date_local": f"{exclusive_end.isoformat()}T00:00:00",
-        }
-        if mergeable:
-            existing = mergeable[0]
-            payload["start_date_local"] = min(
-                payload["start_date_local"], str(existing.get("start_date_local"))
-            )
-            payload["end_date_local"] = max(
-                payload["end_date_local"], str(existing.get("end_date_local"))
-            )
-            saved = update_event(event_id=existing["id"], updates=payload, api_key=api_key)
-            action = "updated"
-        else:
-            saved = create_event(event=payload, api_key=api_key)
-            action = "created"
-        verified = list_events(
-            api_key=api_key, oldest=start, newest=inclusive_end, categories="SICK"
-        )
-        _emit_json({"action": action, "event": saved, "verified_events": verified})
-        return
-
     if args.command == "rename":
         updated = update_activity(
             activity_id=args.activity_id,
@@ -636,40 +412,6 @@ def main() -> None:
         print(f"updated {updated.get('id')}: {saved}")
         return
 
-    if args.command == "wellness-update":
-        updates = {}
-        if args.soreness is not None:
-            updates["soreness"] = args.soreness
-        if args.fatigue is not None:
-            updates["fatigue"] = args.fatigue
-        if args.motivation is not None:
-            updates["motivation"] = args.motivation
-        if args.comments is not None:
-            updates["comments"] = args.comments
-        if not updates:
-            parser.error("wellness-update requires at least one wellness field")
-
-        current = get_wellness(day=args.date, api_key=api_key)
-        conflicting = {
-            field: {"current": current.get(field), "requested": value}
-            for field, value in updates.items()
-            if _has_value(current.get(field)) and current.get(field) != value
-        }
-        if conflicting and not args.force:
-            parser.error(
-                "refusing to overwrite existing wellness values without --force: "
-                f"{conflicting}"
-            )
-
-        updated = update_wellness(
-            day=args.date,
-            updates=updates,
-            api_key=api_key,
-        )
-        saved = {field: updated.get(field) for field in updates}
-        print(f"updated wellness {updated.get('id')}: {saved}")
-        return
-
 
 def _print_activity_matches(
     matches: list[dict[str, object]],
@@ -716,27 +458,6 @@ def _activity_metadata_unavailable(activity: dict[str, object]) -> bool:
     return str(activity.get("source") or "").upper() == "STRAVA" and not has_searchable_metadata
 
 
-def _filter_activity_dates(
-    activities: list[dict[str, object]],
-    *,
-    since: date,
-    until: date,
-) -> list[dict[str, object]]:
-    """Keep Intervals search results inside an inclusive local-date range."""
-
-    matches = []
-    for activity in activities:
-        try:
-            activity_date = date.fromisoformat(
-                str(activity.get("start_date_local") or "")[:10]
-            )
-        except ValueError:
-            continue
-        if since <= activity_date <= until:
-            matches.append(activity)
-    return matches
-
-
 def _metadata_unavailable_summary(activity: dict[str, object]) -> dict[str, object]:
     summary = {
         "id": activity.get("id"),
@@ -769,20 +490,6 @@ def _add_output_arg(parser: argparse.ArgumentParser) -> None:
         type=Path,
         help="Write JSON payload to this explicit file instead of stdout",
     )
-
-
-def _positive_int(value: str) -> int:
-    parsed = int(value)
-    if parsed <= 0:
-        raise argparse.ArgumentTypeError("must be a positive integer")
-    return parsed
-
-
-def _iso_date(value: str) -> date:
-    try:
-        return date.fromisoformat(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError("must use YYYY-MM-DD") from exc
 
 
 def _emit_json(payload: object, *, output: Path | None = None) -> None:
