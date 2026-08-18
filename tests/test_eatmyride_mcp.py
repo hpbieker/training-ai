@@ -387,23 +387,73 @@ class EatMyRideLiveFoodplanServiceTests(unittest.TestCase):
             "https://example.invalid/activity/6700333", 500, "Server Error", {}, None
         )
         self.addCleanup(server_error.close)
+        product = {"id": 3111, "label": "SiS"}
+        requested = {
+            "activityId": 6700333,
+            "distance": 0,
+            "product": product,
+            "productId": 3111,
+            "source": None,
+            "time": 4101,
+            "gram": 60,
+            "ml": 900,
+        }
         with (
-            patch.object(MCP, "get_foodplan", return_value=[]),
-            patch.object(MCP, "get_product", return_value={"id": 3111, "label": "SiS"}),
+            patch.object(MCP, "get_foodplan", side_effect=[[], [requested]]) as read_plan,
+            patch.object(MCP, "get_product", return_value=product),
             patch.object(MCP, "get_activity", return_value={"id": 6700333}),
             patch.object(MCP, "post_foodplan", return_value={}) as write_plan,
             patch.object(MCP, "put_activity", side_effect=server_error) as write_activity,
         ):
-            with self.assertRaises(HTTPError) as raised:
+            with self.assertRaises(MCP.ToolFailure) as raised:
                 self.service.set_foodplan_products(
                     "6700333",
                     [{"product_id": 3111, "gram": 60, "ml": 900, "time_s": 4101}],
                     confirm=True,
                 )
 
-        self.assertEqual(raised.exception.code, 500)
+        self.assertEqual(raised.exception.code, "partial_write")
+        self.assertEqual(raised.exception.details["failed_stage"], "put_activity")
+        self.assertTrue(raised.exception.details["mutation_detected"])
+        self.assertTrue(raised.exception.details["desired_state_present"])
+        self.assertTrue(raised.exception.details["readback_succeeded"])
         write_plan.assert_called_once()
         write_activity.assert_called_once()
+        self.assertEqual(read_plan.call_count, 2)
+
+    def test_foodplan_endpoint_error_reads_back_a_completed_write(self) -> None:
+        server_error = HTTPError(
+            "https://example.invalid/foodplan/6700333", 500, "Server Error", {}, None
+        )
+        self.addCleanup(server_error.close)
+        product = {"id": 10139011, "label": "Seigmann"}
+        requested = {
+            "activityId": 6700333,
+            "distance": 0,
+            "product": product,
+            "productId": 10139011,
+            "source": None,
+            "time": 900,
+            "gram": 1,
+        }
+        with (
+            patch.object(MCP, "get_foodplan", side_effect=[[], [requested]]),
+            patch.object(MCP, "get_product", return_value=product),
+            patch.object(MCP, "get_activity", return_value={"id": 6700333}),
+            patch.object(MCP, "post_foodplan", side_effect=server_error),
+            patch.object(MCP, "put_activity") as write_activity,
+        ):
+            with self.assertRaises(MCP.ToolFailure) as raised:
+                self.service.set_foodplan_products(
+                    "6700333",
+                    [{"product_id": 10139011, "pieces": 1, "time_s": 900}],
+                    confirm=True,
+                )
+
+        self.assertEqual(raised.exception.code, "partial_write")
+        self.assertEqual(raised.exception.details["failed_stage"], "post_foodplan")
+        self.assertTrue(raised.exception.details["desired_state_present"])
+        write_activity.assert_not_called()
 
 
 class EatMyRideAuthSessionTests(unittest.TestCase):

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -545,9 +546,16 @@ TOOL_SPECS = {
 class ToolFailure(Exception):
     """Stable tool-facing error with a machine-readable category."""
 
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
+        self.details = details or {}
 
 
 class EatMyRideAuthSession:
@@ -736,14 +744,67 @@ class EatMyRideLiveService:
                 "change": change,
             }
         activity = self._run(lambda token: get_activity(activity_id, token=token))
-        self._run(lambda token: post_foodplan(activity_id, updated, token=token))
-        self._run(lambda token: put_activity(activity_id, activity, token=token))
+        failed_stage = "post_foodplan"
+        try:
+            self._run(lambda token: post_foodplan(activity_id, updated, token=token))
+            failed_stage = "put_activity"
+            self._run(lambda token: put_activity(activity_id, activity, token=token))
+        except Exception as exc:
+            readback_foodplan: list[dict[str, Any]] | None = None
+            readback_error: str | None = None
+            try:
+                readback_foodplan = self._run(
+                    lambda token: get_foodplan(activity_id, token=token)
+                )
+            except Exception as read_exc:
+                readback_error = str(read_exc)
+            desired_state_present = (
+                readback_foodplan is not None
+                and _foodplans_match(updated, readback_foodplan)
+            )
+            mutation_detected = (
+                readback_foodplan is not None
+                and not _foodplans_match(current, readback_foodplan)
+            )
+            details = {
+                "activity_id": activity_id,
+                "failed_stage": failed_stage,
+                "mutation_detected": mutation_detected,
+                "desired_state_present": desired_state_present,
+                "readback_succeeded": readback_foodplan is not None,
+                "readback_error": readback_error,
+            }
+            if readback_foodplan is not None:
+                details["change"] = summarize_foodplan_change(
+                    current, readback_foodplan, product_ids
+                )
+            raise ToolFailure(
+                "partial_write" if mutation_detected else "write_failed",
+                f"EatMyRide write failed during {failed_stage}; fresh food-plan readback completed={readback_foodplan is not None}",
+                details=details,
+            ) from exc
         verified_activity = self._run(
             lambda token: get_activity(activity_id, token=token)
         )
         verified_foodplan = self._run(
             lambda token: get_foodplan(activity_id, token=token)
         )
+        if not _foodplans_match(updated, verified_foodplan):
+            raise ToolFailure(
+                "verification_error",
+                "EatMyRide food-plan readback did not match the requested state",
+                details={
+                    "activity_id": activity_id,
+                    "failed_stage": "verification",
+                    "mutation_detected": not _foodplans_match(current, verified_foodplan),
+                    "desired_state_present": False,
+                    "readback_succeeded": True,
+                    "readback_error": None,
+                    "change": summarize_foodplan_change(
+                        current, verified_foodplan, product_ids
+                    ),
+                },
+            )
         return {
             "activity_id": activity_id,
             "confirmed": True,
@@ -754,6 +815,27 @@ class EatMyRideLiveService:
             "activity": summarize_activity(verified_activity),
             "summary": summarize_foodplan(verified_foodplan),
         }
+
+
+def _foodplans_match(
+    expected: list[dict[str, Any]],
+    actual: list[dict[str, Any]],
+) -> bool:
+    """Compare the food-plan fields controlled by this MCP write."""
+
+    def signatures(foodplan: list[dict[str, Any]]) -> Counter[tuple[Any, ...]]:
+        return Counter(
+            (
+                event.get("productId")
+                or (event.get("product") or {}).get("id"),
+                event.get("gram"),
+                event.get("ml"),
+                event.get("time", 0),
+            )
+            for event in foodplan
+        )
+
+    return signatures(expected) == signatures(actual)
 
 
 class EatMyRideToolService:
@@ -1121,7 +1203,11 @@ def create_sdk_server(service: EatMyRideToolService) -> Any:
         try:
             payload = await anyio.to_thread.run_sync(service.call_tool, name, arguments)
         except ToolFailure as exc:
-            error_payload = {"error": str(exc), "errorCode": exc.code}
+            error_payload = {
+                "error": str(exc),
+                "errorCode": exc.code,
+                **exc.details,
+            }
             return mcp_types.CallToolResult(
                 content=[mcp_types.TextContent(type="text", text=str(exc))],
                 structuredContent=error_payload,
