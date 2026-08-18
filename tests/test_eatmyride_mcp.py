@@ -345,6 +345,67 @@ class EatMyRideLiveProductServiceTests(unittest.TestCase):
         self.assertTrue(result["verified_absent"])
 
 
+class EatMyRideLiveFoodplanServiceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.service = MCP.EatMyRideLiveService(lambda: FakeCredentials())
+
+    def test_confirmed_write_handles_multiple_products_in_one_plan(self) -> None:
+        products = {
+            3111: {"id": 3111, "label": "SiS", "ingredientsQtyUnit": "gram"},
+            10139011: {"id": 10139011, "label": "Seigmann", "ingredientsQtyUnit": "piece"},
+        }
+        verified = [
+            {"productId": 3111, "product": products[3111], "gram": 60, "ml": 900, "time": 4101},
+            *[
+                {"productId": 10139011, "product": products[10139011], "gram": 1, "time": time_s}
+                for time_s in (962, 1859, 2756, 3653, 4550, 5447, 6344, 7241)
+            ],
+        ]
+        with (
+            patch.object(MCP, "get_foodplan", side_effect=[[], verified]),
+            patch.object(MCP, "get_product", side_effect=lambda product_id, **_: products[product_id]),
+            patch.object(MCP, "get_activity", side_effect=[{"id": 6700333}, {"id": 6700333}]),
+            patch.object(MCP, "post_foodplan", return_value={}) as write_plan,
+            patch.object(MCP, "put_activity", return_value={}) as write_activity,
+        ):
+            result = self.service.set_foodplan_products(
+                "6700333",
+                [
+                    {"product_id": 3111, "gram": 60, "ml": 900, "time_s": 4101},
+                    {"product_id": 10139011, "pieces": 8, "start_s": 513, "end_s": 7689},
+                ],
+                confirm=True,
+            )
+
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["change"]["event_count_after"], 9)
+        write_plan.assert_called_once()
+        write_activity.assert_called_once()
+
+    def test_failure_after_foodplan_write_exposes_partial_mutation_boundary(self) -> None:
+        server_error = HTTPError(
+            "https://example.invalid/activity/6700333", 500, "Server Error", {}, None
+        )
+        self.addCleanup(server_error.close)
+        with (
+            patch.object(MCP, "get_foodplan", return_value=[]),
+            patch.object(MCP, "get_product", return_value={"id": 3111, "label": "SiS"}),
+            patch.object(MCP, "get_activity", return_value={"id": 6700333}),
+            patch.object(MCP, "post_foodplan", return_value={}) as write_plan,
+            patch.object(MCP, "put_activity", side_effect=server_error) as write_activity,
+        ):
+            with self.assertRaises(HTTPError) as raised:
+                self.service.set_foodplan_products(
+                    "6700333",
+                    [{"product_id": 3111, "gram": 60, "ml": 900, "time_s": 4101}],
+                    confirm=True,
+                )
+
+        self.assertEqual(raised.exception.code, 500)
+        write_plan.assert_called_once()
+        write_activity.assert_called_once()
+
+
 class EatMyRideAuthSessionTests(unittest.TestCase):
     def test_reuses_one_bearer_token_within_service_session(self) -> None:
         credentials = CountingCredentials()
