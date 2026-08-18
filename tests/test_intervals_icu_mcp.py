@@ -362,6 +362,10 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             {"activity_id": "i1", "updates": {"name": "New"}, "confirm_overwrite": True},
         )
         self.assertEqual(writes[0]["updates"], {"name": "New"})
+        self.assertEqual(result["before"], {"name": "Old"})
+        self.assertEqual(result["after"], {"name": "New"})
+        self.assertNotIn("id", result["before"])
+        self.assertNotIn("feel", result["after"])
         self.assertEqual(result["overwritten_fields"], ["name"])
         self.assertTrue(result["verified"])
 
@@ -400,6 +404,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             "update_activity", {"activity_id": "i1", "updates": updates}
         )
         self.assertEqual(writes[0]["updates"], updates)
+        self.assertEqual(result["before"], {field: None for field in updates})
+        self.assertEqual(result["after"], updates)
         self.assertTrue(result["verified"])
 
     def test_update_activity_validates_new_field_types(self):

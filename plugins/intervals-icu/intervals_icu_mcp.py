@@ -414,8 +414,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "activity_id": {"type": "string"},
                 "updates": _object("Requested activity field changes."),
-                "before": _object("Activity before the patch."),
-                "after": _object("Fresh activity readback."),
+                "before": _object("Values of the requested fields before the patch."),
+                "after": _object("Fresh readback values of the requested fields."),
                 "overwritten_fields": {"type": "array", "items": {"type": "string"}},
                 "verified": {"type": "boolean"},
             },
@@ -921,9 +921,11 @@ class IntervalsIcuToolService:
                     raise ToolFailure(
                         f"Activity update did not verify: {mismatches}", "verification_error"
                     )
+                before_values = {field: before.get(field) for field in updates}
+                after_values = {field: after.get(field) for field in updates}
                 return {
                     "activity_id": activity_id, "updates": updates,
-                    "before": before, "after": after,
+                    "before": before_values, "after": after_values,
                     "overwritten_fields": overwritten_fields, "verified": True,
                 }
             if name == "delete_activity":
