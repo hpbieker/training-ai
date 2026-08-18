@@ -88,7 +88,24 @@ class EatMyRideFoodplanTests(unittest.TestCase):
 
         self.assertEqual(
             [event["time"] for event in updated],
-            [112.5, 137.5, 162.5, 187.5],
+            [113, 138, 163, 188],
+        )
+        self.assertTrue(all(isinstance(event["time"], int) for event in updated))
+
+    def test_piece_expansion_rounds_fractional_elapsed_times_to_integers(self) -> None:
+        product = _product(10, "Piece")
+        updated = build_foodplan_with_set_products(
+            99,
+            [],
+            [{"product_id": 10, "pieces": 8, "start": 513, "end": 7689}],
+            {10: product},
+        )
+
+        self.assertEqual(len(updated), 8)
+        self.assertTrue(all(isinstance(event["time"], int) for event in updated))
+        self.assertEqual(
+            [event["time"] for event in updated],
+            [962, 1859, 2756, 3653, 4550, 5447, 6344, 7241],
         )
 
     def test_same_product_can_have_multiple_periods(self) -> None:

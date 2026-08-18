@@ -589,16 +589,22 @@ def build_foodplan_with_set_products(
     return updated
 
 
-def _foodplan_item_times(item: dict[str, Any], count: int) -> list[int | float]:
+def _foodplan_item_times(item: dict[str, Any], count: int) -> list[int]:
     """Return one event time per occurrence, evenly spaced inside a period."""
 
     if item.get("start") is None:
-        return [item.get("time", 0)] * count
+        return [_elapsed_second(item.get("time", 0))] * count
     start = float(item["start"])
     end = float(item["end"])
     duration = end - start
     times = [start + duration * (index + 0.5) / count for index in range(count)]
-    return [_clean_number(value) for value in times]
+    return [_elapsed_second(value) for value in times]
+
+
+def _elapsed_second(value: int | float) -> int:
+    """Round a non-negative elapsed time to the nearest whole second."""
+
+    return int(float(value) + 0.5)
 
 
 def summarize_foodplan_change(
