@@ -16,6 +16,14 @@ products and `gram` for weighed products. A gram amount creates one event at
 `time_s` or at the midpoint of `start_s` and `end_s`. A piece count within a
 period is distributed evenly. Repeat an item for separate periods.
 
+If either server write fails, the tool reads the food plan again before
+returning. Treat `partial_write` as a completed or partial remote mutation, not
+as proof that nothing changed. Check `failed_stage`, `mutation_detected`,
+`desired_state_present`, and `readback_succeeded`; do not retry when
+`desired_state_present=true`, because that would repeat an already applied
+write. When readback is unavailable, report the state as uncertain rather than
+claiming success or failure.
+
 Build input from reviewed `search_products`, `list_products`, `get_product`, or
 food-plan rows. Do not infer an exact product from label similarity alone.
 

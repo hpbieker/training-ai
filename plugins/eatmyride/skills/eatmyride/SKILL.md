@@ -60,6 +60,11 @@ Preview first with `confirm: false`; use `confirm: true` only after reviewing
 the exact target and proposed change. Confirmed tools verify remote state before
 reporting success.
 
+If `set_foodplan_products` returns `partial_write`, inspect `failed_stage`,
+`mutation_detected`, `desired_state_present`, and `readback_succeeded`. Do not
+retry when the fresh readback already shows the desired state; retry only after
+resolving an absent or unavailable readback.
+
 For `set_foodplan_products`:
 
 - Use `pieces` for counted products and `gram` for weighed products.

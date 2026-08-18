@@ -160,6 +160,48 @@ class EatMyRideMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([tool.name for tool in result.tools], list(MCP.ALL_TOOL_NAMES))
 
+    async def test_partial_write_details_cross_the_mcp_structured_content_boundary(self) -> None:
+        import mcp.types as mcp_types
+
+        class FailingToolService:
+            def list_tools(self):
+                return [MCP.TOOL_DEFINITIONS["set_foodplan_products"]]
+
+            def call_tool(self, name, arguments):
+                raise MCP.ToolFailure(
+                    "partial_write",
+                    "Food plan changed before activity refresh failed",
+                    details={
+                        "failed_stage": "put_activity",
+                        "mutation_detected": True,
+                        "desired_state_present": True,
+                        "readback_succeeded": True,
+                    },
+                )
+
+        server = MCP.create_sdk_server(FailingToolService())
+        handler = server.request_handlers[mcp_types.CallToolRequest]
+        response = await handler(
+            mcp_types.CallToolRequest(
+                params=mcp_types.CallToolRequestParams(
+                    name="set_foodplan_products",
+                    arguments={
+                        "activity_id": "6700333",
+                        "items": [{"product_id": 3111, "gram": 60}],
+                        "confirm": True,
+                    },
+                )
+            )
+        )
+        result = response.root
+
+        self.assertTrue(result.isError)
+        self.assertEqual(result.structuredContent["errorCode"], "partial_write")
+        self.assertEqual(result.structuredContent["failed_stage"], "put_activity")
+        self.assertTrue(result.structuredContent["mutation_detected"])
+        self.assertTrue(result.structuredContent["desired_state_present"])
+        self.assertTrue(result.structuredContent["readback_succeeded"])
+
 
 class EatMyRideMcpDispatchTests(unittest.TestCase):
     def setUp(self) -> None:
