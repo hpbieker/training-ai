@@ -25,7 +25,11 @@ class IntervalsIcuMcpTests(unittest.TestCase):
                 "secs": list(kwargs["secs"]),
                 "curves": [{"id": "i1", "watts": [900]}],
             },
+            "activity_hr_curve_lister": lambda **kwargs: {"secs": list(kwargs["secs"]), "curves": []},
+            "activity_pace_curve_lister": lambda **kwargs: {"distances": list(kwargs["distances"]), "curves": []},
             "activity_searcher": lambda **kwargs: [{"id": "i1"}, {"id": "i1"}],
+            "activity_interval_searcher": lambda **kwargs: [],
+            "sport_settings_lister": lambda **kwargs: [],
             "activity_getter": lambda **kwargs: {"id": kwargs["activity_id"]},
             "activities_getter": lambda **kwargs: [
                 {"id": activity_id} for activity_id in kwargs["activity_ids"]
@@ -59,11 +63,13 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         path.write_bytes(b"activity-file")
         return path
 
-    def test_advertises_exactly_seventeen_tools(self):
+    def test_advertises_exactly_twenty_one_tools(self):
         self.assertEqual(
             [tool["name"] for tool in self.service().list_tools()],
             [
-                "list_activities", "list_activity_power_curves", "search_activities", "get_activity",
+                "list_activities", "list_activity_power_curves", "list_activity_hr_curves",
+                "list_activity_pace_curves", "search_activity_intervals", "list_sport_settings",
+                "search_activities", "get_activity",
                 "get_activities",
                 "get_activity_streams", "get_activity_file", "update_activity",
                 "delete_activity", "delete_activities", "upload_activity",
@@ -97,6 +103,88 @@ class IntervalsIcuMcpTests(unittest.TestCase):
                 service.call_tool("list_activity_power_curves", {
                     "start_date": "2026-08-01", "end_date": "2026-08-17", "secs": secs,
                 })
+
+    def test_list_activity_hr_and_pace_curves_pass_explicit_values(self):
+        hr_calls = []
+        pace_calls = []
+        service = self.service(
+            activity_hr_curve_lister=lambda **kwargs: hr_calls.append(kwargs) or {
+                "secs": [30, 60], "curves": [{"id": "i1", "bpm": [170, 165]}],
+            },
+            activity_pace_curve_lister=lambda **kwargs: pace_calls.append(kwargs) or {
+                "distances": [1000, 5000], "curves": [{"id": "i2", "times": [220, 1200]}],
+            },
+        )
+        hr = service.call_tool("list_activity_hr_curves", {
+            "start_date": "2026-08-01", "end_date": "2026-08-17", "secs": [30, 60],
+        })
+        pace = service.call_tool("list_activity_pace_curves", {
+            "start_date": "2026-08-01", "end_date": "2026-08-17",
+            "distances": [1000, 5000],
+        })
+        self.assertEqual(hr_calls[0]["secs"], (30, 60))
+        self.assertEqual(pace_calls[0]["distances"], (1000, 5000))
+        self.assertEqual(hr["count"], 1)
+        self.assertEqual(pace["count"], 1)
+
+    def test_activity_curve_tools_validate_values(self):
+        for tool, key, value in (
+            ("list_activity_hr_curves", "secs", []),
+            ("list_activity_hr_curves", "secs", [True]),
+            ("list_activity_pace_curves", "distances", [0]),
+            ("list_activity_pace_curves", "distances", [1000, 1000]),
+        ):
+            with self.subTest(tool=tool, value=value), self.assertRaises(MCP.ToolFailure):
+                self.service().call_tool(tool, {
+                    "start_date": "2026-08-01", "end_date": "2026-08-17", key: value,
+                })
+
+    def test_search_activity_intervals_passes_bounds_and_returns_compact_rows(self):
+        calls = []
+        source = [{
+            "id": "i1", "name": "5x5", "start_date_local": "2026-08-10T10:00:00",
+            "icu_training_load": 90, "source_noise": "excluded",
+        }]
+        result = self.service(
+            activity_interval_searcher=lambda **kwargs: calls.append(kwargs) or source
+        ).call_tool("search_activity_intervals", {
+            "min_secs": 280, "max_secs": 320,
+            "min_intensity": 105, "max_intensity": 120,
+            "interval_type": "POWER", "min_reps": 4, "max_reps": 6,
+            "limit": 20, "includeFields": ["icu_training_load"],
+        })
+        self.assertEqual(calls[0]["interval_type"], "POWER")
+        self.assertEqual(calls[0]["min_reps"], 4)
+        self.assertEqual(result["activities"], [{
+            "id": "i1", "name": "5x5", "start_date_local": "2026-08-10T10:00:00",
+            "icu_training_load": 90,
+        }])
+
+    def test_search_activity_intervals_validates_bounds(self):
+        base = {"min_secs": 300, "max_secs": 300, "min_intensity": 100, "max_intensity": 110}
+        for updates, message in (
+            ({"min_secs": 0}, "positive"),
+            ({"max_secs": 299}, "max_secs"),
+            ({"min_intensity": -1}, "non-negative"),
+            ({"max_intensity": 99}, "max_intensity"),
+            ({"min_reps": 3, "max_reps": 2}, "max_reps"),
+            ({"interval_type": "CADENCE"}, "interval_type"),
+        ):
+            with self.subTest(updates=updates), self.assertRaisesRegex(MCP.ToolFailure, message):
+                self.service().call_tool("search_activity_intervals", base | updates)
+
+    def test_list_sport_settings_returns_source_rows_without_athlete_argument(self):
+        calls = []
+        source = [{
+            "id": 1, "types": ["Ride", "VirtualRide"], "ftp": 300,
+            "lthr": 170, "power_zones": [55, 75, 90, 105, 120],
+        }]
+        result = self.service(
+            sport_settings_lister=lambda **kwargs: calls.append(kwargs) or source
+        ).call_tool("list_sport_settings", {})
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("athlete_id", calls[0])
+        self.assertEqual(result, {"count": 1, "settings": source})
 
     def test_date_bounded_tools_use_start_and_end_date_only(self):
         tools = {tool["name"]: tool for tool in self.service().list_tools()}
@@ -843,7 +931,9 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [tool.name for tool in result.tools],
             [
-                "list_activities", "list_activity_power_curves", "search_activities", "get_activity",
+                "list_activities", "list_activity_power_curves", "list_activity_hr_curves",
+                "list_activity_pace_curves", "search_activity_intervals", "list_sport_settings",
+                "search_activities", "get_activity",
                 "get_activities",
                 "get_activity_streams", "get_activity_file", "update_activity",
                 "delete_activity", "delete_activities", "upload_activity",

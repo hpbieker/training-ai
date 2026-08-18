@@ -28,6 +28,12 @@ Choose the narrowest workflow that answers the request:
 - Per-activity best power for explicit durations: call MCP
   `list_activity_power_curves`. Use `secs=[1]` for best one-second average
   power; do not describe it as a raw max-power metadata field.
+- Per-activity best heart rate or pace: call `list_activity_hr_curves` with
+  explicit durations or `list_activity_pace_curves` with explicit distances.
+- Activities containing intervals within duration, intensity, and repetition
+  bounds: call `search_activity_intervals`.
+- Intervals.icu thresholds, zones, and sport-specific load configuration: call
+  `list_sport_settings`.
 - Readiness context: call MCP `list_wellness` and `list_events`; let the caller
   resolve source priority and compose readiness.
 - Calendar events: call MCP `list_events` first, then use `create_event`,
@@ -62,6 +68,12 @@ Choose the narrowest workflow that answers the request:
   rows for explicit durations in an inclusive local-date range. Its `secs` and
   each curve's aligned `watts` array preserve source order. It resolves the
   authenticated athlete internally and does not accept an athlete-id argument.
+- `list_activity_hr_curves` and `list_activity_pace_curves` follow the same
+  date-bounded per-activity pattern for explicit durations and distances.
+- `search_activity_intervals` passes explicit interval bounds to Intervals.icu's
+  source search endpoint and returns compact activity summaries.
+- `list_sport_settings` returns the authenticated athlete's source sport
+  settings and resolves the athlete id internally.
 - `update_activity` patches supported metadata, tags, subtype, color, fueling,
   strength load, and whole-activity ignore flags, and requires
   `confirm_overwrite=true` before replacing an existing non-empty value;

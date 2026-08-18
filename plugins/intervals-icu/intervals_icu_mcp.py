@@ -28,11 +28,15 @@ from intervals_icu_api import (  # noqa: E402
     get_activities,
     get_wellness,
     list_activities,
+    list_activity_hr_curves,
+    list_activity_pace_curves,
     list_activity_power_curves,
+    list_sport_settings,
     list_events,
     list_wellness,
     discover_intervals_icu_credentials,
     search_activities,
+    search_activity_intervals,
     update_activity,
     update_wellness,
     update_event,
@@ -85,6 +89,22 @@ ANNOTATIONS = {
     },
     "list_activity_power_curves": {
         "title": "List Intervals.icu Activity Power Curves", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "list_activity_hr_curves": {
+        "title": "List Intervals.icu Activity HR Curves", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "list_activity_pace_curves": {
+        "title": "List Intervals.icu Activity Pace Curves", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "search_activity_intervals": {
+        "title": "Search Intervals.icu Activity Intervals", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "list_sport_settings": {
+        "title": "List Intervals.icu Sport Settings", "readOnlyHint": True,
         "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
     },
     "get_activity": {
@@ -230,6 +250,113 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activity_power_curves"],
+    },
+    "list_activity_hr_curves": {
+        "name": "list_activity_hr_curves",
+        "description": "List per-activity best heart rate for explicit durations in an inclusive local-date range.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "format": "date"},
+                "end_date": {"type": "string", "format": "date"},
+                "secs": {"type": "array", "items": {"type": "integer", "minimum": 1}, "minItems": 1, "maxItems": 100, "uniqueItems": True},
+            },
+            "required": ["start_date", "end_date", "secs"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
+                "secs": {"type": "array", "items": {"type": "integer"}},
+                "count": {"type": "integer"}, "curves": {"type": "array", "items": _object("Intervals.icu activity HR-curve row.")},
+            },
+            "required": ["start_date", "end_date", "secs", "count", "curves"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["list_activity_hr_curves"],
+    },
+    "list_activity_pace_curves": {
+        "name": "list_activity_pace_curves",
+        "description": "List per-activity best pace for explicit distances in an inclusive local-date range.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string", "format": "date"},
+                "end_date": {"type": "string", "format": "date"},
+                "distances": {"type": "array", "items": {"type": "number", "exclusiveMinimum": 0}, "minItems": 1, "maxItems": 100, "uniqueItems": True},
+            },
+            "required": ["start_date", "end_date", "distances"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
+                "distances": {"type": "array", "items": {"type": "number"}},
+                "count": {"type": "integer"}, "curves": {"type": "array", "items": _object("Intervals.icu activity pace-curve row.")},
+            },
+            "required": ["start_date", "end_date", "distances", "count", "curves"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["list_activity_pace_curves"],
+    },
+    "search_activity_intervals": {
+        "name": "search_activity_intervals",
+        "description": "Find activities containing intervals within explicit duration, intensity, and repetition bounds.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "min_secs": {"type": "integer", "minimum": 1},
+                "max_secs": {"type": "integer", "minimum": 1},
+                "min_intensity": {"type": "integer", "minimum": 0},
+                "max_intensity": {"type": "integer", "minimum": 0},
+                "interval_type": {"type": "string", "enum": ["AUTO", "POWER", "HR", "PACE"]},
+                "min_reps": {"type": "integer", "minimum": 1, "default": 1},
+                "max_reps": {"type": "integer", "minimum": 1, "default": 999999},
+                "limit": {"type": "integer", "minimum": 1, "default": 30},
+                "includeFields": {"type": "array", "items": {"type": "string", "enum": list(_ACTIVITY_LIST_INCLUDE_FIELDS)}, "uniqueItems": True, "default": []},
+            },
+            "required": ["min_secs", "max_secs", "min_intensity", "max_intensity"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "min_secs": {"type": "integer"}, "max_secs": {"type": "integer"},
+                "min_intensity": {"type": "integer"}, "max_intensity": {"type": "integer"},
+                "interval_type": {"type": ["string", "null"]},
+                "min_reps": {"type": "integer"}, "max_reps": {"type": "integer"},
+                "limit": {"type": "integer"},
+                "includeFields": {"type": "array", "items": {"type": "string"}},
+                "count": {"type": "integer"}, "activities": {"type": "array", "items": _object("Compact matching activity summary.")},
+            },
+            "required": ["min_secs", "max_secs", "min_intensity", "max_intensity", "interval_type", "min_reps", "max_reps", "limit", "includeFields", "count", "activities"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["search_activity_intervals"],
+    },
+    "list_sport_settings": {
+        "name": "list_sport_settings",
+        "description": (
+            "List the authenticated athlete's Intervals.icu sport settings, including "
+            "thresholds, zones, load configuration, and related sport-specific values."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+                "settings": {"type": "array", "items": _object("Intervals.icu sport settings row.")},
+            },
+            "required": ["count", "settings"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["list_sport_settings"],
     },
     "search_activities": {
         "name": "search_activities",
@@ -828,7 +955,11 @@ class IntervalsIcuToolService:
         credential_factory: Callable[[], IntervalsIcuCredentials] = discover_intervals_icu_credentials,
         activity_lister: Callable[..., list[dict[str, Any]]] = list_activities,
         activity_power_curve_lister: Callable[..., dict[str, Any]] = list_activity_power_curves,
+        activity_hr_curve_lister: Callable[..., dict[str, Any]] = list_activity_hr_curves,
+        activity_pace_curve_lister: Callable[..., dict[str, Any]] = list_activity_pace_curves,
         activity_searcher: Callable[..., list[dict[str, Any]]] = search_activities,
+        activity_interval_searcher: Callable[..., list[dict[str, Any]]] = search_activity_intervals,
+        sport_settings_lister: Callable[..., list[dict[str, Any]]] = list_sport_settings,
         activity_getter: Callable[..., dict[str, Any]] = get_activity,
         activities_getter: Callable[..., list[dict[str, Any]]] = get_activities,
         streams_downloader: Callable[..., Path] = download_activity_streams_csv,
@@ -847,7 +978,11 @@ class IntervalsIcuToolService:
         self._auth = IntervalsIcuAuthSession(credential_factory())
         self._activity_lister = activity_lister
         self._activity_power_curve_lister = activity_power_curve_lister
+        self._activity_hr_curve_lister = activity_hr_curve_lister
+        self._activity_pace_curve_lister = activity_pace_curve_lister
         self._activity_searcher = activity_searcher
+        self._activity_interval_searcher = activity_interval_searcher
+        self._sport_settings_lister = sport_settings_lister
         self._activity_getter = activity_getter
         self._activities_getter = activities_getter
         self._streams_downloader = streams_downloader
@@ -941,6 +1076,77 @@ class IntervalsIcuToolService:
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     "secs": returned_secs, "count": len(curves), "curves": curves,
                 }
+            if name in {"list_activity_hr_curves", "list_activity_pace_curves"}:
+                start_date = _required_date(arguments, "start_date")
+                end_date = _required_date(arguments, "end_date")
+                if end_date < start_date:
+                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+                if name == "list_activity_hr_curves":
+                    values = _required_positive_int_array(arguments, "secs", maximum_items=100)
+                    result = self._activity_hr_curve_lister(
+                        oldest=start_date, newest=end_date, secs=values, **auth,
+                    )
+                    value_key = "secs"
+                else:
+                    values = _required_positive_number_array(
+                        arguments, "distances", maximum_items=100
+                    )
+                    result = self._activity_pace_curve_lister(
+                        oldest=start_date, newest=end_date, distances=values, **auth,
+                    )
+                    value_key = "distances"
+                curves = result.get("curves")
+                returned_values = result.get(value_key)
+                if not isinstance(curves, list) or not isinstance(returned_values, list):
+                    raise ToolFailure(
+                        f"Activity curves response is missing {value_key} or curves",
+                        "source_error",
+                    )
+                return {
+                    "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
+                    value_key: returned_values, "count": len(curves), "curves": curves,
+                }
+            if name == "search_activity_intervals":
+                min_secs = _required_positive_int(arguments, "min_secs")
+                max_secs = _required_positive_int(arguments, "max_secs")
+                min_intensity = _required_nonnegative_int(arguments, "min_intensity")
+                max_intensity = _required_nonnegative_int(arguments, "max_intensity")
+                min_reps = _optional_positive_int(arguments, "min_reps", 1)
+                max_reps = _optional_positive_int(arguments, "max_reps", 999999)
+                limit = _optional_positive_int(arguments, "limit", 30)
+                if max_secs < min_secs:
+                    raise ToolFailure("max_secs must not be below min_secs", "invalid_arguments")
+                if max_intensity < min_intensity:
+                    raise ToolFailure("max_intensity must not be below min_intensity", "invalid_arguments")
+                if max_reps < min_reps:
+                    raise ToolFailure("max_reps must not be below min_reps", "invalid_arguments")
+                interval_type = arguments.get("interval_type")
+                if interval_type is not None and interval_type not in {"AUTO", "POWER", "HR", "PACE"}:
+                    raise ToolFailure("Unsupported interval_type", "invalid_arguments")
+                include_fields = _include_fields(
+                    arguments.get("includeFields", []), _ACTIVITY_LIST_INCLUDE_FIELDS
+                )
+                activities = self._activity_interval_searcher(
+                    min_secs=min_secs, max_secs=max_secs,
+                    min_intensity=min_intensity, max_intensity=max_intensity,
+                    interval_type=interval_type, min_reps=min_reps,
+                    max_reps=max_reps, limit=limit, **auth,
+                )
+                summaries = [
+                    _activity_list_summary(activity, include_fields)
+                    for activity in activities
+                ]
+                return {
+                    "min_secs": min_secs, "max_secs": max_secs,
+                    "min_intensity": min_intensity, "max_intensity": max_intensity,
+                    "interval_type": interval_type, "min_reps": min_reps,
+                    "max_reps": max_reps, "limit": limit,
+                    "includeFields": list(include_fields),
+                    "count": len(summaries), "activities": summaries,
+                }
+            if name == "list_sport_settings":
+                settings = self._sport_settings_lister(**auth)
+                return {"count": len(settings), "settings": settings}
             if name == "search_activities":
                 query = _required_string(arguments, "query")
                 limit = arguments.get("limit", 10)
@@ -1395,6 +1601,45 @@ def _required_positive_int_array(
     if len(set(value)) != len(value):
         raise ToolFailure(f"{key} values must be unique", "invalid_arguments")
     return tuple(value)
+
+
+def _required_positive_number_array(
+    arguments: dict[str, Any], key: str, *, maximum_items: int
+) -> tuple[float | int, ...]:
+    value = arguments.get(key)
+    if not isinstance(value, list) or not value or len(value) > maximum_items:
+        raise ToolFailure(
+            f"{key} must be a non-empty array with at most {maximum_items} items",
+            "invalid_arguments",
+        )
+    if any(
+        isinstance(item, bool) or not isinstance(item, (int, float)) or item <= 0
+        for item in value
+    ):
+        raise ToolFailure(f"{key} values must be positive numbers", "invalid_arguments")
+    if len(set(value)) != len(value):
+        raise ToolFailure(f"{key} values must be unique", "invalid_arguments")
+    return tuple(value)
+
+
+def _required_positive_int(arguments: dict[str, Any], key: str) -> int:
+    value = arguments.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ToolFailure(f"{key} must be a positive integer", "invalid_arguments")
+    return value
+
+
+def _required_nonnegative_int(arguments: dict[str, Any], key: str) -> int:
+    value = arguments.get(key)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ToolFailure(f"{key} must be a non-negative integer", "invalid_arguments")
+    return value
+
+
+def _optional_positive_int(arguments: dict[str, Any], key: str, default: int) -> int:
+    if key not in arguments:
+        return default
+    return _required_positive_int(arguments, key)
 
 
 def _required_unique_string_array(arguments: dict[str, Any], key: str) -> list[str]:

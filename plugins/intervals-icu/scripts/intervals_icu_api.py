@@ -527,6 +527,128 @@ def list_activity_power_curves(
     return result
 
 
+def list_activity_hr_curves(
+    *,
+    secs: Iterable[int],
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    oldest: str | date,
+    newest: str | date,
+) -> dict[str, Any]:
+    """Return per-activity heart-rate curve points for selected durations."""
+
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    athlete = _request_json("/athlete/0", credentials)
+    if not isinstance(athlete, dict):
+        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
+    athlete_id = athlete.get("id")
+    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
+        raise TypeError("Intervals.icu athlete response did not contain an id")
+    result = _request_json(
+        f"/athlete/{athlete_id}/activity-hr-curves",
+        credentials,
+        params={
+            "oldest": f"{_date_to_string(oldest)}T00:00:00",
+            "newest": f"{_date_to_string(newest)}T23:59:59",
+            "secs": ",".join(str(value) for value in secs),
+        },
+    )
+    if not isinstance(result, dict):
+        raise TypeError("Expected Intervals.icu activity HR curves to return an object")
+    if not isinstance(result.get("secs"), list) or not isinstance(result.get("curves"), list):
+        raise TypeError("Intervals.icu activity HR curves response is missing secs or curves")
+    return result
+
+
+def list_activity_pace_curves(
+    *,
+    distances: Iterable[float],
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    oldest: str | date,
+    newest: str | date,
+) -> dict[str, Any]:
+    """Return per-activity pace-curve points for selected distances."""
+
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    athlete = _request_json("/athlete/0", credentials)
+    if not isinstance(athlete, dict):
+        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
+    athlete_id = athlete.get("id")
+    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
+        raise TypeError("Intervals.icu athlete response did not contain an id")
+    result = _request_json(
+        f"/athlete/{athlete_id}/activity-pace-curves",
+        credentials,
+        params={
+            "oldest": f"{_date_to_string(oldest)}T00:00:00",
+            "newest": f"{_date_to_string(newest)}T23:59:59",
+            "distances": ",".join(str(value) for value in distances),
+        },
+    )
+    if not isinstance(result, dict):
+        raise TypeError("Expected Intervals.icu activity pace curves to return an object")
+    if not isinstance(result.get("distances"), list) or not isinstance(result.get("curves"), list):
+        raise TypeError("Intervals.icu activity pace curves response is missing distances or curves")
+    return result
+
+
+def list_sport_settings(
+    *,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+) -> list[dict[str, Any]]:
+    """Return sport settings for the authenticated athlete."""
+
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    athlete = _request_json("/athlete/0", credentials)
+    if not isinstance(athlete, dict):
+        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
+    athlete_id = athlete.get("id")
+    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
+        raise TypeError("Intervals.icu athlete response did not contain an id")
+    settings = _request_json(f"/athlete/{athlete_id}/sport-settings", credentials)
+    if not isinstance(settings, list) or any(not isinstance(row, dict) for row in settings):
+        raise TypeError("Expected Intervals.icu sport settings endpoint to return a list")
+    return settings
+
+
+def search_activity_intervals(
+    *,
+    min_secs: int,
+    max_secs: int,
+    min_intensity: int,
+    max_intensity: int,
+    interval_type: str | None = None,
+    min_reps: int = 1,
+    max_reps: int = 999999,
+    limit: int = 30,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+) -> list[dict[str, Any]]:
+    """Find activities containing intervals matching the supplied bounds."""
+
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    params: dict[str, Any] = {
+        "minSecs": min_secs, "maxSecs": max_secs,
+        "minIntensity": min_intensity, "maxIntensity": max_intensity,
+        "minReps": min_reps, "maxReps": max_reps, "limit": limit,
+    }
+    if interval_type is not None:
+        params["type"] = interval_type
+    activities = _request_json(
+        f"/athlete/{athlete_id}/activities/interval-search",
+        credentials,
+        params=params,
+    )
+    if not isinstance(activities, list) or any(
+        not isinstance(activity, dict) for activity in activities
+    ):
+        raise TypeError("Expected Intervals.icu interval search to return a list of objects")
+    return activities
+
+
 def search_activities(
     *,
     query: str,
