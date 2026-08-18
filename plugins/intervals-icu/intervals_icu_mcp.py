@@ -115,6 +115,10 @@ ANNOTATIONS = {
         "title": "Delete Intervals.icu Activity", "readOnlyHint": False,
         "destructiveHint": True, "idempotentHint": False, "openWorldHint": True,
     },
+    "delete_activities": {
+        "title": "Delete Intervals.icu Activities", "readOnlyHint": False,
+        "destructiveHint": True, "idempotentHint": False, "openWorldHint": True,
+    },
     "upload_activity": {
         "title": "Upload Intervals.icu Activity", "readOnlyHint": False,
         "destructiveHint": False, "idempotentHint": False, "openWorldHint": True,
@@ -513,6 +517,45 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["delete_activity"],
+    },
+    "delete_activities": {
+        "name": "delete_activities",
+        "description": (
+            "Delete exact activities after one batch read, then verify their collective "
+            "absence with one batch read. Each activity is deleted individually because "
+            "Intervals.icu has no bulk activity-delete endpoint."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                    "uniqueItems": True,
+                },
+                "confirm_activity_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                    "uniqueItems": True,
+                    "description": "Must exactly match activity_ids, including order.",
+                },
+            },
+            "required": ["activity_ids", "confirm_activity_ids"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_ids": {"type": "array", "items": {"type": "string"}},
+                "deleted_count": {"type": "integer"},
+                "verified_deleted": {"type": "boolean"},
+            },
+            "required": ["activity_ids", "deleted_count", "verified_deleted"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["delete_activities"],
     },
     "upload_activity": {
         "name": "upload_activity",
@@ -1022,6 +1065,36 @@ class IntervalsIcuToolService:
                     "activity_id": activity_id, "before": before,
                     "deleted_response": deleted_response, "verified_deleted": True,
                 }
+            if name == "delete_activities":
+                activity_ids = _required_unique_string_array(arguments, "activity_ids")
+                confirm_activity_ids = _required_unique_string_array(
+                    arguments, "confirm_activity_ids"
+                )
+                if confirm_activity_ids != activity_ids:
+                    raise ToolFailure(
+                        "confirm_activity_ids must exactly match activity_ids, including order",
+                        "confirmation_required",
+                    )
+                before = self._activities_getter(
+                    activity_ids=activity_ids, include_intervals=False, **auth,
+                )
+                _activities_in_requested_order(activity_ids, before)
+                for activity_id in activity_ids:
+                    self._activity_deleter(activity_id=activity_id, **auth)
+                remaining = self._activities_getter(
+                    activity_ids=activity_ids, include_intervals=False, **auth,
+                )
+                if remaining:
+                    remaining_ids = [str(activity.get("id")) for activity in remaining]
+                    raise ToolFailure(
+                        f"Activities did not verify as deleted: {', '.join(remaining_ids)}",
+                        "verification_error",
+                    )
+                return {
+                    "activity_ids": activity_ids,
+                    "deleted_count": len(activity_ids),
+                    "verified_deleted": True,
+                }
             if name == "upload_activity":
                 file_path = Path(_required_string(arguments, "file_path")).expanduser()
                 if not file_path.is_file():
@@ -1208,6 +1281,7 @@ class IntervalsIcuToolService:
                 activities = self._activities_getter(
                     activity_ids=activity_ids, include_intervals=True, **auth,
                 )
+                activities = _activities_in_requested_order(activity_ids, activities)
                 result = {
                     "activity_ids": activity_ids,
                     "includeFields": list(include_fields),
@@ -1323,6 +1397,19 @@ def _required_positive_int_array(
     return tuple(value)
 
 
+def _required_unique_string_array(arguments: dict[str, Any], key: str) -> list[str]:
+    value = arguments.get(key)
+    if not isinstance(value, list) or not value or any(
+        not isinstance(item, str) or not item for item in value
+    ):
+        raise ToolFailure(
+            f"{key} must be a non-empty array of non-empty strings", "invalid_arguments"
+        )
+    if len(set(value)) != len(value):
+        raise ToolFailure(f"{key} must contain unique values", "invalid_arguments")
+    return value
+
+
 def _include_fields(value: Any, allowed: tuple[str, ...]) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(field, str) for field in value):
         raise ToolFailure("includeFields must be an array of strings", "invalid_arguments")
@@ -1353,6 +1440,38 @@ def _activity_list_summary(
         for field in include_fields
     })
     return summary
+
+
+def _activities_in_requested_order(
+    activity_ids: list[str], activities: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Validate and order a batch response by the caller's activity ids."""
+    by_id: dict[str, dict[str, Any]] = {}
+    for activity in activities:
+        activity_id = activity.get("id")
+        if not isinstance(activity_id, str) or not activity_id:
+            raise ToolFailure("Batch response activity is missing a valid id", "source_error")
+        if activity_id in by_id:
+            raise ToolFailure(
+                f"Batch response contained duplicate activity id: {activity_id}",
+                "source_error",
+            )
+        by_id[activity_id] = activity
+
+    requested = set(activity_ids)
+    missing = [activity_id for activity_id in activity_ids if activity_id not in by_id]
+    unexpected = [activity_id for activity_id in by_id if activity_id not in requested]
+    if missing or unexpected:
+        details = []
+        if missing:
+            details.append(f"missing ids: {', '.join(missing)}")
+        if unexpected:
+            details.append(f"unexpected ids: {', '.join(unexpected)}")
+        raise ToolFailure(
+            f"Batch response did not match requested activity ids ({'; '.join(details)})",
+            "source_error",
+        )
+    return [by_id[activity_id] for activity_id in activity_ids]
 
 
 def _required_date(arguments: dict[str, Any], key: str) -> date:

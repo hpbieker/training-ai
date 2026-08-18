@@ -53,7 +53,8 @@ Choose the narrowest workflow that answers the request:
 - `get_activities` follows the same compact-summary/full-file split for a
   non-empty list of unique activity ids and uses Intervals.icu's batch endpoint.
   Its `includeFields` selection affects only inline summaries; saved full files
-  remain complete;
+  remain complete. Both inline summaries and saved full activities are ordered
+  to match the requested `activity_ids`, independent of source response order;
   `get_activity_streams` saves selected streams to a private temporary file;
   `get_activity_file` saves the original upload or reconstructed FIT file to a
   private temporary file.
@@ -65,6 +66,9 @@ Choose the narrowest workflow that answers the request:
   strength load, and whole-activity ignore flags, and requires
   `confirm_overwrite=true` before replacing an existing non-empty value;
   `delete_activity` requires `confirm` to equal the exact activity id;
+  `delete_activities` requires `confirm_activity_ids` to exactly match the
+  ordered `activity_ids`, reads them once through the batch endpoint, deletes
+  them individually, and verifies collective absence through the batch endpoint;
   `upload_activity` uploads one local activity file. Every completed write is
   verified with fresh source data.
 - `list_wellness` reads wellness rows; `update_wellness` patches supported

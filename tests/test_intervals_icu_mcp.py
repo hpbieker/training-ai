@@ -59,14 +59,15 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         path.write_bytes(b"activity-file")
         return path
 
-    def test_advertises_exactly_sixteen_tools(self):
+    def test_advertises_exactly_seventeen_tools(self):
         self.assertEqual(
             [tool["name"] for tool in self.service().list_tools()],
             [
                 "list_activities", "list_activity_power_curves", "search_activities", "get_activity",
                 "get_activities",
                 "get_activity_streams", "get_activity_file", "update_activity",
-                "delete_activity", "upload_activity", "list_wellness", "update_wellness",
+                "delete_activity", "delete_activities", "upload_activity",
+                "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
             ],
         )
@@ -313,8 +314,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
     def test_get_activities_returns_compact_summaries_in_one_source_call(self):
         calls = []
         source = [
-            {"id": "i1", "name": "Ride", "icu_training_load": 50, "icu_intervals": [{"id": 1}]},
             {"id": "i2", "name": "Run", "icu_training_load": 40, "source_noise": "excluded"},
+            {"id": "i1", "name": "Ride", "icu_training_load": 50, "icu_intervals": [{"id": 1}]},
         ]
         result = self.service(
             activities_getter=lambda **kwargs: calls.append(kwargs) or source
@@ -357,7 +358,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             path.unlink(missing_ok=True)
 
     def test_get_activities_can_save_full_private_batch_envelope(self):
-        source = [{"id": "i1", "icu_intervals": [{"id": 1}]}, {"id": "i2"}]
+        source = [{"id": "i2"}, {"id": "i1", "icu_intervals": [{"id": 1}]}]
+        ordered = [source[1], source[0]]
         result = self.service(activities_getter=lambda **kwargs: source).call_tool(
             "get_activities", {"activity_ids": ["i1", "i2"], "save_full": True}
         )
@@ -367,7 +369,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             self.assertEqual(result["full_activities_format"], "intervals-icu-activities-v1")
             self.assertEqual(result["full_activities_byte_size"], path.stat().st_size)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {
-                "activity_ids": ["i1", "i2"], "activities": source,
+                "activity_ids": ["i1", "i2"], "activities": ordered,
             })
         finally:
             path.unlink(missing_ok=True)
@@ -382,6 +384,18 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         ):
             with self.subTest(arguments=arguments), self.assertRaisesRegex(MCP.ToolFailure, message):
                 self.service().call_tool("get_activities", arguments)
+
+    def test_get_activities_rejects_batch_response_with_wrong_ids(self):
+        for source, message in (
+            ([{"id": "i1"}], "missing ids: i2"),
+            ([{"id": "i1"}, {"id": "i3"}], "missing ids: i2; unexpected ids: i3"),
+            ([{"id": "i1"}, {"id": "i1"}], "duplicate activity id: i1"),
+            ([{"name": "No id"}, {"id": "i2"}], "missing a valid id"),
+        ):
+            with self.subTest(source=source), self.assertRaisesRegex(MCP.ToolFailure, message):
+                self.service(activities_getter=lambda **kwargs: source).call_tool(
+                    "get_activities", {"activity_ids": ["i1", "i2"]}
+                )
 
     def test_search_activities_is_one_source_call_and_preserves_duplicates(self):
         calls = []
@@ -573,6 +587,62 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             "delete_activity", {"activity_id": "i1", "confirm": "i1"}
         )
         self.assertTrue(result["verified_deleted"])
+
+    def test_delete_activities_reads_once_deletes_each_and_verifies_once(self):
+        reads = [
+            [{"id": "i2"}, {"id": "i1"}],
+            [],
+        ]
+        read_calls = []
+        delete_calls = []
+
+        def get_many(**kwargs):
+            read_calls.append(kwargs)
+            return reads.pop(0)
+
+        service = self.service(
+            activities_getter=get_many,
+            activity_deleter=lambda **kwargs: delete_calls.append(kwargs) or {
+                "id": kwargs["activity_id"]
+            },
+        )
+        result = service.call_tool("delete_activities", {
+            "activity_ids": ["i1", "i2"],
+            "confirm_activity_ids": ["i1", "i2"],
+        })
+
+        self.assertEqual(len(read_calls), 2)
+        self.assertEqual(read_calls[0]["activity_ids"], ["i1", "i2"])
+        self.assertEqual(read_calls[1]["activity_ids"], ["i1", "i2"])
+        self.assertFalse(read_calls[0]["include_intervals"])
+        self.assertEqual(
+            [call["activity_id"] for call in delete_calls], ["i1", "i2"]
+        )
+        self.assertEqual(result, {
+            "activity_ids": ["i1", "i2"],
+            "deleted_count": 2,
+            "verified_deleted": True,
+        })
+
+    def test_delete_activities_requires_exact_ordered_confirmation(self):
+        service = self.service()
+        for confirmation in (["i2", "i1"], ["i1"], ["i1", "i3"]):
+            with self.subTest(confirmation=confirmation), self.assertRaisesRegex(
+                MCP.ToolFailure, "exactly match"
+            ):
+                service.call_tool("delete_activities", {
+                    "activity_ids": ["i1", "i2"],
+                    "confirm_activity_ids": confirmation,
+                })
+
+    def test_delete_activities_fails_when_batch_verification_returns_activity(self):
+        reads = [[{"id": "i1"}], [{"id": "i1"}]]
+        with self.assertRaisesRegex(MCP.ToolFailure, "did not verify as deleted: i1"):
+            self.service(activities_getter=lambda **kwargs: reads.pop(0)).call_tool(
+                "delete_activities", {
+                    "activity_ids": ["i1"], "confirm_activity_ids": ["i1"],
+                }
+            )
 
     def test_upload_activity_verifies_returned_id_and_date_list(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -776,7 +846,8 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
                 "list_activities", "list_activity_power_curves", "search_activities", "get_activity",
                 "get_activities",
                 "get_activity_streams", "get_activity_file", "update_activity",
-                "delete_activity", "upload_activity", "list_wellness", "update_wellness",
+                "delete_activity", "delete_activities", "upload_activity",
+                "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
             ],
         )

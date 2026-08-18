@@ -27,7 +27,8 @@ Read this file before any Intervals.icu mutation.
 
 - Delete only activities the user explicitly requested or activities selected
   by a confirmed narrow duplicate rule. Use MCP `delete_activity` with
-  `confirm` exactly matching `activity_id`.
+  `confirm` exactly matching `activity_id`, or MCP `delete_activities` with
+  `confirm_activity_ids` exactly matching the ordered `activity_ids`.
 - Verify deletion with both a date-bounded activity list and, when relevant, a
   direct lookup. A direct lookup can briefly return an id absent from lists.
 - Upload FIT, FIT.GZ, GPX, TCX, and similar files with MCP `upload_activity`.
