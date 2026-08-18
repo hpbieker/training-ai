@@ -21,6 +21,10 @@ Choose the narrowest workflow that answers the request:
 - Metadata or interval orientation only: call MCP `get_activity` for its compact
   summary. Set `save_full=true` when the complete source activity is needed by
   the repo persistence or analysis workflow.
+- Metadata or interval orientation for several known activity ids: call MCP
+  `get_activities` for compact summaries in one source request. Set
+  `save_full=true` to save the complete source activities in one private batch
+  envelope.
 - Per-activity best power for explicit durations: call MCP
   `list_activity_power_curves`. Use `secs=[1]` for best one-second average
   power; do not describe it as a raw max-power metadata field.
@@ -42,9 +46,14 @@ Choose the narrowest workflow that answers the request:
   post-filter `limit` where applicable. Filters use AND; operators are `eq`,
   `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `contains`, and `exists`.
   Inspect `source_count` and `matched_count`; searches are `source_limited`.
-- `get_activity` returns compact metadata and interval orientation. With
+- `get_activity` returns a compact identity summary and accepts `includeFields`
+  for selected inline detail fields. With
   `save_full=true`, it also saves the complete source activity in the standard
   activity envelope to a private temporary JSON file;
+- `get_activities` follows the same compact-summary/full-file split for a
+  non-empty list of unique activity ids and uses Intervals.icu's batch endpoint.
+  Its `includeFields` selection affects only inline summaries; saved full files
+  remain complete;
   `get_activity_streams` saves selected streams to a private temporary file;
   `get_activity_file` saves the original upload or reconstructed FIT file to a
   private temporary file.

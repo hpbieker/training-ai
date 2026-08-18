@@ -574,6 +574,32 @@ def get_activity(
     return activity
 
 
+def get_activities(
+    *,
+    activity_ids: list[str],
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    athlete_id: str | int = 0,
+    include_intervals: bool = True,
+) -> list[dict[str, Any]]:
+    """Fetch several Intervals.icu activities in one request."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    activities = _request_json(
+        f"/athlete/{athlete_id}/activities/{','.join(activity_ids)}",
+        credentials,
+        params={"intervals": str(include_intervals).lower()},
+    )
+    if not isinstance(activities, list) or any(
+        not isinstance(activity, dict) for activity in activities
+    ):
+        raise TypeError("Expected Intervals.icu activities endpoint to return a list of objects")
+    return activities
+
+
 def update_activity(
     *,
     activity_id: str,
