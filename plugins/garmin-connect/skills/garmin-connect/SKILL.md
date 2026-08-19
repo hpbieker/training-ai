@@ -24,6 +24,10 @@ get_health_day(date=<YYYY-MM-DD>)
 list_health_days(until=<YYYY-MM-DD>, days=7, sources=["hrv"])
 list_activities(since=<YYYY-MM-DD>, until=<YYYY-MM-DD>)
 get_activity(activity_id=<garmin-id>)
+get_activity(activity_id=<garmin-id>, save_full=true)
+get_activity_file(activity_id=<garmin-id>, format="fit")
+get_cycling_ftp()
+get_lactate_threshold()
 list_courses()
 get_course(course_id=<course-id>)
 create_course(course=<get-course-result>, name=<new-name>)
@@ -66,6 +70,13 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   drawdown without returning the raw chart series. It may therefore fetch
   activity chart details internally even though the MCP result omits them
   from its output.
+- Set `save_full=true` on `get_activity` to save the complete Garmin summary and
+  details payload to a private JSON file while keeping it out of MCP context.
+- Use `get_activity_file` to download a Garmin activity export as FIT, GPX, TCX,
+  KML, or CSV to a private temporary file.
+- Use `get_cycling_ftp` and `get_lactate_threshold` for Garmin's latest recorded
+  cycling FTP and lactate-threshold payloads. Treat them as Garmin source values,
+  not automatically authoritative training targets.
 - Use `list_courses` to list saved Garmin Connect courses (routes) as compact
   identity rows containing course ID, name, sport type, distance, and source.
   Use `includeFields` for selected elevation, start-point, timing, ownership,

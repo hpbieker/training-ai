@@ -22,10 +22,13 @@ from garmin_connect_api import (  # noqa: E402
     compact_day_payload,
     compact_recent_payload,
     delete_course,
+    download_activity_file,
     fetch_activity,
+    fetch_cycling_ftp,
     fetch_course,
     fetch_courses,
     fetch_day,
+    fetch_lactate_threshold,
     fetch_recent_days,
     garmin_activity_search,
     local_now,
@@ -40,6 +43,9 @@ ALL_TOOL_NAMES = (
     "list_health_days",
     "list_activities",
     "get_activity",
+    "get_activity_file",
+    "get_cycling_ftp",
+    "get_lactate_threshold",
     "list_courses",
     "get_course",
     "create_course",
@@ -227,12 +233,45 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "activity_id": {"type": "string", "minLength": 1},
+                "save_full": {
+                    "type": "boolean", "default": False,
+                    "description": "Save complete Garmin summary and details to a private JSON file.",
+                },
             },
             "required": ["activity_id"],
             "additionalProperties": False,
         },
         "outputSchema": _object("Normalized Garmin activity model summary."),
         "annotations": ANNOTATIONS["get_activity"],
+    },
+    "get_activity_file": {
+        "name": "get_activity_file",
+        "description": "Download one Garmin Connect activity export to a private temporary file.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string", "minLength": 1},
+                "format": {"type": "string", "enum": ["fit", "gpx", "tcx", "kml", "csv"], "default": "fit"},
+            },
+            "required": ["activity_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": _object("Private Garmin Connect activity export file descriptor."),
+        "annotations": ANNOTATIONS["get_activity_file"],
+    },
+    "get_cycling_ftp": {
+        "name": "get_cycling_ftp",
+        "description": "Get Garmin Connect's latest cycling FTP payload.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": _object("Garmin Connect cycling FTP payload."),
+        "annotations": ANNOTATIONS["get_cycling_ftp"],
+    },
+    "get_lactate_threshold": {
+        "name": "get_lactate_threshold",
+        "description": "Get Garmin Connect's latest lactate-threshold payload.",
+        "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
+        "outputSchema": _object("Garmin Connect lactate-threshold payload."),
+        "annotations": ANNOTATIONS["get_lactate_threshold"],
     },
     "list_courses": {
         "name": "list_courses",
@@ -442,10 +481,60 @@ class GarminConnectToolService:
             }
         if name == "get_activity":
             activity = _required_id(arguments, "activity_id")
+            save_full = arguments.get("save_full", False)
+            if not isinstance(save_full, bool):
+                raise ValueError("save_full must be a boolean")
             payload = fetch_activity(activity, gccli=gccli, include_details=True)
-            payload.pop("summary", None)
-            payload.pop("details", None)
-            return payload
+            result = dict(payload)
+            result.pop("summary", None)
+            result.pop("details", None)
+            if save_full:
+                descriptor, raw_path = tempfile.mkstemp(
+                    prefix=f"garmin-{activity}-", suffix="-activity.json"
+                )
+                try:
+                    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                        json.dump(
+                            {"activity_id": activity, "activity": payload},
+                            handle, ensure_ascii=False, separators=(",", ":"),
+                        )
+                    os.chmod(raw_path, 0o600)
+                    result.update({
+                        "full_activity_file": raw_path,
+                        "full_activity_format": "garmin-activity-v1",
+                        "full_activity_byte_size": Path(raw_path).stat().st_size,
+                    })
+                except Exception:
+                    Path(raw_path).unlink(missing_ok=True)
+                    raise
+            return result
+        if name == "get_activity_file":
+            activity = _required_id(arguments, "activity_id")
+            file_format = arguments.get("format", "fit")
+            if file_format not in {"fit", "gpx", "tcx", "kml", "csv"}:
+                raise ValueError("format must be fit, gpx, tcx, kml, or csv")
+            temporary_dir = Path(tempfile.mkdtemp(prefix=f"garmin-{activity}-file-"))
+            os.chmod(temporary_dir, 0o700)
+            output_path = temporary_dir / f"activity-{activity}.{file_format}"
+            try:
+                path = download_activity_file(
+                    activity, gccli=gccli, file_format=file_format,
+                    output_path=output_path,
+                )
+                os.chmod(path, 0o600)
+            except Exception:
+                for child in temporary_dir.iterdir():
+                    child.unlink(missing_ok=True)
+                temporary_dir.rmdir()
+                raise
+            return {
+                "activity_id": activity, "format": file_format,
+                "file_path": str(path), "byte_size": path.stat().st_size,
+            }
+        if name == "get_cycling_ftp":
+            return fetch_cycling_ftp(gccli=gccli)
+        if name == "get_lactate_threshold":
+            return fetch_lactate_threshold(gccli=gccli)
         if name == "list_courses":
             payload = fetch_courses(gccli=gccli)
             include_fields = _include_fields(

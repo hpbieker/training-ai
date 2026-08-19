@@ -564,6 +564,57 @@ def fetch_activity(
     return payload
 
 
+def download_activity_file(
+    activity: str,
+    *,
+    gccli: str,
+    file_format: str,
+    output_path: Path,
+) -> Path:
+    """Download one Garmin Connect activity export to an explicit path."""
+
+    resolved = resolve_garmin_activity(activity)
+    result = subprocess.run(
+        [
+            gccli, "activity", "download", resolved["garmin_id"],
+            "--format", file_format, "--output", str(output_path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise subprocess.CalledProcessError(
+            result.returncode,
+            result.args,
+            output=result.stdout,
+            stderr=result.stderr,
+        )
+    if not output_path.is_file() or output_path.stat().st_size == 0:
+        raise RuntimeError("gccli did not create a non-empty activity file")
+    return output_path
+
+
+def fetch_cycling_ftp(*, gccli: str) -> dict[str, Any]:
+    """Fetch Garmin Connect's latest cycling FTP payload."""
+
+    return {
+        "source": "garmin_connect_gccli",
+        "source_time_local": local_now(),
+        "cycling_ftp": run_gccli_json(gccli, ["health", "cycling-ftp"]),
+    }
+
+
+def fetch_lactate_threshold(*, gccli: str) -> dict[str, Any]:
+    """Fetch Garmin Connect's latest lactate-threshold payload."""
+
+    return {
+        "source": "garmin_connect_gccli",
+        "source_time_local": local_now(),
+        "lactate_threshold": run_gccli_json(gccli, ["health", "lactate-threshold"]),
+    }
+
+
 def fetch_courses(*, gccli: str) -> dict[str, Any]:
     """Fetch the Garmin Connect user's saved courses (routes)."""
 

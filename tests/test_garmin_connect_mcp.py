@@ -20,7 +20,7 @@ class GarminConnectMcpTests(unittest.TestCase):
     def setUp(self) -> None:
         self.service = MCP.GarminConnectToolService(lambda: "/mock/gccli")
 
-    def test_lists_exactly_eight_tools_with_closed_inputs(self) -> None:
+    def test_lists_exactly_eleven_tools_with_closed_inputs(self) -> None:
         tools = self.service.list_tools()
 
         self.assertEqual([tool["name"] for tool in tools], list(MCP.ALL_TOOL_NAMES))
@@ -220,6 +220,69 @@ class GarminConnectMcpTests(unittest.TestCase):
         self.assertNotIn("summary", result)
         self.assertNotIn("details", result)
         self.assertIn("metrics_summary", result)
+
+    @patch.object(MCP, "fetch_activity")
+    def test_get_activity_can_save_full_private_file(self, fetch_activity) -> None:
+        source = {
+            "source": "garmin_connect_gccli",
+            "metrics_summary": {"training_effect": {}},
+            "summary": {"activityId": 123},
+            "details": {"chart": [{"power": 200}]},
+        }
+        fetch_activity.return_value = source
+
+        result = self.service.call_tool(
+            "get_activity", {"activity_id": "123", "save_full": True}
+        )
+
+        path = Path(result["full_activity_file"])
+        self.addCleanup(path.unlink, missing_ok=True)
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.assertEqual(result["full_activity_format"], "garmin-activity-v1")
+        self.assertEqual(result["full_activity_byte_size"], path.stat().st_size)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8")), {
+            "activity_id": "123", "activity": source,
+        })
+        self.assertNotIn("summary", result)
+        self.assertNotIn("details", result)
+
+    def test_get_activity_rejects_non_boolean_save_full(self) -> None:
+        with self.assertRaisesRegex(MCP.ToolFailure, "save_full must be a boolean"):
+            self.service.call_tool(
+                "get_activity", {"activity_id": "123", "save_full": "yes"}
+            )
+
+    @patch.object(MCP, "download_activity_file")
+    def test_get_activity_file_returns_private_file(self, download) -> None:
+        def write_file(activity, *, gccli, file_format, output_path):
+            output_path.write_bytes(b"fit-data")
+            return output_path
+
+        download.side_effect = write_file
+        result = self.service.call_tool(
+            "get_activity_file", {"activity_id": "123", "format": "fit"}
+        )
+        path = Path(result["file_path"])
+        self.addCleanup(path.parent.rmdir)
+        self.addCleanup(path.unlink, missing_ok=True)
+        download.assert_called_once()
+        self.assertEqual(result["format"], "fit")
+        self.assertEqual(result["byte_size"], len(b"fit-data"))
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    @patch.object(MCP, "fetch_lactate_threshold")
+    @patch.object(MCP, "fetch_cycling_ftp")
+    def test_threshold_tools_return_source_payloads(self, cycling_ftp, lactate) -> None:
+        cycling_ftp.return_value = {"cycling_ftp": {"ftp": 300}}
+        lactate.return_value = {"lactate_threshold": {"heartRate": 170}}
+
+        ftp_result = self.service.call_tool("get_cycling_ftp", {})
+        lt_result = self.service.call_tool("get_lactate_threshold", {})
+
+        cycling_ftp.assert_called_once_with(gccli="/mock/gccli")
+        lactate.assert_called_once_with(gccli="/mock/gccli")
+        self.assertEqual(ftp_result["cycling_ftp"]["ftp"], 300)
+        self.assertEqual(lt_result["lactate_threshold"]["heartRate"], 170)
 
     @patch.object(MCP, "fetch_courses")
     def test_list_courses_uses_course_service(self, fetch_courses) -> None:
