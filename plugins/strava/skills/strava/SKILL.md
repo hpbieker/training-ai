@@ -6,9 +6,9 @@ description: Read and change Strava activities, tags, visibility, routes, Route 
 # Strava
 
 Use `strava_session_from_safari.py` to visit the Strava training page through
-`curl-safari`, export the reconstructed live cookie jar, and write a temporary
-mode-0600 `Cookie:` header file. Pass its path through `--cookie-file`. The
-remaining scripts use Python's standard HTTP client.
+`curl-safari`, export the reconstructed live cookie jar, and write the private
+persistent session cache at `~/.strava/session.headers`. The remaining scripts
+use that cache by default through Python's standard HTTP client.
 
 ## Network Execution
 
@@ -23,18 +23,18 @@ and local response or artifact inspection do not require network escalation.
 
 Follow the `curl-safari` skill completely. Safari must already be logged in.
 
-Never store or print Cookie, Authorization, CSRF, or copied full cURL content.
-The cookie file must contain exactly one `Cookie: name=value; ...` line, live
-under `/private/tmp`, and be deleted when the workflow finishes. Its value must
-not appear in command arguments. An optional `--header-file` may contain
+Never print Cookie, Authorization, CSRF, or copied full cURL content. Retain
+only the Cookie header in `~/.strava/session.headers` until it expires, is
+replaced by a verified capture, or the user explicitly clears it. The
+`~/.strava` directory must be mode 0700 and the files mode 0600. The cookie
+value must not appear in command arguments. An optional `--header-file` may contain
 non-secret browser headers, but never Cookie, Authorization, or CSRF. Keep
 response bodies and redacted verbose logs in `/private/tmp`.
 
 Verify authentication before other calls:
 
 ```bash
-python3 -B plugins/strava/scripts/strava_route_api.py auth \
-  --cookie-file /private/tmp/strava-cookie.headers
+python3 -B plugins/strava/scripts/strava_route_api.py auth
 ```
 
 Create the required private cookie file:
@@ -42,6 +42,19 @@ Create the required private cookie file:
 ```bash
 python3 -B plugins/strava/scripts/strava_session_from_safari.py
 ```
+
+When curl-safari cannot provide a complete session, copy a live authenticated
+request as cURL in Safari Web Inspector and import it without retaining the
+complete cURL command:
+
+```bash
+python3 -B plugins/strava/scripts/strava_session.py import-curl
+```
+
+Use `strava_session.py status` to validate the cached session and
+`strava_session.py clear` for explicit logout or credential cleanup. All
+request scripts resolve the cookie file in this order: `--cookie-file`,
+`STRAVA_COOKIE_FILE`, then `~/.strava/session.headers`.
 
 ### Why Not Curl Safari
 
@@ -65,12 +78,17 @@ must be unlocked for a new Web Inspector capture when the session expires.
 ## Activities
 
 Read [references/write-safety.md](references/write-safety.md) before writes.
-Use `strava_activities.py` for date-bounded discovery and visibility filtering:
+Use the user-oriented tools exposed by `strava_cli.py`: `list_activities`,
+`get_activity`, `update_activity`, and `update_activities`. Inspect their
+current MCP-like JSON schemas with `strava_cli.py tools` or
+`strava_cli.py describe TOOL`. Session handling is internal and is not exposed
+as a user-oriented tool.
+
+Use `list_activities` for date-bounded discovery and visibility filtering:
 
 ```bash
-python3 -B plugins/strava/scripts/strava_activities.py \
-  --cookie-file /private/tmp/strava-cookie.headers \
-  --since 2026-08-01 --visibility only_me
+python3 -B plugins/strava/scripts/strava_cli.py call list_activities \
+  --json '{"since":"2026-08-01","visibility":"only_me"}'
 ```
 
 Use the returned activity IDs for exact reads or writes. Pass one or more IDs
@@ -81,10 +99,8 @@ Every operation reads back API state plus edit-page-only bike and start-time
 state.
 
 ```bash
-python3 -B plugins/strava/scripts/strava_activity_tags.py 123 456 \
-  --cookie-file /private/tmp/strava-cookie.headers \
-  --tag Workout --visibility everyone --start-time-hidden true \
-  --bike-name "Kickr Bike v2 (hjeme)"
+python3 -B plugins/strava/scripts/strava_cli.py call update_activity \
+  --json '{"activity_id":123,"patch":{"tag":"Workout","visibility":"everyone"},"confirm":true}'
 ```
 
 ## Routes

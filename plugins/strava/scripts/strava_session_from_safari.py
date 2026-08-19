@@ -12,6 +12,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from strava_route_api import default_cookie_file
+
 
 STRAVA_URL = "https://www.strava.com/athlete/training"
 REQUIRED_COOKIE = "_strava4_session"
@@ -53,7 +55,8 @@ def cookie_header_from_jar(path: Path, host: str = "www.strava.com") -> tuple[st
 
 
 def write_private(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(path.parent, 0o700)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
         handle.write(content + "\n")
@@ -66,7 +69,7 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("/private/tmp/strava-cookie.headers"),
+        default=default_cookie_file(),
         help="Private output header file",
     )
     args = parser.parse_args()

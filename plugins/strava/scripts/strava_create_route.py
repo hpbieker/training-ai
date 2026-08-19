@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from analyze_strava_build import analyze
-from strava_route_api import StravaError, StravaSession
+from strava_route_api import StravaError, StravaSession, default_cookie_file
 
 
 EARTH_RADIUS_KM = 6371.0088
@@ -193,8 +193,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "--cookie-file",
         type=Path,
-        required=True,
-        help="Mode-0600 file containing one Cookie header.",
+        default=default_cookie_file(),
+        help="Cookie header file (default: STRAVA_COOKIE_FILE or ~/.strava/session.headers).",
     )
     result.add_argument(
         "--header-file",

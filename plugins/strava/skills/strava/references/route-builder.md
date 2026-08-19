@@ -12,8 +12,8 @@ curl-safari and create a mode-0600 `Cookie:` header file. Pass that path as
 4. API POST with the same runtime cookie and CSRF;
 5. HTTP and JSON validation.
 
-Do not store full copied cURL, Authorization, or CSRF values. Keep the temporary
-cookie file only for the active workflow, then delete it. Keep only sanitized
+Do not store full copied cURL, Authorization, or CSRF values. Reuse the private
+mode-0600 Cookie cache until it expires or is explicitly cleared. Keep only sanitized
 templates, response bodies, and redacted logs. Do not use Curl Safari for
 Strava until its cookie-completeness issue is resolved; its
 disk-backed jar omitted `_strava4_session` from a session Safari demonstrably

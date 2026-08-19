@@ -1,13 +1,13 @@
 # Strava Write Safety
 
 Perform writes only when the user explicitly requests them. Keep authentication
-material ephemeral and verify the saved state afterward.
+material private and verify the saved state afterward.
 
 ## Activity Changes
 
 Use `strava_session_from_safari.py` to obtain the live Safari cookies through
-curl-safari. Put them in a mode-0600 temporary file and pass the file through
-`--cookie-file`; never put cookie values in command arguments. Read the
+curl-safari. Store the reusable Cookie header in the mode-0600 cache at
+`~/.strava/session.headers`; never put cookie values in command arguments. Read the
 activity back after each change.
 
 Supported primary tag form values include `Race`, `Workout`, `Commute`,
@@ -34,10 +34,10 @@ Create success returns a route ID. Update has been observed to return
 page and metadata through the authenticated Strava state rather than relying
 only on the POST response.
 
-Never retain Cookie or CSRF headers. Obtain fresh session state through
-curl-safari, use the private cookie file with the shared Python HTTP session
-for the active workflow, and delete the file afterward. Use browser-curl-replay
-only if curl-safari cannot provide the required session cookie.
+Retain the private Cookie header until Strava rejects it, it is replaced by a
+newly verified Safari capture, or the user explicitly clears it. Never retain
+CSRF headers or a complete copied cURL command. Use browser-curl-replay only if
+curl-safari cannot provide the required session cookie.
 
 Resolve activity IDs with a date-bounded `strava_activities.py` query before a
 batch write. Do not select duplicate activity names without checking ID and

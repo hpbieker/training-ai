@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from strava_route_api import default_cookie_file
+
 
 def copied_curl_cookie(command: str) -> str:
     try:
@@ -57,13 +59,14 @@ def main() -> int:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("/private/tmp/strava-cookie.headers"),
-        help="Private output file (default: /private/tmp/strava-cookie.headers)",
+        default=default_cookie_file(),
+        help="Private output file (default: STRAVA_COOKIE_FILE or ~/.strava/session.headers)",
     )
     args = parser.parse_args()
     try:
         cookie = copied_curl_cookie(read_input(args))
-        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(args.output.parent, 0o700)
         fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(cookie + "\n")

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Read or update Strava activity metadata using Python HTTP.
 
-The caller supplies a private temporary file containing exactly one ``Cookie:``
-header. The cookie value exists only in the Python process memory.
+The persistent private session cache contains exactly one ``Cookie:`` header.
+The parsed cookie value exists only in the Python process memory.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
-from strava_route_api import StravaError, StravaSession
+from strava_route_api import StravaError, StravaSession, default_cookie_file
 
 
 SESSION: StravaSession | None = None
@@ -264,10 +264,53 @@ def update_activity(
         ],
         data=body,
     )
-    time.sleep(1.0)
-    activity = fetch_activity(activity_id)
-    activity["_edit_html"] = fetch_edit(activity_id)
-    return activity
+
+    expected: dict[str, Any] = {}
+    if activity_name is not None:
+        expected["name"] = activity_name
+    if tag_supplied:
+        expected["tag"] = tag
+    if trainer is not None:
+        expected["trainer"] = trainer
+    if visibility is not None:
+        expected["visibility"] = visibility
+    if start_time_hidden is not None:
+        expected["start_time_hidden"] = start_time_hidden
+    if resolved_bike_id is not None:
+        expected["bike_id"] = str(resolved_bike_id)
+
+    deadline = time.monotonic() + 5.0
+    last_unverified: list[str] = sorted(expected)
+    while True:
+        activity = fetch_activity(activity_id)
+        edit_html = fetch_edit(activity_id)
+        edit = edit_state(edit_html)
+        props = tag_props(edit_html)
+        selected_tags = [
+            option.get("gqlString")
+            for option in props.get("tagOptions", [])
+            if option.get("selected")
+        ]
+        actual = {
+            "name": activity.get("name"),
+            "tag": selected_tags[0] if selected_tags else None,
+            "trainer": bool(activity.get("trainer")),
+            "visibility": activity.get("visibility"),
+            "start_time_hidden": bool(edit.get("start_time_hidden")),
+            "bike_id": str(edit.get("bike_id")) if edit.get("bike_id") is not None else None,
+        }
+        last_unverified = [field for field, value in expected.items() if actual.get(field) != value]
+        if not last_unverified:
+            activity["_edit_html"] = edit_html
+            activity["_verified_fields"] = sorted(expected)
+            return activity
+        if time.monotonic() >= deadline:
+            fields = ", ".join(last_unverified)
+            raise StravaError(
+                f"Strava accepted the update request, but readback did not confirm: {fields}. "
+                "The activity may be partially updated."
+            )
+        time.sleep(0.4)
 
 
 def edit_state(edit_html: str) -> dict[str, Any]:
@@ -302,6 +345,8 @@ def summarize(activity: dict[str, Any]) -> dict[str, Any]:
     }
     if activity.get("_edit_html"):
         result.update(edit_state(activity["_edit_html"]))
+    if "_verified_fields" in activity:
+        result["verified_fields"] = list(activity["_verified_fields"])
     return result
 
 
@@ -323,8 +368,8 @@ def main() -> int:
     parser.add_argument(
         "--cookie-file",
         type=Path,
-        required=True,
-        help="Private mode-0600 file containing exactly one Cookie: header",
+        default=default_cookie_file(),
+        help="Private Cookie header file (default: STRAVA_COOKIE_FILE or ~/.strava/session.headers)",
     )
     parser.add_argument(
         "--header-file",

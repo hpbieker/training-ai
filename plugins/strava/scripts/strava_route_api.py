@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import os
 import re
 import stat
 import sys
@@ -25,6 +26,13 @@ ENDPOINTS = {
     "create": "https://www.strava.com/api/next/data/routes/create-route",
     "update": "https://www.strava.com/api/next/data/routes/update-route",
 }
+DEFAULT_COOKIE_FILE = Path.home() / ".strava" / "session.headers"
+
+
+def default_cookie_file() -> Path:
+    """Resolve an explicit environment override before the persistent default."""
+    value = os.environ.get("STRAVA_COOKIE_FILE")
+    return Path(value).expanduser() if value else DEFAULT_COOKIE_FILE
 
 
 class StravaError(RuntimeError):
@@ -260,8 +268,8 @@ def main() -> int:
     parser.add_argument(
         "--cookie-file",
         type=Path,
-        required=True,
-        help="Mode-0600 file containing one Cookie header.",
+        default=default_cookie_file(),
+        help="Mode-0600 Cookie header file (default: STRAVA_COOKIE_FILE or ~/.strava/session.headers).",
     )
     parser.add_argument(
         "--header-file",

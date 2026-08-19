@@ -12,7 +12,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from strava_route_api import StravaError, StravaSession
+from strava_route_api import StravaError, StravaSession, default_cookie_file
 
 
 BASE_URL = "https://www.strava.com/athlete/training_activities"
@@ -55,6 +55,13 @@ def normalized_activity(row: dict[str, Any]) -> dict[str, Any]:
         "trainer": row.get("trainer"),
         "bike_id": row.get("bike_id"),
         "selected_tag_type": row.get("selected_tag_type"),
+        "elapsed_time_raw": row.get("elapsed_time_raw"),
+        "moving_time_raw": row.get("moving_time_raw"),
+        "distance_raw": row.get("distance_raw"),
+        "elevation_gain_raw": row.get("elevation_gain_raw"),
+        "suffer_score": row.get("suffer_score"),
+        "commute": row.get("commute"),
+        "has_latlng": row.get("has_latlng"),
     }
 
 
@@ -81,7 +88,7 @@ def fetch_page(session: StravaSession, page: int, per_page: int) -> Any:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--cookie-file", required=True, type=Path)
+    parser.add_argument("--cookie-file", type=Path, default=default_cookie_file())
     parser.add_argument("--header-file", type=Path)
     parser.add_argument("--since", type=dt.date.fromisoformat, required=True)
     parser.add_argument("--until", type=dt.date.fromisoformat, default=dt.date.today())
