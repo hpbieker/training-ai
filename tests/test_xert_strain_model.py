@@ -60,6 +60,18 @@ class XertStrainModelTests(unittest.TestCase):
             result["interpretation"]["xss_system_statement"],
         )
 
+    def test_zero_duration_segment_is_retained_without_load(self) -> None:
+        result = calculate_workout(
+            signature={"tp": 300, "hie": 14000, "pp": 800},
+            segments=[{"name": "optional", "duration_seconds": 0, "power": 210}],
+            include_series=False,
+        )
+
+        self.assertEqual(result["duration_seconds"], 0)
+        self.assertEqual(result["xss"]["total"], 0)
+        self.assertEqual(result["segments"][0]["duration_seconds"], 0)
+        self.assertIsNone(result["segments"][0]["xss_rate_per_hour"]["average"])
+
     def test_endurance_solver_adjusts_only_marked_segment_to_match_low_xss(self) -> None:
         result = solve_segment_duration(
             signature={"tp": 300, "hie": 14000, "pp": 800},
@@ -80,6 +92,32 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertEqual(result["segments"][0]["duration_seconds"], 900)
         self.assertEqual(result["segments"][2]["duration_seconds"], 900)
         self.assertNotEqual(result["adjustable_duration_seconds"], 3600)
+
+    def test_segment_solver_allows_zero_duration_for_adjustable_segment(self) -> None:
+        signature = {"tp": 300, "hie": 14000, "pp": 800}
+        fixed_segments = [{"name": "warmup", "duration_seconds": 900, "power": 150}]
+        fixed_load = calculate_workout(
+            signature=signature,
+            segments=fixed_segments,
+            include_series=False,
+        )["xss"]["low"]
+
+        result = solve_segment_duration(
+            signature=signature,
+            segments=[
+                *fixed_segments,
+                {"name": "optional endurance", "duration_seconds": 900, "power": 210},
+            ],
+            adjustable_segment_index=1,
+            target_metric="low_xss",
+            target_value=fixed_load,
+            minimum_duration_seconds=0,
+            maximum_duration_seconds=0,
+        )
+
+        self.assertEqual(result["adjustable_duration_seconds"], 0)
+        self.assertEqual(result["segments"][1]["duration_seconds"], 0)
+        self.assertTrue(result["matched_within_tolerance"])
 
     def test_segment_solver_supports_high_xss(self) -> None:
         result = solve_segment_duration(

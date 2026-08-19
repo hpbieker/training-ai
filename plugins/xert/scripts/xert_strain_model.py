@@ -259,8 +259,8 @@ def calculate_workout(
             raise ValueError(f"segments[{segment_index}] must be an object")
         duration_raw = segment.get("duration_seconds")
         duration = int(_finite_number(duration_raw, field="segment.duration_seconds"))
-        if duration <= 0 or duration != float(duration_raw):
-            raise ValueError("segment.duration_seconds must be a positive integer")
+        if duration < 0 or duration != float(duration_raw):
+            raise ValueError("segment.duration_seconds must be a non-negative integer")
         before = totals.copy()
         segment_failure = False
         segment_minimum_mpa = pp
@@ -360,7 +360,9 @@ def calculate_workout(
                 },
                 "xss_rate_per_hour": {
                     "average": (
-                        sum(totals[system] - before[system] for system in totals)
+                        None
+                        if duration == 0
+                        else sum(totals[system] - before[system] for system in totals)
                         * 3600.0
                         / duration
                     ),
@@ -518,7 +520,7 @@ def solve_segment_duration(
     adjustable_segment_index: int,
     target_metric: str,
     target_value: float,
-    minimum_duration_seconds: int = 1,
+    minimum_duration_seconds: int = 0,
     maximum_duration_seconds: int = 8 * 60 * 60,
     absolute_tolerance: float = 0.05,
 ) -> dict[str, Any]:
@@ -545,10 +547,10 @@ def solve_segment_duration(
         or isinstance(maximum_duration_seconds, bool)
         or not isinstance(minimum_duration_seconds, int)
         or not isinstance(maximum_duration_seconds, int)
-        or minimum_duration_seconds <= 0
+        or minimum_duration_seconds < 0
         or maximum_duration_seconds < minimum_duration_seconds
     ):
-        raise ValueError("require 0 < minimum duration <= maximum duration")
+        raise ValueError("require 0 <= minimum duration <= maximum duration")
     tolerance = _finite_number(absolute_tolerance, field="absolute_tolerance")
     if tolerance <= 0:
         raise ValueError("absolute_tolerance must be positive")
