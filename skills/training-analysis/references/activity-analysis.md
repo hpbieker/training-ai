@@ -17,8 +17,7 @@ python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json
 python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
 ```
 
-- Prefer `scripts/analysis.py` and `scripts/activity_inspect.py` over one-off
-  analysis snippets.
+- Prefer `scripts/activity_inspect.py` over one-off analysis snippets.
 - Use `--compact` or full output only when detailed per-block/per-sensor JSON is
   needed, `--no-intervals` when interval rows are irrelevant, and `--stdout`
   only when full terminal JSON is genuinely useful.
@@ -147,13 +146,12 @@ python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
 
 Use this only when the analysis specifically needs Xert model dynamics.
 
-- If a Fitness Signature and power segments are already available, use
-  `plugins/xert/scripts/xert_strain_cli.py calculate` locally. This models the
-  strain path without fetching Xert data.
+- If a Fitness Signature and power segments are already available, use Xert MCP
+  `calculate_strain`. This models the strain path without fetching Xert data.
 - If the Fitness Signature is the only missing input, first reuse a fresh,
   time-appropriate signature already in the source context; otherwise fetch it
-  with Xert MCP `get_training_state`, then calculate locally. Do not use live
-  Workout Designer Calculate merely to discover the current signature.
+  with Xert MCP `get_training_state`, then call `calculate_strain`. Do not use
+  live Workout Designer Calculate merely to discover the current signature.
 - If an Xert Calculate or activity session series already exists, pass it to
   `plugins/xert/scripts/xert_calculate_analyze.py`.
 - Fetch new Xert session data only when the question requires Xert's reported
