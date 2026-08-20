@@ -8,6 +8,15 @@
   directory to `activity_inspect.py`.
 - If an activity identifier has no local package, create it through the source
   workflow first. Repo analysis helpers must not call source APIs directly.
+- Verify that a named activity matches the user's request before interpreting it.
+- Fetch the exact activity metadata and streams through the source MCP, persist
+  them with the repo helper, then inspect the resulting directory:
+
+```bash
+python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json> --streams-file <mcp-streams-file>
+python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
+```
+
 - Prefer `scripts/analysis.py` and `scripts/activity_inspect.py` over one-off
   analysis snippets.
 - Use `--compact` or full output only when detailed per-block/per-sensor JSON is
@@ -61,6 +70,9 @@
   ride can be mechanically uneven yet physiologically tolerable, and a tightly
   controlled interval can still have excessive physiological cost. Do not let
   a modeled-stimulus label collapse these dimensions into one verdict.
+- Briefly name the primary and strong secondary adaptation systems stimulated
+  by the actual dose, and explain why. Distinguish likely training signals from
+  adaptations proven to have occurred.
 - When power varies, prefer HR/BR/VE-per-watt drift over raw drift. Raw
   physiology can fall while cost per watt rises.
 - Use relevant available sensors, not power and HR alone. Check data quality and
@@ -127,6 +139,7 @@
   confidence with every assessment. Do not translate `context_present` into
   wording such as "heat inflated Training Effect".
 - Numeric difficulty should accompany a text difficulty rating when present.
+- Ask how the session felt when useful, but not when feel/RPE is already known.
 - Save subjective feel/RPE remotely only when the user asks, using the owning
   source skill's write workflow.
 
@@ -137,6 +150,10 @@ Use this only when the analysis specifically needs Xert model dynamics.
 - If a Fitness Signature and power segments are already available, use
   `plugins/xert/scripts/xert_strain_cli.py calculate` locally. This models the
   strain path without fetching Xert data.
+- If the Fitness Signature is the only missing input, first reuse a fresh,
+  time-appropriate signature already in the source context; otherwise fetch it
+  with Xert MCP `get_training_state`, then calculate locally. Do not use live
+  Workout Designer Calculate merely to discover the current signature.
 - If an Xert Calculate or activity session series already exists, pass it to
   `plugins/xert/scripts/xert_calculate_analyze.py`.
 - Fetch new Xert session data only when the question requires Xert's reported

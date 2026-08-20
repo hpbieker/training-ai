@@ -28,44 +28,7 @@ live access, field semantics, and remote write safety.
 
 ### Activity or workout analysis
 
-Read [references/activity-analysis.md](references/activity-analysis.md). Fetch
-the exact activity metadata and streams through the source MCP, persist them
-with the repo helper, then inspect the resulting directory:
-
-```bash
-python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json> --streams-file <mcp-streams-file>
-python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
-```
-
-Verify that a named activity matches the user's request before interpreting it.
-For every completed-activity analysis, also read
-[references/physiological-response-synthesis.md](references/physiological-response-synthesis.md)
-before combining heart rate or multiple physiological streams into a verdict.
-When an activity contains SmO2, THb, Moxy, or another wearable-NIRS muscle
-oxygen signal, also read
-[references/muscle-oxygen.md](references/muscle-oxygen.md) before interpreting
-the signal or allowing it to affect a verdict.
-When an activity contains Tyme Wear, breathing rate, tidal volume, minute
-ventilation, or another wearable respiratory signal, also read
-[references/respiration.md](references/respiration.md) before interpreting the
-signal or allowing it to affect a verdict.
-When an activity contains CORE, `core_temperature`, `skin_temperature`,
-`heat_strain_index`, or another wearable thermal signal, also read
-[references/thermal-sensing.md](references/thermal-sensing.md) before
-interpreting the signal or allowing it to affect a verdict.
-For long rides, late-session quality, physiological decoupling, heat-strain
-questions, CP/W-prime reasoning, or comparisons affected by fueling, also read
-[references/cycling-endurance-physiology.md](references/cycling-endurance-physiology.md).
-When the question depends on Xert MPA, point-of-failure, Difficulty dynamics,
-or low/high/peak strain, use the Xert source skill. Prefer the offline
-`xert_strain_cli.py` whenever the workout segments can be resolved. If the
-Fitness Signature is the only missing input, first reuse a fresh, time-appropriate
-    signature already in the source context; otherwise fetch it with Xert MCP
-    `get_training_state`, then calculate locally. Do not use live
-Workout Designer Calculate merely to discover the current signature. Use
-`xert_calculate_analyze.py` for an existing Calculate or activity series. Keep
-Xert formulas in the source skill and consume normalized model output here
-instead of reimplementing them.
+Read [references/activity-analysis.md](references/activity-analysis.md).
 
 ### Readiness or daily recommendation
 
@@ -132,13 +95,7 @@ Read [references/outdoor-routes.md](references/outdoor-routes.md).
 - Include only modalities available at the resolved location. When indoor and
   outdoor cycling are both available, give concrete versions of both and state
   which wins.
-- Separate mechanical execution/pacing from physiological cost when analysing
-  a completed session.
-- For a completed-session analysis, briefly name the primary and strong
-  secondary adaptation systems stimulated by the actual dose, and explain why.
-  Distinguish likely training signals from adaptations proven to have occurred.
 - Label each training-load value with its source and metric; never treat values
   from different sources as interchangeable.
 - State missing or stale inputs and how they reduce confidence before upgrading
   intensity.
-- Ask how the session felt when useful, but not when feel/RPE is already known.
