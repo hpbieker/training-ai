@@ -187,9 +187,8 @@ mark the planned time as an assumed planning anchor and include
 guidance, including whether the time was assumed, the evaluated weather window,
 and whether Garmin/watch sync is needed before considering a harder session.
 When giving practical fueling, translate carbohydrate targets into countable
-actions using `config/practical-context.md` and
-`config/coaching-preferences.md` when personal product facts and presentation
-preferences are available. Keep them in personal context rather than in code.
+actions using `config/coaching-preferences.md` and current product data from
+EatMyRide. Keep personal defaults in context rather than in code.
 
 Use the full JSON output when debugging or when another script consumes the
 packet:
