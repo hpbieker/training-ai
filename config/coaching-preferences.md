@@ -5,8 +5,8 @@ executed, and presented.
 
 ## Planning and Calendar
 
-- Prefer workout starts from `09:00`; latest reasonable start is `20:30` and
-  latest normal finish is `21:15`.
+- Prefer the earliest practical workout start at or after `09:00`.
+- Latest reasonable start is `20:30`; latest normal finish is `21:15`.
 - Reserve 15 minutes before and after the workout for setup and cleanup.
 - Treat `Focus time` and `X` as open training time.
 - Treat tentative events as non-blocking, but disclose overlap by name and time.

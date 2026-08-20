@@ -5,8 +5,8 @@
 Before running helpers, resolve the local date, planned start or free window,
 location/start anchor, available modalities, surface/bike intent, target event
 and time horizon, and practical fueling defaults. Use the configured earliest
-preferred start when no time is supplied; if calendar context exists, move to
-the first practical free window at or after it. Resolve modality availability
+start and workout-placement preference when no time is supplied; if calendar
+context exists, select a practical window that satisfies them. Resolve modality availability
 from explicit user input or personal context, never from the repository.
 
 When calendar context is used, classify events before calculating availability.
@@ -80,12 +80,12 @@ For every agent-driven recommendation, call the existing
 `build_planning_context()` function programmatically and pass its validated
 return value to `recommend_training.py`; never hand-author
 `--planning-context-json`. Before calling it, derive `planned_at` and the
-availability windows from the freshly read calendar by starting at the
-configured earliest preferred start, classifying fixed, open, tentative, and
-movable events, and applying the complete setup, workout, and cleanup window.
+availability windows from the freshly read calendar by applying the configured
+start boundary and workout-placement preference, classifying fixed, open,
+tentative, and movable events, and applying the complete setup, workout, and cleanup window.
 An existing calendar event that appears to reserve time for training is
 calendar evidence, not an automatic choice of `planned_at`; select its start
-only when the same first-practical-window calculation supports it.
+only when the same placement calculation supports it.
 
 Discover active files under `config/plans/` through the repo-local
 `training-plan` skill and read `config/plan-state.json` before choosing
