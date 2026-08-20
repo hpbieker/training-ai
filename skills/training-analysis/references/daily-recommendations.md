@@ -52,9 +52,8 @@ Before finalizing a calendar-backed workout time, run these checks:
    optional resolution, not an assumed calendar mutation.
    For each proposed meeting move, give a concise movability estimate grounded
    in the user's personal calendar heuristics and available attendee data. Name
-   the number of other participants used for the estimate. When there is only
-   one other participant, normally say it is likely easy to move. If attendee
-   data is missing or incomplete, label the estimate uncertain.
+   the number of other participants used for the estimate. If attendee data is
+   missing or incomplete, label the estimate uncertain.
    When applying a configured event-compatibility exception, name the event and
    time, show the evidence supporting the classification, and state the
    assumption explicitly.
@@ -261,10 +260,11 @@ training. If only the previous day is marked sick, ask whether symptoms remain
 or this is the first healthy day; until clarified, offer rest or a provisional
 very-easy return only.
 
-After the last sick day, default to two intensity-free return days: day one is
-rest or 20–45 minutes very easy; day two is 30–60 minutes easy endurance. Cap
-candidate duration/load to that ramp rather than merely describing it. Resume
-normal logic from day three only if the athlete feels healthy.
+Unless personal context defines another return protocol, default to two
+intensity-free return days after the last sick day: day one is rest or 20–45
+minutes very easy; day two is 30–60 minutes easy endurance. Cap candidate
+duration/load to that ramp rather than merely describing it. Resume normal logic
+from day three only if the athlete feels healthy.
 
 ## Dose And Intensity
 
@@ -298,7 +298,8 @@ normal logic from day three only if the athlete feels healthy.
   dose, cooling choice, hydration plan, and stop conditions. Do not infer heat
   adaptation merely from completing a hot session.
 - If offering a dose beyond a helper guardrail, label it as a conditional
-  coaching override and use a 15-minute breathing/HR/body-feel gate.
+  coaching override and use the configured breathing/HR/body-feel gate,
+  defaulting to 15 minutes.
 - Keep model-specific recovery, target-load, and capacity concepts distinct.
   Use source semantics rather than re-explaining private-model formulas here.
 - Resolve the plan role and concrete workout format before converting Xert
@@ -340,9 +341,9 @@ normal logic from day three only if the athlete feels healthy.
 - Allocate divisible VT1 chronologically across every explicit available
   window, checking the actual capacity of each window. Emit structured
   sessions and segments with start, end, role, minutes, and estimated XSS.
-  Do not create a standalone VT1 session shorter than 30 minutes; leave that
-  dose explicitly unscheduled unless it can be contiguous with the quality
-  workout. Report the true unscheduled remainder after all windows have been
+  Do not create a standalone VT1 session shorter than the configured minimum,
+  defaulting to 30 minutes; leave a smaller dose explicitly unscheduled unless
+  it can be contiguous with the quality workout. Report the true unscheduled remainder after all windows have been
   evaluated, rather than assigning the whole remainder to the second window.
 - When the user explicitly requests a split, pass `split_preference` with
   `first_session_minutes` and an offset-aware `second_session_start`. For a
@@ -404,11 +405,9 @@ duration is known. It may break ties between otherwise comparable routes, but
 must not override a material surface mismatch or poor steady-endurance terrain.
 
 Expose projected 14- and 21-day moving-time density after adding the selected
-dose. Classify it against the plan's normal 15-17 h/week-equivalent range as
-reduced, normal, transitional, or expansion. This is diagnostic evidence, not
-an automatic duration cap.
+dose. Compare it with the active plan's or personal context's configured density
+target. This is diagnostic evidence, not an automatic duration cap.
 
-Indoor trainer sessions default to ERG unless the user requests another mode.
 Use an existing suitable workout as-is when it fits; modify power, duration, or
 repetitions only for a concrete readiness, time, load, or specificity reason.
 Do not add warm-up outside a workout whose total already includes it.

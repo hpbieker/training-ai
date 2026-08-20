@@ -15,6 +15,7 @@ executed, and presented.
   constraint.
 - Treat accepted meetings and fixed appointments as blocking unless told
   otherwise.
+- Treat meetings with one other participant as normally easy to move.
 - Report slack after cleanup to the next fixed appointment. If the dose does
   not fit, show the shortfall and smallest optional calendar adjustment.
 - A large online meeting may be non-blocking for indoor cycling when passive
