@@ -155,6 +155,16 @@ performed at the recommended `planned_at` while still reaching Xert's fresh
 boundary for the next day's workout. Keep this recovery-protection capacity
 separate from XATA's recommended daily dose and from the final coaching dose.
 
+The active plan selects the domain and structure; Xert `remainingXSS` (or
+`targetXSS` before any same-day activity) is the dose input. Treat the
+applicable recovery-protection capacity as the default upper limit. Direct
+readiness evidence may impose an explicit lower cap, but aggregate Garmin
+Training Readiness or Garmin Recovery Time alone must not do so. Do not replace
+the resulting XSS dose with an agent-rounded duration: solve the complete
+structure with the current Fitness Signature. If the next role is not explicit
+in state, derive it only from an unambiguous active-plan queue; otherwise label
+the capacity protection unresolved.
+
 1. Resolve the next day's plan role from the active plan and authoritative
    `config/plan-state.json`. Do not invent the next role from Xert advice.
 2. Resolve the next day's exact practical workout start from explicit user
