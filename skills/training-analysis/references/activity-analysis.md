@@ -2,21 +2,16 @@
 
 ## Selection And Inspection
 
-- Treat “latest” as a discovery request. Resolve the newest source activity
-  explicitly, fetch its metadata and streams through the source MCP, then save
-  the package with `scripts/save_intervals_activity.py` before passing its
-  directory to `activity_inspect.py`.
-- If an activity identifier has no local package, create it through the source
-  workflow first. Repo analysis helpers must not call source APIs directly.
-- Verify that a named activity matches the user's request before interpreting it.
-- Fetch the exact activity metadata and streams through the source MCP, persist
-  them with the repo helper, then inspect the resulting directory:
+- Resolve and verify the exact source activity; treat “latest” as a discovery
+  request. Fetch its metadata and streams through the source MCP, persist the
+  package, then inspect it:
 
 ```bash
 python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json> --streams-file <mcp-streams-file>
 python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
 ```
 
+- Repo analysis helpers must not call source APIs directly.
 - Prefer `scripts/activity_inspect.py` over one-off analysis snippets.
 - Use `--compact` or full output only when detailed per-block/per-sensor JSON is
   needed, `--no-intervals` when interval rows are irrelevant, and `--stdout`
