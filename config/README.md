@@ -1,40 +1,22 @@
 # Config
 
-This directory contains both helper/runtime config and LLM/agent-readable
-personal context. Keep those roles separate.
+This directory contains agent-readable context and helper/runtime config.
 
-## LLM/Agent Context
+## Agent Context
 
-These files are read by the LLM/agent and translated into explicit CLI
-arguments, normalized source inputs, or chat reasoning. Helper scripts must not
-import, parse, or read these files directly.
-
-- `practical-context.md`: locations, modality availability, equipment, sensors,
-  route context, and product facts.
-- `coaching-preferences.md`: personal defaults for planning, workout selection,
-  calendar interpretation, fueling, and presentation.
-- `cycling-clothing.md`: wardrobe context for outdoor clothing
-  recommendations.
-- `plans/YYYY-MM-DD-*-plan.md`: medium-term training plans, goals, phases,
-  weekly structure, progression rules, taper logic, and plan-specific open
-  questions. These files should be date-stamped by creation date and selected by
-  the LLM/agent before live readiness checks when a recommendation should be
-  grounded in a plan.
+- `practical-context.md`: locations, modalities, equipment, sensors, and route context.
+- `coaching-preferences.md`: planning, workout, calendar, fueling, and presentation preferences.
+- `cycling-clothing.md`: wardrobe context for outdoor recommendations.
+- `plans/`: date-stamped medium-term training plans.
 
 ## Helper/Runtime Config
 
-These files may be read by repo helper scripts.
-
 - `plan-state.json`: authoritative current plan progression and next role.
-- `route-data-quality.json`: route/activity data-quality registry.
+- `route-data-quality.json`: route data-quality registry.
 - `sensor-data-quality.json`: sensor data-quality registry.
 
 ## Rule
 
-If a personal-context value is needed for a helper, the LLM/agent passes it
-through an existing explicit CLI argument or normalized input. Do not make
-helper scripts read personal Markdown context files directly.
-
-Temporary personal context must include a start date, end date, affected
-context, and a short reason. Remove or revise temporary rules when the end date
-has passed, instead of treating them as stable practical-context facts.
+Helpers must not read the Markdown context files directly. The agent passes
+needed values through explicit arguments or normalized inputs. Date temporary
+context and remove or revise it when it expires.
