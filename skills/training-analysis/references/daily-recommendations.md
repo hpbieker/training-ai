@@ -6,7 +6,8 @@ Before running helpers, resolve the local date, planned start or free window,
 location/start anchor, available modalities, surface/bike intent, target event
 and time horizon, and practical fueling defaults. Use the configured earliest
 preferred start when no time is supplied; if calendar context exists, move to
-the first practical free window at or after it.
+the first practical free window at or after it. Resolve modality availability
+from explicit user input or personal context, never from the repository.
 
 When calendar context is used, classify events before calculating availability.
 Apply the user's calendar semantics from personal context rather than treating

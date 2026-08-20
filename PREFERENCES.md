@@ -12,6 +12,9 @@ files under `config/` or durable memory, not here.
 ## Indoor Workouts
 
 - Assume indoor trainer recommendations are ridden in ERG mode by default.
+- When I ask to update or prepare “today’s workout”, update `XMB VT2 TODAY` or
+  `XMB VO2Max TODAY` according to the selected workout domain and current final
+  recommendation. Normally preserve the existing warm-up and cool-down.
 - For structured indoor ERG workouts, keep interval prescriptions simple and flat by default.
 - When recommending an existing Xert/XMB workout as-is, treat its warmup and
   cooldown as included in the listed total duration. Do not add a separate

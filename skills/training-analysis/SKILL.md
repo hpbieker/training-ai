@@ -12,8 +12,11 @@ live access, field semantics, and remote write safety.
 ## Context And Sources
 
 - Apply `PREFERENCES.md` and relevant LLM-readable context under `config/`.
+  For recommendations, this includes location, route and weather context,
+  workout timing, modality availability, local gear mapping, and practical
+  fueling defaults.
 - Resolve personal-context conflicts in this order: explicit current message,
-  temporary rule, stable profile, durable memory, generic fallback.
+  temporary rule, durable memory, stable profile, generic fallback.
 - Never make helper scripts parse personal profile or plan Markdown. Resolve the
   context as the agent and pass explicit CLI arguments or normalized JSON.
 - Read the relevant plugin skill before using a source. Resolve its linked

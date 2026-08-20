@@ -47,7 +47,10 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   actually occurred and project its timestamped Recovery Time to the planned
   start. Do not fetch the empty future day as the only Garmin input, and do not
   carry the latest day's HRV, sleep, resting HR, Body Battery, or aggregate
-  Training Readiness forward as future observations.
+  Training Readiness forward as future observations. Describe those same-day
+  signals as not available yet because the date has not happened; use
+  "missing" only after the relevant date or time has occurred and expected
+  synced data is absent or stale.
 - Use `sources` when only selected daily sources are needed.
 - Use `list_health_days` when trend context across several days matters. Pass
   `sources=["hrv"]` when the caller needs actual nightly HRV values without fetching
