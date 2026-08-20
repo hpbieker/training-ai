@@ -765,6 +765,25 @@ class XertServiceTests(unittest.TestCase):
         self.assertEqual(row["rib_duration"]["value"], "03:00")
         self.assertEqual(create.call_args.kwargs["name"], "4 x 4")
 
+    def test_create_workout_preserves_disabled_zero_repeat_row(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = self._service(credentials)
+        with patch.object(
+            SERVICE,
+            "create_saved_workout",
+            return_value={"path": "created", "saved": True},
+        ) as create:
+            service.create_workout(
+                name="Template",
+                rows=[{
+                    "name": "Endurance",
+                    "duration_seconds": 1800,
+                    "power": 210,
+                    "interval_count": 0,
+                }],
+            )
+        self.assertEqual(create.call_args.kwargs["rows"][0]["interval_count"], "0")
+
     def test_delete_workout_uses_existing_verified_delete(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
         service = self._service(credentials)

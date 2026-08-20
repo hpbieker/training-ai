@@ -695,7 +695,8 @@ def normalize_workout_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         row["sequence"] = sequence
         row["DT_RowId"] = ""
         row["name"] = str(row.get("name") or f"Row {sequence + 1}")
-        row["interval_count"] = str(row.get("interval_count") or "1")
+        interval_count = row.get("interval_count")
+        row["interval_count"] = "1" if interval_count is None else str(interval_count)
         normalized.append(row)
     return normalized
 
@@ -718,7 +719,9 @@ def canonical_workout_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "name": row.get("name"),
             "duration": stable_value(row.get("duration")),
             "power": stable_value(row.get("power")),
-            "interval_count": str(row.get("interval_count") or "1"),
+            "interval_count": (
+                "1" if row.get("interval_count") is None else str(row.get("interval_count"))
+            ),
             "rib_duration": stable_value(row.get("rib_duration")),
             "rib_power": stable_value(row.get("rib_power")),
         }
@@ -734,8 +737,10 @@ def workout_timeline_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     cursor = 0
     for row in normalized_rows:
         count = int(row["interval_count"])
-        if count < 1:
-            raise ValueError("workout row interval_count must be positive")
+        if count < 0:
+            raise ValueError("workout row interval_count must be non-negative")
+        if count == 0:
+            continue
         duration = workout_duration_seconds(row["duration"]["value"])
         rib_duration = workout_duration_seconds(row["rib_duration"]["value"])
         base_name = timeline_base_name(str(row["name"]), count=count)

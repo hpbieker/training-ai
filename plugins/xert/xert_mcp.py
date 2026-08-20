@@ -226,9 +226,9 @@ def _workout_rows_schema(description: str) -> dict[str, object]:
                 },
                 "interval_count": {
                     "type": "integer",
-                    "minimum": 1,
+                    "minimum": 0,
                     "default": 1,
-                    "description": "Number of work repetitions represented by this row.",
+                    "description": "Number of work repetitions represented by this row; zero preserves a disabled row.",
                 },
                 "rib_duration_seconds": {
                     "type": "integer",
@@ -762,9 +762,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                             },
                             "interval_count": {
                                 "type": "integer",
-                                "minimum": 1,
+                                "minimum": 0,
                                 "default": 1,
-                                "description": "Number of work repetitions represented by this row.",
+                                "description": "Number of work repetitions represented by this row; zero preserves a disabled row.",
                             },
                             "rib_duration_seconds": {
                                 "type": "integer",

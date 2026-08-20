@@ -153,8 +153,12 @@ def designer_rows_to_segments(
             count = int(row.get("interval_count", 1))
         except (TypeError, ValueError) as exc:
             raise ValueError("Designer row interval_count must be an integer") from exc
-        if count < 1:
-            raise ValueError("Designer row interval_count must be positive")
+        if count < 0:
+            raise ValueError("Designer row interval_count must be non-negative")
+        if count == 0:
+            if row_number == adjustable_row:
+                raise ValueError("the adjustable Designer row must be active")
+            continue
         if row_number == adjustable_row and count != 1:
             raise ValueError("the adjustable Designer row must have interval_count 1")
 

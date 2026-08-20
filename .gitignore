@@ -1,5 +1,6 @@
 .env
 .DS_Store
+.tmp-recommend-*.json
 .pycache/
 __pycache__/
 outputs/

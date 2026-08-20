@@ -35,7 +35,9 @@ executed, and presented.
 - Treat an existing workout's warm-up and cool-down as included in its total.
 - When asked to update or prepare “today’s workout”, update `XMB VT2 TODAY` or
   `XMB VO2Max TODAY` for the selected domain and current final recommendation.
-  Normally preserve its existing warm-up and cool-down.
+  Preserve its existing row structure unless a structural change is explicitly
+  required. When a retained optional block should not run, set its repetitions
+  to `0` instead of deleting the row.
 
 ## Fueling
 

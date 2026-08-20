@@ -681,6 +681,19 @@ class WorkoutReplacementTests(unittest.TestCase):
             {"start": 4080, "end": 7680, "duration": 3600, "name": "VT1", "power": "210 W"},
         )
 
+    def test_preserves_disabled_row_but_omits_it_from_timeline(self) -> None:
+        active = self.row("VT2")
+        disabled = self.row("Endurance")
+        disabled["duration"]["value"] = "30:00"
+        disabled["power"]["value"] = 210
+        disabled["interval_count"] = 0
+
+        normalized = WORKOUTS.normalize_workout_rows([active, disabled])
+        timeline = WORKOUTS.workout_timeline_summary(normalized)
+
+        self.assertEqual(normalized[1]["interval_count"], "0")
+        self.assertEqual([segment["name"] for segment in timeline["segments"]], ["VT2"])
+
     def test_timeline_formats_ramp_power_as_text(self) -> None:
         warmup = self.row("Warmup")
         warmup["power"] = {

@@ -574,8 +574,6 @@ def _designer_row_from_input(row: Any, *, sequence: int) -> dict[str, Any]:
         raise ValueError(f"rows[{sequence}].duration_seconds must be positive")
     power = _number_field(row.get("power"), f"rows[{sequence}].power")
     interval_count = _nonnegative_int(row.get("interval_count", 1), f"rows[{sequence}].interval_count")
-    if interval_count == 0:
-        raise ValueError(f"rows[{sequence}].interval_count must be positive")
     rib_duration = _nonnegative_int(
         row.get("rib_duration_seconds", 0), f"rows[{sequence}].rib_duration_seconds"
     )
