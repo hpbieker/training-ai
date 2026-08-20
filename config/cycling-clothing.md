@@ -1,217 +1,36 @@
 # Cycling Clothing
 
-This file is LLM/agent-readable wardrobe context for outdoor ride clothing
-recommendations. Helper scripts must not import, parse, or read this file
-directly.
+Personal wardrobe context for outdoor ride recommendations. Manufacturer
+temperature ranges were checked on `2026-05-22`; adjust them for intensity,
+wind, rain, sun, exposure, stops, and personal tolerance.
 
-## Source Notes
+## Wardrobe
 
-- Usage: practical wardrobe reference for outdoor ride clothing recommendations.
-- Temperature ranges: Castelli temperature ranges are manufacturer ranges, not
-  personal rules. Adjust for ride intensity, wind, rain, sun, route exposure,
-  stop risk, and personal tolerance.
-- Manufacturer ranges checked on: `2026-05-22`.
-- Model confidence: exact current product pages were not found for the user's
-  Climber jersey, blue vest, winter jacket, Slicker rain jacket, or
-  Thermoflex/Termoflex leg warmer. Keep those as practical estimates until exact
-  model names are known.
+| ID | Item | Range | Practical use |
+|---|---|---:|---|
+| `castelli_free_aero_bib_shorts` | Castelli Free Aero bib shorts | 15–35 °C | Default for mild and warm rides; add warmers for cold starts, rain, wind, or long descents. |
+| `castelli_aero_race_short_sleeve_jersey` | Castelli Aero Race short-sleeve jersey | 18–35 °C | Default warm-weather jersey; add a light base layer or vest around 15–18 °C. |
+| `castelli_climber_jersey` | Castelli Climber jersey | Unverified | Light hot-weather jersey when overheating is the main risk. |
+| `castelli_pro_light_wind_vest` | Castelli Pro Light Wind Vest | 12–20 °C | First-choice pocket layer for cool starts, descents, and wind. |
+| `castelli_blue_vest` | Castelli blue vest | Unverified | Treat as a light wind vest if thin; use colder if insulated. |
+| `castelli_perfetto` | Castelli Perfetto RoS Long Sleeve style | 4–14 °C | Cool, windy, or damp rides; normally too warm above 15–16 °C. |
+| `castelli_winter_jacket` | Castelli winter jacket | Unverified | Genuinely cold rides; exact model is needed for a precise range. |
+| `castelli_emergency_rain_jacket` | Castelli Emergency 2/3 Rain Jacket | 5–18 °C | Packable rain shell, not a normal dry-weather layer. |
+| `castelli_slicker_rain_jacket` | Castelli Slicker rain jacket | Unverified | Treat as a rain shell until the exact model is known. |
+| `castelli_prosecco_tech_short_sleeve_base_layer` | Castelli Prosecco Tech short-sleeve base layer | 10–20 °C | Warm, wicking base layer; may overheat under windproof layers. |
+| `castelli_thermoflex_knee_warmer` | Castelli Thermoflex 2 knee warmers | 8–20 °C | Dry-condition knee warmth, especially around 10–16 °C. |
+| `castelli_thermoflex_legwarmer` | Castelli Thermoflex 2 leg warmers | Unverified | Full-leg warmth; normally excessive around 17–20 °C. |
 
-## Items
+Exact current product pages were not found for the Climber jersey, blue vest,
+winter jacket, Slicker rain jacket, or leg warmers. Their guidance is therefore
+practical rather than manufacturer-verified.
 
-### Race Bib Shorts
+## Selection Guide
 
-- Id: `castelli_free_aero_bib_shorts`.
-- Brand: Castelli.
-- Model/status: Free Aero RC / Free Aero Race style bib shorts.
-- Category: bib shorts.
-- Model confidence: style verified.
-- Manufacturer temperature range: `15-35 C`.
-- Practical use: default for mild and warm rides. Add knee/leg warmers only
-  when the start, rain, wind, or long descents justify it.
-
-### Short-Sleeve Race Jersey
-
-- Id: `castelli_aero_race_short_sleeve_jersey`.
-- Brand: Castelli.
-- Model/status: Aero Race short-sleeve style jersey.
-- Category: short-sleeve jersey.
-- Model confidence: style verified.
-- Manufacturer temperature range: `18-35 C`.
-- Practical use: default warm-weather jersey. For `15-18 C`, pair with a light
-  base layer or vest instead of jumping straight to a jacket.
-
-### Castelli Climber Jersey
-
-- Id: `castelli_climber_jersey`.
-- Brand: Castelli.
-- Model/status: exact current model not verified.
-- Category: light/hot-weather jersey.
-- Model confidence: unverified.
-- Manufacturer temperature range: not verified.
-- Practical use: treat as a light/hot-weather jersey. Best when overheating is
-  the bigger risk than wind chill.
-
-### Castelli Pro Light Wind Vest
-
-- Id: `castelli_pro_light_wind_vest`.
-- Brand: Castelli.
-- Model/status: Pro Light Wind Vest.
-- Category: wind vest.
-- Model confidence: verified.
-- Manufacturer temperature range: `12-20 C`.
-- Practical use: first-choice pocket layer for mild starts, descents, and
-  coastal wind. Light front wind block, breathable back, low overheating risk.
-
-### Castelli Blue Vest
-
-- Id: `castelli_blue_vest`.
-- Brand: Castelli.
-- Model/status: exact model not verified.
-- Category: vest.
-- Model confidence: unverified.
-- Manufacturer temperature range: not verified.
-- Practical use: use like a light vest if it is a thin wind shell. If it is
-  insulated, move it colder.
-
-### Castelli Perfetto
-
-- Id: `castelli_perfetto`.
-- Brand: Castelli.
-- Model/status: Perfetto RoS Long Sleeve style.
-- Category: long-sleeve weather jersey.
-- Model confidence: style verified.
-- Manufacturer temperature range: `4-14 C`.
-- Practical use: too warm as the main piece for steady riding above roughly
-  `15-16 C` unless wet/windy or low intensity. Best for cool, windy, or damp
-  rides.
-
-### Castelli Winter Jacket
-
-- Id: `castelli_winter_jacket`.
-- Brand: Castelli.
-- Model/status: exact model not verified.
-- Category: winter jacket.
-- Model confidence: unverified.
-- Manufacturer temperature range: unknown, likely colder than Perfetto.
-- Practical use: use only for genuinely cold rides. Need exact model name before
-  giving precise temperature guidance.
-
-### Castelli Emergency Rain Jacket
-
-- Id: `castelli_emergency_rain_jacket`.
-- Brand: Castelli.
-- Model/status: Emergency 2/3 Rain Jacket.
-- Category: rain shell.
-- Model confidence: style verified.
-- Manufacturer temperature range: `5-18 C`
-  (`Emergency 3`: `5-18 C`; `Emergency 2`: `6-18 C`).
-- Practical use: rain shell, not a normal dry-weather layer. Carry for rain or
-  long exposed routes; expect it to feel warm if ridden hard in dry mild weather.
-
-### Castelli Slicker Rain Jacket
-
-- Id: `castelli_slicker_rain_jacket`.
-- Brand: Castelli.
-- Model/status: exact model not found in current Castelli search.
-- Category: rain shell.
-- Model confidence: unverified.
-- Manufacturer temperature range: unknown.
-- Practical use: treat as a rain shell until exact model is known. Likely for
-  wet conditions, not routine dry layering.
-
-### Castelli Prosecco Tech Short Sleeve
-
-- Id: `castelli_prosecco_tech_short_sleeve_base_layer`.
-- Brand: Castelli.
-- Model/status: Prosecco Tech Short Sleeve base layer.
-- Category: short-sleeve base layer.
-- Model confidence: verified.
-- Manufacturer temperature range: `10-20 C`.
-- Practical use: warm/wicking cool-weather base layer. Can be too warm for mild
-  high-output rides, especially under windproof layers.
-
-### Castelli Thermoflex Kneewarmer
-
-- Id: `castelli_thermoflex_knee_warmer`.
-- Brand: Castelli.
-- Model/status: Thermoflex 2 Knee Warmer.
-- Category: knee warmer.
-- Model confidence: style verified.
-- Manufacturer temperature range: `8-20 C`.
-- Practical use: dry-condition knee warmth. Useful for cool starts or long
-  steady rides around `10-16 C`; can be unnecessary around `17-20 C` if
-  intensity is steady.
-
-### Castelli Termoflex Legwarmer
-
-- Id: `castelli_thermoflex_legwarmer`.
-- Brand: Castelli.
-- Model/status: Thermoflex 2 Legwarmer.
-- Category: leg warmer.
-- Model confidence: style unverified.
-- Manufacturer temperature range: no product-page range found; assume warmer
-  than knee warmers.
-- Practical use: use when full-leg warmth is needed. Usually too much for mild
-  `17-20 C` rides unless rain, wind, or low intensity.
-
-## Selection Rules
-
-### Dry, 18-25 C
-
-- Default kit:
-  - `castelli_free_aero_bib_shorts`
-  - `castelli_aero_race_short_sleeve_jersey`
-- Notes: use light gloves. Vest only if wind, descents, or stops justify it.
-
-### Dry, 15-20 C, Variable Or Coastal Exposure
-
-- Default kit:
-  - `castelli_free_aero_bib_shorts`
-  - `castelli_aero_race_short_sleeve_jersey`
-  - `castelli_pro_light_wind_vest`
-- Notes: light vest in pocket or on at start. Consider knee warmers if knees get
-  cold.
-
-### Dry, 10-16 C
-
-- Default kit:
-  - `castelli_free_aero_bib_shorts`
-  - `castelli_thermoflex_knee_warmer`
-  - `castelli_prosecco_tech_short_sleeve_base_layer`
-- Notes: use vest or Perfetto depending on wind and intensity; leg warmers if
-  full-leg warmth is needed.
-
-### Windy Or Damp, 5-14 C
-
-- Default kit:
-  - `castelli_perfetto`
-- Notes: Perfetto territory. Add warmer base layer and consider full leg
-  coverage.
-
-### Rain Risk
-
-- Default kit:
-  - `castelli_emergency_rain_jacket`
-- Alternate items:
-  - `castelli_slicker_rain_jacket`
-- Notes: carry a rain shell. Wear only when rain/wind makes it worth the heat
-  cost.
-
-## Example Contexts
-
-### Oslo/Fjällbacka-Type Ride
-
-- Conditions: route starting mild around `17 C`, warming near `19-20 C`, then
-  cooling to `15-16 C` on the coast.
-- Reasonable baseline:
-  - `castelli_free_aero_bib_shorts`
-  - `castelli_aero_race_short_sleeve_jersey`
-  - `castelli_pro_light_wind_vest`
-- Optional:
-  - Light base layer or no base layer, depending start comfort.
-  - Knee warmers only if cool knees are a known issue.
-- Avoid unless forecast worsens:
-  - `castelli_perfetto`
-  - `castelli_winter_jacket`
-  - `castelli_thermoflex_legwarmer`
-  - shoe covers
+| Conditions | Baseline | Adjustment |
+|---|---|---|
+| Dry, 18–25 °C | Bib shorts + Aero Race jersey | Add the light vest only for wind, descents, or stops. |
+| Dry, 15–20 °C, variable exposure | Bib shorts + Aero Race jersey + light vest | Consider knee warmers if knees get cold. |
+| Dry, 10–16 °C | Bib shorts + knee warmers + Prosecco base layer | Add vest or Perfetto according to wind and intensity; use leg warmers when full-leg coverage is needed. |
+| Windy or damp, 5–14 °C | Perfetto | Add the warmer base layer and full-leg coverage as needed. |
+| Rain risk | Emergency rain jacket | Slicker is the alternative; wear a shell only when rain or wind justifies the heat cost. |
