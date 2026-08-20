@@ -13,9 +13,6 @@ live access, field semantics, and remote write safety.
 
 - Apply `config/coaching-preferences.md`, `config/practical-context.md`, and
   other relevant LLM-readable context under `config/`.
-  For recommendations, this includes location, route and weather context,
-  workout timing, modality availability, local gear mapping, and practical
-  fueling defaults.
 - Resolve personal-context conflicts in this order: explicit current message,
   temporary rule, durable memory, stable practical context, generic fallback.
 - Never make helper scripts parse personal profile or plan Markdown. Resolve the
@@ -94,8 +91,7 @@ Treat helper output as structured evidence, not the final recommendation.
 
 ### Outdoor route recommendation
 
-Also read [references/outdoor-routes.md](references/outdoor-routes.md). Select
-from actual saved activity geometry before inventing a generic route.
+Read [references/outdoor-routes.md](references/outdoor-routes.md).
 
 ## Output
 
@@ -107,7 +103,7 @@ from actual saved activity geometry before inventing a generic route.
 - Lead with one clear recommendation. Include timing, duration, warm-up,
   watts/intensity, route or setup, practical fueling, and the decisive reasons.
 - Every training recommendation must also include a separate
-  `Kapasitet før neste økt` section. Resolve the next day's planned workout role
+  `Capacity before the next workout` section. Resolve the next day's planned workout role
   and exact practical start time, then report how much training can be performed
   at the current recommendation's planned start while still reaching Xert's
   fresh boundary for that next workout. Show the limiting Low/High/Peak XSS
@@ -118,15 +114,15 @@ from actual saved activity geometry before inventing a generic route.
 - Every training recommendation must present these three items explicitly and
   separately, even when the recommendation packet already supplies the final
   selection:
-  1. `Fysiologisk mulighetsrom`: the readiness ceiling—what intensity current
+  1. `Physiological scope`: the readiness ceiling—what intensity current
      physiology and recovery allow, independent of what the plan calls for.
-  2. `Treningsmessig behov`: the intensity direction indicated by the resolved
+  2. `Training need`: the intensity direction indicated by the resolved
      goal, progression history, and recent same-family stimulus/load.
-  3. `Endelig anbefaling`: the selected intensity domain and concrete dose after
+  3. `Final recommendation`: the selected intensity domain and concrete dose after
      combining the first two dimensions with logistics, weather, and body feel.
-  Use these exact Norwegian labels, in this order, in every recommendation. Do
-  not rename them, substitute synonyms, or introduce alternative labels for the
-  same three concepts.
+  Translate these three canonical labels and `Capacity before the next workout`
+  into the user's language. Use the same translated wording consistently, keep
+  the three layers in this order, and present capacity as a separate section.
   Do not collapse the first two into justification for the third or report only
   the final recommendation. State clearly when physiology allows harder
   training than the plan selects. Explain why the resulting domain (for example
@@ -146,9 +142,3 @@ from actual saved activity geometry before inventing a generic route.
 - State missing or stale inputs and how they reduce confidence before upgrading
   intensity.
 - Ask how the session felt when useful, but not when feel/RPE is already known.
-
-## Boundaries
-
-This skill owns local persistence, helper workflows, readiness composition,
-route/workout selection, and chat output. It does not own source-specific field
-meaning or remote mutation rules.

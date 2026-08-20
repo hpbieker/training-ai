@@ -197,14 +197,16 @@ the capacity protection unresolved.
    compare its Low/High/Peak XSS with the corresponding capacities. Never use a
    mixed-history XSS-per-minute ratio.
 7. Present both values explicitly:
-   - `Anbefalt dose`: the final coaching prescription;
-   - `Maks for å være Xert-klar neste dag`: duration, watts/structure, limiting
+   - `Recommended dose`: the final coaching prescription;
+   - `Maximum compatible with next-day Xert freshness`: duration,
+     watts/structure, limiting
      XSS capacity, next workout role, and next workout start.
    If the recommended dose exceeds the recovery-protection capacity, reduce the
    final recommendation or explicitly state that the next-day quality session
    is no longer protected.
 
-Use the exact user-facing label `Kapasitet før neste økt`. Explain that Xert's
+Use `Capacity before the next workout` as the canonical section label and
+translate it into the user's language. Explain that Xert's
 fresh boundary is a model result rather than a guarantee of whole-body or
 subjective readiness, so the next day's sleep, direct readiness signals,
 soreness, and body feel must still gate quality work.
@@ -436,11 +438,11 @@ Do not add warm-up outside a workout whose total already includes it.
 - Start with the recommended session and best time.
 - Present all three layers below as separate, named parts of every
   recommendation; reporting only the final session is not sufficient:
-  1. `Fysiologisk mulighetsrom`: report the readiness ceiling from
+  1. `Physiological scope`: report the readiness ceiling from
      `primary_decision.intensity_decision.readiness_ceiling` and the decisive
      direct recovery signals. Describe what intensity is physiologically
      allowed without treating it as the planned intensity.
-  2. `Treningsmessig behov`: report what the resolved goal, progression history,
+  2. `Training need`: report what the resolved goal, progression history,
      and recent same-family stimulus/load indicate. Ground this in
      `requested_goal`, `progression_status`, `progression_next_step`,
      `latest_same_family_date`, `days_since_same_family`, and the packet's recent
@@ -448,12 +450,11 @@ Do not add warm-up outside a workout whose total already includes it.
      plan and current plan role. If no applicable plan exists, state that the
      training need is unresolved instead of presenting a generic helper goal as
      a plan.
-  3. `Endelig anbefaling`: report `selected_domain` plus the concrete duration,
+  3. `Final recommendation`: report `selected_domain` plus the concrete duration,
      watts, structure, and route/setup after combining the first two layers with
      logistics, weather, and body feel.
-  Always use these exact labels and this exact order. Do not replace them with
-  variants such as `intensitetstak`, `fysiologisk kapasitet`, `planlagt
-  intensitet`, `treningsbehov`, or other newly coined names.
+  Translate these canonical labels into the user's language and always use the
+  same translated wording in this order.
   Explicitly state when the physiological ceiling is higher than the selected
   plan. Explain why the final domain is preferable to the next harder and easier
   domain. These three parts are required even when readiness, load, or the
