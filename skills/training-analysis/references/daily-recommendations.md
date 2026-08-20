@@ -76,10 +76,6 @@ The helpers keep absolute comparison and cutoff timestamps in UTC and use the
 resolved timezone for local calendar semantics and display. Do not infer it
 from the machine timezone or assume a mobile client timezone is available.
 
-Use the internal `build_planning_context()` helper for repo automation and
-simulators instead of assembling the complete JSON object manually. The CLI
-still accepts normalized JSON at its boundary.
-
 For every agent-driven recommendation, call the existing
 `build_planning_context()` function programmatically and pass its validated
 return value to `recommend_training.py`; never hand-author
@@ -479,27 +475,3 @@ Do not add warm-up outside a workout whose total already includes it.
   zones.
 - State whether timing was user-provided or assumed and identify stale/missing
   inputs that materially limit confidence.
-- For calendar-backed timing, surface any overlapping tentative event and every
-  relied-on meal-mobility or meal-shortening assumption. Do not hide these
-  caveats inside the general rationale.
-- Never shorten a movable meal by default. Preserve its scheduled duration
-  unless the recommendation identifies the concrete hard stop or explicit time
-  constraint that requires shortening it.
-- Whenever the proposal treats a tentative event as non-blocking, identify that
-  event by subject/title and scheduled time in the user-facing plan.
-- State the listed workout start and duration, and account separately for the
-  configured setup and cleanup buffers when describing calendar fit.
-- For every calendar-backed workout, show post-cleanup slack to the next hard
-  stop. Do not count open blocks, tentative events, or movable meals as hard
-  stops; disclose their relevant assumptions separately.
-- Always flag when the usable window cannot accommodate the complete selected
-  dose. Show intended versus executable dose, the shortfall and constraint, and
-  the explicit disposition of any remainder. Include the smallest named
-  calendar change that would unlock the full dose so the user can decide
-  whether to move an appointment.
-- For every appointment proposed for movement, show a brief evidence-backed
-  movability estimate. Do not present participant-count heuristics as certainty.
-- When treating a large passive Teams meeting as compatible with indoor
-  cycling, identify the meeting and time and disclose the assumptions about
-  participant count and the user's lack of an active role. Never use this
-  exception for an outdoor workout.
