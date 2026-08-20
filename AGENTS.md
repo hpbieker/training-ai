@@ -5,5 +5,5 @@
   remove or rename internal flags when updating the calling automation/scripts,
   because these scripts are not public APIs.
 - Do not hardcode user-specific recommendation preferences in code, skills, or
-  other shared project instructions. Store them in `PREFERENCES.md` or the
-  appropriate personal context file instead.
+  other shared project instructions. Store them in
+  `config/coaching-preferences.md` or `config/practical-context.md` instead.

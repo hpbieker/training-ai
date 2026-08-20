@@ -1,9 +1,39 @@
-# Project Preferences
+# Coaching Preferences
 
-Keep this file focused on repo-local implementation defaults, helper behavior,
-and source-integration reminders. Personal training values such as locations,
-equipment, product choices, and timing defaults belong in personal context
-files under `config/` or durable memory, not here.
+This file describes how training recommendations should be selected, executed,
+and presented. Facts about locations, equipment, sensors, and products belong
+in `practical-context.md`.
+
+## Planning
+
+- Earliest preferred workout start: `09:00`.
+- Latest reasonable workout start: `20:30`.
+- Latest normal workout end: `21:15`.
+- Reserve `15 minutes` before a workout for setup and `15 minutes` afterward
+  for cleanup.
+
+### Outlook Calendar Interpretation
+
+- Treat `Focus time` and `X` as open training time.
+- Treat tentative events as non-blocking, but disclose any overlap by name and
+  time.
+- Treat `Lunsj` and `Middag` as movable meal requirements. Preserve the
+  scheduled meal duration when moving it is sufficient; shorten `Lunsj` to 30
+  minutes only when a concrete constraint requires it.
+- Treat accepted meetings and fixed appointments as blocking unless the user
+  says otherwise.
+- Check the complete occupied window, including setup and cleanup, while
+  displaying the actual workout start separately.
+- Report the slack after cleanup to the next fixed appointment and name that
+  appointment as the hard stop. If none exists, say so.
+- If the complete dose does not fit, show the intended dose, executable dose,
+  shortfall, constraint, remainder disposition, and smallest optional calendar
+  change that would make it fit.
+- Estimate meeting movability from available attendee evidence and label the
+  estimate uncertain when that evidence is incomplete.
+- A large all-hands Teams meeting may be treated as non-blocking for indoor
+  cycling when passive attendance and no active role are reasonable. Disclose
+  that assumption; never apply it to outdoor cycling.
 
 ## Workout Segmentation
 
@@ -46,6 +76,14 @@ files under `config/` or durable memory, not here.
   `eatmyride` plugin skill.
 - When recommending practical fueling, convert carbohydrate targets into
   countable on-bike actions instead of only grams per hour.
+- Use `1 x 1000 ml` indoors by default, adding a refill or second bottle for
+  sessions well beyond 90 minutes or in a hot room.
+- Use `2 x 750 ml` outdoors for shorter or moderate rides and `2 x 1000 ml`
+  when duration, heat, or intensity increases.
+- Use `60-80 g carbohydrate/hour` as the normal long outdoor target unless the
+  session calls for something else.
+- Translate the target into SiS plus countable seigmenn. A simple default cue is
+  `2 seigmenn every 15-20 minutes from the start`, adjusted for drink strength.
 
 ## Outdoor Routes
 
@@ -73,9 +111,8 @@ files under `config/` or durable memory, not here.
 ## Workout Analysis Expectations
 
 - When the user asks to analyze a workout, inspect the actual activity data
-  rather than only metadata or title. Use the available streams from the sensor
-  profile, including power, heart rate, VE, VT, BR, Moxy SmO2/THb,
-  core/skin temperature and environmental temperature/humidity.
+  rather than only metadata or title. Use the available streams from the
+  practical context and source data.
 - Include a fueling assessment in workout analyses when EatMyRide data or
   user-provided intake is available. If products are missing from EatMyRide,
   distinguish logged fueling from likely real fueling and state the uncertainty.

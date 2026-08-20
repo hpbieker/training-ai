@@ -9,6 +9,9 @@ Use this skill for medium-term plan structure and plan-file maintenance. Use
 `training-analysis` afterward for live readiness, logistics, and a concrete
 same-day prescription.
 
+Read `config/coaching-preferences.md` and `config/practical-context.md` when
+their personal defaults or constraints affect the plan.
+
 ## Plan Files
 
 Store plans under `config/plans/` unless the user requests another location.

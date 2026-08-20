@@ -9,8 +9,10 @@ These files are read by the LLM/agent and translated into explicit CLI
 arguments, normalized source inputs, or chat reasoning. Helper scripts must not
 import, parse, or read these files directly.
 
-- `user-training-profile.md`: personal training context for planning defaults,
-  locations, modality availability, equipment, route context, and fueling.
+- `practical-context.md`: locations, modality availability, equipment, sensors,
+  route context, and product facts.
+- `coaching-preferences.md`: personal defaults for planning, workout selection,
+  calendar interpretation, fueling, and presentation.
 - `cycling-clothing.md`: wardrobe context for outdoor clothing
   recommendations.
 - `plans/YYYY-MM-DD-*-plan.md`: medium-term training plans, goals, phases,
@@ -23,6 +25,7 @@ import, parse, or read these files directly.
 
 These files may be read by repo helper scripts.
 
+- `plan-state.json`: authoritative current plan progression and next role.
 - `route-data-quality.json`: route/activity data-quality registry.
 - `sensor-data-quality.json`: sensor data-quality registry.
 
@@ -30,8 +33,8 @@ These files may be read by repo helper scripts.
 
 If a personal-context value is needed for a helper, the LLM/agent passes it
 through an existing explicit CLI argument or normalized input. Do not make
-helper scripts read `user-training-profile.md` or `cycling-clothing.md`.
+helper scripts read personal Markdown context files directly.
 
 Temporary personal context must include a start date, end date, affected
 context, and a short reason. Remove or revise temporary rules when the end date
-has passed, instead of treating them as stable profile facts.
+has passed, instead of treating them as stable practical-context facts.
