@@ -166,9 +166,8 @@ the capacity protection unresolved.
    input or calendar context. Apply the configured earliest start, fixed-event
    conflicts, setup buffer, and the user's open/tentative/movable-event rules.
    Never run a capacity calculation against an unspecified horizon.
-- Use the Xert source skill's `workout-capacity --as-of <ISO-datetime>
-   --fresh-at <ISO-datetime>` workflow with a fresh live state. Set `--as-of`
-   to today's recommended start and `--fresh-at` to the next workout's resolved
+- Use Xert MCP `calculate_workout_capacity` with a fresh live state. Set `as_of`
+   to today's recommended start and `fresh_at` to the next workout's resolved
    start. The result is three
    independent fresh-boundary capacities—Low, High, and Peak XSS—not three
    additive workout quotas.
@@ -186,8 +185,8 @@ the capacity protection unresolved.
    the independent capacity values into an arbitrary realizable XSS split.
 - Convert the applicable capacity to duration only through the same current
    Fitness Signature and complete proposed workout structure used for the
-   recommendation. For adjustable endurance, use `xert_strain_cli.py
-   solve-endurance`; for fixed quality, calculate the complete structure and
+   recommendation. For adjustable endurance, use Xert MCP
+   `solve_segment_duration`; for fixed quality, calculate the complete structure and
    compare its Low/High/Peak XSS with the corresponding capacities. Never use a
    mixed-history XSS-per-minute ratio.
 - Present both values explicitly:
@@ -366,11 +365,11 @@ normal logic from day three only if the athlete feels healthy.
 
 For an ordinary designed quality workout, keep the plan responsible for the
 training role and progression. When the selected Fitness Signature and complete
-power structure are already known, run `plugins/xert/scripts/xert_strain_cli.py
-calculate` locally to estimate low/high/peak XSS, Difficulty, Focus, MPA reserve,
-and feasibility. This path must not fetch Xert data.
+power structure are already known, use Xert MCP `calculate_strain` to estimate
+low/high/peak XSS, Difficulty, Focus, MPA reserve, and feasibility. This
+calculation does not fetch Xert data.
 
-Use live Workout Designer Calculate only when current Xert state, Designer row
+Use Xert MCP `calculate_workout` only when current Xert state, Designer row
 resolution, or server-authoritative summary totals are required. Analyze an
 existing verbose Calculate series with `xert_calculate_analyze.py`; do not fetch
 the same series again merely to reproduce locally available model fields.
