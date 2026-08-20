@@ -55,11 +55,9 @@ Before finalizing a calendar-backed workout time, run these checks:
    the number of other participants used for the estimate. When there is only
    one other participant, normally say it is likely easy to move. If attendee
    data is missing or incomplete, label the estimate uncertain.
-   Apply any personal passive-attendance heuristic separately: a large
-   all-hands-style Teams meeting may be non-blocking for indoor cycling when the
-   user has no active role. Name the meeting and time, show participant-count
-   evidence, and state the no-active-role assumption. Do not apply this
-   exception to outdoor riding.
+   When applying a configured event-compatibility exception, name the event and
+   time, show the evidence supporting the classification, and state the
+   assumption explicitly.
    Do not silently compress or schedule an unexecutable remainder, and split a
    session only when doing so preserves its physiological purpose.
 - Distinguish verified calendar conflicts from assumptions; do not describe a

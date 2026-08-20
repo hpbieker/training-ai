@@ -17,9 +17,9 @@ executed, and presented.
   otherwise.
 - Report slack after cleanup to the next fixed appointment. If the dose does
   not fit, show the shortfall and smallest optional calendar adjustment.
-- A large all-hands Teams meeting may be non-blocking for indoor cycling when
-  passive attendance and no active role are reasonable. Disclose the
-  assumption; never apply it to outdoor cycling.
+- A large online meeting may be non-blocking for indoor cycling when passive
+  attendance and no active role are reasonable. Disclose the assumption; never
+  apply it to outdoor cycling or physical meetings.
 
 ## Indoor Workouts
 
