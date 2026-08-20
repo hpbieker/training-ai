@@ -18,28 +18,28 @@ the workout rather than fixed-time blockers.
 
 Before finalizing a calendar-backed workout time, run these checks:
 
-1. Resolve the user's setup and cleanup buffers from personal context, and test
+- Resolve the user's setup and cleanup buffers from personal context, and test
    calendar availability against the complete occupied window: setup, workout,
    and cleanup. Keep the displayed workout start and duration distinct from the
    buffers.
-2. Verify that the workout was not delayed solely by an event that personal
+- Verify that the workout was not delayed solely by an event that personal
    context defines as open, tentative, or movable.
-3. If the selected workout overlaps or otherwise relies on disregarding a
+- If the selected workout overlaps or otherwise relies on disregarding a
    tentative event, show a concise warning with the event's subject/title and
    scheduled time. Never replace the event name with only a generic phrase such
    as "tentative meeting".
-4. If selecting the workout requires moving a meal, state that assumption and
+- If selecting the workout requires moving a meal, state that assumption and
    preserve a practical meal window.
-5. Preserve the meal's scheduled duration when moving it is sufficient. If
+- Preserve the meal's scheduled duration when moving it is sufficient. If
    personal context permits shortening a meal, use that only when a concrete
    hard stop or explicit time constraint makes the normal duration impractical.
    State the shortened duration, name the constraint, and explain why moving the
    full-duration meal is insufficient.
-6. Calculate post-workout slack from the end of the cleanup buffer to the next
+- Calculate post-workout slack from the end of the cleanup buffer to the next
    confirmed fixed appointment. Show the slack, the appointment's subject/title
    and time, and label it as the hard stop. If no later hard stop exists in the
    planning day, state that explicitly.
-7. Compare the selected training dose with the usable window after setup and
+- Compare the selected training dose with the usable window after setup and
    cleanup buffers. If the full dose does not fit, always show:
    - intended duration/dose;
    - maximum executable duration/dose;
@@ -62,7 +62,7 @@ Before finalizing a calendar-backed workout time, run these checks:
    exception to outdoor riding.
    Do not silently compress or schedule an unexecutable remainder, and split a
    session only when doing so preserves its physiological purpose.
-8. Distinguish verified calendar conflicts from assumptions; do not describe a
+- Distinguish verified calendar conflicts from assumptions; do not describe a
    non-blocking event as unavailable time.
 
 Resolve one IANA location timezone. Pass it inside `--time-context-json` to
@@ -162,19 +162,19 @@ structure with the current Fitness Signature. If the next role is not explicit
 in state, derive it only from an unambiguous active-plan queue; otherwise label
 the capacity protection unresolved.
 
-1. Resolve the next day's plan role from the active plan and authoritative
+- Resolve the next day's plan role from the active plan and authoritative
    `config/plan-state.json`. Do not invent the next role from Xert advice.
-2. Resolve the next day's exact practical workout start from explicit user
+- Resolve the next day's exact practical workout start from explicit user
    input or calendar context. Apply the configured earliest start, fixed-event
    conflicts, setup buffer, and the user's open/tentative/movable-event rules.
    Never run a capacity calculation against an unspecified horizon.
-3. Use the Xert source skill's `workout-capacity --as-of <ISO-datetime>
+- Use the Xert source skill's `workout-capacity --as-of <ISO-datetime>
    --fresh-at <ISO-datetime>` workflow with a fresh live state. Set `--as-of`
    to today's recommended start and `--fresh-at` to the next workout's resolved
    start. The result is three
    independent fresh-boundary capacities—Low, High, and Peak XSS—not three
    additive workout quotas.
-4. Align the capacity horizon with the interval from today's recommended
+- Align the capacity horizon with the interval from today's recommended
    `planned_at` to the next day's resolved workout start. When the current Xert
    state timestamp materially precedes today's `planned_at`, do not silently
    treat a capacity calculated at the current timestamp as exact. Use an exact
@@ -182,17 +182,17 @@ the capacity protection unresolved.
    shift the capacity horizon to preserve the same recovery interval and label
    the result an equivalent-horizon approximation. State the planned timestamps
    and the no-intervening-training assumption.
-5. Select the limiting system for the actual proposed workout and next-day
+- Select the limiting system for the actual proposed workout and next-day
    role. A VT1 workout is normally constrained by Low XSS; a quality workout
    must respect every Low/High/Peak system it actually generates. Do not combine
    the independent capacity values into an arbitrary realizable XSS split.
-6. Convert the applicable capacity to duration only through the same current
+- Convert the applicable capacity to duration only through the same current
    Fitness Signature and complete proposed workout structure used for the
    recommendation. For adjustable endurance, use `xert_strain_cli.py
    solve-endurance`; for fixed quality, calculate the complete structure and
    compare its Low/High/Peak XSS with the corresponding capacities. Never use a
    mixed-history XSS-per-minute ratio.
-7. Present both values explicitly:
+- Present both values explicitly:
    - `Recommended dose`: the final coaching prescription;
    - `Maximum compatible with next-day Xert freshness`: duration,
      watts/structure, limiting
@@ -434,11 +434,11 @@ Do not add warm-up outside a workout whose total already includes it.
 - Start with the recommended session and best time.
 - Present all three layers below as separate, named parts of every
   recommendation; reporting only the final session is not sufficient:
-  1. `Physiological scope`: report the readiness ceiling from
+  - `Physiological scope`: report the readiness ceiling from
      `primary_decision.intensity_decision.readiness_ceiling` and the decisive
      direct recovery signals. Describe what intensity is physiologically
      allowed without treating it as the planned intensity.
-  2. `Training need`: report what the resolved goal, progression history,
+  - `Training need`: report what the resolved goal, progression history,
      and recent same-family stimulus/load indicate. Ground this in
      `requested_goal`, `progression_status`, `progression_next_step`,
      `latest_same_family_date`, `days_since_same_family`, and the packet's recent
@@ -446,7 +446,7 @@ Do not add warm-up outside a workout whose total already includes it.
      plan and current plan role. If no applicable plan exists, state that the
      training need is unresolved instead of presenting a generic helper goal as
      a plan.
-  3. `Final recommendation`: report `selected_domain` plus the concrete duration,
+  - `Final recommendation`: report `selected_domain` plus the concrete duration,
      watts, structure, and route/setup after combining the first two layers with
      logistics, weather, and body feel.
   Translate these canonical labels into the user's language and always use the
