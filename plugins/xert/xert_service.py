@@ -9,6 +9,7 @@ import os
 import sys
 import threading
 import time
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -52,6 +53,7 @@ from xert_workouts import (  # noqa: E402
     replace_workout as replace_saved_workout,
     summarize_workout_library,
     update_workout as update_saved_workout,
+    update_workout_rows,
 )
 
 
@@ -293,12 +295,11 @@ class XertService:
         normalized_name = name.strip() if isinstance(name, str) else None
         if rows is not None:
             if not isinstance(rows, list) or not rows:
-                raise ValueError("rows must be a non-empty array when supplied")
-            designer_rows = [
-                _designer_row_from_input(row, sequence=index)
-                for index, row in enumerate(rows)
-            ]
-            return replace_saved_workout(
+                raise ValueError("rows must be a non-empty operation array when supplied")
+            opener = self._auth.web_opener()
+            current_rows = fetch_workout_designer_rows(opener, path)
+            designer_rows = _apply_workout_row_operations(current_rows, rows)
+            result = replace_saved_workout(
                 path,
                 username=credentials.username,
                 password=credentials.password,
@@ -306,8 +307,10 @@ class XertService:
                 name=normalized_name,
                 description=description,
                 submit="save",
-                opener=self._auth.web_opener(),
+                opener=opener,
             )
+            result.pop("replaced_rows", None)
+            return result
         return update_saved_workout(
             path,
             username=credentials.username,
@@ -606,6 +609,129 @@ def _designer_row_from_input(row: Any, *, sequence: int) -> dict[str, Any]:
             "value": _number_field(row.get("rib_power", 0), f"rows[{sequence}].rib_power"),
         },
     }
+
+
+_ROW_FIELDS = {
+    "name", "duration_seconds", "power", "power_type", "power_second_value",
+    "interval_count", "rib_duration_seconds", "rib_power", "rib_power_type",
+}
+
+
+def _apply_workout_row_operations(
+    rows: list[dict[str, Any]], operations: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Apply validated operations against one original row snapshot."""
+
+    original = deepcopy(rows)
+    updates: dict[int, dict[str, Any]] = {}
+    removed: set[int] = set()
+    before: dict[int, list[dict[str, Any]]] = {}
+    after: dict[int, list[dict[str, Any]]] = {}
+
+    def row_number(operation: dict[str, Any], field: str) -> int:
+        value = operation.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= len(original):
+            raise ValueError(f"{field} must identify an original row from 1 to {len(original)}")
+        return value
+
+    for index, operation in enumerate(operations):
+        if not isinstance(operation, dict):
+            raise ValueError(f"rows[{index}] must be an operation object")
+        method = operation.get("method")
+        if method not in {"update", "insert", "remove"}:
+            raise ValueError(f"rows[{index}].method must be update, insert, or remove")
+        fields = set(operation) - {"method", "row_number", "before_row_number", "after_row_number"}
+        unknown = fields - _ROW_FIELDS
+        if unknown:
+            raise ValueError(f"rows[{index}] has unsupported fields: {', '.join(sorted(unknown))}")
+
+        if method == "insert":
+            if "row_number" in operation:
+                raise ValueError(f"rows[{index}] insert must not use row_number")
+            anchors = [key for key in ("before_row_number", "after_row_number") if key in operation]
+            if len(anchors) != 1:
+                raise ValueError(
+                    f"rows[{index}] insert requires exactly one of before_row_number or after_row_number"
+                )
+            inserted = _designer_row_from_input(
+                {key: operation[key] for key in fields}, sequence=index
+            )
+            anchor = row_number(operation, anchors[0])
+            (before if anchors[0] == "before_row_number" else after).setdefault(
+                anchor, []
+            ).append(inserted)
+            continue
+
+        if "before_row_number" in operation or "after_row_number" in operation:
+            raise ValueError(f"rows[{index}] {method} must not use an insertion anchor")
+        target = row_number(operation, "row_number")
+        if method == "remove":
+            if fields:
+                raise ValueError(f"rows[{index}] remove must not include row fields")
+            if target in removed or target in updates:
+                raise ValueError(f"Conflicting operations for original row {target}")
+            removed.add(target)
+            continue
+        if not fields:
+            raise ValueError(f"rows[{index}] update requires at least one row field")
+        if target in removed:
+            raise ValueError(f"Conflicting operations for original row {target}")
+        existing = updates.setdefault(target, {})
+        overlap = set(existing) & fields
+        if overlap:
+            raise ValueError(
+                f"Conflicting updates for original row {target}: {', '.join(sorted(overlap))}"
+            )
+        existing.update({key: operation[key] for key in fields})
+
+    result: list[dict[str, Any]] = []
+    for number, original_row in enumerate(original, start=1):
+        result.extend(before.get(number, []))
+        if number not in removed:
+            row = deepcopy(original_row)
+            patch = updates.get(number)
+            if patch:
+                update_workout_rows(
+                    [row],
+                    set_duration=(
+                        _duration_text(_positive_int(patch["duration_seconds"], "duration_seconds"))
+                        if "duration_seconds" in patch else None
+                    ),
+                    set_power=(
+                        _number_field(patch["power"], "power") if "power" in patch else None
+                    ),
+                    set_power_type=patch.get("power_type"),
+                    set_power_second_value=(
+                        _number_field(patch["power_second_value"], "power_second_value")
+                        if "power_second_value" in patch else None
+                    ),
+                    set_row_name=patch.get("name") if "name" in patch else None,
+                    set_interval_count=(
+                        str(_nonnegative_int(patch["interval_count"], "interval_count"))
+                        if "interval_count" in patch else None
+                    ),
+                    set_rib_duration=(
+                        _duration_text(_nonnegative_int(patch["rib_duration_seconds"], "rib_duration_seconds"))
+                        if "rib_duration_seconds" in patch else None
+                    ),
+                    set_rib_power=(
+                        _number_field(patch["rib_power"], "rib_power")
+                        if "rib_power" in patch else None
+                    ),
+                    set_rib_power_type=patch.get("rib_power_type"),
+                )
+            result.append(row)
+        result.extend(after.get(number, []))
+    if not result:
+        raise ValueError("Workout must retain at least one row")
+    return result
+
+
+def _positive_int(value: Any, label: str) -> int:
+    result = _nonnegative_int(value, label)
+    if result == 0:
+        raise ValueError(f"{label} must be positive")
+    return result
 
 
 def _nonnegative_int(value: Any, label: str) -> int:

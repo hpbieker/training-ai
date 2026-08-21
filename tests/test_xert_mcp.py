@@ -137,6 +137,16 @@ class XertMcpSchemaTests(unittest.TestCase):
         )
         self.assertEqual(set(MCP.TOOL_SPECS), set(MCP.ALL_TOOL_NAMES))
 
+    def test_update_workout_uses_step_operations_without_a_separate_tool(self) -> None:
+        self.assertNotIn("update_workout_row", MCP.ALL_TOOL_NAMES)
+        definition = MCP.TOOL_DEFINITIONS["update_workout"]
+        variants = definition["inputSchema"]["properties"]["rows"]["items"]["oneOf"]
+        self.assertEqual(
+            {variant["properties"]["method"]["const"] for variant in variants},
+            {"update", "insert", "remove"},
+        )
+        self.assertFalse(definition["annotations"]["idempotentHint"])
+
     def test_every_tool_has_closed_described_inputs_and_expected_annotations(self) -> None:
         for name in MCP.ALL_TOOL_NAMES:
             definition = MCP.TOOL_DEFINITIONS[name]
@@ -162,6 +172,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                     "destructiveHint": writes_note or deletes_workout or updates_workout,
                     "idempotentHint": not (
                         writes_session_file or creates_workout or deletes_workout
+                        or updates_workout
                     ),
                     "openWorldHint": name not in {"calculate_strain", "solve_segment_duration"},
                 },
@@ -464,13 +475,13 @@ class XertMcpDispatchTests(unittest.TestCase):
         )
         self.assertTrue(result["deletion"]["verified_absent"])
 
-    def test_update_workout_dispatches_metadata_and_complete_rows(self) -> None:
+    def test_update_workout_dispatches_metadata_and_row_operations(self) -> None:
         result = self.tools.call_tool(
             "update_workout",
             {
                 "workout_path": "workout",
                 "name": "Updated",
-                "rows": [{"duration_seconds": 600, "power": 200}],
+                "rows": [{"method": "update", "row_number": 2, "power": 200}],
             },
         )
         self.assertEqual(result["workout"]["submit"], "save")
@@ -802,21 +813,40 @@ class XertServiceTests(unittest.TestCase):
             access_token="token",
         )
 
-    def test_update_workout_uses_atomic_replace_for_rows(self) -> None:
+    def test_update_workout_applies_operations_and_saves_once(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
         service = self._service(credentials)
-        with patch.object(
-            SERVICE,
-            "replace_saved_workout",
-            return_value={"path": "workout", "submit": "save"},
-        ) as replace:
-            result = service.update_workout(
-                "workout",
-                name="Updated",
-                rows=[{"duration_seconds": 600, "power": 200}],
+        original = [
+            SERVICE._designer_row_from_input(
+                {"name": name, "duration_seconds": 600, "power": power}, sequence=index
             )
+            for index, (name, power) in enumerate(
+                (("Warmup", 150), ("Work", 200), ("Cooldown", 120))
+            )
+        ]
+        with (
+            patch.object(SERVICE, "fetch_workout_designer_rows", return_value=original),
+            patch.object(
+                SERVICE,
+                "replace_saved_workout",
+                return_value={
+                    "path": "workout", "submit": "save", "replaced_rows": 3
+                },
+            ) as replace,
+        ):
+            result = service.update_workout("workout", name="Updated", rows=[
+                {"method": "update", "row_number": 2, "duration_seconds": 900},
+                {
+                    "method": "insert", "after_row_number": 2, "name": "Extra",
+                    "duration_seconds": 300, "power": 180,
+                },
+                {"method": "remove", "row_number": 3},
+            ])
         self.assertEqual(result["submit"], "save")
-        self.assertEqual(replace.call_args.kwargs["rows"][0]["duration"]["value"], "10:00")
+        self.assertNotIn("replaced_rows", result)
+        saved_rows = replace.call_args.kwargs["rows"]
+        self.assertEqual([row["name"] for row in saved_rows], ["Warmup", "Work", "Extra"])
+        self.assertEqual(saved_rows[1]["duration"]["value"], "15:00")
         self.assertEqual(replace.call_args.kwargs["name"], "Updated")
 
     def test_update_workout_uses_metadata_patch_without_rows(self) -> None:
@@ -837,6 +867,57 @@ class XertServiceTests(unittest.TestCase):
             submit="save",
             opener=ANY,
         )
+
+    def test_row_operations_bind_to_original_rows_and_preserve_insert_order(self) -> None:
+        rows = [
+            SERVICE._designer_row_from_input(
+                {"name": name, "duration_seconds": 60, "power": 100}, sequence=index
+            )
+            for index, name in enumerate(("A", "B", "C"))
+        ]
+        result = SERVICE._apply_workout_row_operations(rows, [
+            {
+                "method": "insert", "after_row_number": 2, "name": "X",
+                "duration_seconds": 60, "power": 100,
+            },
+            {
+                "method": "insert", "after_row_number": 2, "name": "Y",
+                "duration_seconds": 60, "power": 100,
+            },
+            {"method": "remove", "row_number": 2},
+        ])
+        self.assertEqual([row["name"] for row in result], ["A", "X", "Y", "C"])
+
+    def test_row_operations_reject_conflicting_changes(self) -> None:
+        rows = [SERVICE._designer_row_from_input(
+            {"name": "A", "duration_seconds": 60, "power": 100}, sequence=0
+        )]
+        with self.assertRaisesRegex(ValueError, "Conflicting updates"):
+            SERVICE._apply_workout_row_operations(rows, [
+                {"method": "update", "row_number": 1, "power": 200},
+                {"method": "update", "row_number": 1, "power": 210},
+            ])
+
+    def test_row_operations_merge_distinct_updates_for_one_original_step(self) -> None:
+        rows = [SERVICE._designer_row_from_input(
+            {"name": "A", "duration_seconds": 60, "power": 100}, sequence=0
+        )]
+        result = SERVICE._apply_workout_row_operations(rows, [
+            {"method": "update", "row_number": 1, "power": 200},
+            {"method": "update", "row_number": 1, "interval_count": 0},
+        ])
+        self.assertEqual(result[0]["power"]["value"], 200)
+        self.assertEqual(result[0]["interval_count"], "0")
+
+    def test_row_operations_reject_update_and_remove_of_same_original_step(self) -> None:
+        rows = [SERVICE._designer_row_from_input(
+            {"name": "A", "duration_seconds": 60, "power": 100}, sequence=0
+        )]
+        with self.assertRaisesRegex(ValueError, "Conflicting operations"):
+            SERVICE._apply_workout_row_operations(rows, [
+                {"method": "update", "row_number": 1, "power": 200},
+                {"method": "remove", "row_number": 1},
+            ])
 
 
 if __name__ == "__main__":

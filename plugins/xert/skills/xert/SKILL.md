@@ -1,6 +1,6 @@
 ---
 name: xert
-description: Use when working with Xert live data, Training Load, Recovery Load, Form or freshness, Training Status, Fitness Signature development (TP, HIE, PP), required XSS to build fitness, offline strain calculations, MPA and XSS semantics, activity or workout fields, Workout Designer rows, calendar notes, or Xert writes.
+description: Use when working with Xert live data, Training Load, Recovery Load, Form or freshness, Training Status, Fitness Signature development (TP, HIE, PP), required XSS to build fitness, offline strain calculations, MPA and XSS semantics, activity or workout fields, workout rows, calendar notes, or Xert writes.
 ---
 
 # Xert
@@ -76,11 +76,12 @@ Prefer the Xert MCP tools when they are available:
 - `delete_workout` permanently deletes the specified workout path. Use it only
   when deletion is explicitly requested. It reads target metadata first and
   verifies afterward that the path is absent from the workout library.
-- `update_workout` patches `name` and/or `description` and can atomically
-  replace the complete Designer row set. For structural changes, first read
-  `get_workout(view=editable)`, construct the complete desired rows, then pass
-  all rows to `update_workout`; omitted metadata is preserved. Saved changes
-  are read back and verified. There are no separate MCP row-edit tools.
+- `update_workout` patches `name` and/or `description`. Its optional `rows`
+  array contains `update`, `insert`, and `remove` operations on workout rows;
+  it never replaces the complete row array. Read `get_workout(view=editable)`
+  immediately first. Every position refers to that original structure, all
+  operations are validated before one atomic save, and fresh readback verifies
+  the complete result.
 - `calculate_workout_capacity` calculates independent Low, High, and Peak XSS
   capacity at `as_of` while requiring recovery to Xert's fresh boundary at
   `fresh_at`. Both timestamps are mandatory.
@@ -120,7 +121,7 @@ python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto
   duration. Pass its normalized result to the recommendation helper; do not
   convert XSS to minutes with a mixed-activity historical rate.
   It also accepts the JSON array returned by `workout-rows`; select the
-  adjustable Designer row with the one-based `--adjustable-row` option and pass
+  adjustable workout row with the one-based `--adjustable-row` option and pass
   the target and signature flags explicitly. Designer LTP power is derived as
   `TP - HIE(J) / 400` from that signature.
 - Use MCP `calculate_workout_capacity` when asking how much Low/High/Peak XSS can be added at
@@ -163,9 +164,12 @@ python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto
   intervals and four five-minute recovery intervals. Do not add a separate
   recovery row after the repeat block unless an additional recovery is
   intentionally required.
-- For a structural workout change, read the complete editable rows, change the
-  desired row locally, and submit the complete final row array to MCP
-  `update_workout`. It replaces all rows atomically and verifies fresh readback.
+- For a structural workout change, read the editable workout rows and pass an
+  ordered operation array to `update_workout`. Each operation uses `method` =
+  `update`, `insert`, or `remove`, with row fields directly in the operation.
+  Row numbers always refer to the original freshly read structure. Multiple
+  inserts at one position preserve operation-array order; conflicting changes
+  to the same original row are rejected.
 - Workout create/copy, update/replace/row operations, and calculate results
   include `timeline_summary`: a chronological expansion with numeric
   `start`/`end`/`duration` values in seconds and a compact text `power` value.

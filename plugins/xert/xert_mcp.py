@@ -127,7 +127,7 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "title": "Update Xert Workout",
         "readOnlyHint": False,
         "destructiveHint": True,
-        "idempotentHint": True,
+        "idempotentHint": False,
         "openWorldHint": True,
     },
     "get_training_forecast": {
@@ -250,6 +250,53 @@ def _workout_rows_schema(description: str) -> dict[str, object]:
             },
             "required": ["duration_seconds", "power"],
             "additionalProperties": False,
+        },
+    }
+
+
+def _workout_row_operations_schema(description: str) -> dict[str, object]:
+    row_fields = {
+        name: {key: value for key, value in schema.items() if key != "default"}
+        for name, schema in _workout_rows_schema("")["items"]["properties"].items()
+    }
+    position = {
+        "row_number": {
+            "type": "integer", "minimum": 1,
+            "description": "One-based position in the original freshly read workout rows.",
+        }
+    }
+    update_properties = {"method": {"const": "update"}, **position, **row_fields}
+    insert_properties = {
+        "method": {"const": "insert"},
+        "before_row_number": {"type": "integer", "minimum": 1},
+        "after_row_number": {"type": "integer", "minimum": 1},
+        **row_fields,
+    }
+    return {
+        "type": "array",
+        "minItems": 1,
+        "description": description,
+        "items": {
+            "oneOf": [
+                {
+                    "type": "object", "properties": update_properties,
+                    "required": ["method", "row_number"], "additionalProperties": False,
+                },
+                {
+                    "type": "object", "properties": insert_properties,
+                    "required": ["method", "duration_seconds", "power"],
+                    "oneOf": [
+                        {"required": ["before_row_number"]},
+                        {"required": ["after_row_number"]},
+                    ],
+                    "additionalProperties": False,
+                },
+                {
+                    "type": "object",
+                    "properties": {"method": {"const": "remove"}, **position},
+                    "required": ["method", "row_number"], "additionalProperties": False,
+                },
+            ]
         },
     }
 
@@ -407,7 +454,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "get_workout",
         "description": (
             "Get one Xert workout. resolved uses the current Fitness Signature; "
-            "editable returns authoritative Workout Designer rows including repeats, "
+            "editable returns authoritative workout rows including repeats, "
             "slopes, and rest-in-between fields."
         ),
         "inputSchema": {
@@ -422,7 +469,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": "string",
                     "enum": ["resolved", "editable"],
                     "default": "resolved",
-                    "description": "resolved returns the calculated workout; editable returns Designer rows.",
+                    "description": "resolved returns the calculated workout; editable returns workout rows.",
                 },
             },
             "required": ["workout_path"],
@@ -434,7 +481,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "workout_path": {"type": "string", "description": "Requested Xert workout path."},
                 "view": {"type": "string", "description": "Returned workout representation."},
                 "workout": _object("Resolved workout payload; absent for editable view."),
-                "rows": _array("Editable Workout Designer rows; absent for resolved view."),
+                "rows": _array("Editable workout rows; absent for resolved view."),
             },
             "required": ["workout_path", "view"],
             "additionalProperties": False,
@@ -719,7 +766,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "create_workout": {
         "name": "create_workout",
         "description": (
-            "Create and save a new Xert workout from complete Workout Designer rows. "
+            "Create and save a new Xert workout from complete workout rows. "
             "The saved metadata and rows are read back and verified. Repeated calls "
             "create additional workouts; use only when creation is explicitly requested."
         ),
@@ -739,7 +786,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "rows": {
                     "type": "array",
                     "minItems": 1,
-                    "description": "Complete Workout Designer rows in execution order.",
+                    "description": "Complete workout rows in execution order.",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -834,10 +881,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "update_workout": {
         "name": "update_workout",
         "description": (
-            "Update Xert workout metadata and optionally replace all Workout Designer "
-            "rows atomically. Omitted metadata is preserved. When rows are supplied, "
-            "first read view=editable, modify the complete row set, and submit every "
-            "row in final execution order. Saved metadata and rows are read back."
+            "Update Xert workout metadata and optionally apply an ordered array of "
+            "update, insert, and remove operations to workout rows. Row numbers refer "
+            "to the original freshly read structure. The complete result is validated, "
+            "saved once, and read back. Omitted metadata and row fields are preserved."
         ),
         "inputSchema": {
             "type": "object",
@@ -856,8 +903,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": "string",
                     "description": "Optional replacement description; an empty string clears it.",
                 },
-                "rows": _workout_rows_schema(
-                    "Optional complete replacement Designer rows in final execution order."
+                "rows": _workout_row_operations_schema(
+                    "Optional row operations. Multiple inserts at one anchor preserve array order."
                 ),
             },
             "required": ["workout_path"],
@@ -931,7 +978,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {"type": "object", "properties": {
             "name": {"type": "string", "default": "Xert calculate probe", "description": "Unsaved calculation name."},
             "description": {"type": "string", "default": "Calculated by training-ai; not saved.", "description": "Unsaved calculation description."},
-            "rows": _workout_rows_schema("Complete Designer rows to calculate."),
+            "rows": _workout_rows_schema("Complete workout rows to calculate."),
             "include_series": {"type": "boolean", "default": False, "description": "Include second-by-second calculation series."},
             "signature_tp": {"type": "number", "description": "Optional TP override; provide all signature fields together."},
             "signature_hie": {"type": "number", "description": "Optional HIE override in joules."},

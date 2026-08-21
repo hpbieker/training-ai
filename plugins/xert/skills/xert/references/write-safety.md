@@ -33,20 +33,21 @@ python3 -B plugins/xert/scripts/xert_cli.py calendar-event-delete <path> --date 
 
 ## Workout Updates
 
-Inspect editable rows first with MCP `get_workout(view=editable)`. For a saved
-change, construct the complete final row array and submit it to MCP
-`update_workout`; omitted metadata remains unchanged and the tool verifies the
-saved rows. Use MCP `calculate_workout` only when an empirical Calculate result
+Inspect editable workout rows first with MCP `get_workout(view=editable)`.
+Submit an ordered `rows` array of `update`, `insert`, and `remove` operations to
+MCP `update_workout`; never submit a complete replacement array. Omitted
+metadata and row fields remain unchanged, and the tool verifies the saved
+structure. Use MCP `calculate_workout` only when an empirical Calculate result
 is actually required before the write.
 
 Prefer updating repeat-row fields over expanding repeated blocks into copied
-rows. MCP has no separate row-edit operation: preserve every unmodified row,
-change only the intended row locally, and submit all rows in execution order.
+rows. Keep row fields directly in each operation; do not nest them under
+`set` or `row`.
 
 When the new structure makes the existing workout name or description stale,
-pass the corrected `--name` and `--description` in the same dry-run and saved
-`workout-replace` calls. Verify all three surfaces on readback: rows, name, and
-description. Do not leave metadata describing the replaced structure.
+pass the corrected `name` and `description` together with the row operations in
+the same MCP `update_workout` call. Verify all three surfaces on readback: rows,
+name, and description. Do not leave metadata describing the changed structure.
 
 `rib_duration` and `rib_power` represent Xert's `Rest in between`. Xert appends
 that recovery after every repeated work interval, including the final
@@ -62,7 +63,7 @@ created workout is read back and verified.
 
 ## Synthetic Calculation
 
-Use MCP `calculate_workout` with complete Designer rows for controlled, unsaved
+Use MCP `calculate_workout` with complete workout rows for controlled, unsaved
 XSS probes.
 
 When the second-by-second response is needed, set `include_series=true` and
