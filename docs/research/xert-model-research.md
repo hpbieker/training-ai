@@ -8,13 +8,13 @@ file and not a resource that the skill should load automatically.
 
 ## Scope
 
-The work investigated whether Xert Workout Designer's unsaved `calculate`
+The work investigated whether Xert's unsaved workout `calculate`
 endpoint and its second-by-second time series could be used to reconstruct and
 validate relationships among power, low/high/peak work allocation, HIE, MPA,
 strain, system XSS, and Difficulty.
 
 The controlled Calculate scope now includes `P >= MPA`. This extension models
-what Workout Designer Calculate returns for an unsaved hypothetical workout; it
+what Xert Calculate returns for an unsaved hypothetical workout; it
 does not establish how Xert recognizes or awards a breakthrough from a completed
 activity.
 
@@ -24,7 +24,7 @@ Claims were separated into:
 
 1. **Published model** — present in the official paper, official Xert/Baron
    Biosystems documentation, or an explanation by Xert staff.
-2. **Calculate-validated** — reproduced by controlled Workout Designer
+2. **Calculate-validated** — reproduced by controlled Xert Calculate
    `calculate` probes and second-by-second output.
 3. **Approximation** — fits observed behavior but is not established as the exact
    production equation.
@@ -683,7 +683,7 @@ The recurrence is near-exact empirically but the constant has not been located
 in published documentation or production source. Preserve it as a fitted
 Calculate model, not a claim about exact private code.
 
-An authenticated inspection of the current Workout Designer client bundle
+An authenticated inspection of the current workout editor client bundle
 (`workouts.js`, asset id `4432620eae3c5b4e5aa7856bbf975613`) found UI/chart
 handling for `wexp`, `xssr`, `xds`, and summary fields, but no recovery equation
 or matching coefficient. The browser client consumes server-calculated series
@@ -796,7 +796,7 @@ The local Calculate CLI was extended with:
 --signature-pp
 ```
 
-These override the Workout Designer form's `ftp`, `atc`, and `pp` fields for
+These override the workout calculation form's `ftp`, `atc`, and `pp` fields for
 an unsaved calculation only. They do not modify the Xert profile or save a
 workout. Existing 31 CLI tests and Python compilation still passed.
 
@@ -956,7 +956,7 @@ Variable outdoor endurance    10,872       6.0e-13             2.2e-14
 ```
 
 All had regular one-second exported timestamps and stayed below MPA. Contrary
-to Workout Designer Calculate summaries, completed-activity system XSS and
+to Xert Calculate summaries, completed-activity system XSS and
 Difficulty were exactly reproducible from the exposed series to floating-point
 precision. This establishes a source-specific distinction rather than one
 global summary-integration rule.

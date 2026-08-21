@@ -146,9 +146,7 @@ Use this only when the analysis specifically needs Xert model dynamics.
 - If the Fitness Signature is the only missing input, first reuse a fresh,
   time-appropriate signature already in the source context; otherwise fetch it
   with Xert MCP `get_training_state`, then call `calculate_strain`. Do not use
-  live Workout Designer Calculate merely to discover the current signature.
-- If an Xert Calculate or activity session series already exists, pass it to
-  `plugins/xert/scripts/xert_calculate_analyze.py`.
+  live Xert Calculate merely to discover the current signature.
 - Fetch new Xert session data only when the question requires Xert's reported
   MPA or another source-specific series field that is not already available.
 - Do not duplicate the source plugin's formulas in training-analysis.

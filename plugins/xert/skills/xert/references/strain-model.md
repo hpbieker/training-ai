@@ -12,7 +12,7 @@ Use sources in this order:
    Scott Steele.
 2. Xert Community Forum explanations written by Armando (`xertedbrain`) or
    Scott (`ManofSteele`) in their Xert roles.
-3. Controlled, unsaved Workout Designer Calculate probes preserved in
+3. Controlled, unsaved Xert Calculate probes preserved in
    `docs/research/xert-model-research.md`.
 4. Other forum posts only as questions or examples, never as model authority.
 

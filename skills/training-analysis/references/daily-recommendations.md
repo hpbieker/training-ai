@@ -370,10 +370,9 @@ power structure are already known, use Xert MCP `calculate_strain` to estimate
 low/high/peak XSS, Difficulty, Focus, MPA reserve, and feasibility. This
 calculation does not fetch Xert data.
 
-Use Xert MCP `calculate_workout` only when current Xert state, Designer row
-resolution, or server-authoritative summary totals are required. Analyze an
-existing verbose Calculate series with `xert_calculate_analyze.py`; do not fetch
-the same series again merely to reproduce locally available model fields.
+Use Xert MCP `calculate_workout` only when current Xert state, workout-row
+resolution, or server-authoritative summary totals are required. Do not fetch a
+verbose Calculate series merely to reproduce locally available model fields.
 
 - Accept `P < MPA` as the modeled feasibility domain and report the minimum
   positive reserve when it informs pacing or confidence.

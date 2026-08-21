@@ -127,7 +127,7 @@ rate is effectively capped there; above TP, high and peak XSS can accumulate in
 addition to low XSS. This is a reasoning model, not a claim about Xert's exact
 private formula.
 
-## Workout Designer Calculate Model
+## Xert Calculate Model
 
 Read [strain-model.md](strain-model.md) for the full qualitative model, equations,
 offline calculation workflow, evidence hierarchy, and primary sources. The
@@ -255,9 +255,9 @@ can realize that exact split.
 - `training-forecast` can return `{}` even when a workout remains editable.
   Do not use forecast alone to decide whether a workout exists.
 
-## Workout Designer
+## Workout Rows
 
-Workout Designer may encode repeated blocks in one row:
+The workout editor may encode repeated blocks in one row:
 
 - `interval_count` is the repeat count.
 - `rib_duration` and `rib_power` are Xert's `Rest in between` fields. Despite

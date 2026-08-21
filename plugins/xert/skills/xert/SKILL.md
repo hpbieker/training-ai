@@ -40,7 +40,7 @@ Prefer the Xert MCP tools when they are available:
   case-insensitively. Use `includeFields` to add selected load, work-power,
   rating, or Difficulty fields to each row.
 - `get_workout` uses `view=resolved` for the workout calculated with the current
-  Fitness Signature and `view=editable` for authoritative Workout Designer
+  Fitness Signature and `view=editable` for authoritative editable workout
   rows, including repeats, slopes, and rest-in-between fields.
 - `list_planner_events` returns Xert's mixed planned-workout and
   recorded-activity event stream for an inclusive local-date range.
@@ -73,7 +73,7 @@ Prefer the Xert MCP tools when they are available:
 - `get_training_forecast` returns Xert forecast days in an inclusive local-date
   range. Use `view=summary` normally and `view=full` when source day fields are
   needed. It reads the forecast endpoint, not the mixed activity/Planner feed.
-- `create_workout` saves a new Xert workout from complete, structured Designer
+- `create_workout` saves a new Xert workout from complete, structured workout
   rows. Each row uses duration values in seconds, and repeat-row
   `rib_duration_seconds` is applied after every repetition, including the
   final one. Use it only when creation is explicitly requested; inspect its
@@ -96,7 +96,7 @@ Prefer the Xert MCP tools when they are available:
   meet one Low, High, Peak, or total XSS target while preserving the rest.
 - `project_load_model` projects Training Load, Recovery Load, Form, readiness,
   and marginal signature response to an explicit target time.
-- `calculate_workout` sends a complete, unsaved Workout Designer structure to
+- `calculate_workout` sends a complete, unsaved workout structure to
   Xert Calculate. Signature overrides must supply TP, HIE, and PP together.
 
 ## Choose The Narrowest Command
@@ -121,7 +121,7 @@ Prefer the Xert MCP tools when they are available:
   convert XSS to minutes with a mixed-activity historical rate.
   It also accepts the JSON array returned by `workout-rows`; select the
   adjustable workout row with the one-based `--adjustable-row` option and pass
-  the target and signature flags explicitly. Designer LTP power is derived as
+  the target and signature flags explicitly. LTP power in workout rows is derived as
   `TP - HIE(J) / 400` from that signature.
 - Use MCP `calculate_workout_capacity` when asking how much Low/High/Peak XSS can be added at
   an explicit time while still arriving fresh at another explicit time. Require
@@ -155,7 +155,7 @@ Prefer the Xert MCP tools when they are available:
 - Use MCP `list_recommended_workouts` when candidate workouts are needed.
 - Use MCP `list_workouts(name_keywords=...)` to filter the freshly fetched
   workout library. All supplied words must occur in the name, in any order.
-- Use MCP `get_workout(view=editable)` for Workout Designer structure,
+- Use MCP `get_workout(view=editable)` for editable workout structure,
   especially for repeat or slope rows.
 - In a repeat row, Xert's `Rest in between` (`rib_duration`/`rib_power`) is
   appended after every work interval, including the final repetition. For
@@ -173,7 +173,7 @@ Prefer the Xert MCP tools when they are available:
   include `timeline_summary`: a chronological expansion with numeric
   `start`/`end`/`duration` values in seconds and a compact text `power` value.
   Inspect it to verify repetitions, final RIB recovery, and transitions.
-- For empirical Workout Designer analysis, call MCP `calculate_workout` with
+- For empirical Xert Calculate analysis, call MCP `calculate_workout` with
   `include_series=true` and save the returned JSON to a private temporary file.
   The result includes the
   Fitness Signature used by Xert and second-by-second `power`, `mpa`,
@@ -181,23 +181,10 @@ Prefer the Xert MCP tools when they are available:
   calculation statistics containing Xert's system work and strain totals.
   Keep the verbose series out of terminal and chat output.
 - For controlled cross-signature probes, pass all three of `signature_tp`,
-  `signature_hie`, and `signature_pp`. They override the Designer form for
+  `signature_hie`, and `signature_pp`. They override the workout calculation form for
   the unsaved calculation only and do not change the user's Xert profile.
-- Analyze a saved Calculate series with
-  `python3 -B plugins/xert/scripts/xert_calculate_analyze.py /tmp/<name>.json`.
-  Its default output is a concise analysis summary. Add `--detailed` for
-  equation residuals, empirical recovery residuals, and full validation
-  diagnostics. Treat its summary-integration XSS and
-  reconstructed-Difficulty residuals as open diagnostics, not as reasons to
-  alter the validated per-sample MPA or XSSR equations.
-- For MPA feasibility, read the analyzer's `feasibility.valid`, minimum positive
-  reserve, first failure index/reserve, and `validity` fields together. Reject
-  an ordinary workout design that reaches `P >= MPA` under the supplied
-  signature. The analyzer can model Calculate's continued series, but that
-  continuation is hypothetical and is not a detected breakthrough or a new
-  Fitness Signature.
 - Read [references/field-semantics.md](references/field-semantics.md), section
-  `Workout Designer Calculate Model`, when interpreting formulas, the HIE/TP
+  `Xert Calculate Model`, when interpreting formulas, the HIE/TP
   floor, completed-activity MPA, or the evidence status of the model.
 - Read [references/strain-model.md](references/strain-model.md) when explaining how
   XSS works, relating low/high/peak XSS to workout structure, comparing XSS

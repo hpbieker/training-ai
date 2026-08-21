@@ -124,7 +124,7 @@ desired `build_tp`, `build_hie`, and `build_pp` values.
 The returned `single_impulse_xss_at_workout_time` values are system-equivalent
 requirements. They answer how much Low, High, or Peak XSS the response model
 needs; they do not prove that one physiologically feasible workout can realize
-that exact combination. Use Workout Designer/strain calculations to test an
+that exact combination. Use Xert Calculate or strain calculations to test an
 actual workout structure.
 
 For a known planned dose:
