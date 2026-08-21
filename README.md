@@ -166,11 +166,11 @@ example, `{"mode":"selected","sources":["garmin","xert"]}`. The packet records t
 age, TTL, and reason for each source under `source_refresh`. An explicit
 `--source-overrides-json` maps normalized source names to JSON file paths. An
 overridden source cannot be combined with a refresh policy that forces its
-source group. Garmin, Intervals.icu wellness/events, Xert activity history, and
-Xert recommended workouts are MCP-only. Whenever their cached snapshots need
-refreshing, supply the applicable `garmin`, `intervals_wellness`,
-`intervals_events`, `xert_activity_loads`, and `xert_recommended_training`
-overrides.
+source group. Garmin, Intervals.icu wellness/events, Xert readiness/state and
+advice, Xert activity history, and Xert recommended workouts are MCP-only.
+Whenever their cached snapshots need refreshing, supply the applicable
+`garmin`, `xert`, `intervals_wellness`, `intervals_events`,
+`xert_activity_loads`, and `xert_recommended_training` overrides.
 
 ```bash
 python3 -B scripts/recommend_training.py \

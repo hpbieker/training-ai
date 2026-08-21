@@ -32,7 +32,6 @@ from readiness_snapshot import (
     build_readiness_snapshot,
     format_local,
     format_utc,
-    latest_activity_on_or_before,
     load_garmin_input,
     load_xert_input,
     parse_cli_local_datetime,
@@ -437,25 +436,6 @@ def main() -> None:
             "MCP result, persist it as JSON, then pass the files through "
             "--source-overrides-json: "
             + ", ".join(sorted(sources_requiring_mcp))
-        )
-    latest_activity = latest_activity_on_or_before(
-        args.date,
-        artifacts_dir=ARTIFACTS_DIR,
-        local_timezone=local_timezone,
-    )
-    primary_sources = {
-        key for key in ("xert",)
-        if source_refresh.get(key, {}).get("refresh")
-    }
-    if primary_sources:
-        fetch_primary_live_inputs(
-            day=args.date,
-            now=now,
-            planned_at=planned_at,
-            latest_activity=latest_activity,
-            source_files=source_files,
-            sources=primary_sources,
-            local_timezone=local_timezone,
         )
     ensure_source_files_exist(
         source_files,
@@ -1005,6 +985,7 @@ def mcp_sources_requiring_refresh(
         "garmin",
         "intervals_wellness",
         "intervals_events",
+        "xert",
         "xert_activity_loads",
     }
     if indoor_available:
@@ -1576,53 +1557,6 @@ def run_json(command: list[str]) -> Any:
             "Command did not return valid JSON: "
             f"{format_command(command)}\nOutput preview: {preview}"
         ) from exc
-
-
-def xert_readiness_command(*, planned_at: datetime, now: datetime) -> list[str]:
-    """Build planned-time Xert advice command for a recommendation decision."""
-
-    return [
-        sys.executable,
-        "-B",
-        "plugins/xert/scripts/xert_cli.py",
-        "readiness-input",
-        "--advice-source",
-        "recommended-training",
-        "--advice-at",
-        planned_at.isoformat(timespec="seconds"),
-        "--advice-now",
-        now.isoformat(timespec="seconds"),
-    ]
-
-
-def fetch_primary_live_inputs(
-    *,
-    day: str,
-    now: datetime,
-    planned_at: datetime,
-    latest_activity: dict[str, Any] | None,
-    source_files: dict[str, Path],
-    sources: set[str],
-    local_timezone: Any,
-) -> None:
-    """Fetch primary inputs that still have a repo-local live interface."""
-
-    def fetch_xert() -> None:
-        xert_command = xert_readiness_command(planned_at=planned_at, now=now)
-        xert_activity_path = resolve_xert_activity_path(
-            latest_activity,
-            local_timezone=local_timezone,
-            xert_activities=load_json_if_exists(source_files["xert_activity_loads"]),
-        )
-        if xert_activity_path:
-            xert_command.extend(["--activity", xert_activity_path])
-        run_json_to_file(xert_command, source_files["xert"])
-
-    available_steps = {
-        "xert": fetch_xert,
-    }
-    steps = {key: available_steps[key] for key in sources}
-    run_parallel_steps(steps)
 
 
 def garmin_source_day(day: str, *, now: datetime) -> str:

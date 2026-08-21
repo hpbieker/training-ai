@@ -528,7 +528,7 @@ def analyze_calculate_series(payload: dict[str, Any]) -> dict[str, Any]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Analyze a Xert workout-calculate --series-output file or native "
+            "Analyze a Xert MCP calculate_workout result file or native "
             "activity --session-data JSON file."
         )
     )

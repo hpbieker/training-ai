@@ -14,7 +14,9 @@ from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
 XERT_SCRIPTS = ROOT / "plugins" / "xert" / "scripts"
+SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(XERT_SCRIPTS))
+sys.path.insert(0, str(SCRIPTS))
 
 from xert_calendar import (
     create_calendar_event_with_opener,
@@ -61,6 +63,14 @@ def main() -> None:
     )
     parser.add_argument("--initialize-state", action="store_true")
     parser.add_argument("--update-existing", action="store_true")
+    parser.add_argument(
+        "--quality-calculations-json",
+        type=Path,
+        help=(
+            "JSON object mapping progression step names to normalized MCP "
+            "calculate_workout results."
+        ),
+    )
     parser.add_argument("--yes", action="store_true")
     args = parser.parse_args()
     if not args.yes:
@@ -70,6 +80,7 @@ def main() -> None:
         args.scenario_state.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / "config" / "plan-state.json", args.scenario_state)
     scenario_state = load_plan_state(args.scenario_state)
+    quality_calculations = load_quality_calculations(args.quality_calculations_json)
 
     creds = load_xert_credentials()
     opener = xert_web_login(username=creds.username, password=creds.password)
@@ -110,7 +121,9 @@ def main() -> None:
             },
         )
         output_root = ROOT / "outputs" / "simulations" / "recommend-training" / day.isoformat()
-        quality = quality_calculation(intensity_goal, scenario_state)
+        quality = quality_calculation(
+            intensity_goal, scenario_state, calculations=quality_calculations
+        )
         plan_selection = {
             "intensity_goal": intensity_goal,
             "state": str(args.scenario_state),
@@ -121,11 +134,14 @@ def main() -> None:
             "--plan-selection-json", json.dumps(plan_selection),
             "--source-overrides-json", json.dumps({
                 "garmin": str(BASE / "garmin-readiness-2026-08-01.json"),
+                "xert": str(BASE / "xert-readiness-2026-08-01.json"),
+                "xert_activity_loads": str(BASE / "xert-activity-loads-recent-2026-08-01.json"),
+                "xert_recommended_training": str(BASE / "xert-recommended-training-2026-08-01.json"),
                 "intervals_wellness": str(BASE / "intervals-wellness-recent-2026-08-01.json"),
                 "intervals_events": str(BASE / "intervals-events-recent-2026-08-01.json"),
                 "weather_home": str(BASE / "yr-home-2026-08-01.json"),
             }),
-            "--refresh-json", '{"mode":"selected","sources":["xert"]}',
+            "--refresh-json", '{"mode":"none"}',
             "--output-dir", str(output_root), "--summary",
         ]
         if quality is not None:
@@ -197,48 +213,39 @@ def main() -> None:
     print(json.dumps({"results": results, "events_retained": True, "scenario_state": str(args.scenario_state)}, indent=2))
 
 
-def quality_calculation(intensity_goal: str, state: dict) -> dict | None:
+def load_quality_calculations(path: Path | None) -> dict[str, dict]:
+    if path is None:
+        return {}
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or any(
+        not isinstance(key, str) or not isinstance(value, dict)
+        for key, value in payload.items()
+    ):
+        raise SystemExit(
+            "--quality-calculations-json must contain an object mapping step names "
+            "to MCP calculate_workout result objects"
+        )
+    return payload
+
+
+def quality_calculation(
+    intensity_goal: str,
+    state: dict,
+    *,
+    calculations: dict[str, dict] | None = None,
+) -> dict | None:
     next_step = str((state.get("progression", {}).get(intensity_goal, {}) or {}).get("next_step") or "")
     if intensity_goal == "vo2max" and next_step.startswith("4 x 4"):
         return dict(QUALITY)
-    if intensity_goal != "vt2":
-        if intensity_goal == "vo2max" and next_step.startswith("2 x 8 x 60/60"):
-            rows = [
-                '{"name":"Warm-up 1","duration":"10:00","power":170}',
-                '{"name":"Warm-up 2","duration":"05:00","power":220}',
-                '{"name":"Set 1","duration":"01:00","power":380,"interval_count":8,"rib_duration":"01:00","rib_power":120}',
-                '{"name":"Between sets","duration":"05:00","power":120}',
-                '{"name":"Set 2","duration":"01:00","power":380,"interval_count":8,"rib_duration":"01:00","rib_power":120}',
-                '{"name":"Cool-down","duration":"10:00","power":140}',
-            ]
-            return calculate_rows("Scenario VO2 2x8x60/60 @ 380 W", rows)
-        if intensity_goal == "vo2max" and next_step.startswith("5 x 3"):
-            return calculate_compact("Scenario VO2 5x3 @ 350 W", "5x03:00@350/03:00@120")
+    if intensity_goal not in {"vt2", "vo2max"}:
         return None
-    interval = "3x20:00@290/05:00@120" if "3 x 20" in next_step else "3x18:00@290/05:00@120"
-    return calculate_compact(f"Scenario VT2 {next_step}", interval)
-
-
-def calculate_compact(name: str, interval: str) -> dict:
-    command = [sys.executable, "-B", "plugins/xert/scripts/xert_cli.py", "workout-calculate",
-        "--name", name, "--warmup-step", "10:00@170", "--warmup-step", "05:00@220",
-        "--interval-block", interval, "--cooldown-step", "10:00@140", "--summary"]
-    return run_calculation(command)
-
-
-def calculate_rows(name: str, rows: list[str]) -> dict:
-    command = [sys.executable, "-B", "plugins/xert/scripts/xert_cli.py", "workout-calculate", "--name", name]
-    for row in rows:
-        command.extend(["--row-json", row])
-    command.append("--summary")
-    return run_calculation(command)
-
-
-def run_calculation(command: list[str]) -> dict:
-    completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True)
-    if completed.returncode:
-        raise RuntimeError(completed.stderr or completed.stdout)
-    return json.loads(completed.stdout)
+    calculation = (calculations or {}).get(next_step)
+    if calculation is None:
+        raise SystemExit(
+            "Missing MCP calculate_workout result for progression step "
+            f"{next_step!r}; supply it through --quality-calculations-json"
+        )
+    return calculation
 
 
 def scenario_progression_update(role: str, state: dict) -> dict:

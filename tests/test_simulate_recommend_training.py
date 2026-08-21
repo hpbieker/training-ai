@@ -35,6 +35,23 @@ class ScenarioProgressionTests(unittest.TestCase):
         state = {"progression": {"vo2max": {"next_step": "4 x 4 min @ 340 W"}}}
         self.assertEqual(SIM.quality_calculation("vo2max", state), SIM.QUALITY)
 
+    def test_later_quality_step_requires_mcp_calculation(self):
+        state = {"progression": {"vt2": {"next_step": "3 x 18 min @ 290 W"}}}
+        with self.assertRaisesRegex(SystemExit, "MCP calculate_workout"):
+            SIM.quality_calculation("vt2", state)
+
+    def test_later_quality_step_uses_supplied_mcp_calculation(self):
+        state = {"progression": {"vt2": {"next_step": "3 x 18 min @ 290 W"}}}
+        calculation = {"xss": 90, "low_xss": 85, "high_xss": 5}
+        self.assertEqual(
+            SIM.quality_calculation(
+                "vt2",
+                state,
+                calculations={"3 x 18 min @ 290 W": calculation},
+            ),
+            calculation,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

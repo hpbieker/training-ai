@@ -331,8 +331,8 @@ production-specific evidence.
 
 ## Training Load and capped Recovery Load validation
 
-Implemented 2026-08-07 in `plugins/xert/scripts/xert_load_model.py` and exposed
-through `xert_cli.py load-model`.
+Implemented 2026-08-07 in `plugins/xert/scripts/xert_load_model.py`; the current
+interface is MCP `project_load_model`.
 
 Xert's `/my-fitness/measures` history provides the TL/RL state immediately
 before each activity together with that activity's system XSS. Consecutive rows
@@ -578,16 +578,15 @@ different: Very Fresh requires all three Recovery Loads to equal their caps.
 
 ## Calculate API and local tooling
 
-Calculate exposed second-by-second series useful for model testing. Local tooling
-was extended with:
+Calculate exposed second-by-second series useful for model testing. The former
+CLI exposed this as:
 
 ```text
 workout-calculate --series-output FILE
 ```
 
-Relevant files at the time:
+Relevant files at the time included the now-removed general Xert CLI alongside:
 
-- `plugins/xert/scripts/xert_cli.py`
 - `plugins/xert/scripts/xert_workouts.py`
 - `plugins/xert/skills/xert/SKILL.md`
 - `plugins/xert/skills/xert/references/write-safety.md`
@@ -938,8 +937,8 @@ large series to stdout. Separate tests verify that unsaved TP, HIE, and PP
 overrides reach Calculate. The row-JSON parser also accepts `ramp_ftp`,
 `ramp_ltp`, and `ramp_absolute` power specifications with an explicit endpoint.
 
-The analyzer now accepts either a native Calculate payload or the native output
-from `xert_cli.py activity <path> --session-data`. It derives `dt` from `time`
+The analyzer now accepts either a native Calculate payload or session data saved
+by MCP `get_activity(save_session=true)`. It derives `dt` from `time`
 or `seconds`, reports irregular intervals and the largest gap, integrates using
 a sample-and-hold assumption, and rejects missing required model fields with a
 field-specific error. Synthetic regression tests cover a three-second gap and

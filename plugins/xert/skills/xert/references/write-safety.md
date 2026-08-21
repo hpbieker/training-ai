@@ -16,8 +16,8 @@ Calendar notes are separate from forecast and training-plan fields.
 Planner events are separate from calendar notes. Read a date or one event with:
 
 ```bash
-python3 -B plugins/xert/scripts/xert_cli.py calendar-events 2026-08-01
-python3 -B plugins/xert/scripts/xert_cli.py calendar-event <path> --date 2026-08-01
+python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-events 2026-08-01
+python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-event <path> --date 2026-08-01
 ```
 
 Create and update accept JSON on the command line. Without `--yes`, create and
@@ -26,9 +26,9 @@ requires `--yes` and verifies that the event is absent afterward. Event JSON
 uses Xert's source fields; in particular, `duration` is seconds.
 
 ```bash
-python3 -B plugins/xert/scripts/xert_cli.py calendar-event-create --event-json '<json>' --yes
-python3 -B plugins/xert/scripts/xert_cli.py calendar-event-update <path> --date 2026-08-01 --patch-json '<json>' --yes
-python3 -B plugins/xert/scripts/xert_cli.py calendar-event-delete <path> --date 2026-08-01 --yes
+python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-event-create --event-json '<json>' --yes
+python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-event-update <path> --date 2026-08-01 --patch-json '<json>' --yes
+python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-event-delete <path> --date 2026-08-01 --yes
 ```
 
 ## Workout Updates

@@ -12,8 +12,8 @@ from unittest.mock import patch
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 SPEC = importlib.util.spec_from_file_location(
-    "xert_cli_under_test",
-    SCRIPTS_DIR / "xert_cli.py",
+    "xert_planner_cli_under_test",
+    SCRIPTS_DIR / "xert_planner_cli.py",
 )
 assert SPEC is not None and SPEC.loader is not None
 CLI = importlib.util.module_from_spec(SPEC)
@@ -52,7 +52,7 @@ class CliSurfaceTests(unittest.TestCase):
         )
         for command in removed:
             with self.subTest(command=command), patch.object(
-                sys, "argv", ["xert_cli.py", command]
+                sys, "argv", ["xert_planner_cli.py", command]
             ), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as raised:
                     CLI.main()
@@ -90,39 +90,6 @@ class AuthenticationCacheTests(unittest.TestCase):
         self.assertTrue(all(session is opener for session in sessions))
         login.assert_called_once()
 
-
-class WorkoutCalculateRowsTests(unittest.TestCase):
-    def test_compact_planned_advice_preserves_target_constraints(self) -> None:
-        result = CLI.compact_recommended_training_advice(
-            {
-                "training_advice": {
-                    "targetXSS": {"xlss": 259, "xhss": 5, "xpss": 0.2},
-                    "xss_deficit": 507.2084,
-                    "xss_goal": 264.2,
-                    "availability": 4,
-                    "is_availability_restricted": True,
-                    "ir": 3,
-                    "targets_source": "XATA",
-                    "based_on_day": "Saturdays",
-                    "phase": "Continuous",
-                }
-            },
-            advice_value="2026-08-08 11:59 pm",
-        )
-
-        self.assertEqual(result["target_xss"]["low"], 259)
-        self.assertEqual(result["xss_deficit"], 507.2084)
-        self.assertEqual(result["xss_goal"], 264.2)
-        self.assertTrue(result["is_availability_restricted"])
-        self.assertEqual(result["targets_source"], "XATA")
-        self.assertEqual(result["improvement_rate"], 3)
-
-    def test_compact_recovery_meaning_describes_projected_field(self) -> None:
-        result = CLI.compact_recovery_model({"at_state": {}})
-
-        self.assertIn("recovery_hours_at_advice_time", result["meaning"])
-        self.assertIn("raw source-time value", result["meaning"])
-        self.assertNotIn("does not project", result["meaning"])
 
 class WorkoutReplacementTests(unittest.TestCase):
     @staticmethod

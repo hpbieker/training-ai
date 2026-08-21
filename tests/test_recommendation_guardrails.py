@@ -61,7 +61,6 @@ from recommend_training import (
     split_endurance_structure,
     split_session_info,
     split_session_guidance,
-    xert_readiness_command,
 )
 from route_recommendations import score_route, surface_classification
 
@@ -1372,26 +1371,6 @@ class XertRemainingDoseTests(unittest.TestCase):
         self.assertEqual(target["target_load"], 120.5)
         self.assertIn("not added to today's dose", target["reason"])
 
-    def test_xert_fetch_command_is_bound_to_planned_decision_time(self):
-        command = xert_readiness_command(
-            planned_at=datetime.fromisoformat("2026-08-08T10:30:00+02:00"),
-            now=datetime.fromisoformat("2026-08-08T08:00:00+02:00"),
-        )
-
-        self.assertEqual(
-            command[command.index("--advice-source") + 1],
-            "recommended-training",
-        )
-        self.assertEqual(
-            command[command.index("--advice-at") + 1],
-            "2026-08-08T10:30:00+02:00",
-        )
-        self.assertEqual(
-            command[command.index("--advice-now") + 1],
-            "2026-08-08T08:00:00+02:00",
-        )
-
-
 class BodyBatteryPresentationTests(unittest.TestCase):
     def test_summary_exposes_wake_and_current_values(self):
         self.assertEqual(
@@ -2360,7 +2339,7 @@ class SourceRefreshPolicyTests(unittest.TestCase):
 
         self.assertEqual(
             mcp_sources_requiring_refresh(refresh, indoor_available=True),
-            {"xert_activity_loads", "xert_recommended_training"},
+            {"xert", "xert_activity_loads", "xert_recommended_training"},
         )
 
     def test_garmin_refresh_is_mcp_only(self):

@@ -94,15 +94,14 @@ Prefer the Xert MCP tools when they are available:
 - `calculate_workout` sends a complete, unsaved Workout Designer structure to
   Xert Calculate. Signature overrides must supply TP, HIE, and PP together.
 
-The CLI remains only for the repo's readiness adapter and mixed Planner-event
-operations. It is not a fallback for MCP-covered operations.
+The CLI remains only for mixed Planner-event operations without MCP parity. It
+is not a fallback for MCP-covered operations.
 
 ## Choose The Narrowest Command
 
 ```bash
-python3 -B plugins/xert/scripts/xert_cli.py calendar-events <YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_cli.py calendar-event <path> --date <YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto --advice-at <ISO-local-datetime>
+python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-events <YYYY-MM-DD>
+python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-event <path> --date <YYYY-MM-DD>
 ```
 
 - Use MCP `list_activities` and `get_activity` for activity discovery and
@@ -229,20 +228,11 @@ claimed model boundary.
 
 ## Planned-Time Advice
 
-For advice now, the default `readiness-input` source is the faster
-`/my-fitness`. For a planned time, use `--advice-source auto --advice-at`; auto
-switches to planned-time advice when needed. Force
-`--advice-source recommended-training` only when the caller specifically needs
-that source.
-
-The payload keeps `recovery.recovery_hours` at `source_time_local` and adds
-`recovery.recovery_hours_at_advice_time` when a planned time is supplied. The
-latter is a no-intervening-training projection. Use the projected value for the
-planned decision while preserving the raw value for auditability.
-
-Keep `recent=true` and `additional=false` for normal primary advice. Change
-them only when the caller explicitly wants older repeat candidates or extra
-training.
+Use MCP `get_training_advice` without `at` for the faster current
+`/my-fitness` advice. Supply `at` for planned-time `/recommended-training`
+advice resolved immediately before that start. The orchestration layer must
+compose this advice with `get_training_state` and any activity context needed by
+the repo-level readiness packet; there is no Xert readiness CLI adapter.
 
 ## Session Data
 
