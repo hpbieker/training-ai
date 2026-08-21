@@ -26,10 +26,14 @@ from xert_activities import (  # noqa: E402
     list_activity_details,
 )
 from xert_calendar import (  # noqa: E402
+    create_calendar_event_with_opener,
+    delete_calendar_event_with_opener,
+    fetch_calendar_events_with_opener,
     fetch_calendar_notes_with_opener,
     fetch_recommended_training_with_opener,
     fetch_training_forecast_with_opener,
     set_calendar_note,
+    update_calendar_event_with_opener,
 )
 from xert_common import (  # noqa: E402
     LOCAL_TIMEZONE,
@@ -334,6 +338,52 @@ class XertService:
             if start <= note_date <= end and isinstance(text, str) and text:
                 result.append({"date": note_date.isoformat(), "text": text})
         return sorted(result, key=lambda note: note["date"])
+
+    def list_planner_events(
+        self, start_date: str, end_date: str
+    ) -> list[dict[str, Any]]:
+        """List mixed Planner events over an inclusive local-date range."""
+
+        start, end = _validate_date_range(start_date, end_date)
+        opener = self._auth.web_opener()
+        events: list[dict[str, Any]] = []
+        day = start
+        while day <= end:
+            events.extend(fetch_calendar_events_with_opener(opener, day)["events"])
+            day += timedelta(days=1)
+        return events
+
+    def create_planner_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(event, dict):
+            raise ValueError("event must be an object")
+        result = create_calendar_event_with_opener(self._auth.web_opener(), event)
+        if not result.get("success") or not isinstance(result.get("event"), dict):
+            raise RuntimeError("Xert Planner event create verification failed")
+        return result
+
+    def update_planner_event(
+        self, event_date: str, event_path: str, patch: dict[str, Any]
+    ) -> dict[str, Any]:
+        day = _validate_date(event_date, "date")
+        path = _required_string(event_path, "event_path")
+        if not isinstance(patch, dict) or not patch:
+            raise ValueError("patch must be a non-empty object")
+        result = update_calendar_event_with_opener(
+            self._auth.web_opener(), day, path, patch
+        )
+        if not result.get("success") or not isinstance(result.get("event"), dict):
+            raise RuntimeError("Xert Planner event update verification failed")
+        return result
+
+    def delete_planner_event(
+        self, event_date: str, event_path: str
+    ) -> dict[str, Any]:
+        day = _validate_date(event_date, "date")
+        path = _required_string(event_path, "event_path")
+        result = delete_calendar_event_with_opener(self._auth.web_opener(), day, path)
+        if not result.get("success") or not isinstance(result.get("deleted"), dict):
+            raise RuntimeError("Xert Planner event delete verification failed")
+        return result
 
     def get_note(self, note_date: str) -> dict[str, Any]:
         day = _validate_date(note_date, "date")
@@ -966,6 +1016,12 @@ def _required_credential(value: str | None, name: str) -> str:
             f"Set {name} in the MCP environment, {CONFIG_ENV}, or {DEFAULT_CONFIG_PATH}"
         )
     return value
+
+
+def _required_string(value: Any, name: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be a non-empty string")
+    return value.strip()
 
 
 def _activity_start_local(summary: dict[str, Any]) -> str | None:

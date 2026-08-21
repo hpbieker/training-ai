@@ -1,7 +1,4 @@
 import concurrent.futures
-import contextlib
-import importlib.util
-import io
 import json
 import sys
 import unittest
@@ -9,54 +6,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scripts"
+PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
+SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
+sys.path.insert(0, str(PLUGIN_ROOT))
 sys.path.insert(0, str(SCRIPTS_DIR))
-SPEC = importlib.util.spec_from_file_location(
-    "xert_planner_cli_under_test",
-    SCRIPTS_DIR / "xert_planner_cli.py",
-)
-assert SPEC is not None and SPEC.loader is not None
-CLI = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(CLI)
-
 import xert_workouts as WORKOUTS
 import xert_common as COMMON
 import xert_service as SERVICE
-
-
-class CliSurfaceTests(unittest.TestCase):
-    def test_mcp_covered_commands_are_not_exposed(self) -> None:
-        removed = (
-            "activities",
-            "activity-loads",
-            "activity",
-            "training-info",
-            "training-forecast",
-            "calendar-notes",
-            "calendar-note-set",
-            "recommended-training",
-            "workouts",
-            "workout",
-            "workout-rows",
-            "workout-update",
-            "workout-replace",
-            "workout-row-add",
-            "workout-row-update",
-            "workout-row-remove",
-            "workout-copy",
-            "workout-delete",
-            "recovery-model",
-            "workout-capacity",
-            "load-model",
-            "workout-calculate",
-        )
-        for command in removed:
-            with self.subTest(command=command), patch.object(
-                sys, "argv", ["xert_planner_cli.py", command]
-            ), contextlib.redirect_stderr(io.StringIO()):
-                with self.assertRaises(SystemExit) as raised:
-                    CLI.main()
-                self.assertEqual(raised.exception.code, 2)
 
 
 class AuthenticationCacheTests(unittest.TestCase):

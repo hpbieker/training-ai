@@ -46,6 +46,22 @@ class FakeXertService:
         self.calls.append(("get_workout", path, view))
         return [{"name": "Warm-up"}] if view == "editable" else {"path": path}
 
+    def list_planner_events(self, start_date, end_date):
+        self.calls.append(("list_planner_events", start_date, end_date))
+        return [{"path": "event-1", "name": "Planned ride"}]
+
+    def create_planner_event(self, event):
+        self.calls.append(("create_planner_event", event))
+        return {"success": True, "response": "ok", "event": {"path": "event-1", **event}}
+
+    def update_planner_event(self, event_date, event_path, patch):
+        self.calls.append(("update_planner_event", event_date, event_path, patch))
+        return {"success": True, "event": {"path": event_path, **patch}, "payload": patch}
+
+    def delete_planner_event(self, event_date, event_path):
+        self.calls.append(("delete_planner_event", event_date, event_path))
+        return {"success": True, "response": "ok", "deleted": {"path": event_path}}
+
     def list_notes(self, start_date, end_date):
         self.calls.append(("list_notes", start_date, end_date))
         return [{"date": start_date, "text": "Easy day"}]
@@ -118,6 +134,10 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "get_activity",
                 "list_workouts",
                 "get_workout",
+                "list_planner_events",
+                "create_planner_event",
+                "update_planner_event",
+                "delete_planner_event",
                 "list_notes",
                 "get_note",
                 "set_note",
@@ -158,6 +178,9 @@ class XertMcpSchemaTests(unittest.TestCase):
             creates_workout = name == "create_workout"
             deletes_workout = name == "delete_workout"
             updates_workout = name == "update_workout"
+            creates_planner_event = name == "create_planner_event"
+            updates_planner_event = name == "update_planner_event"
+            deletes_planner_event = name == "delete_planner_event"
             self.assertEqual(
                 definition["annotations"],
                 {
@@ -168,11 +191,18 @@ class XertMcpSchemaTests(unittest.TestCase):
                         or creates_workout
                         or deletes_workout
                         or updates_workout
+                        or creates_planner_event
+                        or updates_planner_event
+                        or deletes_planner_event
                     ),
-                    "destructiveHint": writes_note or deletes_workout or updates_workout,
+                    "destructiveHint": (
+                        writes_note or deletes_workout or updates_workout
+                        or updates_planner_event or deletes_planner_event
+                    ),
                     "idempotentHint": not (
                         writes_session_file or creates_workout or deletes_workout
-                        or updates_workout
+                        or updates_workout or creates_planner_event
+                        or updates_planner_event or deletes_planner_event
                     ),
                     "openWorldHint": name not in {"calculate_strain", "solve_segment_duration"},
                 },
@@ -373,6 +403,25 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertEqual(listed["count"], 1)
         self.assertFalse(missing["exists"])
         self.assertEqual(saved["text"], "Recovery day")
+
+    def test_planner_event_tools_dispatch_verified_contracts(self) -> None:
+        listed = self.tools.call_tool("list_planner_events", {
+            "start_date": "2026-08-17", "end_date": "2026-08-18",
+        })
+        created = self.tools.call_tool("create_planner_event", {
+            "event": {"title": "Ride", "start_date": "2026-08-17T10:00:00+02:00"},
+        })
+        updated = self.tools.call_tool("update_planner_event", {
+            "date": "2026-08-17", "event_path": "event-1", "patch": {"title": "Long ride"},
+        })
+        deleted = self.tools.call_tool("delete_planner_event", {
+            "date": "2026-08-17", "event_path": "event-1",
+        })
+
+        self.assertEqual(listed["count"], 1)
+        self.assertTrue(created["success"])
+        self.assertEqual(updated["event"]["title"], "Long ride")
+        self.assertTrue(deleted["success"])
 
     def test_training_state_dispatches_requested_view(self) -> None:
         result = self.tools.call_tool("get_training_state", {"view": "full"})
@@ -598,6 +647,32 @@ class XertServiceTests(unittest.TestCase):
             password="secret",
             opener=ANY,
         )
+
+    def test_planner_event_service_reuses_session_and_verified_helpers(self) -> None:
+        credentials = SERVICE.XertCredentials(username="user", password="secret")
+        service = self._service(credentials)
+        first_day = {"date": "2026-08-01", "events": [{"path": "e1"}]}
+        second_day = {"date": "2026-08-02", "events": [{"path": "e2"}]}
+        with (
+            patch.object(SERVICE, "fetch_calendar_events_with_opener", side_effect=[first_day, second_day]) as list_events,
+            patch.object(SERVICE, "create_calendar_event_with_opener", return_value={"success": True, "response": "ok", "event": {"path": "e3"}}) as create_event,
+            patch.object(SERVICE, "update_calendar_event_with_opener", return_value={"success": True, "event": {"path": "e3"}, "payload": {"title": "Updated"}}) as update_event,
+            patch.object(SERVICE, "delete_calendar_event_with_opener", return_value={"success": True, "response": "ok", "deleted": {"path": "e3"}}) as delete_event,
+        ):
+            self.assertEqual(
+                [event["path"] for event in service.list_planner_events("2026-08-01", "2026-08-02")],
+                ["e1", "e2"],
+            )
+            self.assertTrue(service.create_planner_event({"title": "Ride"})["success"])
+            self.assertTrue(service.update_planner_event("2026-08-02", " e3 ", {"title": "Updated"})["success"])
+            self.assertTrue(service.delete_planner_event("2026-08-02", " e3 ")["success"])
+
+        self.assertEqual(list_events.call_count, 2)
+        create_event.assert_called_once_with(ANY, {"title": "Ride"})
+        update_event.assert_called_once_with(
+            ANY, SERVICE.date(2026, 8, 2), "e3", {"title": "Updated"}
+        )
+        delete_event.assert_called_once_with(ANY, SERVICE.date(2026, 8, 2), "e3")
 
     def test_training_state_combines_oauth_and_recovery_sources(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")

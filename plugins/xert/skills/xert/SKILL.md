@@ -10,10 +10,8 @@ writes. The plugin is stateless and returns normalized data to callers.
 
 ## Network Execution
 
-Use MCP for the live operations and model calculations listed below. The
-remaining mixed Planner CLI commands require external network access; run them
-with escalated network permission on the first attempt. Offline help and local
-artifact inspection do not require escalation.
+Use MCP for the live operations and model calculations listed below. Offline
+help and local artifact inspection do not require network access.
 
 ## MCP Read Access
 
@@ -44,6 +42,13 @@ Prefer the Xert MCP tools when they are available:
 - `get_workout` uses `view=resolved` for the workout calculated with the current
   Fitness Signature and `view=editable` for authoritative Workout Designer
   rows, including repeats, slopes, and rest-in-between fields.
+- `list_planner_events` returns Xert's mixed planned-workout and
+  recorded-activity event stream for an inclusive local-date range.
+- `create_planner_event` creates one source-native Planner event and reads it
+  back. `update_planner_event` patches selected fields while preserving omitted
+  fields and verifies the saved event. `delete_planner_event` reads the target,
+  permanently deletes it, and verifies that it is absent. Use these write tools
+  only when the user explicitly requests the corresponding write.
 - `list_notes` lists non-empty calendar-note text in an inclusive local-date
   range. `get_note` reads one date and distinguishes an absent note from text.
 - `set_note` sets the complete calendar-note text for one local date and reads
@@ -94,15 +99,7 @@ Prefer the Xert MCP tools when they are available:
 - `calculate_workout` sends a complete, unsaved Workout Designer structure to
   Xert Calculate. Signature overrides must supply TP, HIE, and PP together.
 
-The CLI remains only for mixed Planner-event operations without MCP parity. It
-is not a fallback for MCP-covered operations.
-
 ## Choose The Narrowest Command
-
-```bash
-python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-events <YYYY-MM-DD>
-python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-event <path> --date <YYYY-MM-DD>
-```
 
 - Use MCP `list_activities` and `get_activity` for activity discovery and
   details. Request `includeFields=["xss"]` for compact XSS history rather than
@@ -113,6 +110,9 @@ python3 -B plugins/xert/scripts/xert_planner_cli.py calendar-event <path> --date
   signature.
 - Compose readiness in the repo-level training-analysis workflow from the
   narrow Xert MCP source calls. Do not add a source-plugin readiness score.
+- Use MCP `list_planner_events` for the mixed Planner event stream. Use the
+  corresponding create, update, or delete tool only for an explicitly requested
+  Planner write and inspect its verified result.
 - Use MCP `solve_segment_duration` after the plan role and complete workout format have
   been resolved. Mark exactly one sub-TP segment as adjustable and supply the
   applicable target low XSS. The solver preserves every fixed quality,

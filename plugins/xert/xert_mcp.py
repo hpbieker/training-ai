@@ -21,6 +21,10 @@ ALL_TOOL_NAMES = (
     "get_activity",
     "list_workouts",
     "get_workout",
+    "list_planner_events",
+    "create_planner_event",
+    "update_planner_event",
+    "delete_planner_event",
     "list_notes",
     "get_note",
     "set_note",
@@ -65,6 +69,34 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "list_planner_events": {
+        "title": "List Xert Planner Events",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "create_planner_event": {
+        "title": "Create Xert Planner Event",
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    "update_planner_event": {
+        "title": "Update Xert Planner Event",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    "delete_planner_event": {
+        "title": "Delete Xert Planner Event",
+        "readOnlyHint": False,
+        "destructiveHint": True,
+        "idempotentHint": False,
         "openWorldHint": True,
     },
     "list_notes": {
@@ -487,6 +519,130 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["get_workout"],
+    },
+    "list_planner_events": {
+        "name": "list_planner_events",
+        "description": (
+            "List Xert's mixed Planner events for an inclusive local-date range, "
+            "including planned workouts and recorded activities."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {
+                    "type": "string", "format": "date",
+                    "description": "Inclusive local start date in YYYY-MM-DD format.",
+                },
+                "end_date": {
+                    "type": "string", "format": "date",
+                    "description": "Inclusive local end date in YYYY-MM-DD format.",
+                },
+            },
+            "required": ["start_date", "end_date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
+                "count": {"type": "integer"},
+                "events": _array("Planner events returned by Xert."),
+            },
+            "required": ["start_date", "end_date", "count", "events"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["list_planner_events"],
+    },
+    "create_planner_event": {
+        "name": "create_planner_event",
+        "description": (
+            "Create one Xert Planner event from source-native event fields, then "
+            "read it back and return the verified event."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "event": _object("Complete source-native Planner event; duration is seconds."),
+            },
+            "required": ["event"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "success": {"type": "boolean"}, "response": {"type": "string"},
+                "event": _object("Verified created Planner event."),
+            },
+            "required": ["success", "response", "event"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["create_planner_event"],
+    },
+    "update_planner_event": {
+        "name": "update_planner_event",
+        "description": (
+            "Patch selected fields on one Xert Planner event, preserve omitted "
+            "fields, and return the verified saved event."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string", "format": "date",
+                    "description": "Current local calendar date in YYYY-MM-DD format.",
+                },
+                "event_path": {
+                    "type": "string", "minLength": 1,
+                    "description": "Planner event path or ID returned by list_planner_events.",
+                },
+                "patch": _object("Source-native Planner fields to update."),
+            },
+            "required": ["date", "event_path", "patch"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "success": {"type": "boolean"},
+                "event": _object("Verified updated Planner event."),
+                "payload": _object("Complete update payload sent to Xert."),
+            },
+            "required": ["success", "event", "payload"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["update_planner_event"],
+    },
+    "delete_planner_event": {
+        "name": "delete_planner_event",
+        "description": (
+            "Permanently delete one Xert Planner event after reading it, then "
+            "verify that it is absent."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "date": {
+                    "type": "string", "format": "date",
+                    "description": "Current local calendar date in YYYY-MM-DD format.",
+                },
+                "event_path": {
+                    "type": "string", "minLength": 1,
+                    "description": "Planner event path or ID returned by list_planner_events.",
+                },
+            },
+            "required": ["date", "event_path"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "success": {"type": "boolean"}, "response": {"type": "string"},
+                "deleted": _object("Planner event read immediately before deletion."),
+            },
+            "required": ["success", "response", "deleted"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["delete_planner_event"],
     },
     "list_notes": {
         "name": "list_notes",
@@ -1137,6 +1293,26 @@ class XertToolService:
                 "name_keywords": keywords,
                 "count": len(summaries), "workouts": summaries, **query_meta,
             }
+        if name == "list_planner_events":
+            start = arguments["start_date"]
+            end = arguments["end_date"]
+            events = service.list_planner_events(start, end)
+            return {
+                "start_date": start,
+                "end_date": end,
+                "count": len(events),
+                "events": events,
+            }
+        if name == "create_planner_event":
+            return service.create_planner_event(arguments["event"])
+        if name == "update_planner_event":
+            return service.update_planner_event(
+                arguments["date"], arguments["event_path"], arguments["patch"]
+            )
+        if name == "delete_planner_event":
+            return service.delete_planner_event(
+                arguments["date"], arguments["event_path"]
+            )
         if name == "list_notes":
             start = arguments["start_date"]
             end = arguments["end_date"]
@@ -1340,10 +1516,10 @@ def create_sdk_server(service: XertToolService) -> Any:
         "xert",
         version="0.1.0",
         instructions=(
-            "Read Xert cycling activities, workouts, calendar notes, current training "
-            "state, and current or planned-time training advice, set calendar-note "
-            "text, and create verified Workout Designer workouts. Inclusive dates "
-            "use the user's local calendar."
+            "Read Xert cycling activities, workouts, mixed Planner events, calendar "
+            "notes, current training state, and current or planned-time training "
+            "advice; perform verified Planner-event, calendar-note, and Workout "
+            "Designer writes. Inclusive dates use the user's local calendar."
         ),
     )
 
