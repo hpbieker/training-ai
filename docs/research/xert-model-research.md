@@ -331,7 +331,7 @@ production-specific evidence.
 
 ## Training Load and capped Recovery Load validation
 
-Implemented 2026-08-07 in `plugins/xert/scripts/xert_load_model.py`; the current
+Implemented 2026-08-07 in `plugins/xert/xert_load_model.py`; the current
 interface is MCP `project_load_model`.
 
 Xert's `/my-fitness/measures` history provides the TL/RL state immediately
@@ -587,7 +587,7 @@ workout-calculate --series-output FILE
 
 Relevant files at the time included the now-removed general Xert CLI alongside:
 
-- `plugins/xert/scripts/xert_workouts.py`
+- `plugins/xert/xert_workouts.py`
 - `plugins/xert/skills/xert/SKILL.md`
 - `plugins/xert/skills/xert/references/write-safety.md`
 
@@ -619,13 +619,13 @@ in the later real-activity and error-bound validation round.
 Implemented 2026-08-07 as:
 
 ```text
-plugins/xert/scripts/xert_calculate_analyze.py
+plugins/xert/xert_calculate_analyze.py
 ```
 
 Usage:
 
 ```bash
-python3 -B plugins/xert/scripts/xert_calculate_analyze.py /tmp/calculate-series.json
+python3 -B plugins/xert/xert_calculate_analyze.py /tmp/calculate-series.json
 ```
 
 The analyzer returns machine-readable JSON containing:

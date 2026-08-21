@@ -6,7 +6,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import sys
 import threading
 import time
 from copy import deepcopy
@@ -15,17 +14,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-PLUGIN_ROOT = Path(__file__).resolve().parent
-SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
-if str(SCRIPTS_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS_DIR))
-
-from xert_activities import (  # noqa: E402
+from xert_activities import (
     fetch_activity_detail,
     list_activities as fetch_activities,
     list_activity_details,
 )
-from xert_calendar import (  # noqa: E402
+from xert_calendar import (
     create_calendar_event_with_opener,
     delete_calendar_event_with_opener,
     fetch_calendar_events_with_opener,
@@ -35,7 +29,7 @@ from xert_calendar import (  # noqa: E402
     set_calendar_note,
     update_calendar_event_with_opener,
 )
-from xert_common import (  # noqa: E402
+from xert_common import (
     LOCAL_TIMEZONE,
     DEFAULT_XERT_OAUTH_CLIENT_ID,
     DEFAULT_XERT_OAUTH_CLIENT_SECRET,
@@ -44,10 +38,10 @@ from xert_common import (  # noqa: E402
     request_xert_token,
     xert_web_login,
 )
-from xert_recovery import calculate_workout_capacity, fetch_recovery_model_with_opener  # noqa: E402
-from xert_load_model import calculate_load_projection  # noqa: E402
-from xert_strain_model import calculate_workout as calculate_strain_workout, solve_segment_duration  # noqa: E402
-from xert_workouts import (  # noqa: E402
+from xert_recovery import calculate_workout_capacity, fetch_recovery_model_with_opener
+from xert_load_model import calculate_load_projection
+from xert_strain_model import calculate_workout as calculate_strain_workout, solve_segment_duration
+from xert_workouts import (
     create_workout as create_saved_workout,
     calculate_new_workout,
     delete_workout as delete_saved_workout,

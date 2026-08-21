@@ -15,9 +15,9 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-XERT_SCRIPTS = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scripts"
-if str(XERT_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(XERT_SCRIPTS))
+XERT_PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "xert"
+if str(XERT_PLUGIN) not in sys.path:
+    sys.path.insert(0, str(XERT_PLUGIN))
 
 from xert_strain_model import solve_segment_duration
 
@@ -237,8 +237,8 @@ def main() -> None:
         "--endurance-workout-json",
         type=parse_endurance_workout_json,
         help=(
-            "Optional normalized solve-endurance result from Xert's offline "
-            "calculation CLI. The flexible endurance segment must match the "
+            "Optional normalized solve_segment_duration result from Xert's "
+            "offline MCP calculation. The flexible endurance segment must match the "
             "applicable low-XSS target."
         ),
     )
@@ -2694,7 +2694,7 @@ def apply_xert_endurance_duration_solution(
         )
     if calculation.get("source") != "local_xert_endurance_duration_solver":
         raise ValueError(
-            "endurance-workout calculation must come from Xert solve-endurance"
+            "endurance-workout calculation must come from Xert solve_segment_duration"
         )
     if calculation.get("network_used") is not False:
         raise ValueError("endurance-workout calculation must be offline")
@@ -2747,7 +2747,7 @@ def apply_xert_endurance_duration_solution(
         "ratio": None,
         "phrase": "duration solved for the selected endurance structure",
         "reason": (
-            "Xert solve-endurance calculated the complete structured workout; "
+            "Xert solve_segment_duration calculated the complete structured workout; "
             "a mixed-domain historical XSS/min rate is not used for prescription"
         ),
     }
@@ -2777,7 +2777,7 @@ def apply_xert_endurance_duration_solution(
         if (value := number(raw_value)) is not None
     )
     target_resolution["reason"] = (
-        f"Xert recommended remaining dose ({parts_text}); Xert solve-endurance "
+        f"Xert recommended remaining dose ({parts_text}); Xert solve_segment_duration "
         f"calculated the selected {selected_intensity} plan structure: "
         f"{round(achieved_low, 1)} low XSS in "
         f"{round(duration_seconds / 60.0, 1)} min; high/peak were not targeted"

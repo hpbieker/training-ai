@@ -5,9 +5,9 @@ import unittest
 from pathlib import Path
 
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scripts"
+PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "xert_activity"
-sys.path.insert(0, str(SCRIPTS_DIR))
+sys.path.insert(0, str(PLUGIN_ROOT))
 
 from xert_calculate_analyze import analyze_calculate_series, summarize_analysis
 from xert_strain_model import EMPIRICAL_CALCULATE_RECOVERY_OFFSET_SECONDS

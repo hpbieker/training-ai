@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 
 
-SCRIPTS = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scripts"
-sys.path.insert(0, str(SCRIPTS))
+PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
+sys.path.insert(0, str(PLUGIN_ROOT))
 
 from xert_load_model import (  # noqa: E402
     capped_recovery_load,

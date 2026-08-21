@@ -119,10 +119,8 @@ Prefer the Xert MCP tools when they are available:
   warm-up, recovery, and cool-down segment and changes only the endurance
   duration. Pass its normalized result to the recommendation helper; do not
   convert XSS to minutes with a mixed-activity historical rate.
-  It also accepts the JSON array returned by `workout-rows`; select the
-  adjustable workout row with the one-based `--adjustable-row` option and pass
-  the target and signature flags explicitly. LTP power in workout rows is derived as
-  `TP - HIE(J) / 400` from that signature.
+  Pass an explicit segment array and identify the adjustable segment with its
+  zero-based `adjustable_segment_index`.
 - Use MCP `calculate_workout_capacity` when asking how much Low/High/Peak XSS can be added at
   an explicit time while still arriving fresh at another explicit time. Require
   both `--as-of` and `--fresh-at`; there is deliberately no duration alternative

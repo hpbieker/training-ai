@@ -12,8 +12,8 @@ from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
-XERT_SCRIPTS = ROOT / "plugins" / "xert" / "scripts"
-sys.path.insert(0, str(XERT_SCRIPTS))
+XERT_PLUGIN = ROOT / "plugins" / "xert"
+sys.path.insert(0, str(XERT_PLUGIN))
 
 from xert_calendar import (  # noqa: E402
     create_calendar_event_with_opener,

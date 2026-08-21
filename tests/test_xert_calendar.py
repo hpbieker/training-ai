@@ -7,11 +7,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "plugins" / "xert" / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
+PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
+sys.path.insert(0, str(PLUGIN_ROOT))
 SPEC = importlib.util.spec_from_file_location(
     "xert_calendar_under_test",
-    SCRIPTS_DIR / "xert_calendar.py",
+    PLUGIN_ROOT / "xert_calendar.py",
 )
 assert SPEC is not None and SPEC.loader is not None
 CALENDAR = importlib.util.module_from_spec(SPEC)

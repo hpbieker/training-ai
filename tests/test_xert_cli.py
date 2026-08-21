@@ -7,9 +7,7 @@ from unittest.mock import patch
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
-SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
 sys.path.insert(0, str(PLUGIN_ROOT))
-sys.path.insert(0, str(SCRIPTS_DIR))
 import xert_workouts as WORKOUTS
 import xert_common as COMMON
 import xert_service as SERVICE
