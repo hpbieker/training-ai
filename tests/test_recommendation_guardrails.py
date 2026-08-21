@@ -2470,8 +2470,8 @@ class WorkoutReadinessBiasTests(unittest.TestCase):
                 "workouts": [{
                     "name": "XMB: VT1 30 min (165W)",
                     "path": "vt1",
-                    "duration": 1800,
-                    "xss": 24,
+                    "duration_seconds": 1800,
+                    "xss": {"total": 24, "low": 23, "high": 1, "peak": 0},
                     "max_power": 165,
                 }]
             },
@@ -2480,6 +2480,11 @@ class WorkoutReadinessBiasTests(unittest.TestCase):
         )
 
         self.assertEqual(result["recommended"]["path"], "vt1")
+        self.assertEqual(result["recommended"]["duration_minutes"], 30)
+        self.assertEqual(result["recommended"]["xss"], 24)
+        self.assertEqual(result["recommended"]["low_xss"], 23)
+        self.assertEqual(result["recommended"]["high_xss"], 1)
+        self.assertEqual(result["recommended"]["peak_xss"], 0)
 
     def test_easy_vt1_suppresses_openers_but_keeps_vt1(self):
         payload = {

@@ -13,6 +13,7 @@ from scripts.readiness_snapshot import (
     build_readiness_snapshot,
     compact_hrv_history,
     compact_xert_advice,
+    latest_xert_advice,
     intervals_wellness_context,
     project_garmin_recovery_hours,
     parse_source_inputs_json,
@@ -43,6 +44,54 @@ class AvailabilityNotesTests(unittest.TestCase):
 
 
 class XertAdviceContractTests(unittest.TestCase):
+    def test_accepts_current_mcp_advice_and_state_envelopes(self):
+        result = latest_xert_advice(
+            now=datetime.fromisoformat("2026-08-08T08:00:00+02:00"),
+            planned_at=datetime.fromisoformat("2026-08-08T10:00:00+02:00"),
+            xert_input={
+                "training_advice": {
+                    "view": "summary",
+                    "advice": {
+                        "source": "xert_recommended_training",
+                        "source_scope": "planned_time",
+                        "target_xss": {"low": 80, "high": 4, "peak": 0},
+                        "remaining_xss": {"low": 50, "high": 2, "peak": 0},
+                    },
+                },
+                "training_state": {
+                    "view": "summary",
+                    "state": {
+                        "source": "xert_plugin_training_state",
+                        "as_of": "2026-08-08T08:00:00+02:00",
+                        "recovery_hours": {"low": 1, "high": 3, "peak": 0},
+                        "training_load": {"low": 70, "high": 8, "peak": 2},
+                        "recovery_load": {"low": 68, "high": 9, "peak": 1},
+                    },
+                },
+            },
+            local_timezone=ZoneInfo("Europe/Oslo"),
+        )
+
+        self.assertEqual(result["training_advice"]["remaining_xss"]["low"], 50)
+        self.assertEqual(result["recovery_hours"]["high"], 3)
+        self.assertEqual(result["training_load"]["low"], 70)
+
+    def test_accepts_direct_mcp_advice_envelope_without_state(self):
+        result = latest_xert_advice(
+            now=datetime.fromisoformat("2026-08-08T08:00:00+02:00"),
+            planned_at=None,
+            xert_input={
+                "view": "summary",
+                "advice": {
+                    "source_scope": "current",
+                    "target_xss": {"low": 40, "high": 0, "peak": 0},
+                },
+            },
+            local_timezone=ZoneInfo("Europe/Oslo"),
+        )
+
+        self.assertEqual(result["training_advice"]["target_xss"]["low"], 40)
+
     def test_preserves_xata_context_and_source_projection(self):
         result = compact_xert_advice(
             {

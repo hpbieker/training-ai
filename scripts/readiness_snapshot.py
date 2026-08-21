@@ -1269,8 +1269,9 @@ def latest_xert_advice(
 ) -> dict[str, Any] | None:
     if not xert_input:
         return None
-    recovery = xert_input.get("recovery")
-    training_advice = xert_input.get("training_advice")
+    normalized_input = normalize_xert_input(xert_input)
+    recovery = normalized_input.get("recovery")
+    training_advice = normalized_input.get("training_advice")
     if not isinstance(recovery, dict):
         return None
     if not isinstance(training_advice, dict):
@@ -1278,13 +1279,56 @@ def latest_xert_advice(
     return compact_xert_advice(
         recovery,
         training_advice=training_advice,
-        training_advice_debug=xert_input.get("training_advice_debug"),
+        training_advice_debug=normalized_input.get("training_advice_debug"),
         now=now,
         planned_at=planned_at,
-        source_time_local=xert_input.get("source_time_local"),
-        source_file=xert_input.get("source_file"),
+        source_time_local=normalized_input.get("source_time_local"),
+        source_file=normalized_input.get("source_file"),
         local_timezone=local_timezone,
     )
+
+
+def normalize_xert_input(payload: dict[str, Any]) -> dict[str, Any]:
+    """Accept legacy readiness input and normalized Xert MCP envelopes."""
+
+    recovery = payload.get("recovery")
+    training_advice = payload.get("training_advice")
+    if isinstance(recovery, dict) and isinstance(training_advice, dict):
+        return payload
+
+    advice_envelope = payload.get("training_advice")
+    if not (
+        isinstance(advice_envelope, dict)
+        and isinstance(advice_envelope.get("advice"), dict)
+    ):
+        advice_envelope = payload
+    advice = advice_envelope.get("advice") if isinstance(advice_envelope, dict) else None
+
+    state_envelope = payload.get("training_state")
+    if not (
+        isinstance(state_envelope, dict)
+        and isinstance(state_envelope.get("state"), dict)
+    ):
+        state_envelope = payload
+    state = state_envelope.get("state") if isinstance(state_envelope, dict) else None
+
+    if not isinstance(advice, dict) and not isinstance(state, dict):
+        return payload
+    advice = advice if isinstance(advice, dict) else {}
+    state = state if isinstance(state, dict) else {}
+    normalized = dict(payload)
+    normalized["recovery"] = {
+        "source": state.get("source") or advice.get("source") or "xert_mcp",
+        "recovery_hours": state.get("recovery_hours"),
+        "training_load": state.get("training_load"),
+        "recovery_load": state.get("recovery_load"),
+    }
+    normalized["training_advice"] = advice
+    normalized.setdefault(
+        "source_time_local",
+        advice.get("training_advice_as_of") or state.get("as_of"),
+    )
+    return normalized
 
 
 def compact_xert_advice(

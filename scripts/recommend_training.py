@@ -5975,8 +5975,21 @@ def compact_xert_workout(
     path = row.get("path") or (row.get("workout") or {}).get("path")
     if not name or not path:
         return None
-    duration_minutes = round((number(row.get("duration")) or 0) / 60, 1)
-    xss = number(row.get("xss"))
+    duration_seconds = number(row.get("duration_seconds"))
+    if duration_seconds is None:
+        duration_seconds = number(row.get("duration"))
+    duration_minutes = round((duration_seconds or 0) / 60, 1)
+    xss_payload = row.get("xss")
+    if isinstance(xss_payload, dict):
+        xss = number(xss_payload.get("total"))
+        low_xss = number(xss_payload.get("low"))
+        high_xss = number(xss_payload.get("high"))
+        peak_xss = number(xss_payload.get("peak"))
+    else:
+        xss = number(xss_payload)
+        low_xss = number(row.get("xlss"))
+        high_xss = number(row.get("xhss"))
+        peak_xss = number(row.get("xpss"))
     intensity = workout_intensity_profile(row, name=name)
     structure = workout_structure_guidance(name=name, duration_minutes=duration_minutes)
     result = {
@@ -5993,9 +6006,9 @@ def compact_xert_workout(
         "disliked": row.get("disliked"),
         "duration_minutes": duration_minutes,
         "xss": xss,
-        "low_xss": row.get("xlss"),
-        "high_xss": row.get("xhss"),
-        "peak_xss": row.get("xpss"),
+        "low_xss": low_xss,
+        "high_xss": high_xss,
+        "peak_xss": peak_xss,
         "difficulty": row.get("difficulty"),
         "rating": row.get("rating"),
         "focus": row.get("focus"),
