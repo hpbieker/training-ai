@@ -73,10 +73,10 @@ The helpers keep absolute comparison and cutoff timestamps in UTC and use the
 resolved timezone for local calendar semantics and display. Do not infer it
 from the machine timezone or assume a mobile client timezone is available.
 
-For every agent-driven recommendation, call the existing
-`build_planning_context()` function programmatically and pass its validated
-return value to `recommend_training.py`; never hand-author
-`--planning-context-json`. Before calling it, derive `planned_at` and the
+For every agent-driven recommendation, provide a complete
+`--planning-context-json` that satisfies `recommend_training.py`'s validation.
+Prefer a small persisted `planning-context.json` working file when the context
+is assembled across several source reads. Before calling `recommend_training.py`, derive `planned_at` and the
 availability windows from the freshly read calendar by applying the configured
 start boundary and workout-placement preference, classifying fixed, open,
 tentative, and movable events, and applying the complete setup, workout, and cleanup window.
