@@ -319,8 +319,8 @@ from day three only if the athlete feels healthy.
   XSS/minute across activities of mixed intensity domains, and never add
   high/peak work merely to match high/peak advice on a plan-selected VT1 day.
 - For a structured quality session followed by easy volume, calculate the
-  complete quality workout in Xert, including warm-up, recoveries, and
-  cool-down, and pass the compact `workout-calculate --summary` JSON directly
+  complete quality workout with MCP `calculate_workout`, including warm-up,
+  recoveries, and cool-down, and pass its normalized result directly
   inside `--quality-workout-json` with status `planned` or `completed`. If the
   calculation is persisted, read the file first and pass its JSON content. Fill
   only the difference between the

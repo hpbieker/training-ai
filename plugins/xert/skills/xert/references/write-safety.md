@@ -36,8 +36,8 @@ python3 -B plugins/xert/scripts/xert_cli.py calendar-event-delete <path> --date 
 Inspect editable rows first with MCP `get_workout(view=editable)`. For a saved
 change, construct the complete final row array and submit it to MCP
 `update_workout`; omitted metadata remains unchanged and the tool verifies the
-saved rows. Use the unsaved `workout-calculate` CLI only when an empirical
-Calculate result is actually required before the write.
+saved rows. Use MCP `calculate_workout` only when an empirical Calculate result
+is actually required before the write.
 
 Prefer updating repeat-row fields over expanding repeated blocks into copied
 rows. MCP has no separate row-edit operation: preserve every unmodified row,

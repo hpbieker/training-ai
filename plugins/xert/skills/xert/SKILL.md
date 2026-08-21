@@ -93,9 +93,8 @@ Prefer the Xert MCP tools when they are available:
 - `calculate_workout` sends a complete, unsaved Workout Designer structure to
   Xert Calculate. Signature overrides must supply TP, HIE, and PP together.
 
-The CLI remains useful for development parity, saved Calculate-series files,
-and mixed Planner-event operations. It is not a fallback for MCP-covered
-operations.
+The CLI remains only for the repo's readiness adapter and mixed Planner-event
+operations. It is not a fallback for MCP-covered operations.
 
 ## Choose The Narrowest Command
 
@@ -152,7 +151,7 @@ python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto
   Form/freshness, TP, HIE, or PP; compares the lasting effect of different XSS
   splits; asks what is required to build a Fitness Signature component; or
   needs a multi-workout projection. Use its mental model for explanation and
-  `load-model`/`simulate_calendar_sequence` for numbers.
+  MCP `project_load_model` or `simulate_calendar_sequence` for numbers.
 - Use MCP `list_recommended_workouts` when candidate workouts are needed.
 - Use MCP `list_workouts(name_keywords=...)` to filter the freshly fetched
   workout library. All supplied words must occur in the name, in any order.
@@ -171,14 +170,15 @@ python3 -B plugins/xert/scripts/xert_cli.py readiness-input --advice-source auto
   include `timeline_summary`: a chronological expansion with numeric
   `start`/`end`/`duration` values in seconds and a compact text `power` value.
   Inspect it to verify repetitions, final RIB recovery, and transitions.
-- For empirical Workout Designer analysis, pass
-  `workout-calculate --series-output /tmp/<name>.json`. The file includes the
+- For empirical Workout Designer analysis, call MCP `calculate_workout` with
+  `include_series=true` and save the returned JSON to a private temporary file.
+  The result includes the
   Fitness Signature used by Xert and second-by-second `power`, `mpa`,
   `proximity`, `xssr`, cumulative `xss`, and `xds` fields, plus the raw
   calculation statistics containing Xert's system work and strain totals.
   Keep the verbose series out of terminal and chat output.
-- For controlled cross-signature probes, pass all three of `--signature-tp`,
-  `--signature-hie`, and `--signature-pp`. They override the Designer form for
+- For controlled cross-signature probes, pass all three of `signature_tp`,
+  `signature_hie`, and `signature_pp`. They override the Designer form for
   the unsaved calculation only and do not change the user's Xert profile.
 - Analyze a saved Calculate series with
   `python3 -B plugins/xert/scripts/xert_calculate_analyze.py /tmp/<name>.json`.

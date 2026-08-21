@@ -96,8 +96,8 @@ absorbable training. Select the relevant low/high/peak capacity according to
 what must be trainable next. Low high/peak capacity does not by itself mean
 poor high/peak recovery; check the corresponding recovery hours.
 
-For an explicit capacity question, use `workout-capacity` with the exact
-`--as-of` and `--fresh-at` timestamps. Never silently substitute a duration or
+For an explicit capacity question, use MCP `calculate_workout_capacity` with
+the exact `as_of` and `fresh_at` timestamps. Never silently substitute a duration or
 default horizon when either timestamp is unknown. The timestamps may be equal
 for a zero-horizon freshness-boundary calculation.
 
