@@ -26,6 +26,10 @@ executed, and presented.
 
 - Default to ERG mode and simple, flat interval prescriptions with the same
   watt target across work intervals.
+- Default cycling workout structure: 12 min progressive warm-up from 55% to 68%
+  FTP, then the prescribed main structure, then 3 min cool-down at 50% FTP.
+  Include all segments in total duration and XSS; adapt only when terrain or
+  traffic makes the exact outdoor power targets impractical.
 - Use slope mode only when requested or naturally required by VO2Max, opener,
   standing, or harder over-threshold work.
 - Prefer suitable existing workouts over parallel structures invented in chat.
