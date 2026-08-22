@@ -159,6 +159,19 @@ structure with the current Fitness Signature. If the next role is not explicit
 in state, derive it only from an unambiguous active-plan queue; otherwise label
 the capacity protection unresolved.
 
+- On an endurance-only day, solve the compatible portion of the Xert dose
+  through endurance, keeping each XSS system within its corresponding
+  recovery-protection capacity.
+- On a plan-selected quality day, calculate the complete quality structure
+  first. Preserve it when it fits the corresponding Low/High/Peak capacities,
+  then fill only the compatible remaining Low XSS with flexible VT1/endurance.
+  Apply capacity protection to that flexible filler before reducing quality.
+- Do not reduce a plan-selected quality structure solely to protect the next
+  day's workout. If the complete quality workout itself exceeds a relevant
+  capacity, report an explicit plan conflict rather than silently diluting it.
+  Direct readiness, illness, a failed execution gate, or an actual calendar
+  constraint may still justify a separate quality modification.
+
 - Resolve the next day's plan role from the active plan and authoritative
    `config/plan-state.json`. Do not invent the next role from Xert advice.
 - Resolve the next day's exact practical workout start from explicit user
@@ -193,9 +206,12 @@ the capacity protection unresolved.
    - `Maximum compatible with next-day Xert freshness`: duration,
      watts/structure, limiting
      XSS capacity, next workout role, and next workout start.
-   If the recommended dose exceeds the recovery-protection capacity, reduce the
-   final recommendation or explicitly state that the next-day quality session
-   is no longer protected.
+   For endurance-only work, reduce the final recommendation when the Xert dose
+   exceeds the applicable recovery-protection capacity. For plan-selected
+   quality work, retain a capacity-compatible complete quality structure and
+   reduce flexible VT1/endurance filler first. If quality itself exceeds a
+   relevant capacity, state the plan conflict and whether the next-day quality
+   session is no longer protected.
 
 Use `Capacity before the next workout` as the canonical section label and
 translate it into the user's language. Explain that Xert's
