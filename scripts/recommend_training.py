@@ -731,6 +731,10 @@ def main() -> None:
             limit=route_map_limit,
         )
         write_json(source_files["xert_route_maps"], route_packet.get("xert_route_maps") or {})
+    route_packet = annotate_route_map_status(
+        route_packet,
+        map_scope=args.route_options_json["map_scope"],
+    )
     first_route = first_recommendation(route_packet)
 
     weather_sources_requiring_mcp = {
@@ -808,7 +812,15 @@ def main() -> None:
         "calendar": planning_context["calendar"],
         "available_modalities": sorted(args.available_modalities),
         "unavailable_reasons": unavailable_reasons,
-        "source_files": {key: str(path) for key, path in source_files.items()},
+        "source_files": {
+            key: str(path)
+            for key, path in source_files.items()
+            if not (
+                key == "xert_route_maps"
+                and args.route_options_json["map_scope"] == "none"
+                and not path.exists()
+            )
+        },
         "source_refresh": source_refresh,
         "readiness": readiness_packet,
         "plan_context": plan_context,
@@ -1904,6 +1916,42 @@ def enrich_route_packet_with_xert_maps(
         "matched_count": sum(1 for route in enriched if isinstance(route, dict) and route.get("xert_map_url")),
         "scope": "all" if limit is None else f"top_{limit}",
     }
+    return packet
+
+
+def annotate_route_map_status(
+    route_packet: dict[str, Any],
+    *,
+    map_scope: str,
+) -> dict[str, Any]:
+    """Distinguish unrequested route maps from requested-but-missing maps."""
+
+    packet = dict(route_packet)
+    recommendations = packet.get("recommendations")
+    routes = recommendations if isinstance(recommendations, list) else []
+    available = any(
+        isinstance(route, dict)
+        and bool(route.get("xert_map_local_path") or route.get("xert_map_url"))
+        for route in routes
+    )
+    status = (
+        "not_requested"
+        if map_scope == "none"
+        else "available"
+        if available
+        else "requested_but_unavailable"
+    )
+    route_map_status = {
+        "status": status,
+        "map_scope": map_scope,
+    }
+    packet["route_map_status"] = route_map_status
+    packet["recommendations"] = [
+        {**route, "route_map_status": route_map_status}
+        if isinstance(route, dict)
+        else route
+        for route in routes
+    ]
     return packet
 
 
@@ -5817,6 +5865,7 @@ def primary_outdoor_option(
         "xert_activity_url": route.get("xert_activity_url"),
         "xert_map_url": route.get("xert_map_url"),
         "xert_map_local_path": route.get("xert_map_local_path"),
+        "route_map_status": route.get("route_map_status"),
         "route_reference_note": route.get("route_reference_note"),
         "weather": compact_weather_signal(route_weather),
     }
@@ -7052,6 +7101,9 @@ def route_map_line(option: dict[str, Any] | None) -> str:
         return "unavailable"
     if option.get("name") == "Active recovery only":
         return "not applicable"
+    map_status = option.get("route_map_status") or {}
+    if map_status.get("status") == "not_requested":
+        return "not requested (map_scope=none)"
     if option.get("xert_map_local_path"):
         return str(option["xert_map_local_path"])
     if option.get("xert_map_url"):

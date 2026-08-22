@@ -16,6 +16,7 @@ from recommend_training import (
     apply_split_preference_to_windows,
     annotate_dose_composition_window_fit,
     annotate_route_window_fit,
+    annotate_route_map_status,
     authoritative_progression_line,
     apply_execution_modality_constraint,
     apply_quality_workout_vt1_composition,
@@ -57,6 +58,7 @@ from recommend_training import (
     presentation_requirements,
     resolve_training_targets,
     route_dose_fit_line,
+    route_map_line,
     required_plan_target_power,
     require_endurance_solution_for_selected_domain,
     require_quality_workout_for_selected_domain,
@@ -490,6 +492,40 @@ class ExecutionOptionsContractTests(unittest.TestCase):
         self.assertEqual(options["index"], Path("outputs/route-index.json"))
         self.assertTrue(options["rebuild_index"])
         self.assertEqual(options["map_scope"], "none")
+
+    def test_route_map_status_distinguishes_not_requested_from_unavailable(self):
+        route_packet = {"recommendations": [{"name": "Sørkedalen x 4"}]}
+
+        not_requested = annotate_route_map_status(route_packet, map_scope="none")
+        unavailable = annotate_route_map_status(route_packet, map_scope="top")
+
+        self.assertEqual(
+            not_requested["route_map_status"]["status"],
+            "not_requested",
+        )
+        self.assertEqual(
+            route_map_line(not_requested["recommendations"][0]),
+            "not requested (map_scope=none)",
+        )
+        self.assertEqual(
+            unavailable["route_map_status"]["status"],
+            "requested_but_unavailable",
+        )
+
+    def test_route_map_status_reports_available_map(self):
+        result = annotate_route_map_status(
+            {
+                "recommendations": [
+                    {
+                        "name": "Sørkedalen x 4",
+                        "xert_map_url": "https://example.test/map.png",
+                    }
+                ]
+            },
+            map_scope="top",
+        )
+
+        self.assertEqual(result["route_map_status"]["status"], "available")
 
     def test_parses_normalized_source_override_files(self):
         with tempfile.TemporaryDirectory() as directory:
