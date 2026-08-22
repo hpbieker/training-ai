@@ -1160,12 +1160,18 @@ def compact_body_battery_from_daily_sources(
     stress: dict[str, Any] | None,
     cutoff_ms: int | None,
 ) -> dict[str, Any] | None:
+    compact_body_battery = (stress or {}).get("body_battery") if stress else None
     values = points_at_or_before(
         body_battery_series_values(
             (stress or {}).get("bodyBatteryValuesArray") if stress else None,
         ),
         cutoff_ms,
     )
+    if not values and isinstance(compact_body_battery, dict):
+        values = points_at_or_before(
+            compact_body_battery_points(compact_body_battery),
+            cutoff_ms,
+        )
     latest = latest_point(values)
     most_recent = latest.get("value") if latest is not None else None
     at_wake = (summary or {}).get("bodyBatteryAtWakeTime") if summary else None
@@ -1185,6 +1191,22 @@ def compact_body_battery_from_daily_sources(
             (summary or {}).get("bodyBatteryDynamicFeedbackEvent") if summary else None
         ),
     }
+
+
+def compact_body_battery_points(payload: dict[str, Any]) -> list[tuple[int, float]]:
+    """Recover timestamped boundary points from compact Garmin stress output."""
+
+    points: list[tuple[int, float]] = []
+    for key in ("first", "last"):
+        point = payload.get(key)
+        if not isinstance(point, dict):
+            continue
+        timestamp = number(point.get("timestamp_ms"))
+        value = number(point.get("value"))
+        if timestamp is None or value is None or value < 0:
+            continue
+        points.append((int(timestamp), value))
+    return sorted(set(points))
 
 
 def body_battery_series_values(raw_values: Any) -> list[tuple[int, float]]:
@@ -2181,6 +2203,12 @@ def validate_garmin_wellness_signals(
         "ttl_minutes": 90,
     }
     if not body_current_valid:
+        # Keep the observation available for diagnostics and presentation while
+        # excluding it from readiness decisions through the canonical fields.
+        result["body_battery_most_recent_observed"] = result.get(
+            "body_battery_most_recent"
+        )
+        result["body_battery_latest_observed"] = result.get("body_battery_latest")
         result["body_battery_most_recent"] = None
         result["body_battery_latest"] = None
 

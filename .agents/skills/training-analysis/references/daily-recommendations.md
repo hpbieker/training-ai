@@ -115,9 +115,13 @@ not import the Intervals transport or invoke its CLI.
 
 Apply the same persistence boundary to every live MCP result used as a source
 override: write the result's `structuredContent`, without the surrounding MCP
-transport envelope, to a date-scoped private temporary JSON file, build the
-complete `--source-overrides-json` map from those paths, and verify that every
-required override file exists before invoking `recommend_training.py`. Do not
+transport envelope, unchanged to a date-scoped private temporary JSON file.
+`recommend_training.py` normalizes supported source-specific MCP envelopes at
+the override-file boundary and composes separate Xert state and planned-advice
+overrides for readiness and dose resolution; the agent must not manually unwrap
+or rebuild them.
+Build the complete `--source-overrides-json` map from those paths and verify
+that every required override file exists before invoking the helper. Do not
 select refresh mode `none` until all source files required by refresh planning
 are present.
 
@@ -183,6 +187,12 @@ the capacity protection unresolved.
    start. The result is three
    independent fresh-boundary capacities—Low, High, and Peak XSS—not three
    additive workout quotas.
+- Persist the complete `calculate_workout_capacity` `structuredContent`
+   unchanged and pass it as `xert_workout_capacity` in
+   `--source-overrides-json`. For an endurance-selected day,
+   `recommend_training.py` applies its Low-XSS capacity as an automatic upper
+   limit before solving the complete endurance structure. Do not manually copy
+   that capacity into `--training-target-json`.
 - Align the capacity horizon with the interval from today's recommended
    `planned_at` to the next day's resolved workout start. When the current Xert
    state timestamp materially precedes today's `planned_at`, do not silently

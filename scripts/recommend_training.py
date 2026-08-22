@@ -50,6 +50,7 @@ SOURCE_REFRESH_POLICY = {
     "intervals_events": ("intervals", 30),
     "xert_activity_loads": ("xert", 30),
     "xert_recommended_training": ("xert", 30),
+    "xert_workout_capacity": ("xert", 30),
     "xert_route_maps": ("xert", 24 * 60),
     "weather_home": ("weather", 60),
     "weather_route": ("weather", 60),
@@ -407,8 +408,20 @@ def main() -> None:
                 f"source override {source_name} must contain one JSON object: "
                 f"{override_path}"
             )
+        override_payload = normalize_source_override_payload(
+            source_name,
+            override_payload,
+        )
+        try:
+            validate_source_override_payload(source_name, override_payload)
+        except ValueError as exc:
+            parser.error(str(exc))
         override_payload.setdefault("source_file", str(override_path))
         write_json(source_files[source_name], override_payload)
+    compose_xert_source_overrides(
+        source_files,
+        overridden_sources=set(args.source_overrides_json),
+    )
     required_sources = {
         "garmin", "xert", "intervals_wellness", "intervals_events",
         "xert_activity_loads", "weather_home",
@@ -512,6 +525,15 @@ def main() -> None:
         target_resolution,
         intensity_decision=intensity_decision,
     )
+    if "xert_workout_capacity" in args.source_overrides_json:
+        apply_recovery_protection_capacity(
+            target_resolution,
+            capacity=load_json_if_exists(source_files["xert_workout_capacity"])
+            or {},
+            selected_intensity=str(
+                intensity_decision.get("selected_domain") or ""
+            ),
+        )
     if args.endurance_structure_json is not None:
         endurance_structure = args.endurance_structure_json
         if split_preference is not None:
@@ -824,6 +846,7 @@ def source_paths(output_dir: Path, day: str) -> dict[str, Path]:
         "intervals_events": output_dir / f"intervals-events-recent-{day}.json",
         "xert_activity_loads": output_dir / f"xert-activity-loads-recent-{day}.json",
         "xert_recommended_training": output_dir / f"xert-recommended-training-{day}.json",
+        "xert_workout_capacity": output_dir / f"xert-workout-capacity-{day}.json",
         "xert_route_maps": output_dir / f"xert-route-maps-{day}.json",
         "xert_workouts": output_dir / f"xert-workouts-{day}.json",
         "progression_vt2": output_dir / f"progression-vt2-{day}.json",
@@ -901,6 +924,133 @@ def parse_source_overrides_json(raw: str) -> dict[str, Path]:
             )
         parsed[source_name] = path
     return parsed
+
+
+def normalize_source_override_payload(
+    source_name: str,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize supported MCP structuredContent envelopes at the file boundary."""
+
+    if source_name == "garmin":
+        health_day = payload.get("health_day")
+        if isinstance(health_day, dict):
+            normalized = dict(health_day)
+            normalized.setdefault("archive_date", payload.get("date"))
+            return normalized
+        return dict(payload)
+
+    if source_name == "xert_recommended_training":
+        advice = payload.get("advice")
+        if isinstance(advice, dict):
+            return dict(advice)
+        return dict(payload)
+
+    if source_name == "xert_workout_capacity":
+        normalized = dict(payload)
+        normalized.setdefault("as_of", payload.get("state_as_of"))
+        capacity = payload.get("capacity")
+        if isinstance(capacity, dict) and not isinstance(
+            payload.get("workout_capacity_xss"), dict
+        ):
+            normalized["workout_capacity_xss"] = capacity
+        return normalized
+
+    if source_name != "xert":
+        return dict(payload)
+
+    normalized = dict(payload)
+    if isinstance(payload.get("state"), dict):
+        normalized = {"training_state": {"state": payload["state"]}}
+    elif isinstance(payload.get("advice"), dict):
+        normalized = {"training_advice": {"advice": payload["advice"]}}
+
+    training_state = normalized.get("training_state")
+    if isinstance(training_state, dict) and isinstance(training_state.get("state"), dict):
+        normalized["training_state"] = {"state": training_state["state"]}
+
+    training_advice = normalized.get("training_advice")
+    if isinstance(training_advice, dict) and isinstance(training_advice.get("advice"), dict):
+        normalized["training_advice"] = {"advice": training_advice["advice"]}
+
+    return normalized
+
+
+def validate_source_override_payload(
+    source_name: str,
+    payload: dict[str, Any],
+) -> None:
+    """Fail at ingestion when a supported source lacks its identifying shape."""
+
+    required_list = {
+        "intervals_wellness": "wellness",
+        "intervals_events": "events",
+        "xert_activity_loads": "activities",
+    }.get(source_name)
+    if required_list is not None and not isinstance(payload.get(required_list), list):
+        raise ValueError(
+            f"source override {source_name} requires a {required_list} array "
+            "after MCP normalization"
+        )
+
+    if source_name == "xert_recommended_training":
+        remaining = payload.get("remaining_xss")
+        target = payload.get("target_xss")
+        if not (
+            isinstance(remaining, dict) and isinstance(remaining.get("low"), (int, float))
+        ) and not (
+            isinstance(target, dict) and isinstance(target.get("low"), (int, float))
+        ):
+            raise ValueError(
+                "source override xert_recommended_training requires numeric "
+                "remaining_xss.low or target_xss.low after MCP normalization"
+            )
+
+    if source_name == "xert_workout_capacity":
+        capacity = payload.get("workout_capacity_xss")
+        if not isinstance(capacity, dict) or not isinstance(
+            capacity.get("low"), (int, float)
+        ):
+            raise ValueError(
+                "source override xert_workout_capacity requires numeric "
+                "workout_capacity_xss.low after MCP normalization"
+            )
+
+    if source_name == "xert" and not (
+        isinstance(payload.get("training_state"), dict)
+        or isinstance(payload.get("training_advice"), dict)
+    ):
+        raise ValueError(
+            "source override xert requires training_state or training_advice "
+            "after MCP normalization"
+        )
+
+
+def compose_xert_source_overrides(
+    source_files: dict[str, Path],
+    *,
+    overridden_sources: set[str],
+) -> None:
+    """Combine raw Xert state and planned advice after independent normalization."""
+
+    required = {"xert", "xert_recommended_training"}
+    if not required.issubset(overridden_sources):
+        return
+
+    xert = load_json_if_exists(source_files["xert"])
+    advice = load_json_if_exists(source_files["xert_recommended_training"])
+    if not isinstance(xert, dict) or not isinstance(advice, dict):
+        raise ValueError(
+            "xert and xert_recommended_training overrides must be JSON objects "
+            "before composition"
+        )
+
+    composed = dict(xert)
+    composed["training_advice"] = {"advice": dict(advice)}
+    composed["training_advice_source_file"] = str(
+        source_files["xert_recommended_training"]
+    )
+    write_json(source_files["xert"], composed)
 
 
 def parse_route_options_json(raw: str) -> dict[str, Any]:
@@ -2683,6 +2833,7 @@ def apply_xert_endurance_duration_solution(
 ) -> dict[str, Any]:
     """Apply an Xert-solved endurance duration instead of mixed-history XSS/min."""
 
+    calculation = normalize_endurance_calculation(calculation)
     if selected_intensity not in {
         "vt1",
         "easy_vt1",
@@ -2692,7 +2843,7 @@ def apply_xert_endurance_duration_solution(
         raise ValueError(
             "endurance-workout calculation requires a recovery or VT1 domain"
         )
-    if calculation.get("source") != "local_xert_endurance_duration_solver":
+    if calculation.get("source") != "local_xert_segment_duration_solver":
         raise ValueError(
             "endurance-workout calculation must come from Xert solve_segment_duration"
         )
@@ -2783,6 +2934,80 @@ def apply_xert_endurance_duration_solution(
         f"{round(duration_seconds / 60.0, 1)} min; high/peak were not targeted"
     )
     return target_resolution["endurance_duration_solution"]
+
+
+def apply_recovery_protection_capacity(
+    target_resolution: dict[str, Any],
+    *,
+    capacity: dict[str, Any],
+    selected_intensity: str,
+) -> dict[str, Any] | None:
+    """Cap endurance dose with Xert's next-workout fresh-boundary capacity."""
+
+    systems = capacity.get("workout_capacity_xss")
+    if not isinstance(systems, dict):
+        raise ValueError(
+            "Xert workout-capacity result has no workout_capacity_xss object"
+        )
+    normalized_systems = {
+        key: number(systems.get(key)) for key in ("low", "high", "peak")
+    }
+    if normalized_systems["low"] is None:
+        raise ValueError("Xert workout-capacity result has no numeric low capacity")
+    if selected_intensity not in {
+        "vt1",
+        "easy_vt1",
+        "recovery",
+        "active_recovery",
+    }:
+        target_resolution["recovery_protection_capacity"] = {
+            "status": "not_applied_to_quality_by_endurance_cap",
+            "workout_capacity_xss": normalized_systems,
+            "as_of": capacity.get("as_of"),
+            "fresh_at": capacity.get("fresh_at"),
+        }
+        return None
+
+    current_load = number(target_resolution.get("target_load"))
+    if current_load is None:
+        raise ValueError("target resolution has no numeric target_load")
+    low_cap = max(0.0, float(normalized_systems["low"]))
+    applied_load = min(current_load, low_cap)
+    capped = applied_load < current_load
+    target_resolution["target_load"] = round(applied_load, 3)
+    target_resolution["recovery_protection_capacity"] = {
+        "status": "capped" if capped else "within_capacity",
+        "limiting_system": "low",
+        "pre_cap_target_xss": round(current_load, 3),
+        "applied_target_xss": round(applied_load, 3),
+        "workout_capacity_xss": normalized_systems,
+        "as_of": capacity.get("as_of"),
+        "fresh_at": capacity.get("fresh_at"),
+        "assumption": "no_intervening_training",
+    }
+    if capped:
+        target_resolution["reason"] = (
+            f"{target_resolution.get('reason') or ''}; endurance dose reduced "
+            f"from {round(current_load, 1)} to {round(applied_load, 1)} XSS by "
+            "the next-workout Xert Low-XSS fresh-boundary capacity"
+        ).strip("; ")
+    return target_resolution["recovery_protection_capacity"]
+
+
+def normalize_endurance_calculation(
+    calculation: dict[str, Any],
+) -> dict[str, Any]:
+    """Map the raw solve_segment_duration result to recommendation fields."""
+
+    normalized = dict(calculation)
+    if normalized.get("target_metric") == "low_xss":
+        normalized.setdefault("target_low_xss", normalized.get("target_value"))
+        normalized.setdefault(
+            "tolerance_xss",
+            normalized.get("absolute_tolerance"),
+        )
+        normalized.setdefault("low_xss_error", normalized.get("target_error"))
+    return normalized
 
 
 def solve_endurance_structure(
@@ -5107,7 +5332,23 @@ def body_battery_summary_line(wellness: dict[str, Any]) -> str:
     if most_recent is not None:
         return f"now={most_recent}"
     if at_wake is not None:
-        return f"at wake={at_wake}"
+        prefix = f"at wake={at_wake}"
+    else:
+        prefix = ""
+
+    observed = wellness.get("body_battery_most_recent_observed")
+    current_status = (wellness.get("garmin_signal_status") or {}).get(
+        "body_battery_current"
+    ) or {}
+    if observed is not None and current_status.get("reason") == "stale_or_wrong_day":
+        detail = f"observed now={observed}, but stale"
+        age_minutes = number(current_status.get("age_minutes"))
+        if age_minutes is not None:
+            detail += f" ({round(age_minutes, 1)} min old)"
+        detail += "; excluded from readiness decisions"
+        return f"{prefix}, {detail}" if prefix else detail
+    if prefix:
+        return prefix
     return "missing"
 
 

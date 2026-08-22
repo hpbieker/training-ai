@@ -11,6 +11,7 @@ from scripts.readiness_snapshot import (
     add_seconds,
     availability_notes,
     build_readiness_snapshot,
+    compact_body_battery,
     compact_hrv_history,
     compact_xert_advice,
     latest_xert_advice,
@@ -41,6 +42,28 @@ class AvailabilityNotesTests(unittest.TestCase):
         self.assertIn("Stale dynamic time-series input", text)
         self.assertIn("completed current-day sleep", text)
         self.assertNotIn("before relying on a now-decision", text)
+
+
+class CompactGarminBodyBatteryTests(unittest.TestCase):
+    def test_reads_compact_body_battery_nested_under_stress(self):
+        result = compact_body_battery(
+            summary={"calendarDate": "2026-08-22"},
+            stress={
+                "body_battery": {
+                    "point_count": 210,
+                    "first": {"timestamp_ms": 1787349600000, "value": 45},
+                    "last": {"timestamp_ms": 1787387220000, "value": 89},
+                    "minimum": 45,
+                    "maximum": 100,
+                }
+            },
+            body_battery=None,
+            cutoff_ms=1787388000000,
+        )
+
+        self.assertEqual(result["calendar_date"], "2026-08-22")
+        self.assertEqual(result["most_recent"], 89)
+        self.assertEqual(result["latest"]["timestamp_ms"], 1787387220000)
 
 
 class XertAdviceContractTests(unittest.TestCase):
@@ -382,6 +405,11 @@ class GarminSignalValidationTests(unittest.TestCase):
         self.assertEqual(result["body_battery_at_wake"], 88)
         self.assertIsNone(result["body_battery_most_recent"])
         self.assertIsNone(result["body_battery_latest"])
+        self.assertEqual(result["body_battery_most_recent_observed"], 25)
+        self.assertEqual(
+            result["body_battery_latest_observed"],
+            {"timestamp_ms": 1785051000000, "value": 25},
+        )
         self.assertEqual(
             result["garmin_signal_status"]["body_battery_current"]["status"],
             "unavailable",

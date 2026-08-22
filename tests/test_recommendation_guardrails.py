@@ -19,6 +19,7 @@ from recommend_training import (
     authoritative_progression_line,
     apply_execution_modality_constraint,
     apply_quality_workout_vt1_composition,
+    apply_recovery_protection_capacity,
     apply_xert_endurance_duration_solution,
     apply_acute_readiness_target_guardrail,
     apply_readiness_domain_target_cap,
@@ -29,6 +30,7 @@ from recommend_training import (
     calendar_context_with_slack,
     compact_xert_workout_recommendations,
     compact_freshness_summary,
+    compose_xert_source_overrides,
     executable_now_line,
     finalize_plan_trace,
     format_summary,
@@ -40,6 +42,8 @@ from recommend_training import (
     initialize_plan_trace,
     intensity_signal_agreement,
     mcp_sources_requiring_refresh,
+    normalize_endurance_calculation,
+    normalize_source_override_payload,
     parse_availability_payload,
     parse_planning_context_json,
     parse_plan_selection_json,
@@ -61,6 +65,7 @@ from recommend_training import (
     split_endurance_structure,
     split_session_info,
     split_session_guidance,
+    validate_source_override_payload,
 )
 from route_recommendations import score_route, surface_classification
 
@@ -227,7 +232,7 @@ class TrainingTargetContractTests(unittest.TestCase):
             target,
             selected_intensity="vt1",
             calculation={
-                "source": "local_xert_endurance_duration_solver",
+                "source": "local_xert_segment_duration_solver",
                 "network_used": False,
                 "model_basis": "test-model",
                 "matched_within_tolerance": True,
@@ -267,6 +272,74 @@ class TrainingTargetContractTests(unittest.TestCase):
             "recalculated_for_selected_domain",
         )
 
+    def test_normalizes_raw_xert_segment_duration_result(self):
+        normalized = normalize_endurance_calculation(
+            {
+                "source": "local_xert_segment_duration_solver",
+                "target_metric": "low_xss",
+                "target_value": 169.1,
+                "target_error": 0.01,
+                "absolute_tolerance": 0.05,
+            }
+        )
+
+        self.assertEqual(normalized["target_low_xss"], 169.1)
+        self.assertEqual(normalized["low_xss_error"], 0.01)
+        self.assertEqual(normalized["tolerance_xss"], 0.05)
+
+    def test_recovery_protection_capacity_caps_endurance_before_solving(self):
+        target = {
+            "target_minutes": 300.0,
+            "target_load": 262.1,
+            "xert_recommended_target_xss": {
+                "low": 257.0,
+                "high": 4.9,
+                "peak": 0.2,
+            },
+            "reason": "Xert remaining dose",
+        }
+
+        applied = apply_recovery_protection_capacity(
+            target,
+            selected_intensity="vt1",
+            capacity={
+                "as_of": "2026-08-22T12:30:00+02:00",
+                "fresh_at": "2026-08-23T09:00:00+02:00",
+                "workout_capacity_xss": {
+                    "low": 165.693,
+                    "high": 15.2,
+                    "peak": 3.4,
+                },
+            },
+        )
+
+        self.assertEqual(target["target_load"], 165.693)
+        self.assertEqual(applied["status"], "capped")
+        self.assertEqual(applied["limiting_system"], "low")
+        self.assertIn("reduced from 262.1 to 165.7 XSS", target["reason"])
+
+    def test_recovery_protection_capacity_does_not_dilute_quality(self):
+        target = {"target_load": 262.1}
+
+        applied = apply_recovery_protection_capacity(
+            target,
+            selected_intensity="vt2",
+            capacity={
+                "workout_capacity_xss": {
+                    "low": 165.7,
+                    "high": 15.2,
+                    "peak": 3.4,
+                }
+            },
+        )
+
+        self.assertIsNone(applied)
+        self.assertEqual(target["target_load"], 262.1)
+        self.assertEqual(
+            target["recovery_protection_capacity"]["status"],
+            "not_applied_to_quality_by_endurance_cap",
+        )
+
     def test_xert_endurance_solution_rejects_wrong_low_target(self):
         with self.assertRaisesRegex(ValueError, "post-guardrail"):
             apply_xert_endurance_duration_solution(
@@ -277,7 +350,7 @@ class TrainingTargetContractTests(unittest.TestCase):
                 },
                 selected_intensity="vt1",
                 calculation={
-                    "source": "local_xert_endurance_duration_solver",
+                    "source": "local_xert_segment_duration_solver",
                     "network_used": False,
                     "matched_within_tolerance": True,
                     "target_low_xss": 200.0,
@@ -434,6 +507,140 @@ class ExecutionOptionsContractTests(unittest.TestCase):
             parse_source_overrides_json('{"garmins":"day.json"}')
         with self.assertRaisesRegex(argparse.ArgumentTypeError, "does not exist"):
             parse_source_overrides_json('{"garmin":"/tmp/no-such-training-source.json"}')
+
+    def test_normalizes_xert_advice_mcp_envelope(self):
+        normalized = normalize_source_override_payload(
+            "xert_recommended_training",
+            {
+                "view": "summary",
+                "advice": {
+                    "remaining_xss": {"low": 257, "high": 4.9, "peak": 0.2},
+                },
+            },
+        )
+
+        self.assertEqual(normalized["remaining_xss"]["low"], 257)
+        self.assertNotIn("advice", normalized)
+        validate_source_override_payload("xert_recommended_training", normalized)
+
+    def test_normalizes_full_garmin_health_day_archive(self):
+        normalized = normalize_source_override_payload(
+            "garmin",
+            {
+                "date": "2026-08-22",
+                "health_day": {
+                    "date": "2026-08-22",
+                    "source": "garmin_connect_gccli",
+                    "source_time_local": "2026-08-22T12:01:25+02:00",
+                    "sources": {
+                        "training_readiness": [{"score": 32}],
+                    },
+                },
+            },
+        )
+
+        self.assertEqual(normalized["date"], "2026-08-22")
+        self.assertEqual(normalized["sources"]["training_readiness"][0]["score"], 32)
+        self.assertNotIn("health_day", normalized)
+
+    def test_normalizes_and_validates_xert_workout_capacity(self):
+        normalized = normalize_source_override_payload(
+            "xert_workout_capacity",
+            {
+                "state_as_of": "2026-08-22T12:30:00+02:00",
+                "fresh_at": "2026-08-23T09:00:00+02:00",
+                "capacity": {"low": 165.7, "high": 15.2, "peak": 3.4},
+            },
+        )
+
+        self.assertEqual(normalized["workout_capacity_xss"]["low"], 165.7)
+        self.assertEqual(normalized["as_of"], "2026-08-22T12:30:00+02:00")
+        validate_source_override_payload("xert_workout_capacity", normalized)
+
+    def test_normalizes_xert_state_mcp_envelope(self):
+        normalized = normalize_source_override_payload(
+            "xert",
+            {
+                "view": "summary",
+                "state": {
+                    "signature": {
+                        "tp_watts": 300,
+                        "hie_kj": 14,
+                        "pp_watts": 770,
+                    },
+                },
+            },
+        )
+
+        self.assertEqual(
+            normalized["training_state"]["state"]["signature"]["tp_watts"],
+            300,
+        )
+        validate_source_override_payload("xert", normalized)
+
+    def test_preserves_already_normalized_xert_payload(self):
+        payload = {
+            "training_state": {"state": {"signature": {"tp_watts": 300}}},
+            "training_advice": {"advice": {"target_xss": {"low": 80}}},
+        }
+
+        self.assertEqual(normalize_source_override_payload("xert", payload), payload)
+
+    def test_composes_raw_xert_state_and_planned_advice_overrides(self):
+        with tempfile.TemporaryDirectory() as directory:
+            paths = {
+                "xert": Path(directory) / "xert.json",
+                "xert_recommended_training": Path(directory) / "advice.json",
+            }
+            paths["xert"].write_text(
+                json.dumps(
+                    {
+                        "training_state": {
+                            "state": {
+                                "signature": {"tp_watts": 300},
+                            },
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            paths["xert_recommended_training"].write_text(
+                json.dumps(
+                    {
+                        "remaining_xss": {
+                            "low": 257,
+                            "high": 4.9,
+                            "peak": 0.2,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            compose_xert_source_overrides(
+                paths,
+                overridden_sources={
+                    "xert",
+                    "xert_recommended_training",
+                },
+            )
+            composed = json.loads(paths["xert"].read_text(encoding="utf-8"))
+
+        self.assertEqual(
+            composed["training_advice"]["advice"]["remaining_xss"]["low"],
+            257,
+        )
+        self.assertEqual(
+            composed["training_state"]["state"]["signature"]["tp_watts"],
+            300,
+        )
+
+    def test_rejects_missing_xert_advice_dose_at_ingestion(self):
+        with self.assertRaisesRegex(ValueError, "remaining_xss.low or target_xss.low"):
+            validate_source_override_payload(
+                "xert_recommended_training",
+                {"source": "xert_recommended_training"},
+            )
 
 
 class WeatherCommandTests(unittest.TestCase):
@@ -1382,6 +1589,28 @@ class BodyBatteryPresentationTests(unittest.TestCase):
             ),
             "at wake=84, now=72",
         )
+
+    def test_summary_distinguishes_stale_observation_from_missing_value(self):
+        summary = body_battery_summary_line(
+            {
+                "body_battery_at_wake": None,
+                "body_battery_most_recent": None,
+                "body_battery_most_recent_observed": 89,
+                "garmin_signal_status": {
+                    "body_battery_current": {
+                        "status": "unavailable",
+                        "reason": "stale_or_wrong_day",
+                        "age_minutes": 123.5,
+                    }
+                },
+            }
+        )
+
+        self.assertEqual(
+            summary,
+            "observed now=89, but stale (123.5 min old); excluded from readiness decisions",
+        )
+        self.assertNotEqual(summary, "missing")
 
     def test_presentation_contract_requires_both_values_when_present(self):
         requirement = presentation_requirements()["body_battery"]
