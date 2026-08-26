@@ -30,6 +30,22 @@ live access, field semantics, and remote write safety.
 
 Read [references/activity-analysis.md](references/activity-analysis.md).
 
+### Molecular stimulus analysis
+
+If the user asks about a workout's physiological, cellular, biochemical, or
+molecular stimuli, signalling pathways, or likely adaptations, analyze the
+stimuli the workout likely produced based on its actual intensity, duration,
+interval structure, and available sensor data.
+
+Rank the most important signals, such as AMPK, CaMKII, p38, PGC-1alpha, p53,
+HIF-1alpha, VEGF, and eNOS, by likely strength. For each, explain why it was
+activated, what it affects, and which training adaptation it may contribute to.
+
+Cover mitochondria, capillaries, muscle fibres, lactate, fuel use, ion handling,
+VO2 kinetics, and durability when relevant. Distinguish observed responses,
+likely signalling, and lasting adaptation. Finish with the primary effect,
+secondary effects, and what the workout stimulated little.
+
 ### Readiness or daily recommendation
 
 Read [references/daily-recommendations.md](references/daily-recommendations.md).
