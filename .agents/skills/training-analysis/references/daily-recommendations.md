@@ -5,8 +5,11 @@
 Before running helpers, resolve the local date, planned start or free window,
 location/start anchor, available modalities, surface/bike intent, target event
 and time horizon, and practical fueling defaults. Use the configured earliest
-start and workout-placement preference when no time is supplied; if calendar
-context exists, select a practical window that satisfies them. Resolve modality availability
+start and workout-placement preference when no time is supplied. Resolve the
+plan role and its complete workout before choosing `planned_at`. For a quality
+role, first find the earliest practical window supported by current readiness
+and the relevant Xert recovery gate; otherwise assess the appropriate downgrade
+in an earlier window. Choose one session. Resolve modality availability
 from explicit user input or personal context, never from the repository.
 
 When calendar context is used, classify events before calculating availability.
@@ -76,9 +79,10 @@ from the machine timezone or assume a mobile client timezone is available.
 For every agent-driven recommendation, provide a complete
 `--planning-context-json` that satisfies `recommend_training.py`'s validation.
 Prefer a small persisted `planning-context.json` working file when the context
-is assembled across several source reads. Before calling `recommend_training.py`, derive `planned_at` and the
-availability windows from the freshly read calendar by applying the configured
-start boundary and workout-placement preference, classifying fixed, open,
+is assembled across several source reads. Before calling `recommend_training.py`, resolve the
+plan role, then derive `planned_at` and the availability windows from the
+freshly read calendar by applying the configured start boundary and
+workout-placement preference, classifying fixed, open,
 tentative, and movable events, and applying the complete setup, workout, and cleanup window.
 An existing calendar event that appears to reserve time for training is
 calendar evidence, not an automatic choice of `planned_at`; select its start
