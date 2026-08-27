@@ -19,9 +19,9 @@ Prefer the Xert MCP tools when they are available:
 
 - `list_activities` returns compact identity summaries for an inclusive
   local-date range with only `path`, `name`, and `start_local` by default. Use
-  `includeFields` to add selected details such as duration, distance, or source. Requesting
-  `xss`, signature, Difficulty, focus, specificity, freshness, or XEP fields
-  performs the heavier per-activity detail read; ordinary discovery does not.
+  `includeFields` to add duration, distance, source, or map URL from the same
+  activity-list response. Use `get_activity` when XSS, signature, Difficulty,
+  focus, specificity, freshness, or XEP is required.
 - `list_activities`, `list_workouts`, `list_notes`,
   `list_recommended_workouts`, and `get_training_forecast` accept closed
   `filters` (`field`, `op`, `value`), ordered `sort` keys, and a post-filter
@@ -102,8 +102,8 @@ Prefer the Xert MCP tools when they are available:
 ## Choose The Narrowest Command
 
 - Use MCP `list_activities` and `get_activity` for activity discovery and
-  details. Request `includeFields=["xss"]` for compact XSS history rather than
-  looping over individual details.
+  details. Keep list discovery to fields supplied by the activity-list response;
+  use `get_activity` for load, signature, and other calculated detail fields.
 - When a local strain calculation needs the current Fitness Signature, use MCP
   `get_training_state`, then pass its normalized TP, HIE, and PP to MCP
   `calculate_strain`. Do not call live `calculate_workout` solely to obtain a

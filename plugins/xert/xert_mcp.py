@@ -186,13 +186,7 @@ def _object(description: str) -> dict[str, object]:
 
 
 _ACTIVITY_LIST_INCLUDE_FIELDS = (
-    "duration_s", "distance_m", "source", "map_url", "xss", "xep_watts",
-    "focus", "specificity", "difficulty", "difficulty_rating", "freshness",
-    "signature",
-)
-_ACTIVITY_LIST_DETAIL_FIELDS = frozenset(
-    {"xss", "xep_watts", "focus", "specificity", "difficulty",
-     "difficulty_rating", "freshness", "signature"}
+    "duration_s", "distance_m", "source", "map_url",
 )
 _WORKOUT_LIST_INCLUDE_FIELDS = (
     "duration_s", "work_watts", "xss", "xlss", "xhss", "xpss",
@@ -338,8 +332,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "list_activities",
         "description": (
             "List compact Xert activity identity summaries for an inclusive local-date "
-            "range. Use includeFields for selected details; load and signature fields "
-            "trigger the heavier per-activity detail read."
+            "range. Use includeFields for details available from the activity-list "
+            "response. This tool never fetches individual activity details."
         ),
         "inputSchema": {
             "type": "object",
@@ -1215,13 +1209,7 @@ class XertToolService:
                 if field in _ACTIVITY_LIST_INCLUDE_FIELDS
             )
             effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
-            view = (
-                "loads"
-                if any(field in _ACTIVITY_LIST_DETAIL_FIELDS for field in effective_fields)
-                else "summary"
-            )
-            result = service.list_activities(start, end, view=view)
-            activities = result["activities"] if view == "loads" else result
+            activities = service.list_activities(start, end, view="summary")
             summaries = [
                 _activity_list_summary(activity, effective_fields)
                 for activity in activities

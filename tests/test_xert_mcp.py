@@ -250,17 +250,20 @@ class XertMcpDispatchTests(unittest.TestCase):
             ("list_activities", "2026-08-01", "2026-08-02", "summary"),
         )
 
-    def test_list_activities_fetches_details_only_for_requested_load_fields(self) -> None:
-        activities = self.tools.call_tool("list_activities", {
-            "start_date": "2026-08-01", "end_date": "2026-08-02",
-            "includeFields": ["xss"],
-        })
-        self.assertEqual(activities["includeFields"], ["xss"])
-        self.assertEqual(activities["activities"][0]["xss"]["low"], 10)
-        self.assertEqual(
-            self.fake.calls[0],
-            ("list_activities", "2026-08-01", "2026-08-02", "loads"),
-        )
+    def test_list_activities_rejects_fields_that_require_activity_details(self) -> None:
+        for field in (
+            "xss", "xep_watts", "focus", "specificity", "difficulty",
+            "difficulty_rating", "freshness", "signature",
+        ):
+            with self.subTest(field=field), self.assertRaisesRegex(
+                MCP.ToolFailure, "Unsupported includeFields value"
+            ):
+                self.tools.call_tool("list_activities", {
+                    "start_date": "2026-08-01", "end_date": "2026-08-02",
+                    "includeFields": [field],
+                })
+
+        self.assertEqual(self.fake.calls, [])
 
     def test_list_activities_cheap_include_field_uses_summary_read(self) -> None:
         activities = self.tools.call_tool("list_activities", {
