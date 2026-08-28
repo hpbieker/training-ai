@@ -417,6 +417,54 @@ def list_events(
     return events
 
 
+def list_activity_messages(
+    *, activity_id: str, since_id: int | None = None, limit: int = 100,
+    api_key: str | None = None, bearer_token: str | None = None,
+) -> list[dict[str, Any]]:
+    """List comments and notes attached to one Intervals.icu activity."""
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    params: dict[str, Any] = {"limit": limit}
+    if since_id is not None:
+        params["sinceId"] = since_id
+    messages = _request_json(
+        f"/activity/{activity_id}/messages", credentials, params=params,
+    )
+    if not isinstance(messages, list) or any(
+        not isinstance(message, dict) for message in messages
+    ):
+        raise TypeError("Expected Intervals.icu activity messages endpoint to return a list of objects")
+    return messages
+
+
+def get_training_plan(
+    *, athlete_id: str | int = 0, api_key: str | None = None,
+    bearer_token: str | None = None,
+) -> dict[str, Any]:
+    """Fetch the training plan currently applied to an Intervals.icu athlete."""
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    plan = _request_json(f"/athlete/{athlete_id}/training-plan", credentials)
+    if not isinstance(plan, dict):
+        raise TypeError("Expected Intervals.icu training plan endpoint to return an object")
+    return plan
+
+
+def get_athlete_summary(
+    *, start: str | date, end: str | date, athlete_id: str | int = 0,
+    api_key: str | None = None, bearer_token: str | None = None,
+) -> list[dict[str, Any]]:
+    """Fetch Intervals.icu period summary rows for an athlete."""
+    credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
+    summaries = _request_json(
+        f"/athlete/{athlete_id}/athlete-summary.json", credentials,
+        params={"start": _date_to_string(start), "end": _date_to_string(end)},
+    )
+    if not isinstance(summaries, list) or any(
+        not isinstance(summary, dict) for summary in summaries
+    ):
+        raise TypeError("Expected Intervals.icu athlete summary endpoint to return a list of objects")
+    return summaries
+
+
 def create_event(
     *, event: dict[str, Any], api_key: str | None = None,
     bearer_token: str | None = None, athlete_id: str | int = 0,

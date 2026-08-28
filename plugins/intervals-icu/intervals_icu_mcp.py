@@ -26,12 +26,15 @@ from intervals_icu_api import (  # noqa: E402
     delete_event,
     get_activity,
     get_activities,
+    get_athlete_summary,
+    get_training_plan,
     get_wellness,
     list_athletes,
     list_activities,
     list_activity_hr_curves,
     list_activity_pace_curves,
     list_activity_power_curves,
+    list_activity_messages,
     list_sport_settings,
     list_events,
     list_wellness,
@@ -158,6 +161,18 @@ ANNOTATIONS = {
     },
     "list_events": {
         "title": "List Intervals.icu Calendar Events", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "list_activity_messages": {
+        "title": "List Intervals.icu Activity Messages", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "get_training_plan": {
+        "title": "Get Intervals.icu Training Plan", "readOnlyHint": True,
+        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+    },
+    "get_athlete_summary": {
+        "title": "Get Intervals.icu Athlete Summary", "readOnlyHint": True,
         "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
     },
     "create_event": {
@@ -794,6 +809,98 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": ANNOTATIONS["upload_activity"],
     },
+    "list_activity_messages": {
+        "name": "list_activity_messages",
+        "description": (
+            "List comments and notes attached to one Intervals.icu activity. "
+            "Treat them as athlete- or coach-authored context, not sensor observations."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
+                "activity_id": {"type": "string", "minLength": 1},
+                "since_id": {"type": "integer", "minimum": 0},
+                "limit": {"type": "integer", "minimum": 1, "default": 100},
+            },
+            "required": ["activity_id"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_id": {"type": "string"},
+                "athlete": _object("Explicitly selected non-default athlete."),
+                "count": {"type": "integer"},
+                "messages": {"type": "array", "items": _object("Intervals.icu activity message.")},
+            },
+            "required": ["activity_id", "count", "messages"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["list_activity_messages"],
+    },
+    "get_training_plan": {
+        "name": "get_training_plan",
+        "description": (
+            "Get the Intervals.icu training plan currently applied to an athlete, "
+            "including plan identity, rollout context, and folder metadata when present."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "athlete": _object("Explicitly selected non-default athlete."),
+                "plan": _object("Intervals.icu athlete training plan response."),
+            },
+            "required": ["plan"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["get_training_plan"],
+    },
+    "get_athlete_summary": {
+        "name": "get_athlete_summary",
+        "description": (
+            "Get Intervals.icu aggregate training summary rows for an inclusive local-date "
+            "range, including category, zone, load, fitness, fatigue, form, and session-RPE totals when available."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+            },
+            "required": ["start_date", "end_date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
+                "athlete": _object("Explicitly selected non-default athlete."),
+                "count": {"type": "integer"},
+                "summaries": {"type": "array", "items": _object("Intervals.icu athlete summary row.")},
+            },
+            "required": ["start_date", "end_date", "count", "summaries"],
+            "additionalProperties": False,
+        },
+        "annotations": ANNOTATIONS["get_athlete_summary"],
+    },
     "list_wellness": {
         "name": "list_wellness",
         "description": (
@@ -1060,6 +1167,9 @@ class IntervalsIcuToolService:
         activity_updater: Callable[..., dict[str, Any]] = update_activity,
         activity_deleter: Callable[..., dict[str, Any]] = delete_activity,
         activity_uploader: Callable[..., dict[str, Any]] = upload_activity_file,
+        activity_message_lister: Callable[..., list[dict[str, Any]]] = list_activity_messages,
+        training_plan_getter: Callable[..., dict[str, Any]] = get_training_plan,
+        athlete_summary_getter: Callable[..., list[dict[str, Any]]] = get_athlete_summary,
         wellness_lister: Callable[..., list[dict[str, Any]]] = list_wellness,
         wellness_getter: Callable[..., dict[str, Any]] = get_wellness,
         wellness_updater: Callable[..., dict[str, Any]] = update_wellness,
@@ -1084,6 +1194,9 @@ class IntervalsIcuToolService:
         self._activity_updater = activity_updater
         self._activity_deleter = activity_deleter
         self._activity_uploader = activity_uploader
+        self._activity_message_lister = activity_message_lister
+        self._training_plan_getter = training_plan_getter
+        self._athlete_summary_getter = athlete_summary_getter
         self._wellness_lister = wellness_lister
         self._wellness_getter = wellness_getter
         self._wellness_updater = wellness_updater
@@ -1458,6 +1571,47 @@ class IntervalsIcuToolService:
                     "activity_id": activity_id, "uploaded_activity": uploaded,
                     "verified_activity": verified_activity, "verified": True,
                 }
+            if name == "list_activity_messages":
+                _, selected_athlete = self._selected_athlete(arguments, auth)
+                activity_id = _required_string(arguments, "activity_id")
+                since_id = arguments.get("since_id")
+                if since_id is not None and (
+                    isinstance(since_id, bool) or not isinstance(since_id, int) or since_id < 0
+                ):
+                    raise ToolFailure("since_id must be a non-negative integer", "invalid_arguments")
+                limit = _optional_positive_int(arguments, "limit", 100)
+                messages = self._activity_message_lister(
+                    activity_id=activity_id, since_id=since_id, limit=limit, **auth,
+                )
+                response = {
+                    "activity_id": activity_id, "count": len(messages), "messages": messages,
+                }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
+            if name == "get_training_plan":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
+                plan = self._training_plan_getter(athlete_id=athlete_id, **auth)
+                response = {"plan": plan}
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
+            if name == "get_athlete_summary":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
+                start_date = _required_date(arguments, "start_date")
+                end_date = _required_date(arguments, "end_date")
+                if end_date < start_date:
+                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+                summaries = self._athlete_summary_getter(
+                    start=start_date, end=end_date, athlete_id=athlete_id, **auth,
+                )
+                response = {
+                    "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
+                    "count": len(summaries), "summaries": summaries,
+                }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "list_wellness":
                 athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 start_date = _required_date(arguments, "start_date")

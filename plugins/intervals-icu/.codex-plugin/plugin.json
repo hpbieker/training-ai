@@ -1,7 +1,7 @@
 {
   "name": "intervals-icu",
-  "version": "0.1.0+codex.20260828162819",
-  "description": "Intervals.icu source semantics and API access for athletes, training activities, streams, and wellness data.",
+  "version": "0.1.0+codex.20260828144824",
+  "description": "Intervals.icu source semantics and API access for athletes, plans, summaries, training activities, streams, messages, and wellness data.",
   "author": {
     "name": "Hans Petter Bieker"
   },
@@ -10,7 +10,7 @@
   "interface": {
     "displayName": "Intervals.icu",
     "shortDescription": "Fetch and interpret Intervals.icu activities, intervals, wellness, and files.",
-    "longDescription": "Intervals.icu provides MCP access and source-specific guidance for accessible athletes, activities, streams, files, wellness, calendar events, uploads, and cautious remote updates. Plotting, readiness composition, and cross-source training analysis live in the training-ai layer.",
+    "longDescription": "Intervals.icu provides MCP access and source-specific guidance for accessible athletes, applied training plans, period summaries, activities, messages, streams, files, wellness, calendar events, uploads, and cautious remote updates. Plotting, readiness composition, and cross-source training analysis live in the training-ai layer.",
     "developerName": "Hans Petter Bieker",
     "category": "Health & Fitness",
     "capabilities": [

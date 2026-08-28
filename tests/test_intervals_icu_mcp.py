@@ -45,6 +45,9 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             "activity_updater": lambda **kwargs: kwargs["updates"],
             "activity_deleter": lambda **kwargs: {"id": kwargs["activity_id"]},
             "activity_uploader": lambda **kwargs: {"id": "i-uploaded"},
+            "activity_message_lister": lambda **kwargs: [],
+            "training_plan_getter": lambda **kwargs: {},
+            "athlete_summary_getter": lambda **kwargs: [],
             "wellness_lister": lambda **kwargs: [{"id": "2026-08-17", "soreness": 2}],
             "wellness_getter": lambda **kwargs: {},
             "wellness_updater": lambda **kwargs: kwargs["updates"],
@@ -69,7 +72,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         path.write_bytes(b"activity-file")
         return path
 
-    def test_advertises_exactly_twenty_two_tools(self):
+    def test_advertises_exactly_twenty_five_tools(self):
         self.assertEqual(
             [tool["name"] for tool in self.service().list_tools()],
             [
@@ -80,6 +83,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
                 "get_activities",
                 "get_activity_streams", "get_activity_file", "update_activity",
                 "delete_activity", "delete_activities", "upload_activity",
+                "list_activity_messages", "get_training_plan", "get_athlete_summary",
                 "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
             ],
@@ -328,7 +332,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
     def test_date_bounded_tools_use_start_and_end_date_only(self):
         tools = {tool["name"]: tool for tool in self.service().list_tools()}
         for name in (
-            "list_activities", "list_wellness", "list_events",
+            "list_activities", "get_athlete_summary", "list_wellness", "list_events",
             "create_event", "update_event", "delete_event",
         ):
             properties = tools[name]["inputSchema"]["properties"]
@@ -922,6 +926,74 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(result["activity_id"], "i-uploaded")
         self.assertTrue(result["verified"])
 
+    def test_list_activity_messages_defaults_to_me_and_passes_pagination(self):
+        calls = []
+        result = self.service(
+            activity_message_lister=lambda **kwargs: calls.append(kwargs) or [
+                {"id": 7, "content": "Heavy legs"}
+            ]
+        ).call_tool("list_activity_messages", {
+            "activity_id": "i1", "since_id": 5, "limit": 20,
+        })
+        self.assertEqual(calls[0]["activity_id"], "i1")
+        self.assertEqual(calls[0]["since_id"], 5)
+        self.assertEqual(calls[0]["limit"], 20)
+        self.assertNotIn("athlete", result)
+        self.assertEqual(result["messages"][0]["content"], "Heavy legs")
+
+    def test_list_activity_messages_validates_explicit_athlete(self):
+        result = self.service().call_tool("list_activity_messages", {
+            "athlete": "i-other", "activity_id": "i1",
+        })
+        self.assertEqual(result["athlete"]["id"], "i-other")
+        for since_id in (-1, True, "7"):
+            with self.subTest(since_id=since_id), self.assertRaises(MCP.ToolFailure):
+                self.service().call_tool("list_activity_messages", {
+                    "activity_id": "i1", "since_id": since_id,
+                })
+
+    def test_get_training_plan_uses_selected_athlete(self):
+        calls = []
+        result = self.service(
+            training_plan_getter=lambda **kwargs: calls.append(kwargs) or {
+                "training_plan_alias": "Ski"
+            }
+        ).call_tool("get_training_plan", {"athlete": "i-other"})
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        self.assertEqual(result["plan"]["training_plan_alias"], "Ski")
+        self.assertEqual(result["athlete"]["id"], "i-other")
+
+    def test_plan_and_summary_default_to_me(self):
+        plan_calls = []
+        summary_calls = []
+        service = self.service(
+            training_plan_getter=lambda **kwargs: plan_calls.append(kwargs) or {},
+            athlete_summary_getter=lambda **kwargs: summary_calls.append(kwargs) or [],
+        )
+        plan = service.call_tool("get_training_plan", {})
+        summary = service.call_tool("get_athlete_summary", {
+            "start_date": "2026-08-17", "end_date": "2026-08-28",
+        })
+        self.assertEqual(plan_calls[0]["athlete_id"], 0)
+        self.assertEqual(summary_calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", plan)
+        self.assertNotIn("athlete", summary)
+
+    def test_get_athlete_summary_uses_inclusive_dates_and_selected_athlete(self):
+        calls = []
+        result = self.service(
+            athlete_summary_getter=lambda **kwargs: calls.append(kwargs) or [
+                {"athlete_id": "i-other", "training_load": 400}
+            ]
+        ).call_tool("get_athlete_summary", {
+            "athlete": "i-other", "start_date": "2026-08-17", "end_date": "2026-08-28",
+        })
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        self.assertEqual(calls[0]["start"].isoformat(), "2026-08-17")
+        self.assertEqual(calls[0]["end"].isoformat(), "2026-08-28")
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["athlete"]["id"], "i-other")
+
     def test_list_wellness_uses_inclusive_date_bounds(self):
         calls = []
         service = self.service(
@@ -1122,6 +1194,37 @@ class IntervalsIcuMcpTests(unittest.TestCase):
 
 
 class IntervalsIcuAthleteTransportTests(unittest.TestCase):
+    def test_new_analysis_endpoints_use_expected_paths_and_parameters(self):
+        calls = []
+
+        def request(path, credentials, **kwargs):
+            calls.append((path, kwargs.get("params")))
+            if path.endswith("/messages"):
+                return []
+            if path.endswith("/training-plan"):
+                return {"training_plan_alias": "Ski"}
+            if path.endswith("/athlete-summary.json"):
+                return []
+            raise AssertionError(path)
+
+        with mock.patch.object(API, "_request_json", side_effect=request):
+            API.list_activity_messages(
+                activity_id="i1", since_id=4, limit=25, api_key="secret"
+            )
+            API.get_training_plan(athlete_id="i-other", api_key="secret")
+            API.get_athlete_summary(
+                athlete_id="i-other", start="2026-08-17", end="2026-08-28",
+                api_key="secret",
+            )
+
+        self.assertEqual(calls, [
+            ("/activity/i1/messages", {"limit": 25, "sinceId": 4}),
+            ("/athlete/i-other/training-plan", None),
+            ("/athlete/i-other/athlete-summary.json", {
+                "start": "2026-08-17", "end": "2026-08-28",
+            }),
+        ])
+
     def test_default_athlete_is_resolved_for_curve_and_settings_endpoints(self):
         paths = []
 
@@ -1222,6 +1325,7 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
                 "get_activities",
                 "get_activity_streams", "get_activity_file", "update_activity",
                 "delete_activity", "delete_activities", "upload_activity",
+                "list_activity_messages", "get_training_plan", "get_athlete_summary",
                 "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
             ],

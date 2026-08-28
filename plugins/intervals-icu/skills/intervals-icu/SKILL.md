@@ -30,12 +30,21 @@ Choose the narrowest workflow that answers the request:
   power; do not describe it as a raw max-power metadata field.
 - Per-activity best heart rate or pace: call `list_activity_hr_curves` with
   explicit durations or `list_activity_pace_curves` with explicit distances.
+- Athlete- or coach-authored post-workout context: call
+  `list_activity_messages` for the exact activity. Keep message text distinct
+  from measured activity fields and verify the author and timestamp.
 - Activities containing intervals within duration, intensity, and repetition
   bounds: call `search_activity_intervals`.
 - Intervals.icu thresholds, zones, and sport-specific load configuration: call
   `list_sport_settings`.
 - Readiness context: call MCP `list_wellness` and `list_events`; let the caller
   resolve source priority and compose readiness.
+- Applied plan identity and rollout context: call `get_training_plan`. An empty
+  or unassigned source response means no Intervals.icu plan is currently
+  applied; do not infer one from calendar entries alone.
+- Aggregate period totals, time in zones, category distribution, load, fitness,
+  fatigue, form, and session-RPE: call `get_athlete_summary` with an explicit
+  inclusive local-date range. Preserve these as Intervals.icu aggregates.
 - Calendar events: call MCP `list_events` first, then use `create_event`,
   `update_event`, or `delete_event` on the exact event. Record sickness with
   `category=SICK`, never as a wellness comment.
@@ -48,6 +57,8 @@ Choose the narrowest workflow that answers the request:
   `list_activity_pace_curves`, `search_activity_intervals`, and
   `list_sport_settings`, `list_wellness`, `list_events`,
   `list_activity_power_curves`, `get_activity_file`, and `search_activities`
+  as well as `list_activity_messages`, `get_training_plan`, and
+  `get_athlete_summary`
   accept an optional `athlete`; omission, `me`, and `0` all mean the
   authenticated athlete and remain implicit in the response. An explicitly
   selected non-default athlete is validated against `list_athletes` and
@@ -82,6 +93,12 @@ Choose the narrowest workflow that answers the request:
 - `list_activity_hr_curves` and `list_activity_pace_curves` follow the same
   date-bounded per-activity pattern for explicit durations and distances and
   support the optional athlete selection described above.
+- `list_activity_messages` returns comments and notes for one exact activity,
+  including author and timestamp when supplied by the source.
+- `get_training_plan` returns the selected athlete's currently applied plan and
+  rollout metadata. `get_athlete_summary` returns source aggregate rows for an
+  inclusive local-date range; do not substitute its load or fitness fields for
+  another platform's metrics.
 - `search_activity_intervals` passes explicit interval bounds to Intervals.icu's
   source search endpoint and returns compact activity summaries.
 - `list_sport_settings` returns the selected athlete's source sport settings
