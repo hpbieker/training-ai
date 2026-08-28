@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 PLUGIN_DIR = Path(__file__).resolve().parents[1] / "plugins" / "intervals-icu"
@@ -14,12 +15,17 @@ SPEC = importlib.util.spec_from_file_location(
 assert SPEC is not None and SPEC.loader is not None
 MCP = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MCP)
+API = sys.modules["intervals_icu_api"]
 
 
 class IntervalsIcuMcpTests(unittest.TestCase):
     def service(self, **overrides):
         defaults = {
             "credential_factory": lambda: MCP.IntervalsIcuCredentials(api_key="secret"),
+            "athlete_lister": lambda **kwargs: [
+                {"id": "i-me", "name": "Me"},
+                {"id": "i-other", "name": "Other", "icu_tags": ["Coaching"]},
+            ],
             "activity_lister": lambda **kwargs: [{"id": "i1"}, {"id": "i2"}],
             "activity_power_curve_lister": lambda **kwargs: {
                 "secs": list(kwargs["secs"]),
@@ -63,10 +69,11 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         path.write_bytes(b"activity-file")
         return path
 
-    def test_advertises_exactly_twenty_one_tools(self):
+    def test_advertises_exactly_twenty_two_tools(self):
         self.assertEqual(
             [tool["name"] for tool in self.service().list_tools()],
             [
+                "list_athletes",
                 "list_activities", "list_activity_power_curves", "list_activity_hr_curves",
                 "list_activity_pace_curves", "search_activity_intervals", "list_sport_settings",
                 "search_activities", "get_activity",
@@ -78,7 +85,78 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             ],
         )
 
-    def test_list_activity_power_curves_passes_dates_and_secs_without_athlete_id(self):
+    def test_list_athletes_returns_compact_accessible_rows(self):
+        result = self.service().call_tool("list_athletes", {})
+        self.assertEqual(result, {
+            "count": 2,
+            "athletes": [
+                {"id": "i-me", "name": "Me"},
+                {"id": "i-other", "name": "Other", "tags": ["Coaching"]},
+            ],
+        })
+
+    def test_activity_tools_default_to_me_without_athlete_in_response(self):
+        list_calls = []
+        get_calls = []
+        stream_calls = []
+        service = self.service(
+            activity_lister=lambda **kwargs: list_calls.append(kwargs) or [],
+            activity_getter=lambda **kwargs: get_calls.append(kwargs) or {"id": kwargs["activity_id"]},
+            streams_downloader=lambda **kwargs: stream_calls.append(kwargs) or self._write_streams(**kwargs),
+        )
+        listed = service.call_tool("list_activities", {
+            "start_date": "2026-08-28", "end_date": "2026-08-28",
+        })
+        fetched = service.call_tool("get_activity", {"activity_id": "i1"})
+        streamed = service.call_tool("get_activity_streams", {"activity_id": "i1"})
+        self.assertEqual(list_calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", listed)
+        self.assertNotIn("athlete", fetched)
+        self.assertNotIn("athlete", streamed)
+        self.assertNotIn("athlete_id", get_calls[0])
+        self.assertNotIn("athlete_id", stream_calls[0])
+
+    def test_activity_tools_include_explicit_non_default_athlete(self):
+        calls = []
+        service = self.service(activity_lister=lambda **kwargs: calls.append(kwargs) or [])
+        listed = service.call_tool("list_activities", {
+            "athlete": "i-other",
+            "start_date": "2026-08-28", "end_date": "2026-08-28",
+        })
+        fetched = service.call_tool("get_activity", {
+            "athlete": "i-other", "activity_id": "i1",
+        })
+        streamed = service.call_tool("get_activity_streams", {
+            "athlete": "i-other", "activity_id": "i1",
+        })
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        for result in (listed, fetched, streamed):
+            self.assertEqual(result["athlete"], {
+                "id": "i-other", "name": "Other", "tags": ["Coaching"],
+            })
+
+    def test_explicit_me_and_zero_remain_implicit(self):
+        for athlete in ("me", 0, "0"):
+            with self.subTest(athlete=athlete):
+                result = self.service().call_tool("list_activities", {
+                    "athlete": athlete,
+                    "start_date": "2026-08-28", "end_date": "2026-08-28",
+                })
+                self.assertNotIn("athlete", result)
+
+    def test_rejects_inaccessible_athlete(self):
+        with self.assertRaisesRegex(MCP.ToolFailure, "not accessible"):
+            self.service().call_tool("get_activity", {
+                "athlete": "i-unknown", "activity_id": "i1",
+            })
+
+    def test_rejects_boolean_athlete(self):
+        with self.assertRaisesRegex(MCP.ToolFailure, "athlete must"):
+            self.service().call_tool("get_activity", {
+                "athlete": False, "activity_id": "i1",
+            })
+
+    def test_list_activity_power_curves_defaults_to_me(self):
         calls = []
         service = self.service(
             activity_power_curve_lister=lambda **kwargs: calls.append(kwargs) or {
@@ -92,7 +170,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-01")
         self.assertEqual(calls[0]["newest"].isoformat(), "2026-08-17")
         self.assertEqual(calls[0]["secs"], (1, 5))
-        self.assertNotIn("athlete_id", calls[0])
+        self.assertEqual(calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", result)
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["curves"][0]["watts"], [1000, 900])
 
@@ -103,6 +182,19 @@ class IntervalsIcuMcpTests(unittest.TestCase):
                 service.call_tool("list_activity_power_curves", {
                     "start_date": "2026-08-01", "end_date": "2026-08-17", "secs": secs,
                 })
+
+    def test_power_curves_include_explicit_non_default_athlete(self):
+        calls = []
+        result = self.service(
+            activity_power_curve_lister=lambda **kwargs: calls.append(kwargs) or {
+                "secs": [60], "curves": [],
+            }
+        ).call_tool("list_activity_power_curves", {
+            "athlete": "i-other", "start_date": "2026-08-01",
+            "end_date": "2026-08-17", "secs": [60],
+        })
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        self.assertEqual(result["athlete"]["id"], "i-other")
 
     def test_list_activity_hr_and_pace_curves_pass_explicit_values(self):
         hr_calls = []
@@ -124,8 +216,36 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         })
         self.assertEqual(hr_calls[0]["secs"], (30, 60))
         self.assertEqual(pace_calls[0]["distances"], (1000, 5000))
+        self.assertEqual(hr_calls[0]["athlete_id"], 0)
+        self.assertEqual(pace_calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", hr)
+        self.assertNotIn("athlete", pace)
         self.assertEqual(hr["count"], 1)
         self.assertEqual(pace["count"], 1)
+
+    def test_hr_and_pace_curves_include_explicit_non_default_athlete(self):
+        hr_calls = []
+        pace_calls = []
+        service = self.service(
+            activity_hr_curve_lister=lambda **kwargs: hr_calls.append(kwargs) or {
+                "secs": [60], "curves": [],
+            },
+            activity_pace_curve_lister=lambda **kwargs: pace_calls.append(kwargs) or {
+                "distances": [1000], "curves": [],
+            },
+        )
+        hr = service.call_tool("list_activity_hr_curves", {
+            "athlete": "i-other", "start_date": "2026-08-01",
+            "end_date": "2026-08-17", "secs": [60],
+        })
+        pace = service.call_tool("list_activity_pace_curves", {
+            "athlete": "i-other", "start_date": "2026-08-01",
+            "end_date": "2026-08-17", "distances": [1000],
+        })
+        self.assertEqual(hr_calls[0]["athlete_id"], "i-other")
+        self.assertEqual(pace_calls[0]["athlete_id"], "i-other")
+        self.assertEqual(hr["athlete"]["id"], "i-other")
+        self.assertEqual(pace["athlete"]["id"], "i-other")
 
     def test_activity_curve_tools_validate_values(self):
         for tool, key, value in (
@@ -155,6 +275,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         })
         self.assertEqual(calls[0]["interval_type"], "POWER")
         self.assertEqual(calls[0]["min_reps"], 4)
+        self.assertEqual(calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", result)
         self.assertEqual(result["activities"], [{
             "id": "i1", "name": "5x5", "start_date_local": "2026-08-10T10:00:00",
             "icu_training_load": 90,
@@ -173,7 +295,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             with self.subTest(updates=updates), self.assertRaisesRegex(MCP.ToolFailure, message):
                 self.service().call_tool("search_activity_intervals", base | updates)
 
-    def test_list_sport_settings_returns_source_rows_without_athlete_argument(self):
+    def test_list_sport_settings_defaults_to_me_without_athlete_in_response(self):
         calls = []
         source = [{
             "id": 1, "types": ["Ride", "VirtualRide"], "ftp": 300,
@@ -183,8 +305,25 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             sport_settings_lister=lambda **kwargs: calls.append(kwargs) or source
         ).call_tool("list_sport_settings", {})
         self.assertEqual(len(calls), 1)
-        self.assertNotIn("athlete_id", calls[0])
+        self.assertEqual(calls[0]["athlete_id"], 0)
         self.assertEqual(result, {"count": 1, "settings": source})
+
+    def test_interval_search_and_sport_settings_include_explicit_athlete(self):
+        interval_calls = []
+        setting_calls = []
+        service = self.service(
+            activity_interval_searcher=lambda **kwargs: interval_calls.append(kwargs) or [],
+            sport_settings_lister=lambda **kwargs: setting_calls.append(kwargs) or [],
+        )
+        searched = service.call_tool("search_activity_intervals", {
+            "athlete": "i-other", "min_secs": 300, "max_secs": 300,
+            "min_intensity": 100, "max_intensity": 110,
+        })
+        settings = service.call_tool("list_sport_settings", {"athlete": "i-other"})
+        self.assertEqual(interval_calls[0]["athlete_id"], "i-other")
+        self.assertEqual(setting_calls[0]["athlete_id"], "i-other")
+        self.assertEqual(searched["athlete"]["id"], "i-other")
+        self.assertEqual(settings["athlete"]["id"], "i-other")
 
     def test_date_bounded_tools_use_start_and_end_date_only(self):
         tools = {tool["name"]: tool for tool in self.service().list_tools()}
@@ -413,6 +552,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["activity_ids"], ["i1", "i2"])
         self.assertTrue(calls[0]["include_intervals"])
+        self.assertEqual(calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", result)
         self.assertEqual(result["activity_ids"], ["i1", "i2"])
         self.assertEqual(result["includeFields"], ["icu_training_load"])
         self.assertEqual(result["count"], 2)
@@ -420,6 +561,18 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             {"id": "i1", "name": "Ride", "start_date_local": None, "icu_training_load": 50},
             {"id": "i2", "name": "Run", "start_date_local": None, "icu_training_load": 40},
         ])
+
+    def test_get_activities_includes_explicit_non_default_athlete(self):
+        calls = []
+        result = self.service(
+            activities_getter=lambda **kwargs: calls.append(kwargs) or [{"id": "i1"}]
+        ).call_tool("get_activities", {
+            "athlete": "i-other", "activity_ids": ["i1"],
+        })
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        self.assertEqual(result["athlete"], {
+            "id": "i-other", "name": "Other", "tags": ["Coaching"],
+        })
 
     def test_get_activity_include_fields_only_changes_inline_summary(self):
         source = {
@@ -500,6 +653,8 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0]["query"], "#VT2")
         self.assertEqual(calls[0]["limit"], 20)
+        self.assertEqual(calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", result)
         self.assertEqual([row["id"] for row in result["activities"]], ["i1", "i1", "i2"])
         self.assertEqual(result["includeFields"], [])
         self.assertEqual(result["count"], 3)
@@ -527,6 +682,16 @@ class IntervalsIcuMcpTests(unittest.TestCase):
                 with self.assertRaisesRegex(MCP.ToolFailure, "positive integer"):
                     service.call_tool("search_activities", {"query": "VT2", "limit": value})
 
+    def test_search_activities_includes_explicit_non_default_athlete(self):
+        calls = []
+        result = self.service(
+            activity_searcher=lambda **kwargs: calls.append(kwargs) or []
+        ).call_tool("search_activities", {
+            "athlete": "i-other", "query": "ski",
+        })
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        self.assertEqual(result["athlete"]["id"], "i-other")
+
     def test_streams_are_private_file_and_not_inline(self):
         result = self.service().call_tool("get_activity_streams", {"activity_id": "i1"})
         path = Path(result["streams_file"])
@@ -552,6 +717,17 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             self.service().call_tool(
                 "get_activity_file", {"activity_id": "i1", "kind": "web-original"}
             )
+
+    def test_activity_file_includes_explicit_non_default_athlete(self):
+        result = self.service().call_tool("get_activity_file", {
+            "athlete": "i-other", "activity_id": "i1", "kind": "fit",
+        })
+        path = Path(result["file_path"])
+        try:
+            self.assertEqual(result["athlete"]["id"], "i-other")
+        finally:
+            path.unlink(missing_ok=True)
+            path.parent.rmdir()
 
     def test_update_activity_is_patch_based_and_verified(self):
         reads = [
@@ -757,6 +933,25 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(result["count"], 1)
         self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-10")
         self.assertEqual(calls[0]["newest"].isoformat(), "2026-08-17")
+        self.assertEqual(calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", result)
+
+    def test_list_wellness_includes_explicit_athlete_and_readiness_fields(self):
+        calls = []
+        source = [{
+            "id": "2026-08-17", "sleepSecs": 28800, "restingHR": 48,
+            "hrv": 72, "fatigue": 2, "soreness": 1, "stress": 2,
+            "motivation": 3, "injury": 0, "ctl": 64.2, "atl": 71.5,
+        }]
+        result = self.service(
+            wellness_lister=lambda **kwargs: calls.append(kwargs) or source
+        ).call_tool("list_wellness", {
+            "athlete": "i-other", "start_date": "2026-08-17",
+            "end_date": "2026-08-17",
+        })
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        self.assertEqual(result["athlete"]["id"], "i-other")
+        self.assertEqual(result["wellness"], source)
 
     def test_update_wellness_applies_only_explicit_updates_and_verifies(self):
         reads = [
@@ -827,6 +1022,19 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         self.assertEqual(result["count"], 1)
         self.assertIsNone(calls[0]["categories"])
+        self.assertEqual(calls[0]["athlete_id"], 0)
+        self.assertNotIn("athlete", result)
+
+    def test_list_events_includes_explicit_non_default_athlete(self):
+        calls = []
+        result = self.service(
+            event_lister=lambda **kwargs: calls.append(kwargs) or []
+        ).call_tool("list_events", {
+            "athlete": "i-other", "start_date": "2026-08-17",
+            "end_date": "2026-08-18",
+        })
+        self.assertEqual(calls[0]["athlete_id"], "i-other")
+        self.assertEqual(result["athlete"]["id"], "i-other")
 
     def test_create_sick_event_uses_exclusive_end_and_verifies(self):
         writes = []
@@ -913,6 +1121,82 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             self.service().call_tool("get_activity", {"activity_id": "i1", "extra": True})
 
 
+class IntervalsIcuAthleteTransportTests(unittest.TestCase):
+    def test_default_athlete_is_resolved_for_curve_and_settings_endpoints(self):
+        paths = []
+
+        def request(path, credentials, **kwargs):
+            paths.append(path)
+            if path == "/athlete/0":
+                return {"id": "i-me"}
+            if path.endswith("activity-hr-curves"):
+                return {"secs": [60], "curves": []}
+            if path.endswith("activity-power-curves"):
+                return {"secs": [60], "curves": []}
+            if path.endswith("activity-pace-curves"):
+                return {"distances": [1000], "curves": []}
+            if path.endswith("sport-settings"):
+                return []
+            raise AssertionError(path)
+
+        with mock.patch.object(API, "_request_json", side_effect=request):
+            API.list_activity_power_curves(
+                secs=[60], oldest="2026-08-01", newest="2026-08-28", api_key="secret"
+            )
+            API.list_activity_hr_curves(
+                secs=[60], oldest="2026-08-01", newest="2026-08-28", api_key="secret"
+            )
+            API.list_activity_pace_curves(
+                distances=[1000], oldest="2026-08-01", newest="2026-08-28",
+                api_key="secret",
+            )
+            API.list_sport_settings(api_key="secret")
+
+        self.assertEqual(paths, [
+            "/athlete/0", "/athlete/i-me/activity-power-curves",
+            "/athlete/0", "/athlete/i-me/activity-hr-curves",
+            "/athlete/0", "/athlete/i-me/activity-pace-curves",
+            "/athlete/0", "/athlete/i-me/sport-settings",
+        ])
+
+    def test_explicit_athlete_skips_authenticated_profile_resolution(self):
+        paths = []
+
+        def request(path, credentials, **kwargs):
+            paths.append(path)
+            if path.endswith("activity-hr-curves"):
+                return {"secs": [60], "curves": []}
+            if path.endswith("activity-power-curves"):
+                return {"secs": [60], "curves": []}
+            if path.endswith("activity-pace-curves"):
+                return {"distances": [1000], "curves": []}
+            if path.endswith("sport-settings"):
+                return []
+            raise AssertionError(path)
+
+        with mock.patch.object(API, "_request_json", side_effect=request):
+            API.list_activity_power_curves(
+                athlete_id="i-other", secs=[60], oldest="2026-08-01",
+                newest="2026-08-28", api_key="secret",
+            )
+            API.list_activity_hr_curves(
+                athlete_id="i-other", secs=[60], oldest="2026-08-01",
+                newest="2026-08-28", api_key="secret",
+            )
+            API.list_activity_pace_curves(
+                athlete_id="i-other", distances=[1000], oldest="2026-08-01",
+                newest="2026-08-28", api_key="secret",
+            )
+            API.list_sport_settings(athlete_id="i-other", api_key="secret")
+
+        self.assertEqual(paths, [
+            "/athlete/i-other/activity-power-curves",
+            "/athlete/i-other/activity-hr-curves",
+            "/athlete/i-other/activity-pace-curves",
+            "/athlete/i-other/sport-settings",
+        ])
+
+
 class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
     async def test_stdio_initialize_and_list_tools(self):
         from mcp import ClientSession, StdioServerParameters
@@ -931,6 +1215,7 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [tool.name for tool in result.tools],
             [
+                "list_athletes",
                 "list_activities", "list_activity_power_curves", "list_activity_hr_curves",
                 "list_activity_pace_curves", "search_activity_intervals", "list_sport_settings",
                 "search_activities", "get_activity",

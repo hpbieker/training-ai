@@ -42,6 +42,16 @@ Choose the narrowest workflow that answers the request:
 
 ## MCP Tools
 
+- `list_athletes` lists athletes accessible to the authenticated account. Use it
+  only when another athlete must be selected. `list_activities`, `get_activity`,
+  `get_activities`, `get_activity_streams`, `list_activity_hr_curves`,
+  `list_activity_pace_curves`, `search_activity_intervals`, and
+  `list_sport_settings`, `list_wellness`, `list_events`,
+  `list_activity_power_curves`, `get_activity_file`, and `search_activities`
+  accept an optional `athlete`; omission, `me`, and `0` all mean the
+  authenticated athlete and remain implicit in the response. An explicitly
+  selected non-default athlete is validated against `list_athletes` and
+  included in the response.
 - `list_activities` lists every activity in an inclusive local-date range as
   compact identity summaries containing only `id`, `name`, and
   `start_date_local` by default. Use `includeFields` to add only selected
@@ -66,14 +76,16 @@ Choose the narrowest workflow that answers the request:
   private temporary file.
 - `list_activity_power_curves` returns Intervals.icu's per-activity power-curve
   rows for explicit durations in an inclusive local-date range. Its `secs` and
-  each curve's aligned `watts` array preserve source order. It resolves the
-  authenticated athlete internally and does not accept an athlete-id argument.
+  each curve's aligned `watts` array preserve source order. It supports the
+  optional athlete selection described above and resolves the authenticated
+  athlete internally when athlete is omitted.
 - `list_activity_hr_curves` and `list_activity_pace_curves` follow the same
-  date-bounded per-activity pattern for explicit durations and distances.
+  date-bounded per-activity pattern for explicit durations and distances and
+  support the optional athlete selection described above.
 - `search_activity_intervals` passes explicit interval bounds to Intervals.icu's
   source search endpoint and returns compact activity summaries.
-- `list_sport_settings` returns the authenticated athlete's source sport
-  settings and resolves the athlete id internally.
+- `list_sport_settings` returns the selected athlete's source sport settings
+  and resolves the authenticated athlete id internally when athlete is omitted.
 - `update_activity` patches supported metadata, tags, subtype, color, fueling,
   strength load, and whole-activity ignore flags, and requires
   `confirm_overwrite=true` before replacing an existing non-empty value;
@@ -83,9 +95,11 @@ Choose the narrowest workflow that answers the request:
   them individually, and verifies collective absence through the batch endpoint;
   `upload_activity` uploads one local activity file. Every completed write is
   verified with fresh source data.
-- `list_wellness` reads wellness rows; `update_wellness` patches supported
-  fields and requires `confirm_overwrite=true` for conflicting values.
-- `list_events` reads calendar events; `create_event` creates an all-day event;
+- `list_wellness` reads the selected athlete's wellness rows; `update_wellness`
+  patches the authenticated athlete's supported fields and requires
+  `confirm_overwrite=true` for conflicting values.
+- `list_events` reads the selected athlete's calendar events; `create_event`
+  creates an all-day event for the authenticated athlete;
   `update_event` replaces its supported all-day state; `delete_event` requires
   `confirm` to equal the exact event id. Event writes use inclusive user dates,
   convert the stored end boundary to exclusive, and verify the result.

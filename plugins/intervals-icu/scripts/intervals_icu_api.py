@@ -490,11 +490,50 @@ def list_activities(
     return activities
 
 
+def list_athletes(
+    *,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+) -> list[dict[str, Any]]:
+    """List athletes accessible to the authenticated Intervals.icu account."""
+
+    credentials = IntervalsIcuCredentials(
+        api_key=api_key,
+        bearer_token=bearer_token,
+    )
+    athletes = _request_json("/athletes", credentials)
+    if not isinstance(athletes, list) or any(
+        not isinstance(athlete, dict) for athlete in athletes
+    ):
+        raise TypeError("Expected Intervals.icu athletes endpoint to return a list of objects")
+    return athletes
+
+
+def _resolve_athlete_endpoint_id(
+    credentials: IntervalsIcuCredentials,
+    athlete_id: str | int,
+) -> str | int:
+    """Resolve the authenticated-athlete alias for endpoints that reject athlete/0."""
+
+    if isinstance(athlete_id, bool):
+        raise TypeError("athlete_id must be a string or integer")
+    if athlete_id not in (0, "0", "me"):
+        return athlete_id
+    athlete = _request_json("/athlete/0", credentials)
+    if not isinstance(athlete, dict):
+        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
+    resolved_id = athlete.get("id")
+    if isinstance(resolved_id, bool) or not isinstance(resolved_id, (str, int)):
+        raise TypeError("Intervals.icu athlete response did not contain an id")
+    return resolved_id
+
+
 def list_activity_power_curves(
     *,
     secs: Iterable[int],
     api_key: str | None = None,
     bearer_token: str | None = None,
+    athlete_id: str | int = 0,
     oldest: str | date,
     newest: str | date,
 ) -> dict[str, Any]:
@@ -504,12 +543,7 @@ def list_activity_power_curves(
         api_key=api_key,
         bearer_token=bearer_token,
     )
-    athlete = _request_json("/athlete/0", credentials)
-    if not isinstance(athlete, dict):
-        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
-    athlete_id = athlete.get("id")
-    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
-        raise TypeError("Intervals.icu athlete response did not contain an id")
+    athlete_id = _resolve_athlete_endpoint_id(credentials, athlete_id)
 
     result = _request_json(
         f"/athlete/{athlete_id}/activity-power-curves",
@@ -532,18 +566,14 @@ def list_activity_hr_curves(
     secs: Iterable[int],
     api_key: str | None = None,
     bearer_token: str | None = None,
+    athlete_id: str | int = 0,
     oldest: str | date,
     newest: str | date,
 ) -> dict[str, Any]:
     """Return per-activity heart-rate curve points for selected durations."""
 
     credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
-    athlete = _request_json("/athlete/0", credentials)
-    if not isinstance(athlete, dict):
-        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
-    athlete_id = athlete.get("id")
-    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
-        raise TypeError("Intervals.icu athlete response did not contain an id")
+    athlete_id = _resolve_athlete_endpoint_id(credentials, athlete_id)
     result = _request_json(
         f"/athlete/{athlete_id}/activity-hr-curves",
         credentials,
@@ -565,18 +595,14 @@ def list_activity_pace_curves(
     distances: Iterable[float],
     api_key: str | None = None,
     bearer_token: str | None = None,
+    athlete_id: str | int = 0,
     oldest: str | date,
     newest: str | date,
 ) -> dict[str, Any]:
     """Return per-activity pace-curve points for selected distances."""
 
     credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
-    athlete = _request_json("/athlete/0", credentials)
-    if not isinstance(athlete, dict):
-        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
-    athlete_id = athlete.get("id")
-    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
-        raise TypeError("Intervals.icu athlete response did not contain an id")
+    athlete_id = _resolve_athlete_endpoint_id(credentials, athlete_id)
     result = _request_json(
         f"/athlete/{athlete_id}/activity-pace-curves",
         credentials,
@@ -597,16 +623,12 @@ def list_sport_settings(
     *,
     api_key: str | None = None,
     bearer_token: str | None = None,
+    athlete_id: str | int = 0,
 ) -> list[dict[str, Any]]:
-    """Return sport settings for the authenticated athlete."""
+    """Return sport settings for the selected athlete."""
 
     credentials = IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token)
-    athlete = _request_json("/athlete/0", credentials)
-    if not isinstance(athlete, dict):
-        raise TypeError("Expected Intervals.icu athlete endpoint to return an object")
-    athlete_id = athlete.get("id")
-    if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
-        raise TypeError("Intervals.icu athlete response did not contain an id")
+    athlete_id = _resolve_athlete_endpoint_id(credentials, athlete_id)
     settings = _request_json(f"/athlete/{athlete_id}/sport-settings", credentials)
     if not isinstance(settings, list) or any(not isinstance(row, dict) for row in settings):
         raise TypeError("Expected Intervals.icu sport settings endpoint to return a list")
