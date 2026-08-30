@@ -9,8 +9,10 @@ start and workout-placement preference when no time is supplied. Resolve the
 plan role and its complete workout before choosing `planned_at`. For a quality
 role, first find the earliest practical window supported by current readiness
 and the relevant Xert recovery gate; otherwise assess the appropriate downgrade
-in an earlier window. Choose one session. Resolve modality availability
-from explicit user input or personal context, never from the repository.
+in an earlier window. Select one winning session. When both indoor and outdoor
+cycling are available, retain one concrete alternative for the final answer
+without letting it replace the winner. Resolve modality availability from
+explicit user input or personal context, never from the repository.
 
 When calendar context is used, classify events before calculating availability.
 Apply the user's calendar semantics from personal context rather than treating
@@ -454,9 +456,9 @@ Do not add warm-up outside a workout whose total already includes it.
   plan. Explain why the final domain is preferable to the next harder and easier
   domain. These three parts are required even when readiness, load, or the
   recommendation has already been discussed elsewhere in the answer.
-- If both cycling modalities are available, provide one concrete indoor and one
-  concrete outdoor option with duration, warm-up, watts/intensity, setup/route,
-  and countable fueling actions.
+- If both cycling modalities are available, provide the selected winner and one
+  concrete alternative, each with duration, warm-up, watts/intensity,
+  setup/route, and countable fueling actions. State why the winner is preferred.
 - Explain briefly why the winner fits readiness, recent load, weather, calendar,
   goals, and reported body feel.
 - When presenting Garmin Training Effect, preserve the numeric aerobic and
