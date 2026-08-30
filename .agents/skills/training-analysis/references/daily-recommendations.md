@@ -241,15 +241,16 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   complete quality workout with MCP `calculate_workout`, including warm-up,
   recoveries, and cool-down, and pass its normalized result directly
   inside `--quality-workout-json` with status `planned` or `completed`. If the
-  calculation is persisted, read the file first and pass its JSON content. Fill
-  only the difference between the
-  daily total-XSS target and the calculated complete-workout XSS. In the
-  minimal model, estimate VT1 at 60 XSS/hour and expose that assumption in the
-  packet. The summary must show Xert's original recommended dose, the chosen
-  daily target, complete quality-workout XSS, VT1 filler, expected total, and
-  any calendar-limited shortfall in both minutes and estimated XSS. If no
-  explicit available windows were supplied, say that calendar fit was not
-  verified.
+  calculation is persisted, read the file first and pass its JSON content. For
+  the flexible VT1 filler, calculate the complete quality workout first, then
+  fill the compatible remaining Low XSS to the lower of the applicable
+  recovery-protection capacity and Xert’s remaining Low-XSS dose. Use MCP
+  `solve_segment_duration` with the current Fitness Signature and complete
+  workout structure to convert the resulting Low-XSS dose to VT1 duration. The
+  summary must show Xert's original recommended dose, the chosen daily target,
+  complete quality-workout XSS, VT1 filler, expected total, and any
+  calendar-limited shortfall in both minutes and estimated XSS. If no explicit
+  available windows were supplied, say that calendar fit was not verified.
 - Treat the calculated quality workout as indivisible for scheduling. Its
   duration and XSS already include warm-up, work intervals, recoveries, and
   cool-down. If VT1 filler is continuous, start it after the calculated
