@@ -56,10 +56,12 @@ Choose the narrowest workflow that answers the request:
   `get_activities`, `get_activity_streams`, `list_activity_hr_curves`,
   `list_activity_pace_curves`, `search_activity_intervals`, and
   `list_sport_settings`, `list_wellness`, `list_events`,
-  `list_activity_power_curves`, `get_activity_file`, and `search_activities`
-  as well as `list_activity_messages`, `get_training_plan`, and
-  `get_athlete_summary`
-  accept an optional `athlete`; omission, `me`, and `0` all mean the
+  `list_activity_power_curves`, `get_activity_file`, `search_activities`,
+  `list_activity_messages`, `get_training_plan`, and `get_athlete_summary`, as
+  well as all write tools (`update_activity`, `delete_activity`,
+  `delete_activities`, `upload_activity`, `update_wellness`, `create_event`,
+  `update_event`, and `delete_event`) accept an optional `athlete`; omission,
+  `me`, and `0` all mean the
   authenticated athlete and remain implicit in the response. An explicitly
   selected non-default athlete is validated against `list_athletes` and
   included in the response.
@@ -113,10 +115,10 @@ Choose the narrowest workflow that answers the request:
   `upload_activity` uploads one local activity file. Every completed write is
   verified with fresh source data.
 - `list_wellness` reads the selected athlete's wellness rows; `update_wellness`
-  patches the authenticated athlete's supported fields and requires
+  patches the selected athlete's supported fields and requires
   `confirm_overwrite=true` for conflicting values.
 - `list_events` reads the selected athlete's calendar events; `create_event`
-  creates an all-day event for the authenticated athlete;
+  creates an all-day event for the selected athlete;
   `update_event` replaces its supported all-day state; `delete_event` requires
   `confirm` to equal the exact event id. Event writes use inclusive user dates,
   convert the stored end boundary to exclusive, and verify the result.

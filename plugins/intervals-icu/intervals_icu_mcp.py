@@ -662,6 +662,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
                 "activity_id": {"type": "string", "minLength": 1},
                 "updates": {
                     "type": "object", "minProperties": 1, "additionalProperties": False,
@@ -703,6 +707,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "activity_id": {"type": "string"},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "updates": _object("Requested activity field changes."),
                 "before": _object("Values of the requested fields before the patch."),
                 "after": _object("Fresh readback values of the requested fields."),
@@ -723,6 +728,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
                 "activity_id": {"type": "string", "minLength": 1},
                 "confirm": {"type": "string", "description": "Must exactly match activity_id."},
             },
@@ -733,6 +742,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "activity_id": {"type": "string"},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "before": _object("Activity read immediately before deletion."),
                 "deleted_response": _object("Intervals.icu deletion response."),
                 "verified_deleted": {"type": "boolean"},
@@ -752,6 +762,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
                 "activity_ids": {
                     "type": "array",
                     "items": {"type": "string", "minLength": 1},
@@ -773,6 +787,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "activity_ids": {"type": "array", "items": {"type": "string"}},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "deleted_count": {"type": "integer"},
                 "verified_deleted": {"type": "boolean"},
             },
@@ -791,7 +806,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "file_path": {"type": "string", "minLength": 1},
-                "athlete_id": {"type": ["string", "integer"], "default": 0},
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
             },
             "required": ["file_path"],
             "additionalProperties": False,
@@ -800,6 +818,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "activity_id": {"type": "string"},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "uploaded_activity": _object("Intervals.icu upload response."),
                 "verified_activity": _object("Fresh canonical activity readback."),
                 "verified": {"type": "boolean"},
@@ -948,6 +967,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
                 "date": {"type": "string", "format": "date", "description": "Local wellness date."},
                 "updates": {
                     "type": "object", "minProperties": 1, "additionalProperties": False,
@@ -983,6 +1006,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "date": {"type": "string"},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "updates": _object("Requested supported field changes."),
                 "before": _object("Wellness row before the patch."),
                 "after": _object("Freshly read wellness row after the patch."),
@@ -1040,6 +1064,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
                 "category": {"type": "string", "minLength": 1, "description": "Intervals.icu event category, for example SICK."},
                 "name": {"type": "string", "minLength": 1, "description": "Event name, for example Syk."},
                 "start_date": {"type": "string", "format": "date", "description": "First event day, inclusive."},
@@ -1052,6 +1080,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["created", "unchanged"]},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "category": {"type": "string"}, "name": {"type": "string"},
                 "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "stored_end_exclusive": {"type": "string"},
@@ -1077,6 +1106,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
                 "event_id": {"type": ["string", "integer"], "description": "Exact Intervals.icu event id from list_events."},
                 "category": {"type": "string", "minLength": 1, "description": "Complete desired event category."},
                 "name": {"type": "string", "minLength": 1, "description": "Complete desired event name."},
@@ -1091,6 +1124,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "action": {"type": "string", "enum": ["updated"]},
                 "event_id": {"type": ["string", "integer"]},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "category": {"type": "string"}, "name": {"type": "string"},
                 "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "stored_end_exclusive": {"type": "string"},
@@ -1115,6 +1149,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                "athlete": {
+                    "type": ["string", "integer"], "default": "me",
+                    "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
+                },
                 "event_id": {"type": ["string", "integer"], "description": "Exact event id returned by list_events."},
                 "start_date": {"type": "string", "format": "date", "description": "Inclusive lookup start date containing the event."},
                 "end_date": {"type": "string", "format": "date", "description": "Inclusive lookup end date containing the event."},
@@ -1127,6 +1165,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "event_id": {"type": ["string", "integer"]},
+                "athlete": _object("Explicitly selected non-default athlete."),
                 "before": _object("Event read immediately before deletion."),
                 "deleted_response": _object("Intervals.icu deletion response."),
                 "verified_deleted": {"type": "boolean"},
@@ -1207,11 +1246,12 @@ class IntervalsIcuToolService:
 
     def _verified_event(
         self, event_state: dict[str, Any], saved: dict[str, Any],
-        *, event_id: str | int | None = None,
+        *, athlete_id: str | int = 0, event_id: str | int | None = None,
     ) -> dict[str, Any]:
         readback = self._event_lister(
             oldest=event_state["start_date"], newest=event_state["end_date"],
-            categories=event_state["category"], **self._auth.api_kwargs(),
+            categories=event_state["category"], athlete_id=athlete_id,
+            **self._auth.api_kwargs(),
         )
         expected_id = event_id if event_id is not None else saved.get("id")
         verified_event = next(
@@ -1444,6 +1484,7 @@ class IntervalsIcuToolService:
                     response["athlete"] = selected_athlete
                 return response
             if name == "update_activity":
+                _, selected_athlete = self._selected_athlete(arguments, auth)
                 activity_id = _required_string(arguments, "activity_id")
                 updates = _activity_updates(arguments.get("updates"))
                 confirm_overwrite = arguments.get("confirm_overwrite", False)
@@ -1479,12 +1520,16 @@ class IntervalsIcuToolService:
                     )
                 before_values = {field: before.get(field) for field in updates}
                 after_values = {field: after.get(field) for field in updates}
-                return {
+                response = {
                     "activity_id": activity_id, "updates": updates,
                     "before": before_values, "after": after_values,
                     "overwritten_fields": overwritten_fields, "verified": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "delete_activity":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 activity_id = _required_string(arguments, "activity_id")
                 if arguments.get("confirm") != activity_id:
                     raise ToolFailure("confirm must exactly match activity_id", "confirmation_required")
@@ -1503,18 +1548,22 @@ class IntervalsIcuToolService:
                     if not direct_absent:
                         raise
                 listed = self._activity_lister(
-                    oldest=activity_day, newest=activity_day, **auth,
+                    oldest=activity_day, newest=activity_day, athlete_id=athlete_id, **auth,
                 )
                 list_absent = not any(
                     str(activity.get("id")) == activity_id for activity in listed
                 )
                 if not direct_absent or not list_absent:
                     raise ToolFailure("Activity did not verify as deleted", "verification_error")
-                return {
+                response = {
                     "activity_id": activity_id, "before": before,
                     "deleted_response": deleted_response, "verified_deleted": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "delete_activities":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 activity_ids = _required_unique_string_array(arguments, "activity_ids")
                 confirm_activity_ids = _required_unique_string_array(
                     arguments, "confirm_activity_ids"
@@ -1525,13 +1574,15 @@ class IntervalsIcuToolService:
                         "confirmation_required",
                     )
                 before = self._activities_getter(
-                    activity_ids=activity_ids, include_intervals=False, **auth,
+                    activity_ids=activity_ids, include_intervals=False,
+                    athlete_id=athlete_id, **auth,
                 )
                 _activities_in_requested_order(activity_ids, before)
                 for activity_id in activity_ids:
                     self._activity_deleter(activity_id=activity_id, **auth)
                 remaining = self._activities_getter(
-                    activity_ids=activity_ids, include_intervals=False, **auth,
+                    activity_ids=activity_ids, include_intervals=False,
+                    athlete_id=athlete_id, **auth,
                 )
                 if remaining:
                     remaining_ids = [str(activity.get("id")) for activity in remaining]
@@ -1539,18 +1590,19 @@ class IntervalsIcuToolService:
                         f"Activities did not verify as deleted: {', '.join(remaining_ids)}",
                         "verification_error",
                     )
-                return {
+                response = {
                     "activity_ids": activity_ids,
                     "deleted_count": len(activity_ids),
                     "verified_deleted": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "upload_activity":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 file_path = Path(_required_string(arguments, "file_path")).expanduser()
                 if not file_path.is_file():
                     raise ToolFailure("file_path must reference an existing file", "invalid_arguments")
-                athlete_id = arguments.get("athlete_id", 0)
-                if isinstance(athlete_id, bool) or not isinstance(athlete_id, (str, int)):
-                    raise ToolFailure("athlete_id must be a string or integer", "invalid_arguments")
                 uploaded = self._activity_uploader(
                     file_path=file_path, athlete_id=athlete_id, **auth,
                 )
@@ -1567,10 +1619,13 @@ class IntervalsIcuToolService:
                 )
                 if not any(str(activity.get("id")) == activity_id for activity in listed):
                     raise ToolFailure("Uploaded activity did not verify in date list", "verification_error")
-                return {
+                response = {
                     "activity_id": activity_id, "uploaded_activity": uploaded,
                     "verified_activity": verified_activity, "verified": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "list_activity_messages":
                 _, selected_athlete = self._selected_athlete(arguments, auth)
                 activity_id = _required_string(arguments, "activity_id")
@@ -1632,12 +1687,13 @@ class IntervalsIcuToolService:
                     response["athlete"] = selected_athlete
                 return response
             if name == "update_wellness":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 day = _required_date(arguments, "date")
                 updates = _wellness_updates(arguments.get("updates"))
                 confirm_overwrite = arguments.get("confirm_overwrite", False)
                 if not isinstance(confirm_overwrite, bool):
                     raise ToolFailure("confirm_overwrite must be a boolean", "invalid_arguments")
-                before = self._wellness_getter(day=day, **auth)
+                before = self._wellness_getter(day=day, athlete_id=athlete_id, **auth)
                 overwritten_fields = [
                     field for field, requested in updates.items()
                     if _has_value(before.get(field)) and before.get(field) != requested
@@ -1651,8 +1707,10 @@ class IntervalsIcuToolService:
                         f"Refusing to overwrite existing wellness values without confirmation: {details}",
                         "overwrite_confirmation_required",
                     )
-                self._wellness_updater(day=day, updates=updates, **auth)
-                after = self._wellness_getter(day=day, **auth)
+                self._wellness_updater(
+                    day=day, updates=updates, athlete_id=athlete_id, **auth
+                )
+                after = self._wellness_getter(day=day, athlete_id=athlete_id, **auth)
                 mismatches = {
                     field: {"requested": requested, "readback": after.get(field)}
                     for field, requested in updates.items()
@@ -1662,11 +1720,14 @@ class IntervalsIcuToolService:
                     raise ToolFailure(
                         f"Wellness update did not verify: {mismatches}", "verification_error"
                     )
-                return {
+                response = {
                     "date": day.isoformat(), "updates": updates,
                     "before": before, "after": after,
                     "overwritten_fields": overwritten_fields, "verified": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "list_events":
                 athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 start_date = _required_date(arguments, "start_date")
@@ -1688,10 +1749,11 @@ class IntervalsIcuToolService:
                     response["athlete"] = selected_athlete
                 return response
             if name == "create_event":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 event_state = _event_state(arguments)
                 existing_events = self._event_lister(
                     oldest=event_state["start_date"], newest=event_state["end_date"],
-                    categories=event_state["category"], **auth,
+                    categories=event_state["category"], athlete_id=athlete_id, **auth,
                 )
                 exact = next(
                     (event for event in existing_events if _event_matches(event, event_state)), None
@@ -1700,10 +1762,14 @@ class IntervalsIcuToolService:
                     saved = exact
                     action = "unchanged"
                 else:
-                    saved = self._event_creator(event=event_state["payload"], **auth)
+                    saved = self._event_creator(
+                        event=event_state["payload"], athlete_id=athlete_id, **auth
+                    )
                     action = "created"
-                verified_event = self._verified_event(event_state, saved)
-                return {
+                verified_event = self._verified_event(
+                    event_state, saved, athlete_id=athlete_id
+                )
+                response = {
                     "action": action, "category": event_state["category"],
                     "name": event_state["name"],
                     "start_date": event_state["start_date"].isoformat(),
@@ -1711,16 +1777,23 @@ class IntervalsIcuToolService:
                     "stored_end_exclusive": event_state["exclusive_end"].isoformat(),
                     "event": saved, "verified_event": verified_event, "verified": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "update_event":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 event_id = arguments.get("event_id")
                 if isinstance(event_id, bool) or not isinstance(event_id, (str, int)) or event_id == "":
                     raise ToolFailure("event_id must be a non-empty string or integer", "invalid_arguments")
                 event_state = _event_state(arguments)
                 saved = self._event_updater(
-                    event_id=event_id, updates=event_state["payload"], **auth,
+                    event_id=event_id, updates=event_state["payload"],
+                    athlete_id=athlete_id, **auth,
                 )
-                verified_event = self._verified_event(event_state, saved, event_id=event_id)
-                return {
+                verified_event = self._verified_event(
+                    event_state, saved, athlete_id=athlete_id, event_id=event_id
+                )
+                response = {
                     "action": "updated", "event_id": event_id,
                     "category": event_state["category"], "name": event_state["name"],
                     "start_date": event_state["start_date"].isoformat(),
@@ -1728,7 +1801,11 @@ class IntervalsIcuToolService:
                     "stored_end_exclusive": event_state["exclusive_end"].isoformat(),
                     "event": saved, "verified_event": verified_event, "verified": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "delete_event":
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 event_id = arguments.get("event_id")
                 if isinstance(event_id, bool) or not isinstance(event_id, (str, int)) or event_id == "":
                     raise ToolFailure("event_id must be a non-empty string or integer", "invalid_arguments")
@@ -1739,7 +1816,8 @@ class IntervalsIcuToolService:
                 if end_date < start_date:
                     raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
                 before_rows = self._event_lister(
-                    oldest=start_date, newest=end_date, categories=None, **auth,
+                    oldest=start_date, newest=end_date, categories=None,
+                    athlete_id=athlete_id, **auth,
                 )
                 before = next(
                     (event for event in before_rows if str(event.get("id")) == str(event_id)),
@@ -1747,19 +1825,25 @@ class IntervalsIcuToolService:
                 )
                 if before is None:
                     raise ToolFailure("Event id not found in supplied date range", "not_found")
-                deleted_response = self._event_deleter(event_id=event_id, **auth)
+                deleted_response = self._event_deleter(
+                    event_id=event_id, athlete_id=athlete_id, **auth
+                )
                 after_rows = self._event_lister(
-                    oldest=start_date, newest=end_date, categories=None, **auth,
+                    oldest=start_date, newest=end_date, categories=None,
+                    athlete_id=athlete_id, **auth,
                 )
                 verified_deleted = not any(
                     str(event.get("id")) == str(event_id) for event in after_rows
                 )
                 if not verified_deleted:
                     raise ToolFailure("Calendar event did not verify as deleted", "verification_error")
-                return {
+                response = {
                     "event_id": event_id, "before": before,
                     "deleted_response": deleted_response, "verified_deleted": True,
                 }
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                return response
             if name == "get_activities":
                 athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 activity_ids = arguments.get("activity_ids")

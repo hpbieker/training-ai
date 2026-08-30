@@ -926,6 +926,51 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(result["activity_id"], "i-uploaded")
         self.assertTrue(result["verified"])
 
+    def test_activity_writes_accept_explicit_non_default_athlete(self):
+        reads = [
+            {"id": "i1", "name": "Old"},
+            {"id": "i1", "name": "New"},
+        ]
+        result = self.service(
+            activity_getter=lambda **kwargs: reads.pop(0),
+        ).call_tool("update_activity", {
+            "athlete": "i-other", "activity_id": "i1",
+            "updates": {"name": "New"}, "confirm_overwrite": True,
+        })
+        self.assertEqual(result["athlete"]["id"], "i-other")
+
+        batch_calls = []
+        batch_reads = [[{"id": "i1"}], []]
+        result = self.service(
+            activities_getter=lambda **kwargs: batch_calls.append(kwargs) or batch_reads.pop(0),
+        ).call_tool("delete_activities", {
+            "athlete": "i-other", "activity_ids": ["i1"],
+            "confirm_activity_ids": ["i1"],
+        })
+        self.assertTrue(all(call["athlete_id"] == "i-other" for call in batch_calls))
+        self.assertEqual(result["athlete"]["id"], "i-other")
+
+    def test_upload_activity_uses_athlete_parameter_and_rejects_old_name(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            file_path = Path(temporary) / "ride.fit"
+            file_path.write_bytes(b"fit")
+            uploads = []
+            result = self.service(
+                activity_uploader=lambda **kwargs: uploads.append(kwargs) or {"id": "i-uploaded"},
+                activity_getter=lambda **kwargs: {
+                    "id": "i-uploaded", "start_date_local": "2026-08-17T10:00:00"
+                },
+                activity_lister=lambda **kwargs: [{"id": "i-uploaded"}],
+            ).call_tool("upload_activity", {
+                "athlete": "i-other", "file_path": str(file_path),
+            })
+            self.assertEqual(uploads[0]["athlete_id"], "i-other")
+            self.assertEqual(result["athlete"]["id"], "i-other")
+            with self.assertRaisesRegex(MCP.ToolFailure, "Unsupported argument: athlete_id"):
+                self.service().call_tool("upload_activity", {
+                    "athlete_id": "i-other", "file_path": str(file_path),
+                })
+
     def test_list_activity_messages_defaults_to_me_and_passes_pagination(self):
         calls = []
         result = self.service(
@@ -1107,6 +1152,35 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         })
         self.assertEqual(calls[0]["athlete_id"], "i-other")
         self.assertEqual(result["athlete"]["id"], "i-other")
+
+    def test_wellness_and_event_writes_use_explicit_non_default_athlete(self):
+        wellness_calls = []
+        wellness_reads = [{}, {"soreness": 2}]
+        wellness = self.service(
+            wellness_getter=lambda **kwargs: wellness_calls.append(kwargs) or wellness_reads.pop(0),
+            wellness_updater=lambda **kwargs: wellness_calls.append(kwargs) or kwargs["updates"],
+        ).call_tool("update_wellness", {
+            "athlete": "i-other", "date": "2026-08-17", "updates": {"soreness": 2},
+        })
+        self.assertTrue(all(call["athlete_id"] == "i-other" for call in wellness_calls))
+        self.assertEqual(wellness["athlete"]["id"], "i-other")
+
+        event_calls = []
+        expected = {
+            "id": 10, "category": "SICK", "name": "Syk",
+            "start_date_local": "2026-08-17T00:00:00",
+            "end_date_local": "2026-08-18T00:00:00",
+        }
+        event_reads = [[], [expected]]
+        event = self.service(
+            event_lister=lambda **kwargs: event_calls.append(kwargs) or event_reads.pop(0),
+            event_creator=lambda **kwargs: event_calls.append(kwargs) or expected,
+        ).call_tool("create_event", {
+            "athlete": "i-other", "category": "SICK", "name": "Syk",
+            "start_date": "2026-08-17", "end_date": "2026-08-17",
+        })
+        self.assertTrue(all(call["athlete_id"] == "i-other" for call in event_calls))
+        self.assertEqual(event["athlete"]["id"], "i-other")
 
     def test_create_sick_event_uses_exclusive_end_and_verifies(self):
         writes = []

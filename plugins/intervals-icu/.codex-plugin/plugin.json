@@ -1,6 +1,6 @@
 {
   "name": "intervals-icu",
-  "version": "0.1.0+codex.20260828144824",
+  "version": "0.1.0+codex.20260829122953",
   "description": "Intervals.icu source semantics and API access for athletes, plans, summaries, training activities, streams, messages, and wellness data.",
   "author": {
     "name": "Hans Petter Bieker"
