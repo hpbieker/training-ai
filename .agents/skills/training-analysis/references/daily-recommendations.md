@@ -279,8 +279,10 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   never subtract completed activity locally again. If the calculated quality
   workout has been verified as completed, pass
   `status: completed` inside `--quality-workout-json`. Keep its calculated metrics as evidence,
-  but exclude its duration and XSS from the remaining plan and convert the
-  entire Xert remaining dose to VT1 at 60 XSS/hour.
+  but exclude its duration and XSS from the remaining plan. Use MCP
+  `solve_segment_duration` with the current Fitness Signature and complete
+  remaining VT1 structure to convert Xert's remaining Low-XSS dose to VT1
+  duration.
 
 ### Xert workout feasibility
 
