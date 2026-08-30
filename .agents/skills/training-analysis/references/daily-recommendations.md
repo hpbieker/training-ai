@@ -232,7 +232,7 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`;
   do not pass MCP-only names such as `absolute_tolerance`. Use
   `--endurance-workout-json '{"calculation": <normalized-result>}'` instead
-  when an already calculated MCP or CLI solver result must be replayed exactly;
+  when an already calculated MCP solver result must be replayed exactly;
   the two inputs are mutually exclusive. Preserve fixed quality, warm-up,
   recovery, and cool-down segments. Never derive prescribed duration from
   XSS/minute across activities of mixed intensity domains, and never add
