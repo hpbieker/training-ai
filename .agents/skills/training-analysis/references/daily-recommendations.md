@@ -121,92 +121,10 @@ planned-time `recommended-training` source, even when `planned_at` is close to
 `now`. The faster current `/my-fitness` source does not expose the availability,
 deficit, and progression fields required to explain the XATA planning dose.
 
-## Capacity Before The Next Day's Workout
+## Illness And Return
 
-For every training recommendation, calculate and show how much training can be
-performed at the recommended `planned_at` while still reaching Xert's fresh
-boundary for the next day's workout. Keep this recovery-protection capacity
-separate from XATA's recommended daily dose and from the final coaching dose.
-
-The active plan selects the domain and structure; Xert `remainingXSS` (or
-`targetXSS` before any same-day activity) is the dose input. Treat the
-applicable recovery-protection capacity as the default upper limit. Direct
-readiness evidence may impose an explicit lower cap, but aggregate Garmin
-Training Readiness or Garmin Recovery Time alone must not do so. Do not replace
-the resulting XSS dose with an agent-rounded duration: solve the complete
-structure with the current Fitness Signature. If the next role is not explicit
-in state, derive it only from an unambiguous active-plan queue; otherwise label
-the capacity protection unresolved.
-
-- On an endurance-only day, solve the compatible portion of the Xert dose
-  through endurance, keeping each XSS system within its corresponding
-  recovery-protection capacity.
-- On a plan-selected quality day, calculate the complete quality structure
-  first. Preserve it when it fits the corresponding Low/High/Peak capacities,
-  then fill only the compatible remaining Low XSS with flexible VT1/endurance.
-  Apply capacity protection to that flexible filler before reducing quality.
-- Do not reduce a plan-selected quality structure solely to protect the next
-  day's workout. If the complete quality workout itself exceeds a relevant
-  capacity, report an explicit plan conflict rather than silently diluting it.
-  Direct readiness, illness, a failed execution gate, or an actual calendar
-  constraint may still justify a separate quality modification.
-
-- Resolve the next day's plan role from the active plan and authoritative
-   `config/plan-state.json`. Do not invent the next role from Xert advice.
-- Resolve the next day's exact practical workout start from explicit user
-   input or calendar context. Apply the configured earliest start, fixed-event
-   conflicts, setup buffer, and the user's open/tentative/movable-event rules.
-   Never run a capacity calculation against an unspecified horizon.
-- Use Xert MCP `calculate_workout_capacity` with a fresh live state. Set `as_of`
-   to today's recommended start and `fresh_at` to the next workout's resolved
-   start. The result is three
-   independent fresh-boundary capacities—Low, High, and Peak XSS—not three
-   additive workout quotas.
-- Persist the complete `calculate_workout_capacity` `structuredContent`
-   unchanged and pass it as `xert_workout_capacity` in
-   `--source-overrides-json`. For an endurance-selected day,
-   `recommend_training.py` applies its Low-XSS capacity as an automatic upper
-   limit before solving the complete endurance structure. Do not manually copy
-   that capacity into `--training-target-json`.
-- Align the capacity horizon with the interval from today's recommended
-   `planned_at` to the next day's resolved workout start. When the current Xert
-   state timestamp materially precedes today's `planned_at`, do not silently
-   treat a capacity calculated at the current timestamp as exact. Use an exact
-   scheduled-impulse projection when the source tooling supports it; otherwise
-   shift the capacity horizon to preserve the same recovery interval and label
-   the result an equivalent-horizon approximation. State the planned timestamps
-   and the no-intervening-training assumption.
-- Select the limiting system for the actual proposed workout and next-day
-   role. A VT1 workout is normally constrained by Low XSS; a quality workout
-   must respect every Low/High/Peak system it actually generates. Do not combine
-   the independent capacity values into an arbitrary realizable XSS split.
-- Convert the applicable capacity to duration only through the same current
-   Fitness Signature and complete proposed workout structure used for the
-   recommendation. For adjustable endurance, use Xert MCP
-   `solve_segment_duration`; for fixed quality, calculate the complete structure and
-   compare its Low/High/Peak XSS with the corresponding capacities. Never use a
-   mixed-history XSS-per-minute ratio.
-- Present both values explicitly:
-   - `Recommended dose`: the final coaching prescription;
-   - `Maximum compatible with next-day Xert freshness`: duration,
-     watts/structure, limiting
-     XSS capacity, next workout role, and next workout start.
-   For endurance-only work, reduce the final recommendation when the Xert dose
-   exceeds the applicable recovery-protection capacity. For plan-selected
-   quality work, retain a capacity-compatible complete quality structure and
-   reduce flexible VT1/endurance filler first. If quality itself exceeds a
-   relevant capacity, state the plan conflict and whether the next-day quality
-   session is no longer protected.
-
-Use `Capacity before the next workout` as the canonical section label and
-translate it into the user's language. Explain that Xert's
-fresh boundary is a model result rather than a guarantee of whole-body or
-subjective readiness, so the next day's sleep, direct readiness signals,
-soreness, and body feel must still gate quality work.
-
-Use `planning-context.json` beside the recommendation packet only when an
-auditable trace of resolved logistics is useful. It is LLM-authored context,
-not a helper input contract.
+If Intervals.icu contains a sickness event today or yesterday, follow
+[illness-and-return.md](illness-and-return.md) before selecting intensity or dose.
 
 ## Readiness Composition
 
@@ -253,11 +171,6 @@ not a helper input contract.
   validation status are explicit. Never mix XSS with Intervals or Garmin load.
 - Separate historical/cumulative load from acute physiological response. A
   normal load does not make mixed acute signals disappear.
-
-## Illness And Return
-
-If Intervals.icu contains a sickness event today or yesterday, follow
-[illness-and-return.md](illness-and-return.md) before selecting intensity or dose.
 
 ## Dose And Intensity
 
@@ -390,6 +303,93 @@ verbose Calculate series merely to reproduce locally available model fields.
 - Report the Xert strain result as model mechanics, then state the selected
   training domain separately from plan intent, power prescription, progression,
   and readiness. Do not let the dominant XSS system choose the domain.
+
+## Capacity Before The Next Day's Workout
+
+For every training recommendation, calculate and show how much training can be
+performed at the recommended `planned_at` while still reaching Xert's fresh
+boundary for the next day's workout. Keep this recovery-protection capacity
+separate from XATA's recommended daily dose and from the final coaching dose.
+
+The active plan selects the domain and structure; Xert `remainingXSS` (or
+`targetXSS` before any same-day activity) is the dose input. Treat the
+applicable recovery-protection capacity as the default upper limit. Direct
+readiness evidence may impose an explicit lower cap, but aggregate Garmin
+Training Readiness or Garmin Recovery Time alone must not do so. Do not replace
+the resulting XSS dose with an agent-rounded duration: solve the complete
+structure with the current Fitness Signature. If the next role is not explicit
+in state, derive it only from an unambiguous active-plan queue; otherwise label
+the capacity protection unresolved.
+
+- On an endurance-only day, solve the compatible portion of the Xert dose
+  through endurance, keeping each XSS system within its corresponding
+  recovery-protection capacity.
+- On a plan-selected quality day, calculate the complete quality structure
+  first. Preserve it when it fits the corresponding Low/High/Peak capacities,
+  then fill only the compatible remaining Low XSS with flexible VT1/endurance.
+  Apply capacity protection to that flexible filler before reducing quality.
+- Do not reduce a plan-selected quality structure solely to protect the next
+  day's workout. If the complete quality workout itself exceeds a relevant
+  capacity, report an explicit plan conflict rather than silently diluting it.
+  Direct readiness, illness, a failed execution gate, or an actual calendar
+  constraint may still justify a separate quality modification.
+
+- Resolve the next day's plan role from the active plan and authoritative
+   `config/plan-state.json`. Do not invent the next role from Xert advice.
+- Resolve the next day's exact practical workout start from explicit user
+   input or calendar context. Apply the configured earliest start, fixed-event
+   conflicts, setup buffer, and the user's open/tentative/movable-event rules.
+   Never run a capacity calculation against an unspecified horizon.
+- Use Xert MCP `calculate_workout_capacity` with a fresh live state. Set `as_of`
+   to today's recommended start and `fresh_at` to the next workout's resolved
+   start. The result is three
+   independent fresh-boundary capacities—Low, High, and Peak XSS—not three
+   additive workout quotas.
+- Persist the complete `calculate_workout_capacity` `structuredContent`
+   unchanged and pass it as `xert_workout_capacity` in
+   `--source-overrides-json`. For an endurance-selected day,
+   `recommend_training.py` applies its Low-XSS capacity as an automatic upper
+   limit before solving the complete endurance structure. Do not manually copy
+   that capacity into `--training-target-json`.
+- Align the capacity horizon with the interval from today's recommended
+   `planned_at` to the next day's resolved workout start. When the current Xert
+   state timestamp materially precedes today's `planned_at`, do not silently
+   treat a capacity calculated at the current timestamp as exact. Use an exact
+   scheduled-impulse projection when the source tooling supports it; otherwise
+   shift the capacity horizon to preserve the same recovery interval and label
+   the result an equivalent-horizon approximation. State the planned timestamps
+   and the no-intervening-training assumption.
+- Select the limiting system for the actual proposed workout and next-day
+   role. A VT1 workout is normally constrained by Low XSS; a quality workout
+   must respect every Low/High/Peak system it actually generates. Do not combine
+   the independent capacity values into an arbitrary realizable XSS split.
+- Convert the applicable capacity to duration only through the same current
+   Fitness Signature and complete proposed workout structure used for the
+   recommendation. For adjustable endurance, use Xert MCP
+   `solve_segment_duration`; for fixed quality, calculate the complete structure and
+   compare its Low/High/Peak XSS with the corresponding capacities. Never use a
+   mixed-history XSS-per-minute ratio.
+- Present both values explicitly:
+   - `Recommended dose`: the final coaching prescription;
+   - `Maximum compatible with next-day Xert freshness`: duration,
+     watts/structure, limiting
+     XSS capacity, next workout role, and next workout start.
+   For endurance-only work, reduce the final recommendation when the Xert dose
+   exceeds the applicable recovery-protection capacity. For plan-selected
+   quality work, retain a capacity-compatible complete quality structure and
+   reduce flexible VT1/endurance filler first. If quality itself exceeds a
+   relevant capacity, state the plan conflict and whether the next-day quality
+   session is no longer protected.
+
+Use `Capacity before the next workout` as the canonical section label and
+translate it into the user's language. Explain that Xert's
+fresh boundary is a model result rather than a guarantee of whole-body or
+subjective readiness, so the next day's sleep, direct readiness signals,
+soreness, and body feel must still gate quality work.
+
+Use `planning-context.json` beside the recommendation packet only when an
+auditable trace of resolved logistics is useful. It is LLM-authored context,
+not a helper input contract.
 
 ## Candidate Selection
 
