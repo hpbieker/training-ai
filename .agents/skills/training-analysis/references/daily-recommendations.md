@@ -116,10 +116,10 @@ points recorded after that time. Completed overnight signals such as sleep,
 night HRV, resting HR, and Body Battery at wake remain usable when their
 observation period ended by the cutoff.
 
-For a complete recommendation, fetch Xert advice explicitly from the
-planned-time `recommended-training` source, even when `planned_at` is close to
-`now`. The faster current `/my-fitness` source does not expose the availability,
-deficit, and progression fields required to explain the XATA planning dose.
+For a complete recommendation, fetch planned-time Xert advice with MCP
+`get_training_advice(at=<planned_at>)`. Do not use current advice for this:
+it lacks the availability, deficit, and progression fields required to explain
+the XATA planning dose.
 
 ## Illness And Return
 
