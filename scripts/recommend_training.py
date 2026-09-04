@@ -85,6 +85,114 @@ def parse_training_target_json(raw: str) -> dict[str, float]:
     return parsed
 
 
+def expand_quality_workout_rows(
+    *,
+    rows: list[dict[str, Any]],
+    signature: dict[str, Any],
+    adjustable_row_index: int,
+) -> dict[str, Any]:
+    """Expand one canonical Xert row list into local solver segments."""
+
+    tp = number(signature.get("tp"))
+    ltp = number(signature.get("ltp"))
+    if tp is None:
+        raise argparse.ArgumentTypeError("quality-workout signature.tp must be numeric")
+    if (
+        isinstance(adjustable_row_index, bool)
+        or not isinstance(adjustable_row_index, int)
+        or not 0 <= adjustable_row_index < len(rows)
+    ):
+        raise argparse.ArgumentTypeError(
+            "quality-workout adjustable_row_index is out of range"
+        )
+
+    segments: list[dict[str, Any]] = []
+    adjustable_segment_index: int | None = None
+    for row_index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise argparse.ArgumentTypeError(
+                f"quality-workout rows[{row_index}] must be an object"
+            )
+        duration = number(row.get("duration_seconds"))
+        repetitions = row.get("interval_count", 1)
+        if duration is None or duration < 0 or duration != int(duration):
+            raise argparse.ArgumentTypeError(
+                f"quality-workout rows[{row_index}].duration_seconds is invalid"
+            )
+        if (
+            isinstance(repetitions, bool)
+            or not isinstance(repetitions, int)
+            or repetitions < 0
+        ):
+            raise argparse.ArgumentTypeError(
+                f"quality-workout rows[{row_index}].interval_count is invalid"
+            )
+        if row_index == adjustable_row_index and repetitions != 1:
+            raise argparse.ArgumentTypeError(
+                "quality-workout adjustable row must have interval_count 1"
+            )
+
+        power_type = row.get("power_type", "absolute")
+        power = number(row.get("power"))
+        second_power = number(row.get("power_second_value"))
+        if power is None:
+            raise argparse.ArgumentTypeError(
+                f"quality-workout rows[{row_index}].power must be numeric"
+            )
+        if power_type in {"relative_ftp", "ramp_ftp"}:
+            power = power * tp / 100.0
+            second_power = second_power * tp / 100.0 if second_power is not None else None
+        elif power_type == "ramp_ltp":
+            if ltp is None:
+                raise argparse.ArgumentTypeError(
+                    "quality-workout signature.ltp is required for ramp_ltp"
+                )
+            power = power * ltp / 100.0
+            second_power = second_power * ltp / 100.0 if second_power is not None else None
+        elif power_type not in {"absolute", "ramp_absolute"}:
+            raise argparse.ArgumentTypeError(
+                f"quality-workout rows[{row_index}].power_type is unsupported"
+            )
+
+        for repetition in range(repetitions):
+            segment = {
+                "name": row.get("name") or f"row {row_index + 1}",
+                "duration_seconds": int(duration),
+                "power": power,
+            }
+            if second_power is not None:
+                segment["end_power"] = second_power
+            if row_index == adjustable_row_index:
+                adjustable_segment_index = len(segments)
+            segments.append(segment)
+
+            rib_duration = number(row.get("rib_duration_seconds")) or 0.0
+            if rib_duration > 0:
+                rib_power = number(row.get("rib_power"))
+                if rib_power is None:
+                    raise argparse.ArgumentTypeError(
+                        f"quality-workout rows[{row_index}].rib_power must be numeric"
+                    )
+                if row.get("rib_power_type", "absolute") == "relative_ftp":
+                    rib_power = rib_power * tp / 100.0
+                segments.append({
+                    "name": f"Rest after {row.get('name') or f'row {row_index + 1}'} "
+                    f"{repetition + 1}/{repetitions}",
+                    "duration_seconds": int(rib_duration),
+                    "power": rib_power,
+                })
+
+    if adjustable_segment_index is None:
+        raise argparse.ArgumentTypeError(
+            "quality-workout adjustable row produced no solver segment"
+        )
+    return {
+        "signature": signature,
+        "segments": segments,
+        "adjustable_segment_index": adjustable_segment_index,
+    }
+
+
 def parse_quality_workout_json(raw: str) -> dict[str, Any]:
     try:
         payload = json.loads(raw)
@@ -96,7 +204,15 @@ def parse_quality_workout_json(raw: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(
             "--quality-workout-json must contain one JSON object"
         )
-    unknown = sorted(set(payload) - {"status", "calculation"})
+    structure_fields = {
+        "signature",
+        "rows",
+        "adjustable_row_index",
+        "minimum_duration_seconds",
+        "maximum_duration_seconds",
+        "tolerance_xss",
+    }
+    unknown = sorted(set(payload) - {"status", "calculation", *structure_fields})
     if unknown:
         raise argparse.ArgumentTypeError(
             f"unsupported quality-workout field: {unknown[0]}"
@@ -114,6 +230,31 @@ def parse_quality_workout_json(raw: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(
             "quality-workout calculation must be a non-empty JSON object"
         )
+    supplied_structure_fields = structure_fields.intersection(payload)
+    if supplied_structure_fields:
+        required = {"signature", "rows", "adjustable_row_index"}
+        missing_structure = sorted(required - set(payload))
+        if missing_structure:
+            raise argparse.ArgumentTypeError(
+                f"missing required quality-workout structure field: {missing_structure[0]}"
+            )
+        if not isinstance(payload["signature"], dict) or not isinstance(payload["rows"], list):
+            raise argparse.ArgumentTypeError(
+                "quality-workout signature must be an object and rows must be an array"
+            )
+        structure = expand_quality_workout_rows(
+            rows=payload["rows"],
+            signature=payload["signature"],
+            adjustable_row_index=payload["adjustable_row_index"],
+        )
+        for field in (
+            "minimum_duration_seconds",
+            "maximum_duration_seconds",
+            "tolerance_xss",
+        ):
+            if field in payload:
+                structure[field] = payload[field]
+        payload["solver_structure"] = structure
     return payload
 
 
@@ -137,40 +278,6 @@ def parse_endurance_workout_json(raw: str) -> dict[str, Any]:
     if not isinstance(calculation, dict) or not calculation:
         raise argparse.ArgumentTypeError(
             "endurance-workout calculation must be a non-empty JSON object"
-        )
-    return payload
-
-
-def parse_endurance_solver_structure_json(raw: str) -> dict[str, Any]:
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise argparse.ArgumentTypeError(
-            f"--endurance-solver-structure-json must be valid JSON: {exc.msg}"
-        ) from exc
-    if not isinstance(payload, dict):
-        raise argparse.ArgumentTypeError(
-            "--endurance-solver-structure-json must contain one JSON object"
-        )
-    allowed = {
-        "signature",
-        "segments",
-        "adjustable_segment_index",
-        "minimum_duration_seconds",
-        "maximum_duration_seconds",
-        "tolerance_xss",
-    }
-    unknown = sorted(set(payload) - allowed)
-    if unknown:
-        raise argparse.ArgumentTypeError(
-            f"unsupported endurance-solver-structure field: {unknown[0]}"
-        )
-    missing = sorted(
-        {"signature", "segments", "adjustable_segment_index"} - set(payload)
-    )
-    if missing:
-        raise argparse.ArgumentTypeError(
-            f"missing required endurance-solver-structure field: {missing[0]}"
         )
     return payload
 
@@ -227,8 +334,9 @@ def main() -> None:
         "--quality-workout-json",
         type=parse_quality_workout_json,
         help=(
-            "Optional JSON object with status (planned or completed) and the "
-            "complete inline Xert calculation object."
+            "Optional JSON object with status, the complete inline Xert calculation, "
+            "and canonical rows/signature/adjustable_row_index when a duration "
+            "solver request is required."
         ),
     )
     parser.add_argument(
@@ -238,16 +346,6 @@ def main() -> None:
             "Optional normalized solve_segment_duration result from Xert's "
             "offline MCP calculation. The flexible endurance segment must match the "
             "applicable low-XSS target."
-        ),
-    )
-    parser.add_argument(
-        "--endurance-solver-structure-json",
-        type=parse_endurance_solver_structure_json,
-        help=(
-            "Inline structure used only with --print-endurance-solver-request: "
-            "signature, segments, one "
-            "adjustable_segment_index, and optional minimum_duration_seconds, "
-            "maximum_duration_seconds, and tolerance_xss."
         ),
     )
     parser.add_argument(
@@ -553,9 +651,10 @@ def main() -> None:
                 else None
             ),
         )
-    endurance_solver_structure = None
-    if args.endurance_solver_structure_json is not None:
-        endurance_solver_structure = args.endurance_solver_structure_json
+    endurance_solver_structure = (
+        (args.quality_workout_json or {}).get("solver_structure")
+    )
+    if endurance_solver_structure is not None:
         if split_preference is not None:
             endurance_solver_structure = split_endurance_structure(
                 endurance_solver_structure,
@@ -565,7 +664,8 @@ def main() -> None:
         if endurance_solver_structure is None:
             raise SystemExit(
                 "--print-endurance-solver-request requires "
-                "--endurance-solver-structure-json"
+                "--quality-workout-json with signature, rows, and "
+                "adjustable_row_index"
             )
         print(json.dumps(
             build_endurance_solver_request(
@@ -576,11 +676,6 @@ def main() -> None:
             sort_keys=True,
         ))
         return
-    if endurance_solver_structure is not None:
-        raise SystemExit(
-            "--endurance-solver-structure-json is only valid with "
-            "--print-endurance-solver-request"
-        )
     if args.endurance_workout_json is not None:
         apply_xert_endurance_duration_solution(
             target_resolution,
@@ -2834,6 +2929,54 @@ def apply_quality_workout_vt1_composition(
         )
     solution = solution or {}
     solution_xss = solution.get("achieved_xss") or {}
+    if required_filler_xss > 0 and quality_xss_counted_in_remaining_plan:
+        segments = solution.get("segments")
+        adjustable_index = solution.get("adjustable_segment_index")
+        duration_seconds = number(solution.get("duration_seconds"))
+        adjustable_seconds = number(solution.get("adjustable_duration_seconds"))
+        signature = solution.get("signature") or {}
+        tp = number(signature.get("tp"))
+        if (
+            not isinstance(segments, list)
+            or not segments
+            or isinstance(adjustable_index, bool)
+            or not isinstance(adjustable_index, int)
+            or not 0 <= adjustable_index < len(segments)
+            or duration_seconds is None
+            or adjustable_seconds is None
+            or tp is None
+        ):
+            raise ValueError(
+                "quality VT1 solver result must include its signature, segments, "
+                "valid adjustable_segment_index, and exact durations"
+            )
+        adjustable_segment = segments[adjustable_index]
+        if not isinstance(adjustable_segment, dict):
+            raise ValueError("quality VT1 adjustable segment must be an object")
+        adjustable_power = number(adjustable_segment.get("power"))
+        adjustable_end_power = number(adjustable_segment.get("end_power"))
+        if (
+            adjustable_power is None
+            or adjustable_power >= tp
+            or (adjustable_end_power is not None and adjustable_end_power >= tp)
+        ):
+            raise ValueError("quality VT1 adjustable segment must remain below TP")
+        segment_durations = [
+            number(segment.get("duration_seconds"))
+            if isinstance(segment, dict)
+            else None
+            for segment in segments
+        ]
+        if any(value is None or value < 0 for value in segment_durations):
+            raise ValueError("quality VT1 solver segments require valid durations")
+        segment_seconds = sum(float(value) for value in segment_durations)
+        if abs(segment_seconds - duration_seconds) > 1.0:
+            raise ValueError("quality VT1 solver segment durations do not match total duration")
+        if abs((duration_seconds - adjustable_seconds) - quality_minutes * 60.0) > 1.0:
+            raise ValueError(
+                "quality VT1 solver fixed duration does not match the calculated "
+                "quality workout"
+            )
     composed_minutes = (
         number(solution.get("duration_minutes"))
         if required_filler_xss > 0
@@ -3020,13 +3163,18 @@ def apply_xert_endurance_duration_solution(
     target_resolution["endurance_duration_solution"] = {
         "source": calculation.get("source"),
         "selected_intensity": selected_intensity,
+        "signature": calculation.get("signature"),
         "target_low_xss": round(target_low, 3),
         "achieved_xss": {
             key: round(float(achieved[key]), 3)
             for key in ("total", "low", "high", "peak")
         },
         "duration_minutes": round(duration_seconds / 60.0, 1),
+        "duration_seconds": round(duration_seconds),
         "adjustable_segment_index": calculation.get("adjustable_segment_index"),
+        "adjustable_duration_seconds": round(
+            number(calculation.get("adjustable_duration_seconds")) or 0.0
+        ),
         "adjustable_duration_minutes": round(
             (number(calculation.get("adjustable_duration_seconds")) or 0.0) / 60.0,
             1,

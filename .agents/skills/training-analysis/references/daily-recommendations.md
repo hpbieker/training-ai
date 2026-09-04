@@ -251,21 +251,19 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   Use source semantics rather than re-explaining private-model formulas here.
 - Resolve the plan role and concrete workout format before converting each
   candidate's Xert dose to duration. For recovery, VT1, or a quality workout
-  with a flexible endurance extension, pass the current Xert signature,
-  complete segment structure, and exactly one marked adjustable sub-TP segment
-  through `recommend_training.py --endurance-solver-structure-json` with
-  `--print-endurance-solver-request`. The helper resolves the applicable
-  post-guardrail Low-XSS target and prints the MCP request. The structure
-  object accepts exactly
-  `signature`, `segments`, `adjustable_segment_index`, and the optional fields
+  with a flexible endurance extension, describe the complete workout once as
+  canonical Xert `rows` together with the current `signature` and exactly one
+  `adjustable_row_index` inside `--quality-workout-json`. With
+  `--print-endurance-solver-request`, the helper expands repetitions, RIB, and
+  ramps, resolves the applicable post-guardrail Low-XSS target, and prints the
+  MCP request. The quality-workout object also accepts the optional fields
   `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`.
   When `progression.vt1.target_power_w` is present, use it as the fixed power
   for the endurance structure unless current evidence explicitly justifies a deviation.
   Call MCP `solve_segment_duration` with the printed request, then pass its
   normalized result through
   `--endurance-workout-json '{"calculation": <normalized-result>}'`.
-  Preserve fixed quality, warm-up,
-  recovery, and cool-down segments. Never derive prescribed duration from
+  Preserve fixed quality, warm-up, recovery, and cool-down segments. Never derive prescribed duration from
   XSS/minute across activities of mixed intensity domains, and never add
   high/peak work merely to match high/peak advice on a plan-selected VT1 day.
 - For a structured quality session followed by easy volume, calculate the

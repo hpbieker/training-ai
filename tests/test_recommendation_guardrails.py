@@ -33,6 +33,7 @@ from recommend_training import (
     compact_xert_workout_recommendations,
     compact_freshness_summary,
     compose_xert_source_overrides,
+    dose_composition_summary_lines,
     executable_now_line,
     finalize_plan_trace,
     format_summary,
@@ -51,7 +52,6 @@ from recommend_training import (
     parse_plan_selection_json,
     parse_quality_workout_json,
     parse_endurance_workout_json,
-    parse_endurance_solver_structure_json,
     parse_refresh_json,
     parse_route_options_json,
     parse_source_overrides_json,
@@ -166,21 +166,29 @@ class TrainingTargetContractTests(unittest.TestCase):
             route_dose_fit_line(route["dose_fit"]),
         )
 
-    def test_endurance_structure_parser_requires_agent_selected_structure(self):
-        parsed = parse_endurance_solver_structure_json(
-            json.dumps(
+    def test_quality_workout_parser_expands_canonical_rows_for_solver(self):
+        parsed = parse_quality_workout_json(json.dumps({
+            "status": "planned",
+            "calculation": {"result": {"stats": {"duration": 900, "xss": 10}}},
+            "signature": {"tp": 300, "ltp": 260, "hie": 14000, "pp": 800},
+            "rows": [
                 {
-                    "signature": {"tp": 300, "hie": 14000, "pp": 800},
-                    "segments": [{"duration_seconds": 3600, "power": 210}],
-                    "adjustable_segment_index": 0,
-                }
-            )
-        )
-        self.assertEqual(parsed["adjustable_segment_index"], 0)
-        with self.assertRaises(argparse.ArgumentTypeError):
-            parse_endurance_solver_structure_json(
-                json.dumps({"signature": {}, "segments": []})
-            )
+                    "name": "VO2",
+                    "duration_seconds": 180,
+                    "power": 350,
+                    "interval_count": 2,
+                    "rib_duration_seconds": 180,
+                    "rib_power": 120,
+                },
+                {"name": "VT1", "duration_seconds": 3600, "power": 210},
+            ],
+            "adjustable_row_index": 1,
+        }))
+
+        structure = parsed["solver_structure"]
+        self.assertEqual(len(structure["segments"]), 5)
+        self.assertEqual(structure["adjustable_segment_index"], 4)
+        self.assertEqual(structure["segments"][4]["power"], 210)
 
     def test_endurance_solver_request_uses_post_guardrail_low_xss_target(self):
         target = {
@@ -1365,10 +1373,28 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
     def attach_solver_solution(
         target, *, minutes, adjustable_minutes, total_xss, low_xss
     ):
+        total_seconds = round(minutes * 60)
+        adjustable_seconds = round(adjustable_minutes * 60)
         target["endurance_duration_solution"] = {
             "source": "local_xert_segment_duration_solver",
+            "signature": {"tp": 300.0, "hie": 14000.0, "pp": 800.0},
             "duration_minutes": minutes,
+            "duration_seconds": total_seconds,
             "adjustable_duration_minutes": adjustable_minutes,
+            "adjustable_duration_seconds": adjustable_seconds,
+            "adjustable_segment_index": 1,
+            "segments": [
+                {
+                    "name": "fixed quality workout",
+                    "duration_seconds": total_seconds - adjustable_seconds,
+                    "power": 250.0,
+                },
+                {
+                    "name": "VT1",
+                    "duration_seconds": adjustable_seconds,
+                    "power": 215.0,
+                },
+            ],
             "achieved_xss": {
                 "total": total_xss,
                 "low": low_xss,
@@ -1451,6 +1477,123 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
         )
         self.assertEqual(target["target_minutes"], 143.0)
         self.assertEqual(target["plan_trace"]["final_plan"]["minutes"], 143.0)
+
+    def test_quality_capacity_solver_composition_integration(self):
+        target = {
+            "target_minutes": 298.5,
+            "target_load": 253.7,
+            "xert_recommended_target_xss": {
+                "low": 250.0,
+                "high": 3.5,
+                "peak": 0.2,
+            },
+            "reason": "Xert remaining dose",
+        }
+        quality_calculation = {
+            "result": {
+                "stats": {
+                    "duration": 3060,
+                    "xss": 69.54199223543478,
+                    "xlss": 63.610458265261,
+                    "xhss": 5.343493964509993,
+                    "xpss": 0.5880400056637821,
+                }
+            }
+        }
+        apply_recovery_protection_capacity(
+            target,
+            selected_intensity="vo2max",
+            quality_low_xss=63.610458265261,
+            capacity={
+                "workout_capacity_xss": {
+                    "low": 155.45563212360054,
+                    "high": 16.697654339655834,
+                    "peak": 3.321316141363557,
+                }
+            },
+        )
+        request = build_endurance_solver_request(
+            target,
+            structure={
+                "signature": {"tp": 303.795, "hie": 13973.3, "pp": 768.34},
+                "segments": [
+                    {"duration_seconds": 3060, "power": 250.0},
+                    {"duration_seconds": 3600, "power": 215.0},
+                ],
+                "adjustable_segment_index": 1,
+            },
+        )
+        self.assertEqual(request["target_value"], 155.456)
+
+        apply_xert_endurance_duration_solution(
+            target,
+            selected_intensity="vo2max",
+            calculation={
+                "source": "local_xert_segment_duration_solver",
+                "network_used": False,
+                "signature": {"tp": 303.795, "hie": 13973.3, "pp": 768.34},
+                "matched_within_tolerance": True,
+                "target_low_xss": 155.456,
+                "achieved_xss": {
+                    "total": 161.403,
+                    "low": 155.453,
+                    "high": 5.359,
+                    "peak": 0.592,
+                },
+                "duration_seconds": 8273,
+                "adjustable_segment_index": 1,
+                "adjustable_duration_seconds": 5213,
+                "segments": [
+                    {"duration_seconds": 3060, "power": 250.0},
+                    {"duration_seconds": 5213, "power": 215.0},
+                ],
+                "feasibility": {"valid": True},
+            },
+        )
+        composition = apply_quality_workout_vt1_composition(
+            target,
+            quality_calculation=quality_calculation,
+            selected_intensity="vo2max",
+        )
+
+        self.assertEqual(composition["quality_base"]["duration_minutes"], 51.0)
+        self.assertEqual(composition["vt1_filler"]["duration_minutes"], 86.9)
+        self.assertEqual(composition["estimated_total"]["duration_minutes"], 137.9)
+        summary = "\n".join(dose_composition_summary_lines(target))
+        self.assertIn(
+            "VT1 FILLER: 86.9 min / 91.8 low XSS (Xert-solved)", summary
+        )
+
+    def test_quality_composition_rejects_solver_for_other_fixed_duration(self):
+        target = {"target_load": 160.0}
+        self.attach_solver_solution(
+            target,
+            minutes=143.0,
+            adjustable_minutes=97.0,
+            total_xss=160.0,
+            low_xss=155.6,
+        )
+        solution = target["endurance_duration_solution"]
+        solution["adjustable_duration_seconds"] += 60
+        solution["segments"][0]["duration_seconds"] -= 60
+        solution["segments"][1]["duration_seconds"] += 60
+
+        with self.assertRaisesRegex(ValueError, "fixed duration does not match"):
+            apply_quality_workout_vt1_composition(
+                target,
+                quality_calculation={
+                    "result": {
+                        "stats": {
+                            "duration": 2760,
+                            "xss": 63.0,
+                            "xlss": 58.6,
+                            "xhss": 4.0,
+                            "xpss": 0.4,
+                        }
+                    }
+                },
+                selected_intensity="vo2max",
+            )
 
     def test_calendar_fit_exposes_executable_dose_and_shortfall(self):
         oslo = ZoneInfo("Europe/Oslo")
