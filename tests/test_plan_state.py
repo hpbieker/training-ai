@@ -205,6 +205,34 @@ class PlanStateTransitionTests(unittest.TestCase):
         )
         self.assertEqual(second["quality_queue"]["next_quality_step"], "vo2max")
 
+    def test_same_day_aerobic_after_quality_does_not_count_as_spacing_day(self):
+        quality = apply_activity_classification(
+            base_state(),
+            event(
+                activity_id="quality-am",
+                started_at="2026-07-25T09:00:00+02:00",
+                completed_role="vt2",
+                quality_completed=True,
+                progression_effect="advance",
+            ),
+        )
+        evening_aerobic = apply_activity_classification(
+            quality,
+            event(
+                activity_id="aerobic-pm",
+                started_at="2026-07-25T19:00:00+02:00",
+                completed_role="easy_aerobic",
+            ),
+        )
+
+        self.assertEqual(
+            evening_aerobic["quality_queue"]["aerobic_dates_since_quality"], []
+        )
+        self.assertEqual(
+            evening_aerobic["quality_queue"]["aerobic_days_since_quality"], 0
+        )
+        self.assertEqual(evening_aerobic["next_role"], "easy_aerobic")
+
     def test_repeated_vo2max_goals_are_supported_without_special_cases(self):
         state = base_state()
         state["quality_queue"]["steps"] = [

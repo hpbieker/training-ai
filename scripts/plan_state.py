@@ -314,7 +314,14 @@ def apply_activity_classification(
         queue["aerobic_dates_since_quality"] = []
     elif completed_role in AEROBIC_ROLES:
         aerobic_day = event_started_at.date().isoformat()
-        if aerobic_day not in queue["aerobic_dates_since_quality"]:
+        last_quality = queue.get("last_quality_session") or queue.get(
+            "last_completed_quality"
+        )
+        last_quality_day = last_quality.get("date") if last_quality else None
+        if (
+            aerobic_day != last_quality_day
+            and aerobic_day not in queue["aerobic_dates_since_quality"]
+        ):
             queue["aerobic_dates_since_quality"].append(aerobic_day)
             queue["aerobic_dates_since_quality"].sort()
 
