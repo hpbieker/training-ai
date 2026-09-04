@@ -692,6 +692,7 @@ class XertServiceTests(unittest.TestCase):
                 "form": {"ftp": 5, "hie": 1, "pp": 1},
             },
             "training_status": "Fresh",
+            "recovery_days": {"lo": 0, "hi": 4 / 24, "pk": -2 / 24},
             "recovery_hours": {"lo": 0, "hi": 4, "pk": 0},
             "targetXSS": {"xlss": 50, "xhss": 0, "xpss": 0},
         }
@@ -704,6 +705,10 @@ class XertServiceTests(unittest.TestCase):
         self.assertEqual(summary["signature"]["tp_watts"], 300)
         self.assertEqual(summary["training_load"], {"low": 70, "high": 8, "peak": 2})
         self.assertEqual(summary["recovery_hours"]["high"], 4)
+        self.assertEqual(summary["fresh_at"], {
+            "low": "2026-08-17T09:00:00+02:00",
+            "all": "2026-08-17T13:00:00+02:00",
+        })
         self.assertEqual(full["training_info"], training_info)
 
     def test_training_advice_selects_current_or_planned_source(self) -> None:

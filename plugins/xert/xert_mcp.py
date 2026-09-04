@@ -757,7 +757,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "get_training_state",
         "description": (
             "Get current Xert Fitness Signature, Training and Recovery Load, form, "
-            "recovery hours, training status, and target XSS. This is current state, "
+            "recovery hours and exact Low/all-system fresh times, training status, "
+            "and target XSS. This is current state, "
             "not a future projection or activity-specific readiness calculation."
         ),
         "inputSchema": {

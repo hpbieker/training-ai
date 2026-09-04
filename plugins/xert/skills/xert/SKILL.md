@@ -57,7 +57,8 @@ Prefer the Xert MCP tools when they are available:
   freshness, program, forecast, or training-plan fields.
 - `get_training_state` returns current Xert state. Use `view=summary` for the
   normalized Fitness Signature, Training Load, Recovery Load, form, recovery
-  hours, training status, and target XSS. Use `view=full` only when both source
+  hours, exact `fresh_at.low` and `fresh_at.all` timestamps, training status,
+  and target XSS. Use `view=full` only when both source
   payloads or model parameters are required. It does not project a future state,
   fetch planned-time advice, or add activity-specific readiness context.
 - `get_training_advice` returns Xert advice. Omit `at` for current advice from

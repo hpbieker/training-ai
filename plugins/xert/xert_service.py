@@ -801,6 +801,13 @@ def compact_training_state(
 ) -> dict[str, Any]:
     signature = training_info.get("signature") if isinstance(training_info.get("signature"), dict) else {}
     at_state = recovery_model.get("at_state") if isinstance(recovery_model.get("at_state"), dict) else {}
+    as_of = _aware_datetime(at_state.get("start_date"), "at_state.start_date")
+    recovery_days = recovery_model.get("recovery_days") or {}
+    fresh_by_system = {
+        key: as_of + timedelta(days=float(recovery_days[source_key]))
+        for key, source_key in (("low", "lo"), ("high", "hi"), ("peak", "pk"))
+        if recovery_days.get(source_key) is not None
+    }
     return {
         "source": "xert_plugin_training_state",
         "as_of": at_state.get("start_date"),
@@ -815,6 +822,14 @@ def compact_training_state(
         "recovery_load": _system_triplet(at_state.get("rl"), "ftp", "hie", "pp"),
         "form": at_state.get("form"),
         "recovery_hours": _system_triplet(recovery_model.get("recovery_hours"), "lo", "hi", "pk"),
+        "fresh_at": {
+            "low": fresh_by_system.get("low").isoformat()
+            if fresh_by_system.get("low") is not None
+            else None,
+            "all": max(fresh_by_system.values()).isoformat()
+            if len(fresh_by_system) == 3
+            else None,
+        },
         "target_xss": _system_triplet(recovery_model.get("targetXSS"), "xlss", "xhss", "xpss"),
     }
 
