@@ -543,6 +543,15 @@ def main() -> None:
             selected_intensity=str(
                 intensity_decision.get("selected_domain") or ""
             ),
+            quality_low_xss=(
+                number(
+                    (((args.quality_workout_json or {}).get("calculation") or {}).get("result") or {})
+                    .get("stats", {})
+                    .get("xlss")
+                )
+                if args.quality_workout_json is not None
+                else None
+            ),
         )
     endurance_solver_structure = None
     if args.endurance_solver_structure_json is not None:
@@ -2968,7 +2977,9 @@ def apply_xert_endurance_duration_solution(
         ]
         if exceeded_systems:
             recovery_capacity["status"] = "fixed_quality_exceeds_capacity"
-            recovery_capacity["exceeded_systems"] = exceeded_systems
+            recovery_capacity["exceeded_systems"] = list(dict.fromkeys(
+                [*(recovery_capacity.get("exceeded_systems") or []), *exceeded_systems]
+            ))
             recovery_capacity["next_workout_freshness_protected"] = False
             recovery_capacity["resolution"] = (
                 "preserve fixed quality, remove flexible VT1 filler first, and "
@@ -3045,6 +3056,7 @@ def apply_recovery_protection_capacity(
     *,
     capacity: dict[str, Any],
     selected_intensity: str,
+    quality_low_xss: float | None = None,
 ) -> dict[str, Any] | None:
     """Cap endurance dose with Xert's next-workout fresh-boundary capacity."""
 
@@ -3072,20 +3084,34 @@ def apply_recovery_protection_capacity(
             if recommended_low is not None
             else low_cap
         )
+        fixed_quality_exceeds_low = (
+            quality_low_xss is not None and quality_low_xss > applied_low
+        )
+        if fixed_quality_exceeds_low:
+            applied_low = quality_low_xss
         target_resolution["recovery_protection_capacity"] = {
             "status": (
-                "quality_filler_capped"
+                "fixed_quality_exceeds_capacity"
+                if fixed_quality_exceeds_low
+                else "quality_filler_capped"
                 if recommended_low is not None and applied_low < recommended_low
                 else "quality_within_capacity"
             ),
             "limiting_system": "low",
             "pre_cap_target_low_xss": recommended_low,
             "applied_target_low_xss": round(applied_low, 3),
+            "exceeded_systems": ["low"] if fixed_quality_exceeds_low else [],
+            "next_workout_freshness_protected": not fixed_quality_exceeds_low,
             "workout_capacity_xss": normalized_systems,
             "as_of": capacity.get("as_of"),
             "fresh_at": capacity.get("fresh_at"),
             "assumption": "fixed quality is preserved; capacity limits flexible VT1 filler",
         }
+        if fixed_quality_exceeds_low:
+            target_resolution["recovery_protection_capacity"]["resolution"] = (
+                "preserve fixed quality, set flexible VT1 filler to zero, and "
+                "report that next-workout Xert freshness is not protected"
+            )
         return target_resolution["recovery_protection_capacity"]
 
     current_load = number(target_resolution.get("target_load"))

@@ -425,6 +425,43 @@ class TrainingTargetContractTests(unittest.TestCase):
         )
         self.assertEqual(request["target_value"], 165.7)
 
+    def test_recovery_protection_capacity_uses_fixed_quality_as_low_floor(self):
+        target = {
+            "target_load": 262.1,
+            "xert_recommended_target_xss": {"low": 250.0},
+        }
+
+        applied = apply_recovery_protection_capacity(
+            target,
+            selected_intensity="vo2max",
+            quality_low_xss=70.0,
+            capacity={
+                "workout_capacity_xss": {
+                    "low": 60.0,
+                    "high": 15.2,
+                    "peak": 3.4,
+                }
+            },
+        )
+
+        self.assertEqual(applied["status"], "fixed_quality_exceeds_capacity")
+        self.assertEqual(applied["applied_target_low_xss"], 70.0)
+        self.assertEqual(applied["exceeded_systems"], ["low"])
+        self.assertFalse(applied["next_workout_freshness_protected"])
+        request = build_endurance_solver_request(
+            target,
+            structure={
+                "signature": {"tp": 300, "hie": 14000, "pp": 800},
+                "segments": [
+                    {"duration_seconds": 900, "power": 150},
+                    {"duration_seconds": 0, "power": 210},
+                    {"duration_seconds": 900, "power": 120},
+                ],
+                "adjustable_segment_index": 1,
+            },
+        )
+        self.assertEqual(request["target_value"], 70.0)
+
     def test_xert_endurance_solution_rejects_wrong_low_target(self):
         with self.assertRaisesRegex(ValueError, "post-guardrail"):
             apply_xert_endurance_duration_solution(
