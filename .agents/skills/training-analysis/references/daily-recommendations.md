@@ -77,11 +77,10 @@ is assembled across several source reads. Before candidate evaluation, resolve
 the plan role and derive all availability windows from the freshly read
 calendar by applying the configured start boundary and workout-placement
 preference, classifying fixed, open, tentative, and movable events, and
-applying the complete setup, workout, and cleanup window. Then run the helper
-once per candidate with that candidate's explicit `planned_at`, Xert advice,
-and a candidate-specific output directory. After selecting the earliest
-complete fit, run it once more with the selected `planned_at` and the ordinary
-date-scoped output directory to create the final recommendation packet.
+applying the complete setup, workout, and cleanup window. Run the helper once
+per candidate with that candidate's explicit `planned_at` and Xert advice, then
+once more with the selected `planned_at` to create the final recommendation
+packet.
 An existing calendar event that appears to reserve time for training is
 calendar evidence, not an automatic choice of `planned_at`; select its start
 only when the same placement calculation supports it.

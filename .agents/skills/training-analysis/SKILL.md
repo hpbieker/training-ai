@@ -75,8 +75,11 @@ Read [references/outdoor-routes.md](references/outdoor-routes.md).
 ## Output
 
 - Answer in chat unless the user explicitly requests a report file.
-- Keep `outputs/` artifacts as working evidence; do not link JSON packets in a
-  normal recommendation.
+- For normal interactive recommendations, use separate unique private
+  `--output-dir` directories under `/private/tmp` for each candidate and the
+  final run. Write persistent artifacts under `outputs/` only when explicitly
+  requested or required by an automation or later analysis. Do not link JSON
+  packets in a normal recommendation.
 - If the final recommendation differs from the helper script's recommendation,
   briefly explain the deviation and its reason.
 - Lead with one clear recommendation. Include timing, duration, warm-up,
