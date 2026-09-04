@@ -206,16 +206,18 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   resolved goal and progression history to select the concrete domain; recent
   same-family hard work can reduce the selection to VT1.
 - Evaluate the marginal physiological value of the proposed dose in the context
-  of recently completed training and its observed response. Consider the actual
-  intensity, duration, glycogen demand, mechanical work, local muscular
-  response, and systemic response. Assess whether plausible residual effects,
-  such as reduced carbohydrate availability, local muscular fatigue, or
-  unresolved systemic or thermal strain, are likely to alter the execution of
-  the next planned workout given its specific demands and the available
-  recovery interval. Do not assume that a demanding workout must always be
-  protected or that residual fatigue is acceptable before an easy workout.
-  Use Garmin and Xert as supporting model evidence, not as substitutes for this
-  physiological assessment.
+  of recently completed training and its observed response. Never reduce the
+  packet's primary dose based on the duration or demands of a completed workout;
+  its load is already accounted for in planned-time Xert `remainingXSS`.
+  Consider the actual intensity, duration, glycogen demand, mechanical work,
+  local muscular response, and systemic response. Assess whether plausible
+  residual effects, such as reduced carbohydrate availability, local muscular
+  fatigue, or unresolved systemic or thermal strain, are likely to alter the
+  execution of the next planned workout given its specific demands and the
+  available recovery interval. Do not assume that a demanding workout must
+  always be protected or that residual fatigue is acceptable before an easy
+  workout. Use Garmin and Xert as supporting model evidence, not as substitutes
+  for this physiological assessment.
 - Do not use a predominantly low-XSS target split as evidence for choosing VT1
   over VT2. Both VT1 and subthreshold VT2 generate predominantly low XSS in
   Xert. Use high/peak XSS and the corresponding recovery only to reason about
