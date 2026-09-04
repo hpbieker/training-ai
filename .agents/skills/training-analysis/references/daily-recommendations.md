@@ -25,6 +25,11 @@ After placing movable meals practically, preserve every resulting usable
 interval in chronological order in `availability.windows`; never stop after the
 first plausible interval when a later one exists.
 
+Treat the earliest feasible workout start in every availability window as a
+separate `planned_at` candidate. Evaluate candidates independently and keep
+each candidate's inputs and results together until the final workout time is
+selected.
+
 Before finalizing a calendar-backed workout time, run these checks:
 
 - Resolve the user's setup and cleanup buffers from personal context and apply
@@ -126,10 +131,11 @@ points recorded after that time. Completed overnight signals such as sleep,
 night HRV, resting HR, and Body Battery at wake remain usable when their
 observation period ended by the cutoff.
 
-For a complete recommendation, fetch planned-time Xert advice with MCP
-`get_training_advice(at=<planned_at>)`. Do not use current advice for this:
-it lacks the availability, deficit, and progression fields required to explain
-the XATA planning dose.
+For every candidate workout time, fetch planned-time Xert advice with MCP
+`get_training_advice(at=<candidate_planned_at>)`. After the final time is
+selected, the recommendation packet must use the advice fetched for that exact
+`planned_at`. Do not use current advice for this: it lacks the availability,
+deficit, and progression fields required to explain the XATA planning dose.
 
 ## Illness And Return
 
@@ -229,11 +235,11 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   defaulting to 15 minutes.
 - Keep model-specific recovery, target-load, and capacity concepts distinct.
   Use source semantics rather than re-explaining private-model formulas here.
-- Resolve the plan role and concrete workout format before converting Xert
-  dose to duration. For recovery, VT1, or a quality workout with a flexible
-  endurance extension, pass the current Xert signature, complete segment
-  structure, and exactly one marked adjustable sub-TP segment through
-  `recommend_training.py --endurance-solver-structure-json` with
+- Resolve the plan role and concrete workout format before converting each
+  candidate's Xert dose to duration. For recovery, VT1, or a quality workout
+  with a flexible endurance extension, pass the current Xert signature,
+  complete segment structure, and exactly one marked adjustable sub-TP segment
+  through `recommend_training.py --endurance-solver-structure-json` with
   `--print-endurance-solver-request`. The helper resolves the applicable
   post-guardrail Low-XSS target and prints the MCP request. The structure
   object accepts exactly
@@ -354,9 +360,9 @@ the capacity protection unresolved.
    input or calendar context. Apply the configured earliest start, fixed-event
    conflicts, setup buffer, and the user's open/tentative/movable-event rules.
    Never run a capacity calculation against an unspecified horizon.
-- Use Xert MCP `calculate_workout_capacity` with a fresh live state. Set `as_of`
-   to today's recommended start and `fresh_at` to the next workout's resolved
-   start. The result is three
+- Use Xert MCP `calculate_workout_capacity` with a fresh live state for every
+   candidate. Set `as_of` to that candidate's start and `fresh_at` to the next
+   workout's resolved start. The result is three
    independent fresh-boundary capacities—Low, High, and Peak XSS—not three
    additive workout quotas.
 - Persist the complete `calculate_workout_capacity` `structuredContent`
