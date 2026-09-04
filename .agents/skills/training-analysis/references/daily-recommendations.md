@@ -14,20 +14,28 @@ cycling are available, retain one concrete alternative for the final answer
 without letting it replace the winner. Resolve modality availability from
 explicit user input or personal context, never from the repository.
 
-When calendar context is used, classify events before calculating availability.
-Apply the user's calendar semantics from personal context rather than treating
-every returned event as a hard blocker. Keep confirmed/fixed appointments
-blocking. Treat user-defined open blocks and tentative events as non-blocking,
-and treat movable meal events as requirements that need practical time around
-the workout rather than fixed-time blockers.
+When calendar context is used, classify events before calculating availability
+and scan the whole planning day from the configured earliest start through the
+latest normal finish. Apply the user's calendar semantics from personal context
+rather than treating every returned event as a hard blocker. Keep
+confirmed/fixed appointments blocking. Treat user-defined open blocks and
+tentative events as non-blocking, and treat movable meal events as requirements
+that need practical time around the workout rather than fixed-time blockers.
+After placing movable meals practically, preserve every resulting usable
+interval in chronological order in `availability.windows`; never stop after the
+first plausible interval when a later one exists.
 
 Before finalizing a calendar-backed workout time, run these checks:
 
-- Resolve the user's setup and cleanup buffers from personal context, and test
-   calendar availability against the complete occupied window: setup, workout,
-   and cleanup. Keep the displayed workout start and duration distinct from the
-   buffers.
-- Verify that the workout was not delayed solely by an event that personal
+- Resolve the user's setup and cleanup buffers from personal context and apply
+   them to every free interval: move its workout-window start forward by the
+   setup buffer and its end backward by the cleanup buffer. Test calendar
+   availability against the complete occupied window—setup, workout, and
+   cleanup—while keeping the displayed workout start and duration distinct from
+   the buffers.
+- Verify that `availability.windows` includes every positive-duration interval
+   after event classification, and that the workout was neither limited to the
+   interval containing `planned_at` nor delayed solely by an event that personal
    context defines as open, tentative, or movable.
 - Calculate post-workout slack from the end of the cleanup buffer to the next
    confirmed fixed appointment. Show the slack, the appointment's subject/title
