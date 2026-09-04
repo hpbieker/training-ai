@@ -81,16 +81,15 @@ Read [references/write-safety.md](references/write-safety.md) before writes.
 Use the user-oriented tools exposed by `strava_cli.py`: `list_activities`,
 `get_activity`, `list_gear`, `get_gear`, `list_activity_media`,
 `download_activity_media`, `upload_activity_media`, `update_activity`, and
-`update_activities`. Inspect their
-current MCP-like JSON schemas with `strava_cli.py tools` or
-`strava_cli.py describe TOOL`. Session handling is internal and is not exposed
-as a user-oriented tool.
+`update_activities`. Inspect the commands with `strava_cli.py --help` and a
+command's arguments with `strava_cli.py COMMAND --help`. Session handling is
+internal and is not exposed as a user-oriented command.
 
 Use `list_activities` for date-bounded discovery and visibility filtering:
 
 ```bash
-python3 -B plugins/strava/scripts/strava_cli.py call list_activities \
-  --json '{"since":"2026-08-01","visibility":"only_me"}'
+python3 -B plugins/strava/scripts/strava_cli.py list_activities \
+  --since 2026-08-01 --visibility only_me
 ```
 
 Use the returned activity IDs for exact reads or writes. Pass one or more IDs
@@ -101,8 +100,8 @@ Every operation reads back API state plus edit-page-only bike and start-time
 state.
 
 ```bash
-python3 -B plugins/strava/scripts/strava_cli.py call update_activity \
-  --json '{"activity_id":123,"patch":{"tag":"Workout","visibility":"everyone"},"confirm":true}'
+python3 -B plugins/strava/scripts/strava_cli.py update_activity 123 \
+  --tag Workout --visibility everyone --yes
 ```
 
 Use `list_gear` to retrieve current and retired bikes and shoes. `get_gear`
@@ -121,12 +120,11 @@ form. Do not send the Strava cookie to that storage URL. Report success only
 after fresh media-list readback confirms the attachment.
 
 ```bash
-python3 -B plugins/strava/scripts/strava_cli.py call list_activity_media \
-  --json '{"activity_id":123}'
-python3 -B plugins/strava/scripts/strava_cli.py call download_activity_media \
-  --json '{"activity_id":123,"media_id":456,"destination_dir":"/private/tmp/strava-media"}'
-python3 -B plugins/strava/scripts/strava_cli.py call upload_activity_media \
-  --json '{"activity_id":123,"file_path":"/absolute/path/image.jpg","caption":"","confirm":true}'
+python3 -B plugins/strava/scripts/strava_cli.py list_activity_media 123
+python3 -B plugins/strava/scripts/strava_cli.py download_activity_media \
+  123 456 /private/tmp/strava-media
+python3 -B plugins/strava/scripts/strava_cli.py upload_activity_media \
+  123 /absolute/path/image.jpg --caption "" --yes
 ```
 
 ## Routes

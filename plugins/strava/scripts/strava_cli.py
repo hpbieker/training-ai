@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""MCP-like CLI exposing user-oriented Strava tools."""
+"""Command-line interface for authenticated Strava activities and gear."""
 
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
 import sys
 from pathlib import Path
@@ -15,275 +14,119 @@ if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
 from strava_activity_service import (
-    download_activity_media,
-    get_activity,
-    get_gear,
-    list_activities,
-    list_activity_media,
-    list_gear,
-    upload_activity_media,
-    update_activities,
+    download_activity_media, get_activity, get_gear, list_activities,
+    list_activity_media, list_gear, upload_activity_media, update_activities,
     update_activity,
 )
 from scripts.strava_route_api import StravaError
 
 
-class ToolError(ValueError):
-    def __init__(self, code: str, message: str):
-        super().__init__(message)
-        self.code = code
+def add_activity_patch_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--name", help="New activity name")
+    parser.add_argument("--tag", help="Primary tag, or 'none' to clear it")
+    parser.add_argument("--trainer", action=argparse.BooleanOptionalAction, default=None,
+                        help="Mark or unmark the activity as indoor/trainer")
+    parser.add_argument("--visibility", choices=("everyone", "followers_only", "only_me"),
+                        help="Activity visibility")
+    parser.add_argument("--start-time-hidden", action=argparse.BooleanOptionalAction, default=None,
+                        help="Hide or show the activity start time")
+    bike = parser.add_mutually_exclusive_group()
+    bike.add_argument("--bike-id", help="Bike ID, or 'none' to clear the bike")
+    bike.add_argument("--bike-name", help="Exact bike name, or 'none' to clear the bike")
+    parser.add_argument("--yes", action="store_true", help="Confirm this Strava write")
 
 
-TOOLS: dict[str, dict[str, Any]] = {
-    "list_activities": {
-        "description": "List authenticated Strava activities in a date range.",
-        "mutating": False,
-        "inputSchema": {
-            "type": "object",
-            "required": ["since"],
-            "properties": {
-                "since": {"type": "string", "format": "date"},
-                "until": {"type": "string", "format": "date"},
-                "visibility": {"enum": ["everyone", "followers_only", "only_me"]},
-                "max_pages": {"type": "integer", "minimum": 1, "default": 20},
-                "per_page": {"type": "integer", "minimum": 1, "default": 100},
-            },
-            "additionalProperties": False,
-        },
-        "handler": list_activities,
-    },
-    "get_activity": {
-        "description": "Get one Strava activity with its editable metadata.",
-        "mutating": False,
-        "inputSchema": {
-            "type": "object",
-            "required": ["activity_id"],
-            "properties": {"activity_id": {"type": ["integer", "string"]}},
-            "additionalProperties": False,
-        },
-        "handler": get_activity,
-    },
-    "list_gear": {
-        "description": "List the authenticated athlete's bikes and shoes, including retired gear.",
-        "mutating": False,
-        "inputSchema": {
-            "type": "object",
-            "properties": {},
-            "additionalProperties": False,
-        },
-        "handler": list_gear,
-    },
-    "get_gear": {
-        "description": "Get one bike or shoe by ID from the authenticated athlete's gear lists.",
-        "mutating": False,
-        "inputSchema": {
-            "type": "object",
-            "required": ["gear_id"],
-            "properties": {
-                "gear_id": {"type": ["integer", "string"]},
-                "gear_type": {"enum": ["bike", "shoe"]},
-            },
-            "additionalProperties": False,
-        },
-        "handler": get_gear,
-    },
-    "list_activity_media": {
-        "description": "List photos and videos attached to one exact Strava activity.",
-        "mutating": False,
-        "inputSchema": {
-            "type": "object",
-            "required": ["activity_id"],
-            "properties": {"activity_id": {"type": ["integer", "string"]}},
-            "additionalProperties": False,
-        },
-        "handler": list_activity_media,
-    },
-    "download_activity_media": {
-        "description": "Download one media item from an exact Strava activity to an explicit local folder.",
-        "mutating": False,
-        "inputSchema": {
-            "type": "object",
-            "required": ["activity_id", "media_id", "destination_dir"],
-            "properties": {
-                "activity_id": {"type": ["integer", "string"]},
-                "media_id": {"type": ["integer", "string"]},
-                "destination_dir": {"type": "string"},
-                "overwrite": {"type": "boolean", "default": False},
-            },
-            "additionalProperties": False,
-        },
-        "handler": download_activity_media,
-    },
-    "upload_activity_media": {
-        "description": "Attach one local image or video to an exact Strava activity and verify it appears.",
-        "mutating": True,
-        "inputSchema": {
-            "type": "object",
-            "required": ["activity_id", "file_path", "confirm"],
-            "properties": {
-                "activity_id": {"type": ["integer", "string"]},
-                "file_path": {"type": "string"},
-                "caption": {"type": "string"},
-                "confirm": {"const": True},
-            },
-            "additionalProperties": False,
-        },
-        "handler": upload_activity_media,
-    },
-    "update_activity": {
-        "description": "Update editable metadata for one exact Strava activity and read it back.",
-        "mutating": True,
-        "inputSchema": {
-            "type": "object",
-            "required": ["activity_id", "patch", "confirm"],
-            "properties": {
-                "activity_id": {"type": ["integer", "string"]},
-                "patch": {"$ref": "#/$defs/activityPatch"},
-                "confirm": {"const": True},
-            },
-            "additionalProperties": False,
-        },
-        "handler": update_activity,
-    },
-    "update_activities": {
-        "description": "Apply one metadata patch to multiple exact Strava activity IDs with readback.",
-        "mutating": True,
-        "inputSchema": {
-            "type": "object",
-            "required": ["activity_ids", "patch", "confirm"],
-            "properties": {
-                "activity_ids": {"type": "array", "minItems": 1, "items": {"type": ["integer", "string"]}},
-                "patch": {"$ref": "#/$defs/activityPatch"},
-                "confirm": {"const": True},
-            },
-            "additionalProperties": False,
-        },
-        "handler": update_activities,
-    },
-}
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
 
-ACTIVITY_PATCH_SCHEMA = {
-    "type": "object",
-    "minProperties": 1,
-    "properties": {
-        "name": {"type": "string"},
-        "tag": {"type": ["string", "null"]},
-        "trainer": {"type": "boolean"},
-        "visibility": {"enum": ["everyone", "followers_only", "only_me"]},
-        "start_time_hidden": {"type": "boolean"},
-        "bike_id": {"type": ["integer", "string", "null"]},
-        "bike_name": {"type": ["string", "null"]},
-    },
-    "additionalProperties": False,
-}
+    sub = commands.add_parser("list_activities", help="List activities in a date range")
+    sub.add_argument("--since", required=True, help="First local date (YYYY-MM-DD)")
+    sub.add_argument("--until", help="Last local date (YYYY-MM-DD); defaults to today")
+    sub.add_argument("--visibility", choices=("everyone", "followers_only", "only_me"),
+                     help="Filter by visibility")
+    sub.add_argument("--max-pages", type=int, default=20, help="Maximum pages to fetch (default: 20)")
+    sub.add_argument("--per-page", type=int, default=100, help="Activities per page (default: 100)")
+
+    sub = commands.add_parser("get_activity", help="Get one activity and its editable metadata")
+    sub.add_argument("activity_id", help="Strava activity ID")
+
+    commands.add_parser("list_gear", help="List active and retired bikes and shoes")
+    sub = commands.add_parser("get_gear", help="Get one bike or shoe")
+    sub.add_argument("gear_id", help="Strava gear ID")
+    sub.add_argument("--gear-type", choices=("bike", "shoe"), help="Limit lookup to this gear type")
+
+    sub = commands.add_parser("list_activity_media", help="List media attached to one activity")
+    sub.add_argument("activity_id", help="Strava activity ID")
+
+    sub = commands.add_parser("download_activity_media", help="Download one activity media item")
+    sub.add_argument("activity_id", help="Strava activity ID")
+    sub.add_argument("media_id", help="Media ID returned by list_activity_media")
+    sub.add_argument("destination_dir", help="Destination directory")
+    sub.add_argument("--overwrite", action="store_true", help="Replace an existing destination file")
+
+    sub = commands.add_parser("upload_activity_media", help="Attach an image or video to an activity")
+    sub.add_argument("activity_id", help="Strava activity ID")
+    sub.add_argument("file_path", help="Local JPG, PNG, GIF, MP4, or MOV file")
+    sub.add_argument("--caption", help="Optional media caption")
+    sub.add_argument("--yes", action="store_true", help="Confirm this Strava write")
+
+    sub = commands.add_parser("update_activity", help="Update one activity and read it back")
+    sub.add_argument("activity_id", help="Strava activity ID")
+    add_activity_patch_arguments(sub)
+
+    sub = commands.add_parser("update_activities", help="Apply one update to several activities")
+    sub.add_argument("activity_ids", nargs="+", help="One or more Strava activity IDs")
+    add_activity_patch_arguments(sub)
+    return parser
 
 
-def public_tool(name: str, definition: dict[str, Any]) -> dict[str, Any]:
-    schema = {**definition["inputSchema"]}
-    if name in {"update_activity", "update_activities"}:
-        schema["$defs"] = {"activityPatch": ACTIVITY_PATCH_SCHEMA}
-    return {
-        "name": name,
-        "description": definition["description"],
-        "inputSchema": schema,
-        "mutating": definition["mutating"],
-    }
+def nullable(value: str | None) -> str | None:
+    return None if value is not None and value.lower() == "none" else value
 
 
-def read_arguments(raw: str | None) -> dict[str, Any]:
-    text = raw if raw is not None else sys.stdin.read()
-    try:
-        payload = json.loads(text or "{}")
-    except json.JSONDecodeError as exc:
-        raise ToolError("invalid_json", f"Tool arguments are not valid JSON: {exc.msg}") from exc
-    if not isinstance(payload, dict):
-        raise ToolError("invalid_arguments", "Tool arguments must be a JSON object")
-    return payload
+def activity_patch(args: argparse.Namespace) -> dict[str, Any]:
+    patch: dict[str, Any] = {}
+    for argument in ("name", "tag", "trainer", "visibility", "start_time_hidden", "bike_id", "bike_name"):
+        value = getattr(args, argument)
+        if value is not None:
+            patch[argument] = nullable(value) if argument in {"tag", "bike_id", "bike_name"} else value
+    return patch
 
 
-def matches_type(value: Any, expected: str) -> bool:
-    return {
-        "object": isinstance(value, dict),
-        "array": isinstance(value, list),
-        "string": isinstance(value, str),
-        "integer": isinstance(value, int) and not isinstance(value, bool),
-        "boolean": isinstance(value, bool),
-        "null": value is None,
-    }.get(expected, True)
-
-
-def validate_schema(value: Any, schema: dict[str, Any], *, root: dict[str, Any], path: str = "arguments") -> None:
-    if "$ref" in schema:
-        if schema["$ref"] != "#/$defs/activityPatch":
-            raise ToolError("invalid_schema", f"Unsupported schema reference: {schema['$ref']}")
-        schema = root["$defs"]["activityPatch"]
-    expected = schema.get("type")
-    if expected:
-        types = expected if isinstance(expected, list) else [expected]
-        if not any(matches_type(value, item) for item in types):
-            raise ToolError("invalid_arguments", f"{path} must have type {' or '.join(types)}")
-    if "const" in schema and value != schema["const"]:
-        raise ToolError("confirmation_required", f"{path} must be true")
-    if "enum" in schema and value not in schema["enum"]:
-        raise ToolError("invalid_arguments", f"{path} must be one of: {', '.join(schema['enum'])}")
-    if isinstance(value, dict):
-        properties = schema.get("properties", {})
-        for required in schema.get("required", []):
-            if required not in value:
-                raise ToolError("invalid_arguments", f"Missing required property: {path}.{required}")
-        if schema.get("additionalProperties") is False:
-            unknown = sorted(set(value) - set(properties))
-            if unknown:
-                raise ToolError("invalid_arguments", f"Unknown properties at {path}: {', '.join(unknown)}")
-        if len(value) < schema.get("minProperties", 0):
-            raise ToolError("invalid_arguments", f"{path} must not be empty")
-        for key, item in value.items():
-            if key in properties:
-                validate_schema(item, properties[key], root=root, path=f"{path}.{key}")
-    if isinstance(value, list):
-        if len(value) < schema.get("minItems", 0):
-            raise ToolError("invalid_arguments", f"{path} must contain at least {schema['minItems']} item(s)")
-        for index, item in enumerate(value):
-            validate_schema(item, schema.get("items", {}), root=root, path=f"{path}[{index}]")
-    if isinstance(value, int) and not isinstance(value, bool) and value < schema.get("minimum", value):
-        raise ToolError("invalid_arguments", f"{path} must be at least {schema['minimum']}")
-    if schema.get("format") == "date" and isinstance(value, str):
-        try:
-            dt.date.fromisoformat(value)
-        except ValueError as exc:
-            raise ToolError("invalid_arguments", f"{path} must be an ISO date") from exc
+def command_call(args: argparse.Namespace) -> tuple[Callable[..., dict[str, Any]], dict[str, Any]]:
+    if args.command == "list_activities":
+        return list_activities, {"since": args.since, "until": args.until, "visibility": args.visibility,
+                                 "max_pages": args.max_pages, "per_page": args.per_page}
+    if args.command == "get_activity":
+        return get_activity, {"activity_id": args.activity_id}
+    if args.command == "list_gear":
+        return list_gear, {}
+    if args.command == "get_gear":
+        return get_gear, {"gear_id": args.gear_id, "gear_type": args.gear_type}
+    if args.command == "list_activity_media":
+        return list_activity_media, {"activity_id": args.activity_id}
+    if args.command == "download_activity_media":
+        return download_activity_media, {"activity_id": args.activity_id, "media_id": args.media_id,
+                                         "destination_dir": args.destination_dir, "overwrite": args.overwrite}
+    if args.command == "upload_activity_media":
+        return upload_activity_media, {"activity_id": args.activity_id, "file_path": args.file_path,
+                                       "caption": args.caption, "confirm": args.yes}
+    if args.command == "update_activity":
+        return update_activity, {"activity_id": args.activity_id, "patch": activity_patch(args),
+                                 "confirm": args.yes}
+    return update_activities, {"activity_ids": args.activity_ids, "patch": activity_patch(args),
+                               "confirm": args.yes}
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("tools", help="List available user-oriented tools")
-    describe = commands.add_parser("describe", help="Describe one tool")
-    describe.add_argument("tool")
-    call = commands.add_parser("call", help="Call one tool with JSON arguments")
-    call.add_argument("tool")
-    call.add_argument("--json", dest="arguments")
-    args = parser.parse_args()
-
+    args = build_parser().parse_args()
     try:
-        if args.command == "tools":
-            payload = {"tools": [public_tool(name, definition) for name, definition in TOOLS.items()]}
-        else:
-            if args.tool not in TOOLS:
-                raise ValueError(f"Unknown Strava tool: {args.tool}")
-            if args.command == "describe":
-                payload = public_tool(args.tool, TOOLS[args.tool])
-            else:
-                arguments = read_arguments(args.arguments)
-                schema = public_tool(args.tool, TOOLS[args.tool])["inputSchema"]
-                validate_schema(arguments, schema, root=schema)
-                handler: Callable[..., dict[str, Any]] = TOOLS[args.tool]["handler"]
-                payload = {"tool": args.tool, "result": handler(**arguments)}
-        print(json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=True))
+        handler, arguments = command_call(args)
+        print(json.dumps(handler(**arguments), indent=2, ensure_ascii=False, sort_keys=True))
         return 0
     except (OSError, TypeError, ValueError, json.JSONDecodeError, StravaError) as exc:
-        code = exc.code if isinstance(exc, ToolError) else "operation_failed"
-        print(json.dumps({"error": {"code": code, "message": str(exc)}}), file=sys.stderr)
+        print(json.dumps({"error": {"code": "operation_failed", "message": str(exc)}}), file=sys.stderr)
         return 1
 
 

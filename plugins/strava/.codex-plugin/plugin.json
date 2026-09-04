@@ -1,6 +1,6 @@
 {
   "name": "strava",
-  "version": "0.1.0+codex.20260903133749",
+  "version": "0.1.0+codex.20260904200701",
   "description": "Browser-authenticated Strava activity media, metadata, and route tooling using Python HTTP.",
   "author": {
     "name": "Hans Petter Bieker"
