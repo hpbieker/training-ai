@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Analyze saved indoor cycling activities for one calendar year."""
+"""Analyze saved indoor cycling activities within an explicit date range."""
 
 from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 import json
 from pathlib import Path
 import subprocess
@@ -15,16 +16,59 @@ from analysis import ARTIFACTS_DIR, load_activity_metadata, load_streams_csv, va
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Analyze saved indoor rides for a year.")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--vt1-watts", type=float, default=210.0)
-    parser.add_argument("--vt2-watts", type=float, default=300.0)
-    parser.add_argument("--output-dir", default="outputs/activity-inspect")
-    parser.add_argument("--workers", type=int, default=6)
-    parser.add_argument("--timeout", type=int, default=180)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--start-date",
+        required=True,
+        help="Inclusive lower date bound in YYYY-MM-DD format.",
+    )
+    parser.add_argument(
+        "--end-date",
+        required=True,
+        help="Inclusive upper date bound in YYYY-MM-DD format.",
+    )
+    parser.add_argument(
+        "--vt1-watts",
+        type=float,
+        required=True,
+        help="VT1 power threshold in watts used by each activity analysis.",
+    )
+    parser.add_argument(
+        "--vt2-watts",
+        type=float,
+        required=True,
+        help="VT2 power threshold in watts used by each activity analysis.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        default="outputs/activity-inspect",
+        help="Directory for the generated JSON and Markdown reports (default: outputs/activity-inspect).",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=6,
+        help="Maximum number of activity analyses to run concurrently (default: 6).",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=180,
+        help="Timeout in seconds for each activity analysis (default: 180).",
+    )
     args = parser.parse_args()
+    try:
+        start_date = date.fromisoformat(args.start_date)
+        end_date = date.fromisoformat(args.end_date)
+    except ValueError as exc:
+        parser.error(f"invalid date: {exc}")
+    if end_date < start_date:
+        parser.error("--end-date must be on or after --start-date")
 
-    activities = indoor_activity_dirs(args.year)
+    activities = indoor_activity_dirs(
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+    )
     results = []
     errors = []
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as executor:
@@ -46,23 +90,38 @@ def main() -> None:
                 errors.append({"activity_dir": str(activity_dir), "error": str(exc)})
     results.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("name") or "")))
 
-    summary = summarize_year(results, args.year, errors)
+    summary = summarize_period(
+        results,
+        start_date=start_date.isoformat(),
+        end_date=end_date.isoformat(),
+        errors=errors,
+    )
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    json_path = output_dir / f"indoor_{args.year}_analysis.json"
-    md_path = output_dir / f"indoor_{args.year}_analysis.md"
+    report_stem = f"indoor_{start_date.isoformat()}_{end_date.isoformat()}_analysis"
+    json_path = output_dir / f"{report_stem}.json"
+    md_path = output_dir / f"{report_stem}.md"
     json_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     md_path.write_text(render_markdown(summary), encoding="utf-8")
     print(json.dumps({"json": str(json_path), "markdown": str(md_path), **summary["overview"]}, indent=2))
 
 
-def indoor_activity_dirs(year: int) -> list[Path]:
+def indoor_activity_dirs(
+    *,
+    start_date: str,
+    end_date: str,
+) -> list[Path]:
     activities_dir = ARTIFACTS_DIR / "activities"
     candidates = []
-    for activity_dir in sorted(activities_dir.glob(f"{year}-*")):
+    for activity_dir in sorted(activities_dir.glob("[0-9][0-9][0-9][0-9]-*")):
         if not (activity_dir / "activity.json").exists() or not (activity_dir / "streams.csv").exists():
             continue
         metadata = load_activity_metadata(activity_dir)
+        date = str(metadata.get("start_date_local") or activity_dir.name)[:10]
+        if date < start_date:
+            continue
+        if date > end_date:
+            continue
         if is_indoor_ride(metadata, activity_dir):
             candidates.append(activity_dir)
     return sorted(
@@ -220,17 +279,24 @@ def quality_label(indoor_vt1: dict[str, Any], best_vt2: dict[str, Any], beta: di
     return str(beta.get("category") or "unscored")
 
 
-def summarize_year(results: list[dict[str, Any]], year: int, errors: list[dict[str, Any]]) -> dict[str, Any]:
+def summarize_period(
+    results: list[dict[str, Any]],
+    *,
+    start_date: str,
+    end_date: str,
+    errors: list[dict[str, Any]],
+) -> dict[str, Any]:
     vt1_rows = [item for item in results if item.get("vt1")]
     vt2_rows = [item for item in results if item.get("vt2")]
     controlled_vt2_rows = [item for item in vt2_rows if is_controlled_vt2_row(item)]
     return {
         "overview": {
-            "year": year,
+            "period_start": start_date,
+            "period_end": end_date,
             "indoor_activities": len(results),
             "errors": len(errors),
-            "date_start": results[0]["date"] if results else None,
-            "date_end": results[-1]["date"] if results else None,
+            "first_activity_date": results[0]["date"] if results else None,
+            "last_activity_date": results[-1]["date"] if results else None,
         },
         "rankings": {
             "best_indoor_vt1": sorted(vt1_rows, key=lambda item: vt1_sort_key(item), reverse=True)[:15],
@@ -275,11 +341,12 @@ def vt1_sort_key(item: dict[str, Any]) -> tuple[float, float, float]:
 def render_markdown(summary: dict[str, Any]) -> str:
     overview = summary["overview"]
     lines = [
-        f"# Inneokter {overview['year']}",
+        f"# Inneokter {overview['period_start']} til {overview['period_end']}",
         "",
         (
             f"Kilde: {overview['indoor_activities']} lokale indoor Ride/VirtualRide-aktiviteter "
-            f"fra {overview['date_start']} til {overview['date_end']}. Failures: {overview['errors']}."
+            f"i perioden. Første aktivitet: {overview['first_activity_date']}; "
+            f"siste aktivitet: {overview['last_activity_date']}. Failures: {overview['errors']}."
         ),
         "",
         "## Beste indoor VT1",
