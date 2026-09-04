@@ -40,7 +40,12 @@ Before finalizing a calendar-backed workout time, run these checks:
    setup buffer and its end backward by the cleanup buffer. Test calendar
    availability against the complete occupied window—setup, workout, and
    cleanup—while keeping the displayed workout start and duration distinct from
-   the buffers.
+   the buffers. Apply readiness and Xert recovery gates to `planned_at`, the
+   start of physical training, not to the start of setup; setup may occur before
+   the gate when it lies within the calendar window. First derive the exact
+   instant when every required readiness and recovery gate is clear, then round
+   it up—never down—to the first clock time divisible by five minutes and use
+   that as the earliest `planned_at` candidate.
 - Verify that `availability.windows` includes every positive-duration interval
    after event classification, and that the workout was neither limited to the
    interval containing `planned_at` nor delayed solely by an event that personal
