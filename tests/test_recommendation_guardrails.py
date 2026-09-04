@@ -2266,10 +2266,11 @@ class PrimaryDecisionContractTests(unittest.TestCase):
             ],
         )
 
-        self.assertEqual(split["first_session_minutes"], 60.0)
-        self.assertEqual(split["unscheduled_minutes"], 80.2)
+        self.assertEqual(split["first_session_minutes"], 0.0)
+        self.assertEqual(split["unscheduled_minutes"], 140.2)
         self.assertIsNone(split["next_window"])
-        self.assertIn("do not invent", split["guidance"])
+        self.assertTrue(split["split_requires_recalculation"])
+        self.assertIn("own warm-up, main set, and cool-down", split["guidance"])
 
     def test_composed_split_names_quality_first_and_vt1_second(self):
         planned = datetime.fromisoformat("2026-08-01T09:00:00+02:00")
@@ -2289,7 +2290,7 @@ class PrimaryDecisionContractTests(unittest.TestCase):
             now=planned,
             available_windows=[
                 {
-                    "start": planned,
+                    "start": datetime.fromisoformat("2026-08-01T09:00:00+02:00"),
                     "end": datetime.fromisoformat("2026-08-01T09:53:00+02:00"),
                     "note": "morning",
                 },
@@ -2309,8 +2310,8 @@ class PrimaryDecisionContractTests(unittest.TestCase):
         self.assertIn("remaining 88 min VT1", split["guidance"])
         self.assertNotIn("both parts easy VT1", split["guidance"])
 
-    def test_moves_complete_quality_workout_to_first_window_where_it_fits(self):
-        planned = datetime.fromisoformat("2026-08-01T09:00:00+02:00")
+    def test_evaluates_quality_against_explicit_candidate_window(self):
+        planned = datetime.fromisoformat("2026-08-01T19:00:00+02:00")
         split = split_session_info(
             {
                 "target_minutes": 141.0,
@@ -2326,7 +2327,7 @@ class PrimaryDecisionContractTests(unittest.TestCase):
             now=planned,
             available_windows=[
                 {
-                    "start": planned,
+                    "start": datetime.fromisoformat("2026-08-01T09:00:00+02:00"),
                     "end": datetime.fromisoformat("2026-08-01T09:30:00+02:00"),
                     "note": "short window",
                 },
@@ -2346,7 +2347,7 @@ class PrimaryDecisionContractTests(unittest.TestCase):
         self.assertIn("complete 53 min VO2MAX", split["guidance"])
         self.assertNotIn("09:00-09:30", split["guidance"])
 
-    def test_allocates_vt1_across_all_windows_and_reports_true_shortfall(self):
+    def test_requires_separate_structure_solves_instead_of_estimating_split_vt1(self):
         planned = datetime.fromisoformat("2026-08-01T09:00:00+02:00")
         split = split_session_info(
             {
@@ -2385,19 +2386,45 @@ class PrimaryDecisionContractTests(unittest.TestCase):
             ],
         )
 
-        self.assertEqual(
-            [session["duration_minutes"] for session in split["sessions"]],
-            [53.0, 60.0, 90.0],
-        )
+        self.assertEqual(split["sessions"][0]["duration_minutes"], 53.0)
         self.assertEqual(
             [allocation["role"] for allocation in split["allocations"]],
-            ["vo2max", "vt1", "vt1"],
+            ["vo2max"],
         )
-        self.assertEqual(split["scheduled_minutes"], 203.0)
-        self.assertEqual(split["unscheduled_minutes"], 57.0)
-        self.assertIn("13:00-14:00", split["guidance"])
-        self.assertIn("19:00-20:30", split["guidance"])
-        self.assertIn("remaining 57 min VT1 is unscheduled", split["guidance"])
+        self.assertEqual(split["scheduled_minutes"], 53.0)
+        self.assertEqual(split["unscheduled_minutes"], 207.0)
+        self.assertTrue(split["split_requires_recalculation"])
+        self.assertEqual(
+            split["reason"],
+            "separate_endurance_sessions_require_structure_solves",
+        )
+        self.assertIn("own warm-up, main set, and cool-down", split["guidance"])
+        self.assertIn("assumed XSS-per-hour rate", split["guidance"])
+
+    def test_complete_workout_fit_uses_explicit_candidate_only(self):
+        planned = datetime.fromisoformat("2026-08-01T13:00:00+02:00")
+        split = split_session_info(
+            {"target_minutes": 141.0, "target_load": 141.0},
+            planned_at=planned,
+            now=planned,
+            available_windows=[
+                {
+                    "start": datetime.fromisoformat("2026-08-01T09:00:00+02:00"),
+                    "end": datetime.fromisoformat("2026-08-01T10:29:00+02:00"),
+                    "note": "too short",
+                },
+                {
+                    "start": datetime.fromisoformat("2026-08-01T13:00:00+02:00"),
+                    "end": datetime.fromisoformat("2026-08-01T15:30:00+02:00"),
+                    "note": "complete fit",
+                },
+            ],
+        )
+
+        self.assertFalse(split["split_needed"])
+        self.assertEqual(split["selected_window_index"], 1)
+        self.assertEqual(split["sessions"][0]["start"], "2026-08-01T13:00+02:00")
+        self.assertEqual(split["sessions"][0]["duration_minutes"], 141.0)
 
     def test_expired_window_has_no_executable_minutes(self):
         planned = datetime.fromisoformat("2026-07-24T09:30:00+02:00")

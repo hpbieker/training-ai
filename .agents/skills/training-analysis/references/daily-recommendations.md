@@ -68,11 +68,15 @@ from the machine timezone or assume a mobile client timezone is available.
 For every agent-driven recommendation, provide a complete
 `--planning-context-json` that satisfies `recommend_training.py`'s validation.
 Prefer a small persisted `planning-context.json` working file when the context
-is assembled across several source reads. Before calling `recommend_training.py`, resolve the
-plan role, then derive `planned_at` and the availability windows from the
-freshly read calendar by applying the configured start boundary and
-workout-placement preference, classifying fixed, open,
-tentative, and movable events, and applying the complete setup, workout, and cleanup window.
+is assembled across several source reads. Before candidate evaluation, resolve
+the plan role and derive all availability windows from the freshly read
+calendar by applying the configured start boundary and workout-placement
+preference, classifying fixed, open, tentative, and movable events, and
+applying the complete setup, workout, and cleanup window. Then run the helper
+once per candidate with that candidate's explicit `planned_at`, Xert advice,
+and a candidate-specific output directory. After selecting the earliest
+complete fit, run it once more with the selected `planned_at` and the ordinary
+date-scoped output directory to create the final recommendation packet.
 An existing calendar event that appears to reserve time for training is
 calendar evidence, not an automatic choice of `planned_at`; select its start
 only when the same placement calculation supports it.
@@ -273,8 +277,10 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   intervals, recoveries, and cool-down—as indivisible for scheduling. Move it
   intact to a later candidate window when necessary; never split, truncate, or
   distribute it across windows. If no window can contain it, report an explicit
-  calendar conflict. If VT1 filler is continuous, start it after the calculated
-  quality workout. If it is a separate session, include the easy ramp-in and
+  calendar conflict. A calendar-driven quality modification means choosing a
+  different complete quality workout or an explicit downgrade, never shortening
+  or splitting the selected quality workout. If VT1 filler is continuous, start
+  it after the calculated quality workout. If it is a separate session, include the easy ramp-in and
   easy finish inside the allocated VT1 minutes; do not add uncounted warm-up or
   cool-down time. Split guidance must name the quality domain for the first
   session and VT1 for the remainder, never describe both as easy VT1.

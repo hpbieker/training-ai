@@ -385,9 +385,15 @@ def main() -> None:
             planned_at=planned_at,
             available_windows=available_windows,
         )
-    elif available_windows:
+    elif len(available_windows) == 1:
         planned_at = available_windows[0]["start"]
         planned_at_source = "planning_context_availability"
+    elif available_windows:
+        parser.error(
+            "planning_context planned_at is required when availability contains "
+            "multiple windows; evaluate each window with its own planned_at and "
+            "candidate-specific Xert advice before selecting the final run"
+        )
     else:
         planned_at = default_planned_at(args.date, now=now)
         planned_at_source = "default"
@@ -3434,20 +3440,125 @@ def split_session_info(
             }
         )
 
+    if not usable_windows:
+        return {
+            "available": True,
+            "target_minutes": round(target_minutes, 1),
+            "current_window": None,
+            "available_minutes_from_planned": 0.0,
+            "fits_current_window": False,
+            "split_needed": False,
+            "first_session_minutes": 0.0,
+            "remaining_minutes": round(target_minutes, 1),
+            "next_window": None,
+            "allocations": [],
+            "sessions": [],
+            "scheduled_minutes": 0.0,
+            "unscheduled_minutes": round(target_minutes, 1),
+            "reason": "no_remaining_candidate_window",
+            "guidance": (
+                f"No availability remains from {execution_start.strftime('%H:%M')}; "
+                "leave the complete workout unscheduled."
+            ),
+        }
+
     composition = target_resolution.get("dose_composition") or {}
     quality = composition.get("quality_base") or {}
     quality_counted = bool(quality.get("counted_in_remaining_plan", False))
     quality_minutes = number(quality.get("duration_minutes")) or 0.0
     domain = str(composition.get("selected_intensity") or "quality").upper()
+
+    candidate_window = next(
+        (
+            window
+            for window in usable_windows
+            if window["source"]["start"] <= planned_at < window["source"]["end"]
+        ),
+        None,
+    )
+    complete_window = (
+        candidate_window
+        if candidate_window is not None
+        and candidate_window["minutes"] >= target_minutes
+        else None
+    )
+    if complete_window is not None:
+        allocations = []
+        allocation_start = complete_window["start"]
+        if quality_counted and quality_minutes > 0:
+            quality_end = allocation_start + timedelta(minutes=quality_minutes)
+            allocations.append(
+                split_allocation(
+                    window=complete_window,
+                    role=str(composition.get("selected_intensity") or "quality"),
+                    start=allocation_start,
+                    end=quality_end,
+                    minutes=quality_minutes,
+                    xss=number(quality.get("xss")),
+                    complete_workout=True,
+                )
+            )
+            allocation_start = quality_end
+        endurance_minutes = target_minutes - sum(
+            number(allocation.get("duration_minutes")) or 0.0
+            for allocation in allocations
+        )
+        if endurance_minutes > 0:
+            endurance_end = allocation_start + timedelta(minutes=endurance_minutes)
+            filler = composition.get("vt1_filler") or {}
+            filler_xss = number(filler.get("xss"))
+            if filler_xss is None and allocations:
+                target_load = number(target_resolution.get("target_load"))
+                quality_xss = number(quality.get("xss"))
+                if target_load is not None and quality_xss is not None:
+                    filler_xss = max(0.0, target_load - quality_xss)
+            allocations.append(
+                split_allocation(
+                    window=complete_window,
+                    role="vt1" if allocations else str(
+                        composition.get("selected_intensity") or "workout"
+                    ),
+                    start=allocation_start,
+                    end=endurance_end,
+                    minutes=endurance_minutes,
+                    xss=(
+                        filler_xss
+                        if filler_xss is not None
+                        else number(target_resolution.get("target_load"))
+                    ),
+                    complete_workout=True,
+                )
+            )
+        sessions = group_split_allocations(allocations)
+        return {
+            "available": True,
+            "target_minutes": round(target_minutes, 1),
+            "current_window": serialize_available_window(complete_window["source"]),
+            "available_minutes_from_planned": round(complete_window["minutes"], 1),
+            "fits_current_window": True,
+            "split_needed": False,
+            "first_session_minutes": round(target_minutes, 1),
+            "remaining_minutes": 0.0,
+            "next_window": None,
+            "allocations": allocations,
+            "sessions": sessions,
+            "scheduled_minutes": round(target_minutes, 1),
+            "unscheduled_minutes": 0.0,
+            "selected_window_index": complete_window["index"],
+            "guidance": (
+                "The complete candidate-specific workout fits this window."
+            ),
+        }
+
     allocations: list[dict[str, Any]] = []
     filler_remaining = target_minutes
-    allocation_windows = usable_windows
 
     if quality_counted:
         quality_window = next(
             (
                 window
-                for window in usable_windows
+                for window in [candidate_window]
+                if window is not None
                 if window["minutes"] >= quality_minutes
             ),
             None,
@@ -3474,10 +3585,10 @@ def split_session_info(
                 "unscheduled_minutes": round(target_minutes, 1),
                 "reason": "complete_quality_workout_does_not_fit",
                 "guidance": (
-                    f"No available window can contain the complete "
+                    f"This candidate window cannot contain the complete "
                     f"{round(quality_minutes)} min {domain} workout, including its "
-                    "warm-up, recoveries, and cool-down. Do not split the quality "
-                    "workout; move it to a window where it fits before scheduling VT1."
+                    "warm-up, recoveries, and cool-down. Reject this candidate and "
+                    "evaluate the next window; do not split the quality workout."
                 ),
             }
         quality_end = quality_window["start"] + timedelta(minutes=quality_minutes)
@@ -3493,64 +3604,53 @@ def split_session_info(
             )
         )
         filler_remaining = max(0.0, target_minutes - quality_minutes)
-        allocation_windows = [
-            {
-                **window,
-                "start": (
-                    quality_end
-                    if window["index"] == quality_window["index"]
-                    else window["start"]
-                ),
-                "minutes": (
-                    (
-                        window["end"]
-                        - (
-                            quality_end
-                            if window["index"] == quality_window["index"]
-                            else window["start"]
-                        )
-                    ).total_seconds()
-                    / 60.0
-                ),
-            }
-            for window in usable_windows
-            if window["index"] >= quality_window["index"]
-        ]
-
-    vt1_xss_per_minute = (
-        number((composition.get("vt1_filler") or {}).get("assumed_xss_per_hour"))
-        or 60.0
-    ) / 60.0
-    for window in allocation_windows:
-        if filler_remaining <= 0:
-            break
-        capacity = max(0.0, window["minutes"])
-        if capacity <= 0:
-            continue
-        minutes = min(capacity, filler_remaining)
-        has_quality_in_window = any(
-            allocation["window_index"] == window["index"]
-            and allocation["role"] != "vt1"
+    if filler_remaining > 0:
+        scheduled_minutes = sum(
+            number(allocation.get("duration_minutes")) or 0.0
             for allocation in allocations
         )
-        if (
-            minutes < MIN_SEPARATE_VT1_SESSION_MINUTES
-            and not has_quality_in_window
-        ):
-            continue
-        end = window["start"] + timedelta(minutes=minutes)
-        allocations.append(
-            split_allocation(
-                window=window,
-                role="vt1",
-                start=window["start"],
-                end=end,
-                minutes=minutes,
-                xss=minutes * vt1_xss_per_minute,
-                complete_workout=False,
+        sessions = group_split_allocations(allocations)
+        if quality_counted:
+            guidance = (
+                f"Keep the complete {round(quality_minutes)} min {domain} quality "
+                "workout with its built-in warm-up, recoveries, and cool-down. "
+                f"The remaining {round(filler_remaining)} min VT1 requires a "
+                "complete structure solve with its own warm-up, main set, and "
+                "cool-down for every separate session; do not convert it with an "
+                "assumed XSS-per-hour rate."
             )
-        )
-        filler_remaining = max(0.0, filler_remaining - minutes)
+        else:
+            guidance = (
+                "No single candidate window contains the complete workout. Solve "
+                "every separate endurance session with its own warm-up, main set, "
+                "and cool-down; do not convert the remaining dose with an assumed "
+                "XSS-per-hour rate."
+            )
+        return {
+            "available": True,
+            "target_minutes": round(target_minutes, 1),
+            "current_window": (
+                sessions[0]["window"]
+                if sessions
+                else serialize_available_window(usable_windows[0]["source"])
+            ),
+            "available_minutes_from_planned": round(
+                usable_windows[0]["minutes"] if usable_windows else 0.0,
+                1,
+            ),
+            "fits_current_window": False,
+            "split_needed": True,
+            "split_requires_recalculation": True,
+            "first_session_minutes": round(scheduled_minutes, 1),
+            "remaining_minutes": round(filler_remaining, 1),
+            "next_window": None,
+            "allocations": allocations,
+            "sessions": sessions,
+            "scheduled_minutes": round(scheduled_minutes, 1),
+            "unscheduled_minutes": round(filler_remaining, 1),
+            "reason": "separate_endurance_sessions_require_structure_solves",
+            "guidance": guidance,
+        }
 
     sessions = group_split_allocations(allocations)
     scheduled_minutes = sum(
