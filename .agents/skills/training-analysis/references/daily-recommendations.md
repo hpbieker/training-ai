@@ -252,6 +252,8 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   object accepts exactly
   `signature`, `segments`, `adjustable_segment_index`, and the optional fields
   `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`.
+  When `progression.vt1.target_power_w` is present, use it as the fixed power
+  for the endurance structure unless current evidence explicitly justifies a deviation.
   Call MCP `solve_segment_duration` with the printed request, then pass its
   normalized result through
   `--endurance-workout-json '{"calculation": <normalized-result>}'`.
