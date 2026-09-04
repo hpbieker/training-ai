@@ -19,8 +19,6 @@ XERT_PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "xert"
 if str(XERT_PLUGIN) not in sys.path:
     sys.path.insert(0, str(XERT_PLUGIN))
 
-from xert_strain_model import solve_segment_duration
-
 from plan_state import (
     DEFAULT_STATE_PATH,
     PlanStateError,
@@ -143,16 +141,16 @@ def parse_endurance_workout_json(raw: str) -> dict[str, Any]:
     return payload
 
 
-def parse_endurance_structure_json(raw: str) -> dict[str, Any]:
+def parse_endurance_solver_structure_json(raw: str) -> dict[str, Any]:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
         raise argparse.ArgumentTypeError(
-            f"--endurance-structure-json must be valid JSON: {exc.msg}"
+            f"--endurance-solver-structure-json must be valid JSON: {exc.msg}"
         ) from exc
     if not isinstance(payload, dict):
         raise argparse.ArgumentTypeError(
-            "--endurance-structure-json must contain one JSON object"
+            "--endurance-solver-structure-json must contain one JSON object"
         )
     allowed = {
         "signature",
@@ -165,14 +163,14 @@ def parse_endurance_structure_json(raw: str) -> dict[str, Any]:
     unknown = sorted(set(payload) - allowed)
     if unknown:
         raise argparse.ArgumentTypeError(
-            f"unsupported endurance-structure field: {unknown[0]}"
+            f"unsupported endurance-solver-structure field: {unknown[0]}"
         )
     missing = sorted(
         {"signature", "segments", "adjustable_segment_index"} - set(payload)
     )
     if missing:
         raise argparse.ArgumentTypeError(
-            f"missing required endurance-structure field: {missing[0]}"
+            f"missing required endurance-solver-structure field: {missing[0]}"
         )
     return payload
 
@@ -233,8 +231,7 @@ def main() -> None:
             "complete inline Xert calculation object."
         ),
     )
-    endurance_input = parser.add_mutually_exclusive_group()
-    endurance_input.add_argument(
+    parser.add_argument(
         "--endurance-workout-json",
         type=parse_endurance_workout_json,
         help=(
@@ -243,15 +240,22 @@ def main() -> None:
             "applicable low-XSS target."
         ),
     )
-    endurance_input.add_argument(
-        "--endurance-structure-json",
-        type=parse_endurance_structure_json,
+    parser.add_argument(
+        "--endurance-solver-structure-json",
+        type=parse_endurance_solver_structure_json,
         help=(
-            "Optional inline structure for local Xert endurance solving after "
-            "readiness guardrails: signature, segments, one "
+            "Inline structure used only with --print-endurance-solver-request: "
+            "signature, segments, one "
             "adjustable_segment_index, and optional minimum_duration_seconds, "
-            "maximum_duration_seconds, and tolerance_xss. "
-            "The applicable low-XSS target is resolved internally."
+            "maximum_duration_seconds, and tolerance_xss."
+        ),
+    )
+    parser.add_argument(
+        "--print-endurance-solver-request",
+        action="store_true",
+        help=(
+            "Print the guarded, optionally split MCP solve_segment_duration "
+            "request and exit."
         ),
     )
     parser.add_argument(
@@ -534,23 +538,33 @@ def main() -> None:
                 intensity_decision.get("selected_domain") or ""
             ),
         )
-    if args.endurance_structure_json is not None:
-        endurance_structure = args.endurance_structure_json
+    endurance_solver_structure = None
+    if args.endurance_solver_structure_json is not None:
+        endurance_solver_structure = args.endurance_solver_structure_json
         if split_preference is not None:
-            endurance_structure = split_endurance_structure(
-                endurance_structure,
+            endurance_solver_structure = split_endurance_structure(
+                endurance_solver_structure,
                 first_session_minutes=split_preference["first_session_minutes"],
             )
-        calculation = solve_endurance_structure(
-            target_resolution,
-            structure=endurance_structure,
-        )
-        apply_xert_endurance_duration_solution(
-            target_resolution,
-            calculation=calculation,
-            selected_intensity=str(
-                intensity_decision.get("selected_domain") or ""
+    if args.print_endurance_solver_request:
+        if endurance_solver_structure is None:
+            raise SystemExit(
+                "--print-endurance-solver-request requires "
+                "--endurance-solver-structure-json"
+            )
+        print(json.dumps(
+            build_endurance_solver_request(
+                target_resolution,
+                structure=endurance_solver_structure,
             ),
+            indent=2,
+            sort_keys=True,
+        ))
+        return
+    if endurance_solver_structure is not None:
+        raise SystemExit(
+            "--endurance-solver-structure-json is only valid with "
+            "--print-endurance-solver-request"
         )
     if args.endurance_workout_json is not None:
         apply_xert_endurance_duration_solution(
@@ -2918,13 +2932,7 @@ def apply_xert_endurance_duration_solution(
         raise ValueError("recovery/VT1 endurance solution must not add high/peak XSS")
 
     recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
-    recommended_low = number(recommended_parts.get("low"))
-    capped_load = number(target_resolution.get("target_load"))
-    expected_low = recommended_low
-    if expected_low is not None and capped_load is not None:
-        expected_low = min(expected_low, capped_load)
-    if expected_low is None:
-        raise ValueError("target resolution has no applicable Xert low-XSS target")
+    expected_low = applicable_endurance_low_xss_target(target_resolution)
     if abs(target_low - expected_low) > tolerance:
         raise ValueError(
             "endurance-workout target_low_xss does not match the applicable "
@@ -3058,12 +3066,10 @@ def normalize_endurance_calculation(
     return normalized
 
 
-def solve_endurance_structure(
+def applicable_endurance_low_xss_target(
     target_resolution: dict[str, Any],
-    *,
-    structure: dict[str, Any],
-) -> dict[str, Any]:
-    """Solve an agent-selected endurance structure against the guarded target."""
+) -> float:
+    """Return the guarded Low-XSS dose for an endurance solution."""
 
     recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
     target_low = number(recommended_parts.get("low"))
@@ -3072,25 +3078,29 @@ def solve_endurance_structure(
         target_low = min(target_low, capped_load)
     if target_low is None or target_low <= 0:
         raise ValueError("target resolution has no applicable Xert low-XSS target")
+    return target_low
 
-    solution = solve_segment_duration(
-        signature=structure.get("signature"),
-        segments=structure.get("segments"),
-        adjustable_segment_index=structure.get("adjustable_segment_index"),
-        target_metric="low_xss",
-        target_value=target_low,
-        minimum_duration_seconds=structure.get("minimum_duration_seconds", 1),
-        maximum_duration_seconds=structure.get(
+
+def build_endurance_solver_request(
+    target_resolution: dict[str, Any],
+    *,
+    structure: dict[str, Any],
+) -> dict[str, Any]:
+    """Build the MCP solve_segment_duration request after local guardrails."""
+
+    request = {
+        "signature": structure.get("signature"),
+        "segments": structure.get("segments"),
+        "adjustable_segment_index": structure.get("adjustable_segment_index"),
+        "target_metric": "low_xss",
+        "target_value": applicable_endurance_low_xss_target(target_resolution),
+        "minimum_duration_seconds": structure.get("minimum_duration_seconds", 1),
+        "maximum_duration_seconds": structure.get(
             "maximum_duration_seconds", 8 * 60 * 60
         ),
-        absolute_tolerance=structure.get("tolerance_xss", 0.05),
-    )
-    return {
-        **solution,
-        "target_low_xss": target_low,
-        "low_xss_error": solution["target_error"],
-        "tolerance_xss": solution["absolute_tolerance"],
+        "absolute_tolerance": structure.get("tolerance_xss", 0.05),
     }
+    return request
 
 
 def require_endurance_solution_for_selected_domain(

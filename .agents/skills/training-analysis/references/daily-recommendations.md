@@ -225,15 +225,16 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   dose to duration. For recovery, VT1, or a quality workout with a flexible
   endurance extension, pass the current Xert signature, complete segment
   structure, and exactly one marked adjustable sub-TP segment through
-  `recommend_training.py --endurance-structure-json`. The recommendation
-  helper resolves the applicable post-guardrail low-XSS target and runs the
-  offline endurance solver internally. The structure object accepts exactly
+  `recommend_training.py --endurance-solver-structure-json` with
+  `--print-endurance-solver-request`. The helper resolves the applicable
+  post-guardrail Low-XSS target and prints the MCP request. The structure
+  object accepts exactly
   `signature`, `segments`, `adjustable_segment_index`, and the optional fields
-  `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`;
-  do not pass MCP-only names such as `absolute_tolerance`. Use
-  `--endurance-workout-json '{"calculation": <normalized-result>}'` instead
-  when an already calculated MCP solver result must be replayed exactly;
-  the two inputs are mutually exclusive. Preserve fixed quality, warm-up,
+  `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`.
+  Call MCP `solve_segment_duration` with the printed request, then pass its
+  normalized result through
+  `--endurance-workout-json '{"calculation": <normalized-result>}'`.
+  Preserve fixed quality, warm-up,
   recovery, and cool-down segments. Never derive prescribed duration from
   XSS/minute across activities of mixed intensity domains, and never add
   high/peak work merely to match high/peak advice on a plan-selected VT1 day.

@@ -25,6 +25,7 @@ from recommend_training import (
     apply_acute_readiness_target_guardrail,
     apply_readiness_domain_target_cap,
     body_battery_summary_line,
+    build_endurance_solver_request,
     build_primary_decision,
     build_planning_context,
     build_source_refresh_plan,
@@ -50,7 +51,7 @@ from recommend_training import (
     parse_plan_selection_json,
     parse_quality_workout_json,
     parse_endurance_workout_json,
-    parse_endurance_structure_json,
+    parse_endurance_solver_structure_json,
     parse_refresh_json,
     parse_route_options_json,
     parse_source_overrides_json,
@@ -63,7 +64,6 @@ from recommend_training import (
     require_endurance_solution_for_selected_domain,
     require_quality_workout_for_selected_domain,
     select_intensity_domain,
-    solve_endurance_structure,
     split_endurance_structure,
     split_session_info,
     split_session_guidance,
@@ -73,7 +73,7 @@ from route_recommendations import score_route, surface_classification
 
 
 class TrainingTargetContractTests(unittest.TestCase):
-    def test_split_endurance_structure_preserves_first_session_and_solves_second(self):
+    def test_split_endurance_structure_preserves_first_session_for_mcp_request(self):
         structure = split_endurance_structure(
             {
                 "signature": {"tp": 295.85, "hie": 14201, "pp": 777.6},
@@ -88,16 +88,10 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
             first_session_minutes=180,
         )
-        calculation = solve_endurance_structure(
-            {"target_load": 259, "xert_recommended_target_xss": {"low": 259}},
-            structure=structure,
-        )
-
         self.assertEqual(sum(
-            segment["duration_seconds"] for segment in calculation["segments"][:3]
+            segment["duration_seconds"] for segment in structure["segments"][:3]
         ), 10800)
-        self.assertAlmostEqual(calculation["achieved_xss"]["low"], 259, delta=0.05)
-        self.assertGreater(calculation["duration_seconds"] / 60, 269.3)
+        self.assertEqual(structure["adjustable_segment_index"], 4)
 
     def test_volume_density_classifies_projected_14_and_21_day_load(self):
         target = {"target_minutes": 270}
@@ -173,7 +167,7 @@ class TrainingTargetContractTests(unittest.TestCase):
         )
 
     def test_endurance_structure_parser_requires_agent_selected_structure(self):
-        parsed = parse_endurance_structure_json(
+        parsed = parse_endurance_solver_structure_json(
             json.dumps(
                 {
                     "signature": {"tp": 300, "hie": 14000, "pp": 800},
@@ -184,16 +178,16 @@ class TrainingTargetContractTests(unittest.TestCase):
         )
         self.assertEqual(parsed["adjustable_segment_index"], 0)
         with self.assertRaises(argparse.ArgumentTypeError):
-            parse_endurance_structure_json(
+            parse_endurance_solver_structure_json(
                 json.dumps({"signature": {}, "segments": []})
             )
 
-    def test_endurance_structure_uses_post_guardrail_low_xss_target(self):
+    def test_endurance_solver_request_uses_post_guardrail_low_xss_target(self):
         target = {
             "target_load": 150.0,
             "xert_recommended_target_xss": {"low": 200.0},
         }
-        calculation = solve_endurance_structure(
+        request = build_endurance_solver_request(
             target,
             structure={
                 "signature": {"tp": 300, "hie": 14000, "pp": 800},
@@ -206,8 +200,8 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(calculation["target_low_xss"], 150.0)
-        self.assertTrue(calculation["matched_within_tolerance"])
+        self.assertEqual(request["target_value"], 150.0)
+        self.assertEqual(request["target_metric"], "low_xss")
 
     def test_endurance_workout_parser_requires_calculation(self):
         parsed = parse_endurance_workout_json(
