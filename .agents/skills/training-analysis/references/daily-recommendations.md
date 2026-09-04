@@ -26,9 +26,11 @@ interval in chronological order in `availability.windows`; never stop after the
 first plausible interval when a later one exists.
 
 Treat the earliest feasible workout start in every availability window as a
-separate `planned_at` candidate. Evaluate candidates independently and keep
-each candidate's inputs and results together until the final workout time is
-selected.
+separate `planned_at` candidate. Evaluate candidates independently, keeping
+each candidate's inputs and results together, and select the earliest candidate
+whose complete, candidate-specific workout fits its window. Reject a candidate
+that does not fit and continue to the next one without shortening the workout
+to fit the rejected window.
 
 Before finalizing a calendar-backed workout time, run these checks:
 
