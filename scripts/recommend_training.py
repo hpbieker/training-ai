@@ -2954,6 +2954,26 @@ def apply_xert_endurance_duration_solution(
     tolerance = number(calculation.get("tolerance_xss")) or 0.05
     if not quality_domain and (achieved_high > tolerance or achieved_peak > tolerance):
         raise ValueError("recovery/VT1 endurance solution must not add high/peak XSS")
+    if quality_domain:
+        recovery_capacity = target_resolution.get("recovery_protection_capacity") or {}
+        capacity_systems = recovery_capacity.get("workout_capacity_xss") or {}
+        exceeded_systems = [
+            system
+            for system, achieved_value in (
+                ("high", achieved_high),
+                ("peak", achieved_peak),
+            )
+            if number(capacity_systems.get(system)) is not None
+            and achieved_value > float(number(capacity_systems[system])) + tolerance
+        ]
+        if exceeded_systems:
+            recovery_capacity["status"] = "fixed_quality_exceeds_capacity"
+            recovery_capacity["exceeded_systems"] = exceeded_systems
+            recovery_capacity["next_workout_freshness_protected"] = False
+            recovery_capacity["resolution"] = (
+                "preserve fixed quality, remove flexible VT1 filler first, and "
+                "report that next-workout Xert freshness is not protected"
+            )
 
     recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
     expected_low = applicable_endurance_low_xss_target(target_resolution)

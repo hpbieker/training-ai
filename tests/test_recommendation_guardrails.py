@@ -294,6 +294,56 @@ class TrainingTargetContractTests(unittest.TestCase):
         self.assertEqual(solution["duration_minutes"], 235.0)
         self.assertEqual(target["target_load"], 256.0)
 
+    def test_xert_endurance_solution_preserves_quality_capacity_conflict(self):
+        target = {
+            "target_minutes": 200.0,
+            "target_load": 250.0,
+            "xert_recommended_target_xss": {"low": 250.0},
+            "recovery_protection_capacity": {
+                "applied_target_low_xss": 250.0,
+                "workout_capacity_xss": {
+                    "low": 250.0,
+                    "high": 4.0,
+                    "peak": 1.0,
+                },
+            },
+        }
+
+        solution = apply_xert_endurance_duration_solution(
+            target,
+            selected_intensity="vo2max",
+            calculation={
+                "source": "local_xert_segment_duration_solver",
+                "network_used": False,
+                "matched_within_tolerance": True,
+                "target_low_xss": 250.0,
+                "achieved_xss": {
+                    "total": 256.0,
+                    "low": 250.0,
+                    "high": 5.4,
+                    "peak": 0.6,
+                },
+                "duration_seconds": 14100,
+                "adjustable_duration_seconds": 11040,
+                "feasibility": {"valid": True},
+            },
+        )
+
+        self.assertEqual(solution["duration_minutes"], 235.0)
+        self.assertEqual(
+            target["recovery_protection_capacity"]["status"],
+            "fixed_quality_exceeds_capacity",
+        )
+        self.assertEqual(
+            target["recovery_protection_capacity"]["exceeded_systems"],
+            ["high"],
+        )
+        self.assertFalse(
+            target["recovery_protection_capacity"][
+                "next_workout_freshness_protected"
+            ]
+        )
+
     def test_normalizes_raw_xert_segment_duration_result(self):
         normalized = normalize_endurance_calculation(
             {
