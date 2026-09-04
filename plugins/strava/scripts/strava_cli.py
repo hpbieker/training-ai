@@ -14,7 +14,17 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
-from strava_activity_service import get_activity, list_activities, update_activities, update_activity
+from strava_activity_service import (
+    download_activity_media,
+    get_activity,
+    get_gear,
+    list_activities,
+    list_activity_media,
+    list_gear,
+    upload_activity_media,
+    update_activities,
+    update_activity,
+)
 from scripts.strava_route_api import StravaError
 
 
@@ -52,6 +62,73 @@ TOOLS: dict[str, dict[str, Any]] = {
             "additionalProperties": False,
         },
         "handler": get_activity,
+    },
+    "list_gear": {
+        "description": "List the authenticated athlete's bikes and shoes, including retired gear.",
+        "mutating": False,
+        "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        },
+        "handler": list_gear,
+    },
+    "get_gear": {
+        "description": "Get one bike or shoe by ID from the authenticated athlete's gear lists.",
+        "mutating": False,
+        "inputSchema": {
+            "type": "object",
+            "required": ["gear_id"],
+            "properties": {
+                "gear_id": {"type": ["integer", "string"]},
+                "gear_type": {"enum": ["bike", "shoe"]},
+            },
+            "additionalProperties": False,
+        },
+        "handler": get_gear,
+    },
+    "list_activity_media": {
+        "description": "List photos and videos attached to one exact Strava activity.",
+        "mutating": False,
+        "inputSchema": {
+            "type": "object",
+            "required": ["activity_id"],
+            "properties": {"activity_id": {"type": ["integer", "string"]}},
+            "additionalProperties": False,
+        },
+        "handler": list_activity_media,
+    },
+    "download_activity_media": {
+        "description": "Download one media item from an exact Strava activity to an explicit local folder.",
+        "mutating": False,
+        "inputSchema": {
+            "type": "object",
+            "required": ["activity_id", "media_id", "destination_dir"],
+            "properties": {
+                "activity_id": {"type": ["integer", "string"]},
+                "media_id": {"type": ["integer", "string"]},
+                "destination_dir": {"type": "string"},
+                "overwrite": {"type": "boolean", "default": False},
+            },
+            "additionalProperties": False,
+        },
+        "handler": download_activity_media,
+    },
+    "upload_activity_media": {
+        "description": "Attach one local image or video to an exact Strava activity and verify it appears.",
+        "mutating": True,
+        "inputSchema": {
+            "type": "object",
+            "required": ["activity_id", "file_path", "confirm"],
+            "properties": {
+                "activity_id": {"type": ["integer", "string"]},
+                "file_path": {"type": "string"},
+                "caption": {"type": "string"},
+                "confirm": {"const": True},
+            },
+            "additionalProperties": False,
+        },
+        "handler": upload_activity_media,
     },
     "update_activity": {
         "description": "Update editable metadata for one exact Strava activity and read it back.",

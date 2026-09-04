@@ -21,6 +21,19 @@ Keep the edit-page CSRF token and `_strava4_session` cookie from the same live
 session. Do not split the edit GET and form POST across unrelated cookie state;
 a mismatch can redirect to the dashboard without applying the change.
 
+## Activity Media
+
+List the exact activity's media before downloading or changing it. Download
+only a media ID returned by that listing, save to an explicit local directory,
+and do not overwrite a local file without explicit confirmation.
+
+Attaching media is an activity write and requires the caller's exact activity
+ID, local file path, and explicit confirmation. Strava's web flow first returns
+a short-lived storage URL and headers, then attaches the uploaded object through
+the activity edit form. Send the Strava session cookie only to Strava hosts;
+never forward it to the storage URL. Read the edit-page media state again and
+report success only when the uploaded media appears.
+
 ## Route Creation And Updates
 
 Build first and inspect the actual geometry before creation. Build is

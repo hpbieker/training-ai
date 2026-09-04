@@ -79,7 +79,9 @@ must be unlocked for a new Web Inspector capture when the session expires.
 
 Read [references/write-safety.md](references/write-safety.md) before writes.
 Use the user-oriented tools exposed by `strava_cli.py`: `list_activities`,
-`get_activity`, `update_activity`, and `update_activities`. Inspect their
+`get_activity`, `list_gear`, `get_gear`, `list_activity_media`,
+`download_activity_media`, `upload_activity_media`, `update_activity`, and
+`update_activities`. Inspect their
 current MCP-like JSON schemas with `strava_cli.py tools` or
 `strava_cli.py describe TOOL`. Session handling is internal and is not exposed
 as a user-oriented tool.
@@ -101,6 +103,30 @@ state.
 ```bash
 python3 -B plugins/strava/scripts/strava_cli.py call update_activity \
   --json '{"activity_id":123,"patch":{"tag":"Workout","visibility":"everyone"},"confirm":true}'
+```
+
+Use `list_gear` to retrieve current and retired bikes and shoes. `get_gear`
+accepts an ID returned by that list; provide `gear_type` (`bike` or `shoe`) when
+the type is already known.
+
+Use `list_activity_media` with one exact activity ID before downloading or
+uploading. `download_activity_media` requires the returned `media_id` and an
+explicit `destination_dir`; it will not overwrite a local file unless
+`overwrite=true` is explicit.
+
+`upload_activity_media` is an activity write. It accepts one local JPG, PNG,
+GIF, MP4, or MOV file and requires `confirm=true`. The upload is staged through
+Strava's short-lived media-storage URL, then attached through the activity edit
+form. Do not send the Strava cookie to that storage URL. Report success only
+after fresh media-list readback confirms the attachment.
+
+```bash
+python3 -B plugins/strava/scripts/strava_cli.py call list_activity_media \
+  --json '{"activity_id":123}'
+python3 -B plugins/strava/scripts/strava_cli.py call download_activity_media \
+  --json '{"activity_id":123,"media_id":456,"destination_dir":"/private/tmp/strava-media"}'
+python3 -B plugins/strava/scripts/strava_cli.py call upload_activity_media \
+  --json '{"activity_id":123,"file_path":"/absolute/path/image.jpg","caption":"","confirm":true}'
 ```
 
 ## Routes

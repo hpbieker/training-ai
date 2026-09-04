@@ -92,14 +92,16 @@ class StravaSession:
         data: bytes | None = None,
         secret_headers: list[str] | None = None,
         verbose_log: Path | None = None,
+        include_cookie: bool = True,
     ) -> tuple[bytes, int, str]:
         request_headers = {
             "Accept-Encoding": "identity",
             **self.base_headers,
             **self._header_dict(headers),
             **self._header_dict(secret_headers),
-            "Cookie": self.cookie_header,
         }
+        if include_cookie:
+            request_headers["Cookie"] = self.cookie_header
         request = urllib.request.Request(
             url,
             data=data,
