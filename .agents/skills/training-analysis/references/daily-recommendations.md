@@ -30,7 +30,8 @@ separate `planned_at` candidate. Evaluate candidates independently, keeping
 each candidate's inputs and results together, and select the earliest candidate
 whose complete, candidate-specific workout fits its window. Reject a candidate
 that does not fit and continue to the next one without shortening the workout
-to fit the rejected window.
+to fit the rejected window. Only after every candidate window has been rejected
+may the recommendation reduce the dose or use multiple windows.
 
 Before finalizing a calendar-backed workout time, run these checks:
 
@@ -268,20 +269,26 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   complete quality-workout XSS, VT1 filler, expected total, and any
   calendar-limited shortfall in both minutes and estimated XSS. If no explicit
   available windows were supplied, say that calendar fit was not verified.
-- Treat the calculated quality workout as indivisible for scheduling. Its
-  duration and XSS already include warm-up, work intervals, recoveries, and
-  cool-down. If VT1 filler is continuous, start it after the calculated
+- Treat the complete calculated quality workout—including warm-up, work
+  intervals, recoveries, and cool-down—as indivisible for scheduling. Move it
+  intact to a later candidate window when necessary; never split, truncate, or
+  distribute it across windows. If no window can contain it, report an explicit
+  calendar conflict. If VT1 filler is continuous, start it after the calculated
   quality workout. If it is a separate session, include the easy ramp-in and
-  easy finish inside the allocated VT1 minutes; do not add uncounted warm-up
-  or cool-down time. Split guidance must name the quality domain for the first
+  easy finish inside the allocated VT1 minutes; do not add uncounted warm-up or
+  cool-down time. Split guidance must name the quality domain for the first
   session and VT1 for the remainder, never describe both as easy VT1.
-- Allocate divisible VT1 chronologically across every explicit available
-  window, checking the actual capacity of each window. Emit structured
-  sessions and segments with start, end, role, minutes, and estimated XSS.
-  Do not create a standalone VT1 session shorter than the configured minimum,
-  defaulting to 30 minutes; leave a smaller dose explicitly unscheduled unless
-  it can be contiguous with the quality workout. Report the true unscheduled remainder after all windows have been
-  evaluated, rather than assigning the whole remainder to the second window.
+- On an endurance-only day, or for the flexible VT1 portion after an intact
+  quality workout, consider multiple windows only after no single candidate
+  window fits the complete applicable dose. Recalculate every separate
+  endurance session with its own warm-up and cool-down, and allocate the
+  sessions chronologically across the explicit available windows. Emit
+  structured sessions and segments with start, end, role, minutes, and
+  estimated XSS. Do not create a standalone VT1 session shorter than the
+  configured minimum, defaulting to 30 minutes; leave a smaller dose explicitly
+  unscheduled unless it can be contiguous with the quality workout. Report the
+  true remaining shortfall in both minutes and estimated XSS after all windows
+  have been evaluated.
 - When the user explicitly requests a split, pass `split_preference` with
   `first_session_minutes` and an offset-aware `second_session_start`. For a
   solved VT1 structure, repeat the fixed easy start and finish around the second
