@@ -268,6 +268,32 @@ class TrainingTargetContractTests(unittest.TestCase):
             "recalculated_for_selected_domain",
         )
 
+    def test_xert_endurance_solution_accepts_quality_with_vt1_filler(self):
+        target = {
+            "target_minutes": 200.0,
+            "target_load": 250.0,
+            "xert_recommended_target_xss": {"low": 250.0},
+        }
+        solution = apply_xert_endurance_duration_solution(
+            target,
+            selected_intensity="vo2max",
+            calculation={
+                "source": "local_xert_segment_duration_solver",
+                "network_used": False,
+                "matched_within_tolerance": True,
+                "target_low_xss": 250.0,
+                "achieved_xss": {
+                    "total": 256.0, "low": 250.0, "high": 5.4, "peak": 0.6,
+                },
+                "duration_seconds": 14100,
+                "adjustable_duration_seconds": 11040,
+                "feasibility": {"valid": True},
+            },
+        )
+
+        self.assertEqual(solution["duration_minutes"], 235.0)
+        self.assertEqual(target["target_load"], 256.0)
+
     def test_normalizes_raw_xert_segment_duration_result(self):
         normalized = normalize_endurance_calculation(
             {
@@ -314,8 +340,11 @@ class TrainingTargetContractTests(unittest.TestCase):
         self.assertEqual(applied["limiting_system"], "low")
         self.assertIn("reduced from 262.1 to 165.7 XSS", target["reason"])
 
-    def test_recovery_protection_capacity_does_not_dilute_quality(self):
-        target = {"target_load": 262.1}
+    def test_recovery_protection_capacity_caps_quality_filler_target(self):
+        target = {
+            "target_load": 262.1,
+            "xert_recommended_target_xss": {"low": 250.0},
+        }
 
         applied = apply_recovery_protection_capacity(
             target,
@@ -329,12 +358,22 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
         )
 
-        self.assertIsNone(applied)
+        self.assertEqual(applied["status"], "quality_filler_capped")
+        self.assertEqual(applied["applied_target_low_xss"], 165.7)
         self.assertEqual(target["target_load"], 262.1)
-        self.assertEqual(
-            target["recovery_protection_capacity"]["status"],
-            "not_applied_to_quality_by_endurance_cap",
+        request = build_endurance_solver_request(
+            target,
+            structure={
+                "signature": {"tp": 300, "hie": 14000, "pp": 800},
+                "segments": [
+                    {"duration_seconds": 900, "power": 150},
+                    {"duration_seconds": 3600, "power": 210},
+                    {"duration_seconds": 900, "power": 120},
+                ],
+                "adjustable_segment_index": 1,
+            },
         )
+        self.assertEqual(request["target_value"], 165.7)
 
     def test_xert_endurance_solution_rejects_wrong_low_target(self):
         with self.assertRaisesRegex(ValueError, "post-guardrail"):
@@ -1235,6 +1274,22 @@ class RecommendationSummaryTests(unittest.TestCase):
 
 
 class QualityWorkoutDoseCompositionTests(unittest.TestCase):
+    @staticmethod
+    def attach_solver_solution(
+        target, *, minutes, adjustable_minutes, total_xss, low_xss
+    ):
+        target["endurance_duration_solution"] = {
+            "source": "local_xert_segment_duration_solver",
+            "duration_minutes": minutes,
+            "adjustable_duration_minutes": adjustable_minutes,
+            "achieved_xss": {
+                "total": total_xss,
+                "low": low_xss,
+                "high": 4.0,
+                "peak": 0.4,
+            },
+        }
+
     def test_parses_quality_workout_contract(self):
         workout = parse_quality_workout_json(
             '{"status":"planned","calculation":'
@@ -1259,7 +1314,7 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
                 '{"status":"done","calculation":{"xss":71.9}}'
             )
 
-    def test_fills_remaining_target_with_vt1_at_sixty_xss_per_hour(self):
+    def test_uses_xert_solved_vt1_filler_after_quality(self):
         target = {
             "source": "explicit_load_derived_minutes",
             "target_minutes": 188.2,
@@ -1285,6 +1340,13 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
                 }
             },
         }
+        self.attach_solver_solution(
+            target,
+            minutes=143.0,
+            adjustable_minutes=97.0,
+            total_xss=160.0,
+            low_xss=155.6,
+        )
 
         composition = apply_quality_workout_vt1_composition(
             target,
@@ -1310,6 +1372,13 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
             "target_load": 160.0,
             "reason": "explicit target",
         }
+        self.attach_solver_solution(
+            target,
+            minutes=143.0,
+            adjustable_minutes=97.0,
+            total_xss=160.0,
+            low_xss=155.6,
+        )
         apply_quality_workout_vt1_composition(
             target,
             quality_calculation={
@@ -1317,6 +1386,7 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
                     "stats": {
                         "duration": 2760,
                         "xss": 63.0,
+                        "xlss": 58.6,
                     }
                 }
             },
@@ -1349,6 +1419,13 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
             "target_load": 279.0,
             "reason": "xert target",
         }
+        self.attach_solver_solution(
+            target,
+            minutes=260.1,
+            adjustable_minutes=207.1,
+            total_xss=279.0,
+            low_xss=273.6,
+        )
         apply_quality_workout_vt1_composition(
             target,
             quality_calculation={
@@ -1468,7 +1545,9 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
         self.assertIn("XERT REMAINING DOSE: 279.0 XSS", summary)
         self.assertIn("CHOSEN DAILY TARGET: 160.0 XSS", summary)
         self.assertIn("QUALITY BASE: 46.0 min / 63.0 XSS", summary)
-        self.assertIn("VT1 FILLER: 97.0 min / 97.0 XSS", summary)
+        self.assertIn(
+            "VT1 FILLER: 97.0 min / 97.0 low XSS (Xert-solved)", summary
+        )
         self.assertIn("EXPECTED TOTAL: 143.0 min / 160.0 XSS", summary)
         self.assertIn(
             "CALENDAR DOSE: executable 120.0/143.0 min; shortfall 23.0 min / 23.0 XSS",
@@ -1515,6 +1594,13 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
             "target_load": 207.1,
             "reason": "Xert remaining_xss",
         }
+        self.attach_solver_solution(
+            target,
+            minutes=207.1,
+            adjustable_minutes=192.1,
+            total_xss=207.1,
+            low_xss=207.1,
+        )
 
         composition = apply_quality_workout_vt1_composition(
             target,

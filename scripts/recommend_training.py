@@ -2765,9 +2765,8 @@ def apply_quality_workout_vt1_composition(
     quality_calculation: dict[str, Any],
     selected_intensity: str,
     quality_workout_status: str = "planned",
-    vt1_xss_per_hour: float = 60.0,
 ) -> dict[str, Any]:
-    """Compose a calculated quality workout with enough VT1 to reach target XSS."""
+    """Compose calculated quality with an Xert-solved adjustable VT1 segment."""
 
     if quality_workout_status not in {"planned", "completed"}:
         raise ValueError("quality_workout_status must be planned or completed")
@@ -2779,9 +2778,6 @@ def apply_quality_workout_vt1_composition(
             "A quality-workout calculation was supplied, but the selected "
             f"intensity is {selected_intensity or 'missing'}."
         )
-    if vt1_xss_per_hour <= 0:
-        raise ValueError("vt1_xss_per_hour must be positive")
-
     result = quality_calculation.get("result") or {}
     stats = result.get("stats") if isinstance(result, dict) else None
     if not isinstance(stats, dict):
@@ -2816,21 +2812,38 @@ def apply_quality_workout_vt1_composition(
         raise ValueError("target_resolution has no numeric target_load")
 
     quality_xss_counted_in_remaining_plan = quality_workout_status == "planned"
-    filler_xss = (
+    required_filler_xss = (
         max(0.0, target_xss - quality_xss)
         if quality_xss_counted_in_remaining_plan
         else target_xss
     )
-    filler_minutes = filler_xss / vt1_xss_per_hour * 60.0
+    solution = target_resolution.get("endurance_duration_solution")
+    if required_filler_xss > 0 and not isinstance(solution, dict):
+        raise SystemExit(
+            "A quality workout with VT1 filler requires --endurance-workout-json "
+            "from Xert solve_segment_duration for the complete structure."
+        )
+    solution = solution or {}
+    solution_xss = solution.get("achieved_xss") or {}
     composed_minutes = (
-        quality_minutes + filler_minutes
-        if quality_xss_counted_in_remaining_plan
-        else filler_minutes
+        number(solution.get("duration_minutes"))
+        if required_filler_xss > 0
+        else quality_minutes
     )
     estimated_total_xss = (
-        quality_xss + filler_xss
+        number(solution_xss.get("total"))
+        if required_filler_xss > 0
+        else quality_xss
+    )
+    filler_minutes = number(solution.get(
+        "adjustable_duration_minutes"
         if quality_xss_counted_in_remaining_plan
-        else filler_xss
+        else "duration_minutes"
+    )) or 0.0
+    filler_xss = (
+        max(0.0, (number(solution_xss.get("low")) or 0.0) - (number(stats.get("xlss")) or 0.0))
+        if quality_xss_counted_in_remaining_plan
+        else number(solution_xss.get("low")) or 0.0
     )
     original_target_minutes = number(target_resolution.get("target_minutes"))
 
@@ -2858,7 +2871,7 @@ def apply_quality_workout_vt1_composition(
         "vt1_filler": {
             "xss": round(filler_xss, 1),
             "duration_minutes": round(filler_minutes, 1),
-            "assumed_xss_per_hour": round(vt1_xss_per_hour, 1),
+            "source": solution.get("source"),
             "execution": (
                 "The VT1 duration includes its easy start and easy finish. "
                 "Do not add separate uncounted warm-up or cool-down time."
@@ -2877,13 +2890,13 @@ def apply_quality_workout_vt1_composition(
     target_resolution["dose_composition"] = composition
     target_resolution["target_minutes"] = round(composed_minutes, 1)
     target_resolution["duration_source"] = (
-        "Xert-calculated complete quality workout plus VT1 at 60 XSS/hour"
+        "Xert-calculated quality workout plus Xert-solved VT1 filler"
     )
     target_resolution["reason"] = (
         f"{target_resolution.get('reason') or ''}; complete quality workout "
         f"calculated by Xert ({round(quality_xss, 1)} XSS) and "
         f"{'included before' if quality_xss_counted_in_remaining_plan else 'already completed, not subtracted again from'} "
-        f"{round(filler_xss, 1)} XSS VT1 at {round(vt1_xss_per_hour, 1)} XSS/hour"
+        f"{round(filler_xss, 1)} low XSS in Xert-solved VT1 filler"
     ).strip("; ")
 
     final_plan = (target_resolution.get("plan_trace") or {}).get("final_plan")
@@ -2902,11 +2915,16 @@ def apply_xert_endurance_duration_solution(
     """Apply an Xert-solved endurance duration instead of mixed-history XSS/min."""
 
     calculation = normalize_endurance_calculation(calculation)
+    quality_domain = selected_intensity in {"vt2", "vo2max", "sprint", "mixed"}
     if selected_intensity not in {
         "vt1",
         "easy_vt1",
         "recovery",
         "active_recovery",
+        "vt2",
+        "vo2max",
+        "sprint",
+        "mixed",
     }:
         raise ValueError(
             "endurance-workout calculation requires a recovery or VT1 domain"
@@ -2934,7 +2952,7 @@ def apply_xert_endurance_duration_solution(
     if duration_seconds <= 0:
         raise ValueError("endurance-workout duration must be positive")
     tolerance = number(calculation.get("tolerance_xss")) or 0.05
-    if achieved_high > tolerance or achieved_peak > tolerance:
+    if not quality_domain and (achieved_high > tolerance or achieved_peak > tolerance):
         raise ValueError("recovery/VT1 endurance solution must not add high/peak XSS")
 
     recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
@@ -2949,7 +2967,11 @@ def apply_xert_endurance_duration_solution(
     target_resolution["pre_endurance_solution_target_minutes"] = previous_minutes
     target_resolution["target_minutes"] = round(duration_seconds / 60.0, 1)
     target_resolution["target_load"] = round(achieved_total, 1)
-    target_resolution["duration_source"] = "xert_solved_plan_endurance_structure"
+    target_resolution["duration_source"] = (
+        "xert_solved_quality_plus_endurance_structure"
+        if quality_domain
+        else "xert_solved_plan_endurance_structure"
+    )
     previous_position = target_resolution.get("dose_position_vs_typical")
     if previous_position is not None:
         target_resolution["pre_endurance_solution_dose_position_vs_typical"] = (
@@ -2993,7 +3015,7 @@ def apply_xert_endurance_duration_solution(
         f"Xert recommended remaining dose ({parts_text}); Xert solve_segment_duration "
         f"calculated the selected {selected_intensity} plan structure: "
         f"{round(achieved_low, 1)} low XSS in "
-        f"{round(duration_seconds / 60.0, 1)} min; high/peak were not targeted"
+        f"{round(duration_seconds / 60.0, 1)} min"
     )
     return target_resolution["endurance_duration_solution"]
 
@@ -3022,13 +3044,29 @@ def apply_recovery_protection_capacity(
         "recovery",
         "active_recovery",
     }:
+        recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
+        recommended_low = number(recommended_parts.get("low"))
+        low_cap = max(0.0, float(normalized_systems["low"]))
+        applied_low = (
+            min(recommended_low, low_cap)
+            if recommended_low is not None
+            else low_cap
+        )
         target_resolution["recovery_protection_capacity"] = {
-            "status": "not_applied_to_quality_by_endurance_cap",
+            "status": (
+                "quality_filler_capped"
+                if recommended_low is not None and applied_low < recommended_low
+                else "quality_within_capacity"
+            ),
+            "limiting_system": "low",
+            "pre_cap_target_low_xss": recommended_low,
+            "applied_target_low_xss": round(applied_low, 3),
             "workout_capacity_xss": normalized_systems,
             "as_of": capacity.get("as_of"),
             "fresh_at": capacity.get("fresh_at"),
+            "assumption": "fixed quality is preserved; capacity limits flexible VT1 filler",
         }
-        return None
+        return target_resolution["recovery_protection_capacity"]
 
     current_load = number(target_resolution.get("target_load"))
     if current_load is None:
@@ -3079,6 +3117,10 @@ def applicable_endurance_low_xss_target(
 
     recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
     target_low = number(recommended_parts.get("low"))
+    recovery_capacity = target_resolution.get("recovery_protection_capacity") or {}
+    protected_low = number(recovery_capacity.get("applied_target_low_xss"))
+    if target_low is not None and protected_low is not None:
+        target_low = min(target_low, protected_low)
     capped_load = number(target_resolution.get("target_load"))
     if target_low is not None and capped_load is not None:
         target_low = min(target_low, capped_load)
@@ -3198,8 +3240,11 @@ def annotate_dose_composition_window_fit(
         if quality_is_counted
         else 0.0
     )
+    filler_minutes = number(filler.get("duration_minutes")) or 0.0
     filler_xss_per_minute = (
-        (number(filler.get("assumed_xss_per_hour")) or 60.0) / 60.0
+        (number(filler.get("xss")) or 0.0) / filler_minutes
+        if filler_minutes > 0
+        else 0.0
     )
     allocation_xss = [
         number(allocation.get("estimated_xss"))
@@ -3214,7 +3259,7 @@ def annotate_dose_composition_window_fit(
     if executable_xss is None and executable_minutes >= quality_minutes:
         executable_filler_minutes = min(
             max(0.0, executable_minutes - quality_minutes),
-            number(filler.get("duration_minutes")) or 0.0,
+            filler_minutes,
         )
         executable_xss = quality_xss + (
             executable_filler_minutes * filler_xss_per_minute
@@ -7339,10 +7384,9 @@ def dose_composition_summary_lines(
             high=quality.get("high_xss"),
             peak=quality.get("peak_xss"),
         ),
-        "VT1 FILLER: {minutes} min / {xss} XSS at {rate} XSS/hour".format(
+        "VT1 FILLER: {minutes} min / {xss} low XSS (Xert-solved)".format(
             minutes=filler.get("duration_minutes"),
             xss=filler.get("xss"),
-            rate=filler.get("assumed_xss_per_hour"),
         ),
         "EXPECTED TOTAL: {minutes} min / {xss} XSS".format(
             minutes=total.get("duration_minutes"),
