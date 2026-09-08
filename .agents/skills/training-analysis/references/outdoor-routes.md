@@ -48,6 +48,23 @@ on the same route group, but never let naming affect identity or score.
 - Reuse `outputs/route-analysis-cache.json`; rebuild it only when OSM data or
   conflict semantics deliberately need refresh.
 
+## BRouter Candidate Analysis
+
+Use `scripts/score_brouter_vt1.py` for local BRouter GeoJSON candidates with
+BRouter's `properties.messages` way/node metadata:
+
+```bash
+python3 -B scripts/score_brouter_vt1.py /absolute/path/route.geojson --json
+```
+
+This standalone helper reports road classes, surfaces, crossing-like nodes,
+barriers, and a weighted interruption score; lower scores mean fewer estimated
+interruptions. Its fixed heuristic weights are not normalized for route length
+and penalize cycleways regardless of their actual flow. Treat the score as
+decision support, not a final ranking or physiological measure. Review geometry,
+legality, surface uncertainty, and suspicious connectors before accepting a
+candidate. It does not fetch routes or call Strava.
+
 ## Weather, Clothing, And Presentation
 
 - Fetch fresh point forecasts for materially different parts/times of the

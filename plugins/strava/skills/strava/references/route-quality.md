@@ -30,6 +30,7 @@ Use Strava's generated polyline as the route under review. Map-match or inspect
 that geometry against OSM rather than judging the straight lines between
 waypoints.
 
-`score_brouter_vt1.py` is decision support, not a final verdict. Review route
-class mix, unknown/unpaved distance, crossings, legality, and suspicious
-connectors before accepting a candidate.
+Route suitability scoring belongs to the caller (for example, the
+`training-analysis` skill in training-ai). Review route class mix,
+unknown/unpaved distance, crossings, legality, and suspicious connectors before
+accepting a candidate.
