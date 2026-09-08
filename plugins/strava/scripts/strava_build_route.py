@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Build, inspect, and optionally create a Strava route with Python HTTP."""
+"""Build and inspect a Strava route candidate with Python HTTP."""
 from __future__ import annotations
 
 import argparse
-import html
 import json
 import math
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -114,39 +112,6 @@ def build_body(points: list[dict[str, Any]], prefs: dict[str, Any]) -> dict[str,
     return {"requests": requests}
 
 
-def create_body(
-    *,
-    points: list[dict[str, Any]],
-    prefs: dict[str, Any],
-    build_response: dict[str, Any],
-    athlete_id: int,
-    args: argparse.Namespace,
-) -> dict[str, Any]:
-    built = build_response.get("buildRoute")
-    if not isinstance(built, list) or len(built) != len(points) - 1:
-        raise StravaError("Build response does not match the requested waypoint legs.")
-    legs = []
-    for idx, entry in enumerate(built):
-        candidates = entry.get("legs") if isinstance(entry, dict) else None
-        if not isinstance(candidates, list) or not candidates:
-            raise StravaError(f"Build response is missing leg {idx}.")
-        leg = dict(candidates[0])
-        leg["startElement"] = idx
-        legs.append(leg)
-    return {
-        "props": {
-            "name": args.name,
-            "description": args.description,
-            "visibility": args.visibility,
-            "starred": args.starred,
-            "elements": [element(item) for item in points],
-            "legs": legs,
-            "routePrefs": prefs,
-            "athleteId": athlete_id,
-        }
-    }
-
-
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -176,18 +141,6 @@ def validate_candidate(
         )
 
 
-def verify_route_page(route_id: str, name: str, page_text: str) -> dict[str, Any]:
-    decoded = html.unescape(page_text)
-    if name not in decoded:
-        raise StravaError("Created route page did not contain the requested route name.")
-    return {
-        "verified": True,
-        "route_id": route_id,
-        "url": f"https://www.strava.com/routes/{route_id}",
-        "name": name,
-    }
-
-
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser()
     result.add_argument(
@@ -213,12 +166,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--elevation", choices=("flat", "hilly"), default="flat")
     result.add_argument("--distance-tolerance-pct", type=float, default=15)
     result.add_argument("--allow-distance-deviation", action="store_true")
-    result.add_argument("--name", default="Codex Strava route")
-    result.add_argument("--description", default="Created through a browser-authenticated Python workflow.")
-    result.add_argument("--visibility", choices=("OnlyMe", "Everyone"), default="OnlyMe")
-    result.add_argument("--starred", action="store_true")
     result.add_argument("--output-dir", type=Path, required=True)
-    result.add_argument("--yes", action="store_true", help="Create the route after build validation.")
     return result
 
 
@@ -265,39 +213,6 @@ def main() -> int:
                     "geojson": str(geojson_path),
                 },
             }
-            if args.yes:
-                athlete_id = auth.get("athlete_id")
-                if not isinstance(athlete_id, int):
-                    raise StravaError("Could not resolve the authenticated Strava athlete ID.")
-                payload = create_body(
-                    points=points,
-                    prefs=prefs,
-                    build_response=build_response,
-                    athlete_id=athlete_id,
-                    args=args,
-                )
-                create_request_path = args.output_dir / "create-request.json"
-                create_response_path = args.output_dir / "create-response.json"
-                route_page_path = args.output_dir / "route-page.html"
-                write_json(create_request_path, payload)
-                response = session.api("create", create_request_path, create_response_path)
-                route_id = response.get("createRoute")
-                if not isinstance(route_id, (str, int)):
-                    raise StravaError(f"Create response did not contain a route ID: {response}")
-                route_id = str(route_id)
-                page_text = session.fetch_route_page(route_id, route_page_path)
-                output.update(
-                    {
-                        "action": "created",
-                        "route": verify_route_page(route_id, args.name, page_text),
-                        "artifacts": {
-                            **output["artifacts"],
-                            "create_request": str(create_request_path),
-                            "create_response": str(create_response_path),
-                            "route_page": str(route_page_path),
-                        },
-                    }
-                )
             print(json.dumps(output, ensure_ascii=False, indent=2))
             return 0
     except StravaError as exc:

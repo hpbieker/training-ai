@@ -23,7 +23,7 @@ def load_module(name: str, path: Path):
 
 
 api = load_module("strava_route_api", SCRIPTS / "strava_route_api.py")
-routes = load_module("strava_create_route", SCRIPTS / "strava_create_route.py")
+routes = load_module("strava_build_route", SCRIPTS / "strava_build_route.py")
 
 
 class FakeResponse:

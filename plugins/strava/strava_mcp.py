@@ -13,6 +13,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
 
 import strava_activity_service as activities
+import strava_route_service as routes
 from strava_route_api import StravaAuthRequired, StravaError
 
 
@@ -41,6 +42,55 @@ PATCH = {
     "not": {"required": ["bike_id", "bike_name"]},
 }
 
+ROUTE_PREFS = {
+    "type": "object", "additionalProperties": False, "minProperties": 1,
+    "properties": {
+        "routeType": {"type": "string", "enum": routes.ROUTE_TYPES},
+        "surfaceType": {"type": "string", "enum": ["Unknown", "Paved", "Unpaved"]},
+        "popularity": {"type": "number", "minimum": -1, "maximum": 1},
+        "elevation": {"type": "number", "minimum": -1, "maximum": 1},
+        "straightLine": {"type": "boolean"},
+    },
+}
+ROUTE_FIELDS = {
+    "name": {"type": "string", "minLength": 1},
+    "description": {"type": "string", "description": "Use an empty string to clear."},
+    "visibility": {"type": "string", "enum": ["OnlyMe", "Everyone"]},
+    "starred": {"type": "boolean"},
+    "elements": {"type": "array", "minItems": 2, "items": {
+        "type": "object", "required": ["elementType", "waypoint"],
+        "properties": {"elementType": {"const": "Waypoint"}, "waypoint": {
+            "type": "object", "required": ["point"], "properties": {"point": {
+                "type": "object", "required": ["lat", "lng"], "properties": {
+                    "lat": {"type": "number", "minimum": -90, "maximum": 90},
+                    "lng": {"type": "number", "minimum": -180, "maximum": 180},
+                },
+            }},
+        }},
+    }},
+    "legs": {"type": "array", "minItems": 1, "items": {
+        "type": "object", "required": ["startElement", "paths"],
+        "properties": {"startElement": {"type": "integer", "minimum": 0}, "paths": {
+            "type": "array", "minItems": 1, "items": {"type": "object", "required": ["polyline"],
+                "properties": {"polyline": {"type": "object", "required": ["encoding", "data"],
+                    "properties": {"encoding": {"const": "Google"}, "data": {"type": "string", "minLength": 1}}}},
+            },
+        }},
+    }},
+    "routePrefs": ROUTE_PREFS,
+}
+CREATE_ROUTE_PROPS = {
+    "type": "object", "additionalProperties": False,
+    "required": ["name", "elements", "legs", "routePrefs"],
+    "properties": {**ROUTE_FIELDS, "routePrefs": {**ROUTE_PREFS, "required": list(ROUTE_PREFS["properties"])},
+                   "visibility": {**ROUTE_FIELDS["visibility"], "default": "OnlyMe"}},
+}
+UPDATE_ROUTE_PATCH = {
+    "type": "object", "additionalProperties": False, "minProperties": 1,
+    "properties": ROUTE_FIELDS,
+    "dependentRequired": {"elements": ["legs"], "legs": ["elements"]},
+}
+
 
 def _tool(name: str, description: str, properties: dict, required: list[str], *, write: bool = False) -> dict:
     return {
@@ -55,6 +105,26 @@ def _tool(name: str, description: str, properties: dict, required: list[str], *,
 
 
 TOOL_DEFINITIONS = {row["name"]: row for row in [
+    _tool("delete_route", "Delete one explicitly authorized owned route. Checks ownership before deleting and verifies a not-found response while still authenticated. On failure read current state before retrying.", {
+        "route_id": ID, "confirm": {"type": "boolean", "const": True},
+    }, ["route_id", "confirm"], write=True),
+    _tool("create_route", "Save already built and inspected route geometry using Strava's native write props. Does not build or reroute. Defaults to OnlyMe. Returns the unchanged get_route object after readback. On uncertain failure, inspect existing routes before retrying to avoid duplicates.", {
+        "props": CREATE_ROUTE_PROPS, "confirm": {"type": "boolean", "const": True},
+    }, ["props", "confirm"], write=True),
+    _tool("update_route", "Update an owned route using native Strava write fields. Reads editable state first and preserves omitted fields; routePrefs merges supplied keys. Supply elements and built legs together when replacing geometry. Returns unchanged get_route data after readback. Read current state before retrying a failed write.", {
+        "route_id": ID, "patch": UPDATE_ROUTE_PATCH, "confirm": {"type": "boolean", "const": True},
+    }, ["route_id", "patch", "confirm"], write=True),
+    _tool("get_route", "Read one saved route. Returns Strava's complete props.pageProps.route object unchanged, including original field names, nested geometry, and null values.", {
+        "route_id": {**ID, "description": "Exact route ID returned by list_routes, as a string."},
+    }, ["route_id"]),
+    _tool("list_routes", "List saved routes from My Routes, including routes saved from others. Follows source pagination up to max_pages; if has_more, resume with next_cursor and the same filters. Route IDs are strings.", {
+        "query": {"type": "string", "description": "Text search passed to Strava."},
+        "created_by": {"type": "string", "enum": ["any", "me", "others"], "default": "any"},
+        "only_starred": {"type": "boolean", "default": False},
+        "route_types": {"type": "array", "items": {"type": "string", "enum": routes.ROUTE_TYPES}, "minItems": 1, "uniqueItems": True, "description": "Omit for all source route types."},
+        "max_pages": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+        "cursor": {"type": "string", "minLength": 1, "description": "Exact next_cursor from a previous result; omit to start."},
+    }, []),
     _tool("list_activities", "Find activities in an inclusive local date range, optionally filtered by visibility.", {
         "since": {"type": "string", "format": "date"},
         "until": {"type": "string", "format": "date", "description": "Defaults to today's local date."},
@@ -114,11 +184,14 @@ class StravaToolService:
             with _SESSION_LOCK:
                 # Each service function creates a fresh StravaSession and reads
                 # the private cookie file. No browser launch, refresh or retry.
-                payload = getattr(activities, name)(**arguments)
+                service = routes if name in {"list_routes", "get_route", "create_route", "update_route", "delete_route"} else activities
+                payload = getattr(service, name)(**arguments)
             if name == "update_activities" and not payload["complete"]:
                 code = "auth_required" if any(row.get("errorCode") == "auth_required" for row in payload["failed"]) else "partial_failure"
                 raise ToolFailure("Batch incomplete. Inspect results and read current state before retrying failed activities.", code, payload)
             return payload
+        except routes.RouteWriteError as exc:
+            raise ToolFailure(str(exc), "write_unverified", exc.details) from exc
         except StravaAuthRequired as exc:
             raise ToolFailure(str(exc), "auth_required") from exc
         except (TypeError, ValueError) as exc:
@@ -133,7 +206,7 @@ def create_sdk_server(service: StravaToolService) -> Any:
     from mcp.server import Server
 
     server = Server("strava", version="0.1.0", instructions=(
-        "Read Strava activities, gear and media; download media to explicit local paths; "
+        "Read Strava activities, saved routes, gear and media; download media to explicit local paths; "
         "apply authorized metadata changes and media uploads with fresh readback. "
         "auth_required means follow the Strava skill to renew the private browser session, then call again. "
         "For failed writes, read current state before retrying. Never send cookies in tool arguments. "

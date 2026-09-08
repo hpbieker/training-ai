@@ -20,6 +20,76 @@ Strava until its cookie-completeness issue is resolved; its
 disk-backed jar omitted `_strava4_session` from a session Safari demonstrably
 used.
 
+## Saved Route Listing
+
+MCP `list_routes` reads `/athlete/routes` for the current CSRF token and calls
+`POST /api/next/data/routes/my-routes` as a read-only search. The request uses
+`pageSize`, `after` (initially `"0"`), `searchArgs`, and `resolutions: []`.
+`searchArgs` includes `query`, `onlyStarred`, `createdBy` (`Any`, `Athlete`,
+`Others`), explicit `routeTypes`, and unbounded distance/elevation maxima.
+An empty route-type array matches no routes, so the default sends all supported
+types. The response is `me.searchRoutes.nodes` with `pageInfo.hasNextPage` and
+`pageInfo.endCursor`. These semantics were verified against the live My Routes
+page and its JavaScript on 2026-09-08. The service validates pagination rather
+than treating malformed or error responses as an empty collection.
+
+## Saved Route Details
+
+MCP `get_route(route_id)` reads `GET /routes/{route_id}` and extracts
+`props.pageProps.route` from the page's `__NEXT_DATA__` JSON. It checks that the
+returned ID matches the requested route, then returns that object without
+renaming, deriving, filtering, or flattening fields. Only the route object is
+returned, excluding other page state such as session data. The response shape
+was verified on 2026-09-08; missing values and future fields stay source-native.
+
+## MCP Writes
+
+`create_route` accepts `props` containing Strava's native write fields:
+`name`, `description`, `visibility`, `starred`, `elements`, `legs`, `routePrefs`.
+`name`, `elements`, `legs`, and complete `routePrefs` are required. Creation
+supplies the authenticated `athleteId` and defaults omitted metadata to an empty
+description, `OnlyMe`, and unstarred. It does not build a route.
+
+`update_route` takes `route_id` and a nonempty `patch` using the same write
+fields. Read `/maps/create?routeId=...` and use
+`props.pageProps.prefetchedRoute` to preserve current editor state, including
+`routePrefs`. Send `routeId` on update, not `athleteId`. Check ownership before
+writing. Omitted fields are preserved; preference keys are merged. Geometry
+replacement requires both `elements` and `legs`.
+
+Both tools require `confirm: true`. The write envelopes are `{ "props": ... }`.
+The native request field names and envelopes were checked against the live
+builder JavaScript on 2026-09-08. `routePrefs` uses `routeType`, `surfaceType`
+(`Unknown`, `Paved`, `Unpaved`), `popularity`, `elevation`, and `straightLine`.
+Read and write shapes differ: `title` becomes request `name`,
+`routeDescription` becomes `description`, and `isPrivate` maps to `visibility`.
+
+After POST, read editor state again and compare metadata, elements, preferences,
+and per-path polylines. Then return a fresh, unchanged `get_route` object.
+Any failure after submission reports `write_unverified` with the operation,
+stage and known route ID, without automatic retry. These write paths have
+mocked success/failure coverage and read-only live editor validation; no live
+route was created or modified during implementation.
+
+## Route Deletion
+
+`delete_route(route_id, confirm=true)` uses `DELETE /routes/{route_id}`, matching
+the delete action in My Routes. It verifies the route belongs to the currently
+authenticated athlete before sending the request with the current CSRF token.
+A successful response alone is insufficient: a fresh GET must return HTTP 404
+or 410, followed by a successful authentication check for the same athlete.
+Other errors and redirects do not establish deletion. Post-submission failures
+retain the route ID and report `write_unverified`; no automatic retry occurs.
+This path is covered by mocked deletion/readback tests; no real route was
+deleted during implementation.
+
+## CLI Boundaries
+
+`strava_build_route.py` builds and inspects candidates only. Route creation,
+updates, and deletion use MCP. The low-level `strava_route_api.py` CLI exposes
+only `auth` and `build`; its internal create/update transport remains available
+to the MCP service.
+
 ## Endpoints
 
 - `POST /api/next/data/routes/build-route`

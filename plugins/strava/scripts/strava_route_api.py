@@ -39,6 +39,12 @@ class StravaError(RuntimeError):
     """A verified Strava transport or response failure."""
 
 
+class StravaHttpError(StravaError):
+    def __init__(self, status: int) -> None:
+        super().__init__(f"Strava request failed with HTTP {status}.")
+        self.status = status
+
+
 class StravaAuthRequired(StravaError):
     """The stored browser session is missing or no longer authenticated."""
 
@@ -123,7 +129,7 @@ class StravaSession:
                 raise StravaAuthRequired("Strava session expired (HTTP 401). Renew it using the Strava skill.") from exc
             # 403 can also mean a permission or CSRF failure; it is not proof
             # that the browser session expired. Never expose response bodies.
-            raise StravaError(f"Strava request failed with HTTP {exc.code}.") from exc
+            raise StravaHttpError(exc.code) from exc
         except urllib.error.URLError as exc:
             raise StravaError(f"Strava request failed: {exc.reason}") from exc
         if include_cookie and re.search(r"/login(?:[/?#]|$)", effective_url):
@@ -273,7 +279,7 @@ def validate_json(path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("endpoint", choices=("auth", *sorted(ENDPOINTS)))
+    parser.add_argument("endpoint", choices=("auth", "build"))
     parser.add_argument("body", type=Path, nargs="?", help="Cookie-free JSON request body.")
     parser.add_argument(
         "--cookie-file",

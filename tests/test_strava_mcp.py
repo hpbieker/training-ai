@@ -68,6 +68,15 @@ class StravaMcpTests(unittest.TestCase):
 
     def test_all_tools_dispatch_without_cookie_arguments(self):
         samples = {
+            "list_routes": {},
+            "get_route": {"route_id": "3517267791863546324"},
+            "create_route": {"props": {"name": "Test", "elements": [
+                {"elementType": "Waypoint", "waypoint": {"point": {"lat": 0, "lng": 0}}},
+                {"elementType": "Waypoint", "waypoint": {"point": {"lat": 1, "lng": 1}}},
+            ], "legs": [{"startElement": 0, "paths": [{"polyline": {"encoding": "Google", "data": "abcd"}}]}],
+                "routePrefs": {"routeType": "Ride", "surfaceType": "Paved", "popularity": 0, "elevation": 0, "straightLine": False}}, "confirm": True},
+            "update_route": {"route_id": "12", "patch": {"name": "Test"}, "confirm": True},
+            "delete_route": {"route_id": "12", "confirm": True},
             "list_activities": {"since": "2026-09-01"},
             "get_activity": {"activity_id": "12"},
             "list_gear": {}, "get_gear": {"gear_id": "3"},
@@ -79,7 +88,8 @@ class StravaMcpTests(unittest.TestCase):
         }
         self.assertEqual(set(samples), set(mcp_server.TOOL_DEFINITIONS))
         for name, args in samples.items():
-            with self.subTest(name=name), mock.patch.object(mcp_server.activities, name, return_value={"complete": True}) as handler:
+            service = mcp_server.routes if name in {"list_routes", "get_route", "create_route", "update_route", "delete_route"} else mcp_server.activities
+            with self.subTest(name=name), mock.patch.object(service, name, return_value={"complete": True}) as handler:
                 self.service.call_tool(name, args)
                 handler.assert_called_once_with(**args)
 
@@ -180,13 +190,17 @@ async def run():
         async with ClientSession(read, write) as client:
             await client.initialize()
             catalog = await client.list_tools()
-            assert len(catalog.tools) == 9
+            assert len(catalog.tools) == 14
             assert all(tool.outputSchema for tool in catalog.tools)
             result = await client.call_tool("get_activity", {"activity_id": "12"})
             assert result.isError
             assert result.structuredContent["errorCode"] == "auth_required", result
             media = await client.call_tool("list_activity_media", {"activity_id": "12"})
             assert media.isError and media.structuredContent["errorCode"] == "auth_required"
+            routes = await client.call_tool("list_routes", {})
+            assert routes.isError and routes.structuredContent["errorCode"] == "auth_required"
+            route = await client.call_tool("get_route", {"route_id": "3517267791863546324"})
+            assert route.isError and route.structuredContent["errorCode"] == "auth_required"
 asyncio.run(run())
 '''
         result = subprocess.run([sys.executable, "-B", "-c", script], cwd=PLUGIN,

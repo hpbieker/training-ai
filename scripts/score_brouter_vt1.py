@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score BRouter GeoJSON route candidates for Hans Petter-style outdoor VT1 flow.
+"""Score BRouter GeoJSON route candidates for steady outdoor VT1 cycling.
 
 The score is intentionally opinionated: it penalizes G/S shortcuts, footways,
 crossing-like nodes, barriers, signals, and traffic calming because these break
