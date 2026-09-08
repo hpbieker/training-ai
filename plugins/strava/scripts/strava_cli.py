@@ -30,6 +30,8 @@ def add_activity_patch_arguments(parser: argparse.ArgumentParser) -> None:
                         help="Activity visibility")
     parser.add_argument("--start-time-hidden", action=argparse.BooleanOptionalAction, default=None,
                         help="Hide or show the activity start time")
+    parser.add_argument("--mute", action=argparse.BooleanOptionalAction, default=None,
+                        help="Mute or unmute the activity in home feeds")
     bike = parser.add_mutually_exclusive_group()
     bike.add_argument("--bike-id", help="Bike ID, or 'none' to clear the bike")
     bike.add_argument("--bike-name", help="Exact bike name, or 'none' to clear the bike")
@@ -87,7 +89,7 @@ def nullable(value: str | None) -> str | None:
 
 def activity_patch(args: argparse.Namespace) -> dict[str, Any]:
     patch: dict[str, Any] = {}
-    for argument in ("name", "tag", "trainer", "visibility", "start_time_hidden", "bike_id", "bike_name"):
+    for argument in ("name", "tag", "trainer", "visibility", "start_time_hidden", "mute", "bike_id", "bike_name"):
         value = getattr(args, argument)
         if value is not None:
             patch[argument] = nullable(value) if argument in {"tag", "bike_id", "bike_name"} else value

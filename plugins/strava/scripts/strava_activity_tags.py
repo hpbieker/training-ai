@@ -397,13 +397,14 @@ def main() -> int:
     parser.add_argument("--trainer", type=parse_bool, default=None, help="Set indoor trainer flag: true, false, or keep")
     parser.add_argument("--visibility", choices=["everyone", "followers_only", "only_me"])
     parser.add_argument("--start-time-hidden", type=parse_bool, default=None, help="Set start time hidden: true, false, or keep")
+    parser.add_argument("--mute", type=parse_bool, default=None, help="Mute activity in home feeds: true, false, or keep")
     bike_group = parser.add_mutually_exclusive_group()
     bike_group.add_argument("--bike-id", help="Set the exact Strava bike ID")
     bike_group.add_argument("--bike-name", help="Set a bike by exact edit-form name")
     args = parser.parse_args()
     read_only = args.read or (
         args.name is None and args.tag is None and args.trainer is None and args.visibility is None
-        and args.start_time_hidden is None and args.bike_id is None and args.bike_name is None
+        and args.mute is None and args.start_time_hidden is None and args.bike_id is None and args.bike_name is None
     )
     results = []
     try:
@@ -423,6 +424,7 @@ def main() -> int:
                         start_time_hidden=args.start_time_hidden,
                         bike_id=args.bike_id,
                         bike_name=args.bike_name,
+                        mute=args.mute,
                     )
                 results.append(summarize(activity))
     except (OSError, StravaError, ValueError) as exc:
