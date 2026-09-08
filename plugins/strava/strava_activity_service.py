@@ -1,4 +1,4 @@
-"""User-oriented Strava activity operations shared by CLI tools."""
+"""Strava activity, gear, and media operations for the MCP server."""
 
 from __future__ import annotations
 

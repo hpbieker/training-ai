@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Read or update Strava activity metadata using Python HTTP.
 
 The persistent private session cache contains exactly one ``Cookie:`` header.
@@ -7,18 +6,15 @@ The parsed cookie value exists only in the Python process memory.
 
 from __future__ import annotations
 
-import argparse
 import html
 import json
 import re
-import sys
 import time
 import urllib.parse
 from html.parser import HTMLParser
-from pathlib import Path
 from typing import Any
 
-from strava_route_api import StravaError, StravaSession, default_cookie_file
+from strava_route_api import StravaError, StravaSession
 
 
 SESSION: StravaSession | None = None
@@ -363,76 +359,3 @@ def summarize(activity: dict[str, Any]) -> dict[str, Any]:
     if "_verified_fields" in activity:
         result["verified_fields"] = list(activity["_verified_fields"])
     return result
-
-
-def parse_bool(value: str) -> bool | None:
-    value = value.lower()
-    if value == "keep":
-        return None
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    if value in {"0", "false", "no", "off"}:
-        return False
-    raise argparse.ArgumentTypeError("expected true, false, or keep")
-
-
-def main() -> int:
-    global SESSION
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("activity_id", nargs="+")
-    parser.add_argument(
-        "--cookie-file",
-        type=Path,
-        default=default_cookie_file(),
-        help="Private Cookie header file (default: STRAVA_COOKIE_FILE or ~/.strava/session.headers)",
-    )
-    parser.add_argument(
-        "--header-file",
-        type=Path,
-        help="Optional private header file for non-cookie browser headers",
-    )
-    parser.add_argument("--read", action="store_true", help="Read activity tag state only")
-    parser.add_argument("--name", help="Set the activity name")
-    parser.add_argument("--tag", help="Set primary tag, e.g. Workout, Recovery, WithKid, none")
-    parser.add_argument("--trainer", type=parse_bool, default=None, help="Set indoor trainer flag: true, false, or keep")
-    parser.add_argument("--visibility", choices=["everyone", "followers_only", "only_me"])
-    parser.add_argument("--start-time-hidden", type=parse_bool, default=None, help="Set start time hidden: true, false, or keep")
-    parser.add_argument("--mute", type=parse_bool, default=None, help="Mute activity in home feeds: true, false, or keep")
-    bike_group = parser.add_mutually_exclusive_group()
-    bike_group.add_argument("--bike-id", help="Set the exact Strava bike ID")
-    bike_group.add_argument("--bike-name", help="Set a bike by exact edit-form name")
-    args = parser.parse_args()
-    read_only = args.read or (
-        args.name is None and args.tag is None and args.trainer is None and args.visibility is None
-        and args.mute is None and args.start_time_hidden is None and args.bike_id is None and args.bike_name is None
-    )
-    results = []
-    try:
-        with StravaSession(args.cookie_file, args.header_file) as SESSION:
-            for activity_id in args.activity_id:
-                if read_only:
-                    activity = fetch_activity(activity_id)
-                    activity["_edit_html"] = fetch_edit(activity_id)
-                else:
-                    activity = update_activity(
-                        activity_id,
-                        activity_name=args.name,
-                        tag=normalize_tag(args.tag),
-                        tag_supplied=args.tag is not None,
-                        trainer=args.trainer,
-                        visibility=args.visibility,
-                        start_time_hidden=args.start_time_hidden,
-                        bike_id=args.bike_id,
-                        bike_name=args.bike_name,
-                        mute=args.mute,
-                    )
-                results.append(summarize(activity))
-    except (OSError, StravaError, ValueError) as exc:
-        parser.error(str(exc))
-    payload: Any = results[0] if len(results) == 1 else results
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

@@ -41,7 +41,7 @@ verified fixed. Copy as cURL in Web Inspector is separate from curl-safari.
 
 ## Network Execution
 
-Live CLI diagnostics, session import verification, and media/route helper calls
+Live CLI diagnostics, session import verification, and route helper calls
 require escalated network permission on the first attempt. Offline help and
 local artifact inspection do not. MCP calls use the configured local server.
 
@@ -56,8 +56,9 @@ preserved. Use `tag: null` to clear a tag or `bike_id: "none"` to clear a bike.
 Visibility, hidden start time, and mute are independent settings. Updates verify
 API metadata plus edit-page-only bike, start-time, and mute state.
 
-The CLI remains available for explicit CLI requests and troubleshooting. Use
-MCP for the media operations below.
+Activity, gear, and media operations are available only through MCP. The Python
+activity helpers are internal modules without CLI entry points. CLI commands
+remain for session management, route building, and route analysis.
 
 Use `list_gear` to retrieve current and retired bikes and shoes. `get_gear`
 accepts an ID returned by that list; provide `gear_type` (`bike` or `shoe`) when
