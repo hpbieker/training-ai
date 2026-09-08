@@ -156,6 +156,25 @@ def _save_route(session: StravaSession, operation: str, props: dict[str, Any], r
         raise RouteWriteError(operation, route_id, stage) from exc
 
 
+def build_route(requests: list[dict[str, Any]]) -> dict[str, Any]:
+    """Return Strava's build response unchanged without saving a route."""
+    with StravaSession(default_cookie_file()) as session:
+        request_path = session.tmp_dir / "route-build-request.json"
+        response_path = session.tmp_dir / "route-build-response.json"
+        request_path.write_text(json.dumps({"requests": requests}))
+        response = session.api("build", request_path, response_path)
+    built = response.get("buildRoute")
+    if response.get("errors") or not isinstance(built, list) or len(built) != len(requests):
+        raise StravaError("Strava did not return one build result per requested leg.")
+    for result in built:
+        if not isinstance(result, dict) or not isinstance(result.get("legs"), list) or not result["legs"]:
+            raise StravaError("Strava build response did not contain complete legs.")
+        for leg in result["legs"]:
+            if not isinstance(leg, dict) or not isinstance(leg.get("paths"), list) or not leg["paths"]:
+                raise StravaError("Strava build response did not contain complete paths.")
+    return response
+
+
 def create_route(props: dict[str, Any], confirm: bool) -> dict[str, Any]:
     """Save previously built and inspected geometry using native Strava write fields."""
     if confirm is not True:

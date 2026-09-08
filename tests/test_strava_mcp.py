@@ -86,9 +86,11 @@ class StravaMcpTests(unittest.TestCase):
             "update_activity": {"activity_id": "12", "patch": {"mute": True}, "confirm": True},
             "update_activities": {"activity_ids": ["12"], "patch": {"tag": None}, "confirm": True},
         }
+        props = samples["create_route"]["props"]
+        samples["build_route"] = {"requests": [{"elements": props["elements"], "routePrefs": props["routePrefs"]}]}
         self.assertEqual(set(samples), set(mcp_server.TOOL_DEFINITIONS))
         for name, args in samples.items():
-            service = mcp_server.routes if name in {"list_routes", "get_route", "create_route", "update_route", "delete_route"} else mcp_server.activities
+            service = mcp_server.routes if name in {"list_routes", "get_route", "build_route", "create_route", "update_route", "delete_route"} else mcp_server.activities
             with self.subTest(name=name), mock.patch.object(service, name, return_value={"complete": True}) as handler:
                 self.service.call_tool(name, args)
                 handler.assert_called_once_with(**args)
@@ -190,7 +192,7 @@ async def run():
         async with ClientSession(read, write) as client:
             await client.initialize()
             catalog = await client.list_tools()
-            assert len(catalog.tools) == 14
+            assert len(catalog.tools) == 15
             assert all(tool.outputSchema for tool in catalog.tools)
             result = await client.call_tool("get_activity", {"activity_id": "12"})
             assert result.isError

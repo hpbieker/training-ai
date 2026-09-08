@@ -58,6 +58,39 @@ class RouteWriteTests(unittest.TestCase):
         self.assertNotIn("athleteId", props)
         self.session.api.assert_called_once()
 
+    def test_build_preserves_native_request_and_response_without_saving(self):
+        requests = [{"elements": self.props["elements"], "routePrefs": self.props["routePrefs"]}]
+        response = {"buildRoute": [{"legs": self.props["legs"], "futureField": None}], "extra": [1, False]}
+        self.session.api.return_value = response
+        result = mcp.StravaToolService().call_tool("build_route", {"requests": requests})
+        self.assertIs(result, response)
+        sent = json.loads((self.session.tmp_dir / "route-build-request.json").read_text())
+        self.assertEqual(sent, {"requests": requests})
+        self.session.api.assert_called_once()
+        self.assertEqual(self.session.api.call_args.args[0], "build")
+
+    def test_build_rejects_incomplete_source_response(self):
+        requests = [{"elements": self.props["elements"], "routePrefs": self.props["routePrefs"]}]
+        for response in [{}, {"buildRoute": []}, {"buildRoute": [None]},
+                         {"buildRoute": [{"legs": []}]}, {"buildRoute": [{"legs": [{"paths": []}]}]},
+                         {"errors": [{"message": "private"}], "buildRoute": [{"legs": self.props["legs"]}]}]:
+            with self.subTest(response=response), self.assertRaises(mcp.ToolFailure) as error:
+                self.session.api.return_value = response
+                mcp.StravaToolService().call_tool("build_route", {"requests": requests})
+            self.assertEqual(error.exception.code, "tool_error")
+            self.assertNotIn("private", str(error.exception))
+
+    def test_build_rejects_invalid_waypoint_requests_before_network(self):
+        good = {"elements": self.props["elements"], "routePrefs": self.props["routePrefs"]}
+        for args in [{"requests": []}, {"requests": [good], "target_km": 60},
+                     {"requests": [{**good, "elements": good["elements"][:1]}]},
+                     {"requests": [{**good, "elements": good["elements"] * 2}]},
+                     {"requests": [{**good, "routePrefs": {"routeType": "Ride"}}]}]:
+            with self.subTest(args=args), self.assertRaises(mcp.ToolFailure) as error:
+                mcp.StravaToolService().call_tool("build_route", args)
+            self.assertEqual(error.exception.code, "invalid_arguments")
+        self.session.api.assert_not_called()
+
     def test_update_preserves_omitted_values_and_merges_preferences(self):
         saved = copy.deepcopy(self.route)
         saved["title"] = "New title"

@@ -104,12 +104,19 @@ source-provided extra fields are included as supplied. Do not assume the
 normalized field names from `list_routes` apply to `get_route`. A missing or
 mismatched route is an error, not an empty object.
 
+Use MCP `build_route(requests)` to compute geometry between explicit waypoint
+pairs without saving a route. Each native request has exactly two `elements`
+and complete `routePrefs` (`routeType`, `surfaceType`, `popularity`, `elevation`,
+`straightLine`). The response is Strava's unchanged object containing
+`buildRoute`, one result per requested leg. It does not generate waypoints from
+a target distance. Resolve those points before calling; analysis and GeoJSON
+conversion remain separate from the source response.
+
 Use MCP `create_route(props, confirm=true)` to save previously built and
 inspected geometry. `props` uses Strava's native write fields: `name`,
 `description`, `visibility`, `starred`, `elements`, `legs`, and `routePrefs`.
 This differs from the read object's field names. The service supplies the
-current athlete ID; new routes default to `OnlyMe`. Building is still performed
-with the route helper below; creation does not rebuild geometry.
+current athlete ID; new routes default to `OnlyMe`. Build with MCP `build_route`; creation does not rebuild geometry.
 Use the actual built elements, paths, and zero-based `startElement` indices.
 
 Use MCP `update_route(route_id, patch, confirm=true)` for owned routes. Supply

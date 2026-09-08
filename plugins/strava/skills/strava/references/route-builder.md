@@ -42,6 +42,17 @@ renaming, deriving, filtering, or flattening fields. Only the route object is
 returned, excluding other page state such as session data. The response shape
 was verified on 2026-09-08; missing values and future fields stay source-native.
 
+## MCP Build
+
+`build_route(requests)` passes `{ "requests": [...] }` to the build endpoint.
+Each request contains exactly two native waypoint `elements` and complete
+`routePrefs`. It returns the entire source response unchanged, including
+`buildRoute` and any additional fields. Each result corresponds to a request,
+not an alternative complete route. Missing/incomplete build results are errors.
+No route is saved, and no confirmation parameter is needed. Route planning,
+target-distance waypoint selection, analysis, and GeoJSON conversion are
+separate operations. A two-request build was verified live through MCP.
+
 ## MCP Writes
 
 `create_route` accepts `props` containing Strava's native write fields:

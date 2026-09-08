@@ -105,6 +105,15 @@ def _tool(name: str, description: str, properties: dict, required: list[str], *,
 
 
 TOOL_DEFINITIONS = {row["name"]: row for row in [
+    _tool("build_route", "Calculate paths between explicit waypoint pairs without saving a route. Accepts Strava's requests array and returns its complete buildRoute response unchanged. Each result corresponds to a requested leg, not an alternative complete route. Does not accept a target distance or generate waypoints.", {
+        "requests": {"type": "array", "minItems": 1, "items": {
+            "type": "object", "additionalProperties": False, "required": ["elements", "routePrefs"],
+            "properties": {
+                "elements": {**ROUTE_FIELDS["elements"], "maxItems": 2},
+                "routePrefs": CREATE_ROUTE_PROPS["properties"]["routePrefs"],
+            },
+        }},
+    }, ["requests"]),
     _tool("delete_route", "Delete one explicitly authorized owned route. Checks ownership before deleting and verifies a not-found response while still authenticated. On failure read current state before retrying.", {
         "route_id": ID, "confirm": {"type": "boolean", "const": True},
     }, ["route_id", "confirm"], write=True),
@@ -184,7 +193,7 @@ class StravaToolService:
             with _SESSION_LOCK:
                 # Each service function creates a fresh StravaSession and reads
                 # the private cookie file. No browser launch, refresh or retry.
-                service = routes if name in {"list_routes", "get_route", "create_route", "update_route", "delete_route"} else activities
+                service = routes if name in {"list_routes", "get_route", "build_route", "create_route", "update_route", "delete_route"} else activities
                 payload = getattr(service, name)(**arguments)
             if name == "update_activities" and not payload["complete"]:
                 code = "auth_required" if any(row.get("errorCode") == "auth_required" for row in payload["failed"]) else "partial_failure"
