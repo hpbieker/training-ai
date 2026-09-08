@@ -66,11 +66,14 @@ class StravaMcpTests(unittest.TestCase):
                 self.assertEqual(error.exception.code, "invalid_arguments")
                 write.assert_not_called()
 
-    def test_all_six_dispatch_without_cookie_arguments(self):
+    def test_all_tools_dispatch_without_cookie_arguments(self):
         samples = {
             "list_activities": {"since": "2026-09-01"},
             "get_activity": {"activity_id": "12"},
             "list_gear": {}, "get_gear": {"gear_id": "3"},
+            "list_activity_media": {"activity_id": "12"},
+            "download_activity_media": {"activity_id": "12", "media_id": "media-uuid", "destination_dir": "/private/tmp/media"},
+            "upload_activity_media": {"activity_id": "12", "file_path": "/private/tmp/ride.jpg", "caption": "Ride", "confirm": True},
             "update_activity": {"activity_id": "12", "patch": {"mute": True}, "confirm": True},
             "update_activities": {"activity_ids": ["12"], "patch": {"tag": None}, "confirm": True},
         }
@@ -91,6 +94,44 @@ class StravaMcpTests(unittest.TestCase):
             with self.assertRaises(mcp_server.ToolFailure) as error:
                 self.service.call_tool("get_activity", {"activity_id": "12"})
         self.assertEqual(error.exception.code, "auth_required")
+
+    def test_media_write_arguments_are_validated_before_dispatch(self):
+        cases = [
+            ("upload_activity_media", {"activity_id": "12", "file_path": "/tmp/a.png"}),
+            ("upload_activity_media", {"activity_id": "12", "file_path": "/tmp/a.png", "confirm": False}),
+            ("download_activity_media", {"activity_id": "12", "media_id": "id", "destination_dir": "relative"}),
+            ("download_activity_media", {"activity_id": "12", "media_id": "id", "destination_dir": "/tmp", "overwrite": "true"}),
+        ]
+        for name, args in cases:
+            with self.subTest(name=name, args=args), mock.patch.object(mcp_server.activities, name) as handler:
+                with self.assertRaises(mcp_server.ToolFailure) as error:
+                    self.service.call_tool(name, args)
+                self.assertEqual(error.exception.code, "invalid_arguments")
+                handler.assert_not_called()
+
+    def test_download_preserves_existing_file_until_overwrite_is_explicit(self):
+        props = {"media": [{"uuid": "media-uuid", "filename": "ride.jpg", "url": "https://media.example/ride.jpg"}]}
+        target = Path(self.tmp.name) / "ride.jpg"
+        target.write_bytes(b"original")
+        args = {"activity_id": "12", "media_id": "media-uuid", "destination_dir": self.tmp.name}
+        with mock.patch.object(mcp_server.activities, "_fetch_edit_media", return_value=("", props)), mock.patch.object(api.urllib.request, "urlopen", return_value=Response("https://media.example/ride.jpg", b"download")) as network:
+            with self.assertRaises(mcp_server.ToolFailure):
+                self.service.call_tool("download_activity_media", args)
+            network.assert_not_called()
+            self.assertEqual(target.read_bytes(), b"original")
+            result = self.service.call_tool("download_activity_media", {**args, "overwrite": True})
+            self.assertEqual(Path(result["path"]).read_bytes(), b"download")
+            self.assertIsNone(network.call_args.args[0].get_header("Cookie"))
+
+    def test_upload_returns_verified_media_after_readback(self):
+        source = Path(self.tmp.name) / "ride.png"
+        source.write_bytes(b"test-image")
+        before = {"athleteId": 7, "media": []}
+        after = {"athleteId": 7, "media": [{"uuid": "uploaded-uuid", "media_type": 1, "caption": "Ride"}]}
+        with mock.patch.object(mcp_server.activities, "_fetch_edit_media", side_effect=[('<meta name="csrf" content="token">', before), ("", after)]), mock.patch.object(mcp_server.activities, "_upload_media_blob", return_value="uploaded-uuid"), mock.patch.object(api.StravaSession, "request", return_value=(b"", 200, "https://www.strava.com/activities/12")):
+            result = self.service.call_tool("upload_activity_media", {"activity_id": "12", "file_path": str(source), "caption": "Ride", "confirm": True})
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["uploaded"]["media_id"], "uploaded-uuid")
 
     def test_401_is_auth_but_403_and_500_are_not_and_body_is_private(self):
         for status, code in [(401, "auth_required"), (403, "tool_error"), (500, "tool_error")]:
@@ -139,11 +180,13 @@ async def run():
         async with ClientSession(read, write) as client:
             await client.initialize()
             catalog = await client.list_tools()
-            assert len(catalog.tools) == 6
+            assert len(catalog.tools) == 9
             assert all(tool.outputSchema for tool in catalog.tools)
             result = await client.call_tool("get_activity", {"activity_id": "12"})
             assert result.isError
             assert result.structuredContent["errorCode"] == "auth_required", result
+            media = await client.call_tool("list_activity_media", {"activity_id": "12"})
+            assert media.isError and media.structuredContent["errorCode"] == "auth_required"
 asyncio.run(run())
 '''
         result = subprocess.run([sys.executable, "-B", "-c", script], cwd=PLUGIN,

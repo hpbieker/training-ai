@@ -67,6 +67,21 @@ TOOL_DEFINITIONS = {row["name"]: row for row in [
     _tool("get_gear", "Read one bike or shoe from the account's gear collections.", {
         "gear_id": ID, "gear_type": {"type": "string", "enum": ["bike", "shoe"]},
     }, ["gear_id"]),
+    _tool("list_activity_media", "List photos and videos attached to one activity. Use the returned media_id for downloads.", {
+        "activity_id": ID,
+    }, ["activity_id"]),
+    _tool("download_activity_media", "Download one listed photo or video to an explicit local directory. Returns the saved path. Existing files require overwrite=true.", {
+        "activity_id": ID,
+        "media_id": {"type": "string", "minLength": 1, "description": "Exact media_id returned by list_activity_media; may be a UUID."},
+        "destination_dir": {"type": "string", "pattern": "^/", "description": "Absolute local destination directory."},
+        "overwrite": {"type": "boolean", "default": False},
+    }, ["activity_id", "media_id", "destination_dir"], write=True),
+    _tool("upload_activity_media", "Attach one explicitly authorized local image or video and verify it through fresh media-list readback. List existing media first; after an uncertain failure, list again before retrying to avoid duplicates.", {
+        "activity_id": ID,
+        "file_path": {"type": "string", "pattern": "^/", "description": "Absolute path to an existing JPG, JPEG, PNG, GIF, MP4, or MOV file."},
+        "caption": {"type": "string"},
+        "confirm": {"type": "boolean", "const": True},
+    }, ["activity_id", "file_path", "confirm"], write=True),
     _tool("update_activity", "Apply an explicitly authorized metadata patch and verify it through fresh readback. On failure, read current state before retrying.", {
         "activity_id": ID, "patch": PATCH, "confirm": {"type": "boolean", "const": True},
     }, ["activity_id", "patch", "confirm"], write=True),
@@ -118,7 +133,8 @@ def create_sdk_server(service: StravaToolService) -> Any:
     from mcp.server import Server
 
     server = Server("strava", version="0.1.0", instructions=(
-        "Read Strava activities and gear; apply explicitly authorized metadata changes with fresh readback. "
+        "Read Strava activities, gear and media; download media to explicit local paths; "
+        "apply authorized metadata changes and media uploads with fresh readback. "
         "auth_required means follow the Strava skill to renew the private browser session, then call again. "
         "For failed writes, read current state before retrying. Never send cookies in tool arguments. "
         "Authentication is external; this server does not open Safari or refresh sessions."

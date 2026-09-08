@@ -1,15 +1,15 @@
 {
   "name": "strava",
-  "version": "0.1.0+codex.20260908145336",
-  "description": "Local MCP tools for Strava activities and gear using a private browser session, plus media and route helpers.",
+  "version": "0.1.0+codex.20260908150113",
+  "description": "Local MCP tools for Strava activities, gear and media using a private browser session, plus route helpers.",
   "author": {
     "name": "Hans Petter Bieker"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Strava",
-    "shortDescription": "Read and update Strava activities and gear through local MCP tools.",
-    "longDescription": "Strava exposes six local MCP tools for activity and gear reads and verified metadata updates. Safari Web Inspector renews the private persistent session when required. Media and route workflows remain available through Python helpers.",
+    "shortDescription": "Read and update Strava activities, gear and media through local MCP tools.",
+    "longDescription": "Strava exposes nine local MCP tools for activity, gear and media reads, media downloads, and verified metadata updates and media uploads. Safari Web Inspector renews the private persistent session when required. Route workflows remain available through Python helpers.",
     "developerName": "Hans Petter Bieker",
     "category": "Health & Fitness",
     "capabilities": [

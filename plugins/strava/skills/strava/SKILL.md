@@ -5,7 +5,7 @@ description: Read and change Strava activities, tags, visibility, routes, Route 
 
 # Strava
 
-Use the six local MCP tools for activity and gear operations. The server reads
+Use the nine local MCP tools for activity, gear, and media operations. The server reads
 `~/.strava/session.headers` for each operation; it does not authenticate through
 Safari, refresh cookies, or retry failed writes.
 
@@ -56,8 +56,8 @@ preserved. Use `tag: null` to clear a tag or `bike_id: "none"` to clear a bike.
 Visibility, hidden start time, and mute are independent settings. Updates verify
 API metadata plus edit-page-only bike, start-time, and mute state.
 
-The CLI remains available for explicit CLI requests and troubleshooting. Media
-operations below still use `strava_cli.py`; inspect command help for arguments.
+The CLI remains available for explicit CLI requests and troubleshooting. Use
+MCP for the media operations below.
 
 Use `list_gear` to retrieve current and retired bikes and shoes. `get_gear`
 accepts an ID returned by that list; provide `gear_type` (`bike` or `shoe`) when
@@ -74,13 +74,10 @@ Strava's short-lived media-storage URL, then attached through the activity edit
 form. Do not send the Strava cookie to that storage URL. Report success only
 after fresh media-list readback confirms the attachment.
 
-```bash
-python3 -B plugins/strava/scripts/strava_cli.py list_activity_media 123
-python3 -B plugins/strava/scripts/strava_cli.py download_activity_media \
-  123 456 /private/tmp/strava-media
-python3 -B plugins/strava/scripts/strava_cli.py upload_activity_media \
-  123 /absolute/path/image.jpg --caption "" --yes
-```
+Pass absolute local paths in `destination_dir` and `file_path`. Media IDs may be
+UUIDs; preserve the exact `media_id` returned by the list. If an upload fails
+with an uncertain result, list the activity's media again before retrying to
+avoid attaching it twice.
 
 ## Routes
 
