@@ -21,7 +21,9 @@
       "VT1 route scoring from BRouter GeoJSON",
       "Strava route creation and update guidance"
     ],
-    "defaultPrompt": "Use Safari-authenticated Strava workflows when working with my Strava routes."
+    "defaultPrompt": "Use Safari-authenticated Strava workflows when working with my Strava routes.",
+    "composerIcon": "./assets/strava-icon.png",
+    "logo": "./assets/strava-icon.png"
   },
   "mcpServers": "./.mcp.json"
 }
