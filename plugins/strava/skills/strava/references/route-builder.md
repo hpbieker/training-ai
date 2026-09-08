@@ -2,8 +2,9 @@
 
 ## Transport
 
-Use `strava_session_from_safari.py` to fetch Strava's authenticated training page through
-curl-safari and create a mode-0600 `Cookie:` header file. Pass that path as
+Use the persistent private browser session. When renewal is required, capture
+Copy as cURL in Safari Web Inspector and run `strava_session.py import-curl`
+to create a verified mode-0600 `Cookie:` header file. Pass that path as
 `--cookie-file`. Use the shared Python HTTP session for:
 
 1. authenticated training-page read and athlete-ID discovery;

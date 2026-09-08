@@ -1,108 +1,63 @@
 ---
 name: strava
-description: Read and change Strava activities, tags, visibility, routes, Route Builder state, and authenticated Strava data with Python HTTP after a curl-safari session bootstrap. Use for activity or route inspection and mutation, or when creating a cycling route from a start location, target distance, route shape, direction, surface, elevation, popularity, and optional via points.
+description: Read and change Strava activities, tags, visibility, routes, Route Builder state, and authenticated Strava data through local MCP tools and Python helpers using a private Safari session. Use for activity or route inspection and mutation, or when creating a cycling route from a start location, target distance, route shape, direction, surface, elevation, popularity, and optional via points.
 ---
 
 # Strava
 
-Use `strava_session_from_safari.py` to visit the Strava training page through
-`curl-safari`, export the reconstructed live cookie jar, and write the private
-persistent session cache at `~/.strava/session.headers`. The remaining scripts
-use that cache by default through Python's standard HTTP client.
-
-## Network Execution
-
-Live Strava reads and writes require external network access. Run the live
-`plugins/strava/scripts/` commands with escalated
-network permission on the first attempt; do not first try them in a
-network-isolated sandbox. The bootstrap depends on the local curl-safari server
-and its Safari cookie access. Offline help
-and local response or artifact inspection do not require network escalation.
+Use the six local MCP tools for activity and gear operations. The server reads
+`~/.strava/session.headers` for each operation; it does not authenticate through
+Safari, refresh cookies, or retry failed writes.
 
 ## Authentication
 
-Follow the `curl-safari` skill completely. Safari must already be logged in.
-
-Never print Cookie, Authorization, CSRF, or copied full cURL content. Retain
-only the Cookie header in `~/.strava/session.headers` until it expires, is
-replaced by a verified capture, or the user explicitly clears it. The
-`~/.strava` directory must be mode 0700 and the files mode 0600. The cookie
-value must not appear in command arguments. An optional `--header-file` may contain
-non-secret browser headers, but never Cookie, Authorization, or CSRF. Keep
-response bodies and redacted verbose logs in `/private/tmp`.
-
-Verify authentication before other calls:
-
-```bash
-python3 -B plugins/strava/scripts/strava_route_api.py auth
-```
-
-Create the required private cookie file:
-
-```bash
-python3 -B plugins/strava/scripts/strava_session_from_safari.py
-```
-
-When curl-safari cannot provide a complete session, copy a live authenticated
-request as cURL in Safari Web Inspector and import it without retaining the
-complete cURL command:
+On `errorCode: auth_required`, follow `browser-curl-replay` to copy a live
+Strava authenticated request as cURL in Safari Web Inspector, then import it:
 
 ```bash
 python3 -B plugins/strava/scripts/strava_session.py import-curl
 ```
 
-Use `strava_session.py status` to validate the cached session and
-`strava_session.py clear` for explicit logout or credential cleanup. All
-request scripts resolve the cookie file in this order: `--cookie-file`,
-`STRAVA_COOKIE_FILE`, then `~/.strava/session.headers`.
+The importer reads the clipboard, retains only the Cookie header in
+`~/.strava/session.headers`, and verifies the authenticated session. Never print
+Cookie, Authorization, CSRF, or copied full cURL content. The private directory
+must be mode 0700 and the file mode 0600. Safari must already be logged in;
+a new Web Inspector capture requires the Mac to be unlocked.
 
-### Why Not Curl Safari
+After renewal, call the MCP tool again; no server restart is needed. For a failed
+write, first read the current activity state to determine whether it already
+changed. For a partial batch, inspect `details.updated`, `details.failed`, and
+`details.not_attempted`; do not blindly repeat the whole batch.
 
-Do not use Curl Safari for Strava authentication unless its open cookie-
-completeness investigation proves the behavior fixed. On 2026-07-28, an
-authenticated Safari request contained Strava session cookies including
-`_strava4_session` and `_strava_idcf`, while Curl Safari's parsed disk-backed
-jar omitted them and the same dashboard URL redirected to `/login`.
+Use `strava_session.py status` for live diagnostics, or `status --local-only`
+for file/permission checks. Use `clear` only for explicit credential cleanup.
+The cookie path resolves from `STRAVA_COOKIE_FILE`, then the persistent default;
+CLI helpers also accept `--cookie-file` where documented. Cookies and cookie paths
+are not MCP tool arguments.
 
-The root cause may be cookie-file/profile selection, binarycookies parsing, or
-filtering rather than non-persistence. Do not encode a speculative fallback.
-The live curl-safari jar is the source of truth for the active session; Python
-HTTP is the transport after bootstrap. If curl-safari cannot provide
-`_strava4_session` that Strava accepts for the training page, use
-`browser-curl-replay` and
-`strava_cookie_from_curl.py` as the fallback.
+`strava_session_from_safari.py` remains an experimental helper. Do not rely on
+curl-safari for renewal until its previously missing Strava session cookies are
+verified fixed. Copy as cURL in Web Inspector is separate from curl-safari.
 
-This is not credential login. Safari must already be logged in, and the Mac
-must be unlocked for a new Web Inspector capture when the session expires.
+## Network Execution
+
+Live CLI diagnostics, session import verification, and media/route helper calls
+require escalated network permission on the first attempt. Offline help and
+local artifact inspection do not. MCP calls use the configured local server.
 
 ## Activities
 
 Read [references/write-safety.md](references/write-safety.md) before writes.
-Use the user-oriented tools exposed by `strava_cli.py`: `list_activities`,
-`get_activity`, `list_gear`, `get_gear`, `list_activity_media`,
-`download_activity_media`, `upload_activity_media`, `update_activity`, and
-`update_activities`. Inspect the commands with `strava_cli.py --help` and a
-command's arguments with `strava_cli.py COMMAND --help`. Session handling is
-internal and is not exposed as a user-oriented command.
+Use MCP `list_activities`, `get_activity`, `list_gear`, `get_gear`,
+`update_activity`, and `update_activities`. Discover exact IDs through reads;
+`list_activities` accepts inclusive `since` and `until` dates. Writes take a
+`patch` and `confirm=true` for an already authorized action. Omitted fields are
+preserved. Use `tag: null` to clear a tag or `bike_id: "none"` to clear a bike.
+Visibility, hidden start time, and mute are independent settings. Updates verify
+API metadata plus edit-page-only bike, start-time, and mute state.
 
-Use `list_activities` for date-bounded discovery and visibility filtering:
-
-```bash
-python3 -B plugins/strava/scripts/strava_cli.py list_activities \
-  --since 2026-08-01 --visibility only_me
-```
-
-Use the returned activity IDs for exact reads or writes. Pass one or more IDs
-to `strava_activity_tags.py`. It supports activity name, primary tag, trainer flag,
-visibility, hidden start time, and bike by exact ID or exact edit-form name.
-Omitted fields are preserved; use `--tag none` only for an explicit tag clear.
-Every operation reads back API state plus edit-page-only bike and start-time
-state.
-
-```bash
-python3 -B plugins/strava/scripts/strava_cli.py update_activity 123 \
-  --tag Workout --visibility everyone --yes
-```
+The CLI remains available for explicit CLI requests and troubleshooting. Media
+operations below still use `strava_cli.py`; inspect command help for arguments.
 
 Use `list_gear` to retrieve current and retired bikes and shoes. `get_gear`
 accepts an ID returned by that list; provide `gear_type` (`bike` or `shoe`) when
@@ -164,3 +119,7 @@ or traffic caveats.
 This plugin owns Strava session mechanics, route-builder payloads, activity
 mutations, and readback verification. The caller owns personal route
 preferences, candidate selection, maps, and final route or training decisions.
+
+### Mute activity
+
+Use MCP `update_activity` with `patch: {"mute": true}` and `confirm: true` to mute an activity in home feeds; use `false` to undo it. This is independent of visibility and Workout tags. The script preserves omitted fields and verifies `mute` from the fresh edit-form `activity[hide_from_home]` checkbox. An absent checkbox is unknown, not false; writes fail if it cannot be located.

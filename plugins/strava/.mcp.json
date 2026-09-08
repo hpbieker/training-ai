@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "strava": {
+      "command": "python3",
+      "args": ["-B", "./strava_mcp.py"],
+      "cwd": "."
+    }
+  }
+}

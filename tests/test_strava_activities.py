@@ -147,6 +147,35 @@ printf '200\nhttps://www.strava.com/athlete/training'
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(output.read_text(), "Cookie: session=secret; x=1\n")
 
+    def test_mute_form_preserves_other_fields_and_supports_both_values(self) -> None:
+        for checked in (False, True):
+            checkbox = '<input type="checkbox" name="activity[hide_from_home]" value="true"' + (' checked' if checked else '') + '>'
+            form = EDIT_HTML + checkbox
+            self.assertEqual(metadata.edit_state(form)["mute"], checked)
+            for mute in (None, False, True):
+                with self.subTest(checked=checked, mute=mute):
+                    body = metadata.build_form_body(
+                        form, activity_name=None, tag=None, tag_supplied=False,
+                        current_tag="Workout", trainer=None, visibility=None,
+                        start_time_hidden=None, bike_id=None, mute=mute,
+                    )
+                    pairs = urllib.parse.parse_qs(body, keep_blank_values=True)
+                    expected = (["true"] if checked else None) if mute is None else ["true" if mute else "false"]
+                    self.assertEqual(pairs.get("activity[hide_from_home]"), expected)
+                    self.assertEqual(pairs["activity[tags][]"], ["", "Workout"])
+                    self.assertEqual(pairs["activity[bike_id]"], ["15590716"])
+                    self.assertEqual(pairs["activity[stats_visibility][start_time]"], ["only_me"])
+
+    def test_missing_mute_checkbox_is_unknown_and_blocks_write(self) -> None:
+        self.assertNotIn("mute", metadata.edit_state(EDIT_HTML))
+        for mute in (False, True):
+            with self.assertRaises(metadata.StravaError):
+                metadata.build_form_body(
+                    EDIT_HTML, activity_name=None, tag=None, tag_supplied=False,
+                    current_tag="Workout", trainer=None, visibility=None,
+                    start_time_hidden=None, bike_id=None, mute=mute,
+                )
+
     def test_bike_name_and_edit_readback(self) -> None:
         self.assertEqual(metadata.resolve_bike_id(EDIT_HTML, None, "kickr bike v2 (HJEME)"), "15590716")
         self.assertEqual(

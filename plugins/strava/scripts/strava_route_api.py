@@ -39,6 +39,10 @@ class StravaError(RuntimeError):
     """A verified Strava transport or response failure."""
 
 
+class StravaAuthRequired(StravaError):
+    """The stored browser session is missing or no longer authenticated."""
+
+
 class StravaSession:
     def __init__(self, cookie_file: Path, header_file: Path | None = None):
         self.cookie_file = validate_cookie_file(cookie_file)
@@ -114,14 +118,16 @@ class StravaSession:
                 status = response.status
                 effective_url = response.geturl()
         except urllib.error.HTTPError as exc:
-            body = exc.read()
-            preview = body.decode("utf-8", errors="ignore")[:500].strip()
-            detail = f": {preview}" if preview else ""
-            if exc.code in {401, 403}:
-                raise StravaError(f"Strava authentication failed with HTTP {exc.code}{detail}") from exc
-            raise StravaError(f"Strava request failed with HTTP {exc.code}{detail}") from exc
+            exc.close()
+            if exc.code == 401:
+                raise StravaAuthRequired("Strava session expired (HTTP 401). Renew it using the Strava skill.") from exc
+            # 403 can also mean a permission or CSRF failure; it is not proof
+            # that the browser session expired. Never expose response bodies.
+            raise StravaError(f"Strava request failed with HTTP {exc.code}.") from exc
         except urllib.error.URLError as exc:
             raise StravaError(f"Strava request failed: {exc.reason}") from exc
+        if include_cookie and re.search(r"/login(?:[/?#]|$)", effective_url):
+            raise StravaAuthRequired("Strava redirected to login. Renew the session using the Strava skill.")
         if verbose_log is not None:
             verbose_log.write_text(
                 json.dumps({"method": method, "url": url, "status": status, "effective_url": effective_url})
@@ -154,7 +160,7 @@ class StravaSession:
         training_page = self.tmp_dir / "training.html"
         _, effective_url = self._run(AUTH_CHECK_URL, out_path=training_page)
         if re.search(r"/login(?:[/?#]|$)", effective_url):
-            raise StravaError(
+            raise StravaAuthRequired(
                 "Strava login is required. The Cookie header file did not provide an "
                 "authenticated www.strava.com session."
             )
@@ -241,6 +247,8 @@ def validate_private_file(path: Path, label: str) -> Path:
 
 
 def validate_cookie_file(path: Path) -> Path:
+    if not path.exists():
+        raise StravaAuthRequired("Strava session file is missing. Import a session using the Strava skill.")
     path = validate_private_file(path, "Cookie file")
     lines = path.read_text(encoding="utf-8").splitlines()
     if len(lines) != 1 or not re.fullmatch(r"Cookie:\s*\S.*", lines[0], re.IGNORECASE):

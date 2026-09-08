@@ -5,8 +5,8 @@ material private and verify the saved state afterward.
 
 ## Activity Changes
 
-Use `strava_session_from_safari.py` to obtain the live Safari cookies through
-curl-safari. Store the reusable Cookie header in the mode-0600 cache at
+Use Safari Web Inspector Copy as cURL and `strava_session.py import-curl`
+when the session needs renewal. Store the reusable Cookie header in the mode-0600 cache at
 `~/.strava/session.headers`; never put cookie values in command arguments. Read the
 activity back after each change.
 
@@ -49,10 +49,10 @@ only on the POST response.
 
 Retain the private Cookie header until Strava rejects it, it is replaced by a
 newly verified Safari capture, or the user explicitly clears it. Never retain
-CSRF headers or a complete copied cURL command. Use browser-curl-replay only if
-curl-safari cannot provide the required session cookie.
+CSRF headers or a complete copied cURL command. Follow browser-curl-replay for
+the Web Inspector capture; MCP does not refresh the session itself.
 
-Resolve activity IDs with a date-bounded `strava_activities.py` query before a
+Resolve activity IDs with a date-bounded MCP `list_activities` query before a
 batch write. Do not select duplicate activity names without checking ID and
 local start date. For a multi-activity update, require one readback result per
 requested ID and report the saved tag, trainer flag, visibility, bike, and

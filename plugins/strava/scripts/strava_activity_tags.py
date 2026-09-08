@@ -164,14 +164,19 @@ def build_form_body(
     visibility: str | None,
     start_time_hidden: bool | None,
     bike_id: str | None,
+    mute: bool | None = None,
 ) -> str:
     parser = EditFormParser()
     parser.feed(edit_html)
+    if mute is not None and not any(item.get("name") == "activity[hide_from_home]" and item.get("type") == "checkbox" for item in parser.inputs):
+        raise StravaError("Strava edit form does not expose Mute Activity; refusing an unverified write.")
     pairs: list[tuple[str, str]] = []
 
     for item in parser.inputs:
         name = item.get("name")
         if not name:
+            continue
+        if name == "activity[hide_from_home]" and mute is not None:
             continue
         if name.startswith("activity[tags]") or name == "activity[trainer]":
             continue
@@ -223,6 +228,9 @@ def build_form_body(
     ):
         pairs.append(("activity[stats_visibility][start_time]", "only_me"))
 
+    if mute is not None:
+        pairs.append(("activity[hide_from_home]", "true" if mute else "false"))
+
     pairs.append(("commit", "Save"))
     return urllib.parse.urlencode(pairs, doseq=True)
 
@@ -238,6 +246,7 @@ def update_activity(
     start_time_hidden: bool | None,
     bike_id: str | None,
     bike_name: str | None,
+    mute: bool | None = None,
 ) -> dict[str, Any]:
     edit_html = fetch_edit(activity_id)
     before = fetch_activity(activity_id)
@@ -252,6 +261,7 @@ def update_activity(
         visibility=visibility,
         start_time_hidden=start_time_hidden,
         bike_id=resolved_bike_id,
+        mute=mute,
     ).encode("utf-8")
     session().request(
         f"https://www.strava.com/activities/{activity_id}",
@@ -276,6 +286,8 @@ def update_activity(
         expected["visibility"] = visibility
     if start_time_hidden is not None:
         expected["start_time_hidden"] = start_time_hidden
+    if mute is not None:
+        expected["mute"] = mute
     if resolved_bike_id is not None:
         expected["bike_id"] = str(resolved_bike_id)
 
@@ -292,6 +304,7 @@ def update_activity(
             if option.get("selected")
         ]
         actual = {
+            "mute": edit.get("mute"),
             "name": activity.get("name"),
             "tag": selected_tags[0] if selected_tags else None,
             "trainer": bool(activity.get("trainer")),
@@ -318,6 +331,8 @@ def edit_state(edit_html: str) -> dict[str, Any]:
     parser.feed(edit_html)
     state: dict[str, Any] = {}
     for item in parser.inputs:
+        if item.get("name") == "activity[hide_from_home]" and item.get("type") == "checkbox":
+            state["mute"] = "checked" in item
         if item.get("name") == "activity[stats_visibility][start_time]" and item.get("value") == "only_me":
             state["start_time_hidden"] = "checked" in item
     for select in parser.selects:

@@ -1,15 +1,15 @@
 {
   "name": "strava",
-  "version": "0.1.0+codex.20260904200701",
-  "description": "Browser-authenticated Strava activity media, metadata, and route tooling using Python HTTP.",
+  "version": "0.1.0+codex.20260908145336",
+  "description": "Local MCP tools for Strava activities and gear using a private browser session, plus media and route helpers.",
   "author": {
     "name": "Hans Petter Bieker"
   },
   "skills": "./skills/",
   "interface": {
     "displayName": "Strava",
-    "shortDescription": "Manage Strava activity media, metadata, and routes through Python HTTP.",
-    "longDescription": "Strava provides browser-authenticated activity and media reads and writes, route building and creation from start location and target distance, geometry inspection, and route-quality checks using Python HTTP and a private temporary cookie file.",
+    "shortDescription": "Read and update Strava activities and gear through local MCP tools.",
+    "longDescription": "Strava exposes six local MCP tools for activity and gear reads and verified metadata updates. Safari Web Inspector renews the private persistent session when required. Media and route workflows remain available through Python helpers.",
     "developerName": "Hans Petter Bieker",
     "category": "Health & Fitness",
     "capabilities": [
@@ -22,5 +22,6 @@
       "Strava route creation and update guidance"
     ],
     "defaultPrompt": "Use Safari-authenticated Strava workflows when working with my Strava routes."
-  }
+  },
+  "mcpServers": "./.mcp.json"
 }

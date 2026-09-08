@@ -15,7 +15,7 @@ import uuid
 
 from scripts import strava_activity_tags as activity_metadata
 from scripts.strava_activities import activity_date, fetch_page, normalized_activity, payload_rows
-from scripts.strava_route_api import StravaError, StravaSession, default_cookie_file
+from strava_route_api import StravaAuthRequired, StravaError, StravaSession, default_cookie_file
 
 
 TAG_ID_TO_NAME = {
@@ -521,10 +521,12 @@ def get_activity(*, activity_id: int | str, cookie_file: Path | None = None) -> 
 
 
 def validate_patch(patch: dict[str, Any]) -> None:
-    allowed = {"name", "tag", "trainer", "visibility", "start_time_hidden", "bike_id", "bike_name"}
+    allowed = {"name", "tag", "trainer", "visibility", "start_time_hidden", "mute", "bike_id", "bike_name"}
     unknown = sorted(set(patch) - allowed)
     if unknown:
         raise ValueError(f"Unsupported activity patch fields: {', '.join(unknown)}")
+    if "mute" in patch and not isinstance(patch["mute"], bool):
+        raise ValueError("mute must be a boolean")
     if not patch:
         raise ValueError("patch must contain at least one field")
     if "bike_id" in patch and "bike_name" in patch:
@@ -546,6 +548,7 @@ def update_with_session(
         trainer=patch.get("trainer"),
         visibility=patch.get("visibility"),
         start_time_hidden=patch.get("start_time_hidden"),
+        mute=patch.get("mute"),
         bike_id=str(patch["bike_id"]) if patch.get("bike_id") is not None else None,
         bike_name=patch.get("bike_name"),
     )
@@ -597,7 +600,12 @@ def update_activities(
             try:
                 updated.append(update_with_session(session, activity_id=activity_id, patch=patch))
             except (OSError, StravaError, ValueError) as exc:
-                failed.append({"activity_id": activity_id, "error": str(exc)})
+                failed.append({
+                    "activity_id": activity_id, "error": str(exc),
+                    "errorCode": "auth_required" if isinstance(exc, StravaAuthRequired) else "tool_error",
+                })
+                if isinstance(exc, StravaAuthRequired):
+                    break
     return {
         "requested_count": len(activity_ids),
         "updated_count": len(updated),
@@ -605,4 +613,5 @@ def update_activities(
         "complete": not failed,
         "updated": updated,
         "failed": failed,
+        "not_attempted": activity_ids[len(updated) + len(failed):],
     }
