@@ -17,16 +17,14 @@ help and local artifact inspection do not require network access.
 
 Prefer the Xert MCP tools when they are available:
 
-- `list_activity_summaries` returns activity summaries for an inclusive
-  local-date range. It always returns newest first. `limit` selects the N newest
-  activities within that period; omit it for all activities in the period.
-  Use `includeFields` to select additional fields. Older periods may take longer
-  to retrieve.
-  `period_complete=false` and `stop_reason=limit` mean that the period may
-  contain more activities; `count` is returned rows, not the total matches.
-  Request `signature`, `xss`, `difficulty`, `difficulty_rating`, `xep_watts`,
-  `focus`, `specificity`, power, HR, or cadence summaries as needed. Signature
-  includes `ftp`, `pp` and `ltp` in W, and `atc` in J.
+- `list_activity_summaries` returns activity summaries within an inclusive
+  local-date range, newest first. Use `limit` for the N newest activities;
+  omit it for the full period.
+  Use `includeFields` to select signature, XSS, difficulty, XEP, focus,
+  specificity, power, heart rate and cadence.
+  `count` is the number of returned activities. Check `period_complete`
+  to determine whether the result covers the full period.
+  Signature fields `ftp`, `pp` and `ltp` use watts; `atc` uses joules.
 - `list_activities` returns compact identity summaries for an inclusive
   local-date range with only `path`, `name`, and `start_local` by default. Use
   `includeFields` to add duration, distance, source, or map URL from the same
