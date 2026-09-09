@@ -5,6 +5,14 @@ from __future__ import annotations
 from html.parser import HTMLParser
 import copy
 import json
+import math
+import os
+import tempfile
+import time
+from route_editing import fingerprint
+from pathlib import Path
+
+from route_geometry import compare_route_geometry, TOLERANCE_M
 from typing import Any
 
 from strava_route_api import StravaError, StravaHttpError, StravaSession, default_cookie_file
@@ -55,7 +63,7 @@ def _page_data(body: bytes) -> dict[str, Any]:
     return payload
 
 
-def get_route(route_id: str) -> dict[str, Any]:
+def _get_route_full(route_id: str) -> dict[str, Any]:
     """Return props.pageProps.route exactly as supplied by Strava."""
     if not isinstance(route_id, str) or not route_id.isascii() or not route_id.isdigit():
         raise ValueError("route_id must be a numeric string returned by list_routes.")
@@ -70,11 +78,59 @@ def get_route(route_id: str) -> dict[str, Any]:
     return route
 
 
+# Omit these source arrays consistently, independent of their size.
+OMITTED_ROUTE_ARRAY_PATHS = frozenset({
+    '/elements', '/legs', '/segmentsOnRoute', '/segments',
+    '/elevation', '/polyline', '/distanceStream', '/routePolylineData/media',
+})
+
+
+def _compact_route(value, path='', omitted=None):
+    omitted = omitted if omitted is not None else []
+    if isinstance(value, dict):
+        result = {}
+        for key, child in value.items():
+            pointer = path + '/' + key.replace('~', '~0').replace('/', '~1')
+            if pointer in OMITTED_ROUTE_ARRAY_PATHS and isinstance(child, list):
+                size = len(json.dumps(child, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))
+                omitted.append({'path': pointer, 'item_count': len(child), 'byte_size': size})
+                continue
+            result[key] = _compact_route(child, pointer, omitted)
+        return result
+    if isinstance(value, list):
+        return [_compact_route(child, path+'/'+str(i), omitted) for i,child in enumerate(value)]
+    return value
+
+
+def get_route(route_id: str, save_full: bool = False) -> dict[str, Any]:
+    """Return native fields except fixed detail arrays, optionally exporting full data."""
+    if not isinstance(save_full, bool): raise ValueError('save_full must be a boolean')
+    source = _get_route_full(route_id)
+    omitted = []
+    result = {'route_id': route_id, 'route': _compact_route(source, omitted=omitted),
+              'omitted_arrays': omitted}
+    if save_full:
+        fd, name = tempfile.mkstemp(prefix=f'strava-{route_id}-', suffix='-route.json')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                json.dump({'route_id': route_id, 'route': source}, handle, ensure_ascii=False, separators=(',', ':'))
+            os.chmod(name, 0o600)
+            result.update(full_route_file=name, full_route_format='strava-route-v1',
+                          full_route_byte_size=Path(name).stat().st_size)
+        except Exception:
+            Path(name).unlink(missing_ok=True)
+            raise
+    return result
+
+
 class RouteWriteError(StravaError):
-    def __init__(self, operation: str, route_id: str | None, stage: str) -> None:
+    def __init__(self, operation: str, route_id: str | None, stage: str, verification=None) -> None:
         super().__init__("Route write could not be verified. Read current state before retrying; the operation may already have succeeded.")
         self.details = {"operation": operation, "route_id": route_id, "stage": stage,
                         "outcome_uncertain": True}
+        if verification is not None:
+            self.details["verification"] = verification
+            self.details["write_acknowledged"] = stage == "readback"
 
 
 def _editable_route(session: StravaSession, route_id: str) -> dict[str, Any]:
@@ -109,6 +165,8 @@ def _validate_geometry(props: dict[str, Any]) -> None:
     if len(legs) != len(elements) - 1:
         raise ValueError("There must be one built leg between each pair of elements.")
     for index, leg in enumerate(legs):
+        if len(leg.get('paths', [])) != 1:
+            raise ValueError('Save exactly one complete path per leg; multiple paths may be alternatives.')
         if leg.get("startElement") != index or not leg.get("paths"):
             raise ValueError("Built legs must have consecutive startElement indices and paths.")
         for path in leg["paths"]:
@@ -117,19 +175,44 @@ def _validate_geometry(props: dict[str, Any]) -> None:
                 raise ValueError("Every built path must include its Strava Google polyline.")
 
 
-def _verify_write(expected: dict[str, Any], actual: dict[str, Any]) -> None:
+class VerifiedRoute(dict):
+    """Keep source JSON intact; attach diagnostics out of band for MCP."""
+    def __init__(self, route, verification):
+        super().__init__(route)
+        self.verification = verification
+
+
+class RouteVerificationError(StravaError):
+    def __init__(self, report):
+        super().__init__('Saved route differs or could not be verified; inspect verification details.')
+        self.verification = report
+
+
+def _verify_write(expected: dict[str, Any], actual: dict[str, Any]) -> dict:
     saved = _write_props(actual)
-    for field in ("name", "description", "visibility", "starred", "elements", "routePrefs"):
-        if saved[field] != expected[field]:
-            raise StravaError(f"Saved route did not match requested {field}.")
-    # Server-derived path measurements may differ; compare the actual saved geometry.
-    def polylines(props: dict[str, Any]) -> list[list[dict[str, Any]]]:
-        return [[path["polyline"] for path in leg["paths"]] for leg in props["legs"]]
-    if polylines(saved) != polylines(expected):
-        raise StravaError("Saved route did not match requested geometry.")
+    fields = [field for field in ('name', 'description', 'visibility', 'starred', 'routePrefs') if saved[field] != expected[field]]
+    waypoint_status = 'equivalent_within_tolerance'
+    if len(saved['elements']) != len(expected['elements']):
+        waypoint_status = 'unresolved'
+    else:
+        for left,right in zip(expected['elements'],saved['elements']):
+            a,b=copy.deepcopy(left),copy.deepcopy(right)
+            try:
+                x=a['waypoint'].pop('point');y=b['waypoint'].pop('point')
+                # Strava alternates omitted and explicit null waypoint metadata.
+                for e in (a,b):
+                    if e['waypoint'].get('metadata') is None:e['waypoint'].pop('metadata',None)
+                gap=111195*math.hypot(x['lat']-y['lat'],(x['lng']-y['lng'])*math.cos(math.radians(x['lat'])))
+                if a!=b or not math.isfinite(gap) or gap>TOLERANCE_M:waypoint_status='changed';break
+            except (KeyError,TypeError,ValueError):waypoint_status='unresolved';break
+    geometry=compare_route_geometry(expected,saved)
+    report={'geometry':geometry,'waypoints':waypoint_status,'metadata_mismatches':fields}
+    report['status']='changed' if fields or waypoint_status=='changed' or geometry['status']=='changed' else 'unresolved' if waypoint_status=='unresolved' or geometry['status']=='unresolved' else geometry['status']
+    if report['status'] in {'changed','unresolved'}:raise RouteVerificationError(report)
+    return report
 
 
-def _save_route(session: StravaSession, operation: str, props: dict[str, Any], route_id: str | None) -> dict[str, Any]:
+def _save_route(session: StravaSession, operation: str, props: dict[str, Any], route_id: str | None, detail_geometry: dict | None = None) -> dict[str, Any]:
     request_path = session.tmp_dir / "route-write-request.json"
     response_path = session.tmp_dir / "route-write-response.json"
     request_path.write_text(json.dumps({"props": props}))
@@ -145,19 +228,43 @@ def _save_route(session: StravaSession, operation: str, props: dict[str, Any], r
                 raise StravaError("Strava create response did not contain a route ID.")
             route_id = str(identifier)
         stage = "readback"
-        _verify_write(props, _editable_route(session, route_id))
-        result = get_route(route_id)
-        # Public detail data must agree too; returned object remains source-native.
-        for field, wanted in {"title": props["name"], "isPrivate": props["visibility"] == "OnlyMe", "isStarred": props["starred"]}.items():
-            if result.get(field) != wanted:
-                raise StravaError("Route detail and editor readbacks disagreed.")
-        return result
+        # Read twice even after an immediate match: Strava may normalize later.
+        previous_match = False
+        last_error = None
+        for attempt, delay in enumerate((0, 2, 3), 1):
+            if delay: time.sleep(delay)
+            try:
+                editor_verification = _verify_write(props, _editable_route(session, route_id))
+                result = _get_route_full(route_id)
+                for field, wanted in {"title": props["name"], "isPrivate": props["visibility"] == "OnlyMe", "isStarred": props["starred"],
+                                      "routeDescription": props["description"] or None}.items():
+                    actual = result.get(field)
+                    if field == 'routeDescription': actual = actual or None
+                    if actual != wanted:
+                        raise RouteVerificationError({'status':'changed','source':'detail','metadata_mismatches':[field]})
+                detail_verification = compare_route_geometry(detail_geometry or props, result)
+                if detail_verification['status'] in {'changed', 'unresolved'}:
+                    raise RouteVerificationError({'status':detail_verification['status'],'source':'detail','geometry':detail_verification})
+                if previous_match:
+                    return VerifiedRoute(result, {'write_acknowledged':True, 'editor':editor_verification,
+                                                 'detail':detail_verification, 'readback_rounds':attempt,
+                                                 'consecutive_matches':2})
+                previous_match = True
+            except RouteVerificationError as exc:
+                previous_match = False
+                last_error = exc
+        if previous_match:
+            raise RouteVerificationError({'status':'unresolved','reason':'readback_not_stable'})
+        if last_error: raise last_error
+        raise RouteVerificationError({'status':'unresolved','reason':'readback_not_stable'})
+
     except (OSError, StravaError, ValueError, KeyError, TypeError) as exc:
-        raise RouteWriteError(operation, route_id, stage) from exc
+        raise RouteWriteError(operation, route_id, stage, getattr(exc, 'verification', {'status':'unresolved','reason':'readback_unavailable' if stage=='readback' else 'submission_not_acknowledged'})) from exc
 
 
-def build_route(requests: list[dict[str, Any]]) -> dict[str, Any]:
-    """Return Strava's build response unchanged without saving a route."""
+def build_route(requests: list[dict[str, Any]], save_full: bool = False) -> dict[str, Any]:
+    """Build without saving a route; optionally export the full response locally."""
+    if not isinstance(save_full, bool): raise ValueError("save_full must be a boolean")
     with StravaSession(default_cookie_file()) as session:
         request_path = session.tmp_dir / "route-build-request.json"
         response_path = session.tmp_dir / "route-build-response.json"
@@ -172,6 +279,18 @@ def build_route(requests: list[dict[str, Any]]) -> dict[str, Any]:
         for leg in result["legs"]:
             if not isinstance(leg, dict) or not isinstance(leg.get("paths"), list) or not leg["paths"]:
                 raise StravaError("Strava build response did not contain complete paths.")
+    if save_full:
+        fd, name = tempfile.mkstemp(prefix='strava-build-', suffix='.json')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+                json.dump(response, handle, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+            return {'result_count': len(built),
+                    'leg_count': sum(len(row['legs']) for row in built),
+                    'full_build_file': name, 'full_build_format': 'strava-build-v1',
+                    'full_build_byte_size': Path(name).stat().st_size}
+        except Exception:
+            Path(name).unlink(missing_ok=True)
+            raise
     return response
 
 
@@ -226,7 +345,7 @@ def delete_route(route_id: str, confirm: bool) -> dict[str, Any]:
             raise RouteWriteError("delete", route_id, stage) from exc
 
 
-def update_route(route_id: str, patch: dict[str, Any], confirm: bool) -> dict[str, Any]:
+def update_route(route_id: str, patch: dict[str, Any], confirm: bool, base_geometry_sha256: str | None = None) -> dict[str, Any]:
     """Merge supplied native write fields with freshly read editable state."""
     if confirm is not True or not patch:
         raise ValueError("Route update requires a nonempty patch and confirm=true.")
@@ -238,6 +357,35 @@ def update_route(route_id: str, patch: dict[str, Any], confirm: bool) -> dict[st
         if str((current.get("athlete") or {}).get("id")) != str(auth["athlete_id"]):
             raise ValueError("Only a route owned by the authenticated athlete can be updated.")
         prepared = _write_props(current)
+        unchanged = {}
+        if base_geometry_sha256 is not None:
+            if not {'elements', 'legs'}.issubset(patch):
+                raise ValueError('Geometry baseline requires elements and legs')
+            baseline = _get_route_full(route_id)
+            if fingerprint(baseline) != base_geometry_sha256:
+                raise ValueError('Route geometry changed since preparation; fetch save_full and prepare again. No write submitted.')
+            # Preserve fresh editor geometry for untouched prefix/suffix legs.
+            # Source detail geometry may have been normalized differently.
+            patch = copy.deepcopy(patch)
+            def same_leg(i, j):
+                return (patch['legs'][j]['paths'] == baseline['legs'][i]['paths'] or
+                        [p['polyline'] for p in patch['legs'][j]['paths']] == [p['polyline'] for p in baseline['legs'][i]['paths']]) and [e['waypoint']['point'] for e in patch['elements'][j:j+2]] == [e['waypoint']['point'] for e in baseline['elements'][i:i+2]]
+            if len(prepared['legs']) != len(baseline['legs']):
+                raise ValueError('Editor and detail leg structures disagree; refresh before saving')
+            left = 0
+            while left < min(len(patch['legs']), len(baseline['legs'])) and same_leg(left, left):
+                unchanged[left] = baseline['legs'][left]
+                patch['legs'][left] = copy.deepcopy(prepared['legs'][left]); left += 1
+            i, j = len(baseline['legs'])-1, len(patch['legs'])-1
+            while i >= left and j >= left and same_leg(i, j):
+                unchanged[j] = baseline['legs'][i]
+                patch['legs'][j] = copy.deepcopy(prepared['legs'][i]); patch['legs'][j]['startElement'] = j
+                i -= 1; j -= 1
+            if len(patch['legs']) == len(baseline['legs']):
+                for index in range(left, j+1):
+                    if same_leg(index, index):
+                        unchanged[index] = baseline['legs'][index]
+                        patch['legs'][index] = copy.deepcopy(prepared['legs'][index])
         for field, value in copy.deepcopy(patch).items():
             if field == "routePrefs":
                 prepared[field].update(value)
@@ -245,7 +393,9 @@ def update_route(route_id: str, patch: dict[str, Any], confirm: bool) -> dict[st
                 prepared[field] = value
         _validate_geometry(prepared)
         prepared["routeId"] = route_id
-        return _save_route(session, "update", prepared, route_id)
+        detail_geometry = copy.deepcopy(prepared)
+        for index, leg in unchanged.items(): detail_geometry['legs'][index] = leg
+        return _save_route(session, "update", prepared, route_id, detail_geometry)
 
 
 class _CsrfParser(HTMLParser):

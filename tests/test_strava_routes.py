@@ -37,7 +37,7 @@ class StravaRoutesTests(unittest.TestCase):
             *pages,
         ]
 
-    def test_get_route_preserves_entire_source_object(self):
+    def test_get_route_preserves_native_metadata(self):
         source = {"id": "3517267791863546324", "title": "Lake & valley",
                   "routeDescription": None, "length": 123.456, "isPrivate": True,
                   "estimatedTime": {"expectedTime": 0}, "elements": [],
@@ -46,8 +46,57 @@ class StravaRoutesTests(unittest.TestCase):
         html = '<script>{"ignore":true}</script><script type="application/json" id="__NEXT_DATA__">' + json.dumps(payload) + '</script>'
         self.session.request.return_value = (html.encode(), 200, "https://www.strava.com/routes/" + source["id"])
         result = mcp_server.StravaToolService().call_tool("get_route", {"route_id": source["id"]})
-        self.assertEqual(result, source)
+        self.assertEqual(result["route"], {k: v for k, v in source.items() if k not in {"elements", "polyline"}})
+        self.assertEqual({x["path"] for x in result["omitted_arrays"]}, {"/elements", "/polyline"})
         self.session.request.assert_called_once_with("https://www.strava.com/routes/" + source["id"])
+
+    def test_get_route_omits_fixed_arrays_regardless_of_size(self):
+        for detail in ([], [1], list(range(2000))):
+            source = {'id': '12', 'description': 'x' * 4000, 'isPrivate': True,
+                      'unknown': list(range(2000)), 'nested': {'media': detail, 'null': None},
+                      'routePolylineData': {'media': detail, 'other': None}}
+            fields = {'elements', 'legs', 'segmentsOnRoute', 'segments',
+                      'elevation', 'polyline', 'distanceStream'}
+            source.update({key: detail for key in fields})
+            with self.subTest(size=len(detail)), mock.patch.object(routes, '_get_route_full', return_value=source):
+                result = mcp_server.StravaToolService().call_tool('get_route', {'route_id': '12'})
+            self.assertEqual(result['route'], {
+                'id': '12', 'description': 'x' * 4000, 'isPrivate': True,
+                'unknown': list(range(2000)), 'nested': {'media': detail, 'null': None},
+                'routePolylineData': {'other': None}})
+            self.assertEqual({x['path'] for x in result['omitted_arrays']},
+                             {'/' + key for key in fields} | {'/routePolylineData/media'})
+            self.assertTrue(all(x['item_count'] == len(detail) for x in result['omitted_arrays']))
+            self.assertEqual(source['legs'], detail)
+            self.assertNotIn('full_route_file', result)
+
+    def test_save_full_keeps_original_data_private_and_only_reads_once(self):
+        import os
+        source={'id':'12','legs':list(range(2000)),'nested':{'media':['x'*3000]}}
+        with mock.patch.object(routes,'_get_route_full',return_value=source) as read:
+            result=mcp_server.StravaToolService().call_tool('get_route',{'route_id':'12','save_full':True})
+        file=Path(result['full_route_file']);self.addCleanup(file.unlink,missing_ok=True)
+        self.assertEqual(json.loads(file.read_text()),{'route_id':'12','route':source})
+        self.assertEqual(os.stat(file).st_mode & 0o777,0o600)
+        self.assertEqual(result['full_route_byte_size'],file.stat().st_size)
+        self.assertEqual(result['full_route_format'],'strava-route-v1')
+        read.assert_called_once_with('12')
+        self.assertNotIn('legs',result['route'])
+
+    def test_save_full_rejects_non_boolean_before_network(self):
+        for value in ('true',1,None):
+            with self.subTest(value=value), self.assertRaises(mcp_server.ToolFailure):
+                mcp_server.StravaToolService().call_tool('get_route',{'route_id':'12','save_full':value})
+        self.session.request.assert_not_called()
+
+    def test_save_full_failure_removes_partial_file(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            real=routes.tempfile.mkstemp
+            def create(**kwargs):return real(dir=tmp,**kwargs)
+            with mock.patch.object(routes,'_get_route_full',return_value={'id':'12'}), mock.patch.object(routes.tempfile,'mkstemp',side_effect=create), mock.patch.object(routes.json,'dump',side_effect=OSError('disk full')):
+                with self.assertRaises(OSError):routes.get_route('12',save_full=True)
+            self.assertEqual(list(Path(tmp).iterdir()),[])
 
     def test_get_route_rejects_missing_invalid_or_wrong_route(self):
         for data in ["not JSON private detail", "[]", '{}', '{"props":null}',

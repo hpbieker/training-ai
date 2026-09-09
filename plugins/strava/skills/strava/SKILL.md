@@ -97,12 +97,20 @@ Listing does not create or modify routes and does not require Route Builder
 initialization.
 
 Use MCP `get_route` with an exact `route_id` from `list_routes`. It returns the
-complete `props.pageProps.route` object from Strava's route page unchanged:
-original field names (such as `title`, `length`, `elevationGain`), nested
-objects, arrays, and null values. Geometry, elevation data, segments, and
-source-provided extra fields are included as supplied. Do not assume the
-normalized field names from `list_routes` apply to `get_route`. A missing or
-mismatched route is an error, not an empty object.
+envelope `{route_id, route, omitted_arrays}`. `route` preserves native field
+names, nested objects, nulls and extra fields, except for a fixed set of arrays:
+`elements`, `legs`, `segmentsOnRoute`, `segments`, `elevation`, `polyline`,
+`distanceStream` and `routePolylineData.media`. These are omitted regardless of
+size, even when empty. All other arrays remain unchanged. `omitted_arrays`
+reports each removed array's JSON-pointer path, item count and UTF-8 JSON byte
+size; size does not control inclusion.
+
+Set `save_full=true` to save the complete source as `{route_id, route}` in a
+private temporary JSON file. The response adds `full_route_file`,
+`full_route_format` (`strava-route-v1`) and `full_route_byte_size`. Use this file
+for geometry processing. No `includeFields` parameter is needed. Do not assume
+the normalized field names from `list_routes` apply to `get_route`. A missing
+or mismatched route is an error, not an empty object.
 
 Use MCP `build_route(requests)` to compute geometry between explicit waypoint
 pairs without saving a route. Each native request has exactly two `elements`
@@ -111,6 +119,13 @@ and complete `routePrefs` (`routeType`, `surfaceType`, `popularity`, `elevation`
 `buildRoute`, one result per requested leg. It does not generate waypoints from
 a target distance. Resolve those points before calling; analysis and GeoJSON
 conversion remain separate from the source response.
+
+Use `build_route(requests, save_full=true)` for file-based processing. It saves
+the complete unchanged build response as private temporary JSON (mode 0600)
+and returns only `result_count`, `leg_count`, `full_build_file`,
+`full_build_format` (`strava-build-v1`) and `full_build_byte_size`. The file is
+directly accepted as a replacement by `prepare_route_update.py`. The default
+`save_full=false` retains the inline native response.
 
 Use MCP `create_route(props, confirm=true)` to save previously built and
 inspected geometry. `props` uses Strava's native write fields: `name`,
@@ -124,9 +139,130 @@ only changed native write fields. It reads fresh editor state and preserves
 omitted fields, merging supplied `routePrefs` keys. To replace geometry, supply
 both `elements` and complete built `legs`. Neither operation rebuilds geometry.
 
-Creation and updates verify metadata, preferences, waypoints, and saved polylines against
-fresh editor data and return the unchanged `get_route` object. On
-`write_unverified`, inspect `details.route_id` and current state before retrying.
+To prepare a section update locally, run:
+
+```bash
+python3 -B plugins/strava/scripts/prepare_route_update.py \
+  --route /absolute/path/full-route.json \
+  --replacement /absolute/path/replacement.json \
+  --from-element 4 --to-element 7 \
+  --output-dir /private/tmp/prepared-route-update
+```
+
+The source is the full file from `get_route(save_full=true)`. Replacement JSON
+contains native `elements` and already built `legs`, including both boundary
+waypoints. Indices are zero-based source `elements` indices, inclusive, not
+kilometres or polyline vertices. Boundary coordinates must match exactly.
+The helper preserves original boundary metadata and all outside geometry,
+adds source-omitted `elementType=Waypoint`, and renumbers `startElement`.
+It writes private `update.json` (`route_id`, `patch`, `base_geometry_sha256`) and `report.json` files
+to a new directory and prints only paths and counts. It does not set `confirm`,
+access the network, build paths, or save a route. Metadata and preferences are
+omitted from the patch so `update_route` preserves current values.
+Pass `base_geometry_sha256` unchanged to `update_route`. It checks a fresh
+detail read before writing and rejects an outdated source. For untouched legs,
+the service retains fresh editor geometry and verifies each source against its
+own fresh baseline. Geometry changes still must match the submitted proposal.
+
+For a local change within one leg, use point mode:
+
+```bash
+python3 -B plugins/strava/scripts/prepare_route_update.py \
+  --route /absolute/path/full-route.json \
+  --replacement /absolute/path/replacement.geojson \
+  --leg 15 --from-point 48 --to-point 74 \
+  --output-dir /private/tmp/prepared-section-update
+```
+
+Point indices refer to decoded Google polyline vertices within the selected
+zero-based leg. They are not waypoint indices or kilometres. Endpoints must
+match the selected source coordinates at encoded precision by default.
+Explicit `--max-join-gap-m 1.5` permits endpoint adjustments within 1.5 metres;
+the default is zero. Original prefix and suffix coordinates are preserved.
+Replacement accepts a GeoJSON LineString/Feature with longitude, latitude and
+elevation in metres, native `{legs: [...]}`, or a `buildRoute` response whose
+results are sequential sections. Each native leg must have exactly one path:
+multiple paths may represent alternatives and are rejected, not concatenated.
+
+For 2D GeoJSON supply `--elevation-profile /absolute/path/profile.json`, an
+ordered array of `[distance_m, elevation_m]` covering the replacement from zero
+to its complete distance. Missing heights fail rather than being invented.
+GeoJSON surface type is Unknown. Distances and elevation gain/loss are computed;
+grade-adjusted length is the geometric length, not a Strava grade model.
+Old directions are cleared for rebuilt paths. Native elevation profiles are
+trimmed and shifted along with retained geometry. Each edited leg is emitted
+as one complete path so Strava cannot discard later sections as alternatives.
+
+For multiple changes in one operation use a batch manifest:
+
+```json
+{
+  "max_join_gap_m": 1.5,
+  "edits": [
+    {"leg": 15, "from_point": 79, "to_point": 116, "replacement_file": "ut.json"},
+    {"leg": 26, "from_point": 115, "to_point": 134, "replacement_file": "retur.json"}
+  ]
+}
+```
+
+```bash
+python3 -B plugins/strava/scripts/prepare_route_update.py \
+  --route /absolute/path/full-route.json \
+  --edits /absolute/path/edits.json \
+  --output-dir /private/tmp/prepared-batch
+```
+
+Relative replacement paths resolve from the manifest directory. Each edit can
+also specify `elevation_profile_file` for 2D GeoJSON. All indices address the
+same original route, even when earlier edits change vertex counts. Changes
+within one leg are assembled together; overlapping intervals are rejected.
+Adjacent intervals may share their unchanged original boundary point.
+
+The manifest tolerance defaults to zero and applies both to internal joins in
+sequential native build results and to replacement endpoints. Internal joins
+move the following section's start to the previous section's end. Outer joins
+move replacement endpoints to the original route, never the other way around.
+No straight connector is added. Distance-based profiles are rescaled after an
+adjustment. `report.json` lists every adjustment with original/new coordinates,
+gap in metres, edit index, and input file hashes. Tolerance does not establish
+road identity: inspect the proposal before saving. An excessive gap or invalid
+edit rejects the entire batch before output files are created. Batch options
+cannot be combined with single-edit flags.
+
+Inspect geometry before submitting. Pass the prepared file directly:
+
+```json
+{"route_id": "3532440438889330932", "patch_file": "/absolute/path/update.json", "confirm": true}
+```
+
+`update_route` accepts exactly one of `patch` and `patch_file`. The latter must
+be an absolute path to the `prepare-update` envelope containing `route_id`,
+`patch` and optional `base_geometry_sha256`. The caller's route ID must match
+the file; its geometry fingerprint is carried into the normal stale-input
+check. Conflicting explicit fingerprints are rejected. Confirmation remains
+an explicit tool argument; the file cannot provide it. Unknown fields, invalid
+patches and malformed JSON are rejected before network access. The input file
+is not modified. The verified update response remains the native full route.
+
+Creation and updates verify metadata and preferences, accept omitted versus null
+waypoint metadata and waypoint shifts within 2 metres, and compare geometry in
+both fresh editor and route-detail data. Verification requires two successful
+readback rounds separated by two seconds, with at most three rounds (a further
+three-second wait). Only reads are repeated; a write is never retried. This
+checks observed stability, not an indefinite guarantee against future changes.
+They return the full native source
+route object; MCP `_meta.route_verification` carries the verification report.
+Polyline comparison distinguishes `exact`, `equivalent_within_tolerance`,
+`changed`, and `unresolved`. Non-exact comparisons preserve traversal order with
+a bounded sampled comparison and a 2-metre tolerance. Geometric equivalence
+does not establish road identity or legal access; nearby parallel ways can still
+need map inspection. Changed leg structure and exhausted comparison limits are
+unresolved, never automatically accepted.
+
+On `write_unverified`, inspect `details.verification` for mismatched metadata,
+affected legs and deviation coordinates, plus `details.route_id` and current
+state before retrying. `write_acknowledged` distinguishes an acknowledged write
+with a failed verification from an uncertain submission. No write is retried.
 If creation has no returned ID, use `list_routes` to check whether it succeeded;
 do not blindly create another copy. Session renewal remains external.
 

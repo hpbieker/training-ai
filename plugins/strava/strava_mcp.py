@@ -105,7 +105,7 @@ def _tool(name: str, description: str, properties: dict, required: list[str], *,
 
 
 TOOL_DEFINITIONS = {row["name"]: row for row in [
-    _tool("build_route", "Calculate paths between explicit waypoint pairs without saving a route. Accepts Strava's requests array and returns its complete buildRoute response unchanged. Each result corresponds to a requested leg, not an alternative complete route. Does not accept a target distance or generate waypoints.", {
+    _tool("build_route", "Calculate paths between explicit waypoint pairs without saving a route. Accepts Strava's requests array and returns its complete buildRoute response unchanged by default. save_full=true writes that response to a private temporary JSON file and returns only counts and file details. Each result corresponds to a requested leg, not an alternative complete route. Does not accept a target distance or generate waypoints.", {
         "requests": {"type": "array", "minItems": 1, "items": {
             "type": "object", "additionalProperties": False, "required": ["elements", "routePrefs"],
             "properties": {
@@ -113,18 +113,22 @@ TOOL_DEFINITIONS = {row["name"]: row for row in [
                 "routePrefs": CREATE_ROUTE_PROPS["properties"]["routePrefs"],
             },
         }},
+        "save_full": {"type": "boolean", "default": False, "description": "Save full build response locally; return counts and file details instead of geometry."},
     }, ["requests"]),
     _tool("delete_route", "Delete one explicitly authorized owned route. Checks ownership before deleting and verifies a not-found response while still authenticated. On failure read current state before retrying.", {
         "route_id": ID, "confirm": {"type": "boolean", "const": True},
     }, ["route_id", "confirm"], write=True),
-    _tool("create_route", "Save already built and inspected route geometry using Strava's native write props. Does not build or reroute. Defaults to OnlyMe. Returns the unchanged get_route object after readback. On uncertain failure, inspect existing routes before retrying to avoid duplicates.", {
+    _tool("create_route", "Save already built and inspected route geometry using Strava's native write props. Does not build or reroute. Defaults to OnlyMe. Returns the full native source route object after readback. On uncertain failure, inspect existing routes before retrying to avoid duplicates.", {
         "props": CREATE_ROUTE_PROPS, "confirm": {"type": "boolean", "const": True},
     }, ["props", "confirm"], write=True),
-    _tool("update_route", "Update an owned route using native Strava write fields. Reads editable state first and preserves omitted fields; routePrefs merges supplied keys. Supply elements and built legs together when replacing geometry. Returns unchanged get_route data after readback. Read current state before retrying a failed write.", {
-        "route_id": ID, "patch": UPDATE_ROUTE_PATCH, "confirm": {"type": "boolean", "const": True},
-    }, ["route_id", "patch", "confirm"], write=True),
-    _tool("get_route", "Read one saved route. Returns Strava's complete props.pageProps.route object unchanged, including original field names, nested geometry, and null values.", {
+    _tool("update_route", "Update an owned route using either inline patch or patch_file (absolute path to a prepare-update envelope). The file route ID must match; its geometry fingerprint is preserved. confirm must be supplied separately. Reads editable state first and preserves omitted fields; routePrefs merges supplied keys. Supply elements and built legs together when replacing geometry, with one complete path per leg. Use base_geometry_sha256 from prepare-update to reject stale geometry. Verification requires two separated matching readbacks. Returns the full native source route object after readback. Read current state before retrying a failed write.", {
+        "route_id": ID, "patch": UPDATE_ROUTE_PATCH,
+        "patch_file": {"type": "string", "minLength": 1, "description": "Absolute path to prepare-update update.json. Use instead of patch; route_id must match the file."},
+        "base_geometry_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Geometry fingerprint from prepare-update. Rejects stale input before writing."}, "confirm": {"type": "boolean", "const": True},
+    }, ["route_id", "confirm"], write=True),
+    _tool("get_route", "Read one saved route, retaining all native fields except the fixed arrays elements, legs, segmentsOnRoute, segments, elevation, polyline, distanceStream and routePolylineData.media, regardless of size. omitted_arrays lists removed JSON-pointer paths and sizes. save_full=true saves the complete source route in a private temporary JSON file and returns its path, format and size.", {
         "route_id": {**ID, "description": "Exact route ID returned by list_routes, as a string."},
+        "save_full": {"type": "boolean", "default": False, "description": "Save complete source route data to a private temporary JSON file."},
     }, ["route_id"]),
     _tool("list_routes", "List saved routes from My Routes, including routes saved from others. Follows source pagination up to max_pages; if has_more, resume with next_cursor and the same filters. Route IDs are strings.", {
         "query": {"type": "string", "description": "Text search passed to Strava."},
@@ -175,6 +179,36 @@ TOOL_DEFINITIONS = {row["name"]: row for row in [
 _SESSION_LOCK = threading.Lock()
 
 
+TOOL_DEFINITIONS['update_route']['inputSchema']['oneOf'] = [
+    {'required': ['patch'], 'not': {'required': ['patch_file']}},
+    {'required': ['patch_file'], 'not': {'required': ['patch']}},
+]
+
+
+def resolve_patch_file(arguments):
+    path = Path(arguments['patch_file'])
+    if not path.is_absolute() or not path.is_file():
+        raise ValueError('patch_file must be an absolute path to a regular JSON file')
+    def invalid_constant(value): raise ValueError('Non-finite values are not allowed in patch_file')
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result: raise ValueError('Duplicate keys in patch_file')
+            result[key] = value
+        return result
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'), parse_constant=invalid_constant, object_pairs_hook=unique_object)
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError('patch_file must contain valid UTF-8 JSON') from exc
+    if not isinstance(value, dict) or not {'route_id','patch'}.issubset(value) or set(value)-{'route_id','patch','base_geometry_sha256'}:
+        raise ValueError('patch_file must contain the prepare-update envelope: route_id, patch, optional base_geometry_sha256')
+    if value['route_id'] != arguments['route_id']:
+        raise ValueError('patch_file route_id does not match the requested route')
+    if 'base_geometry_sha256' in arguments and 'base_geometry_sha256' in value and arguments['base_geometry_sha256'] != value['base_geometry_sha256']:
+        raise ValueError('Conflicting geometry fingerprints in arguments and patch_file')
+    return {**{k:v for k,v in arguments.items() if k != 'patch_file'}, **value}
+
+
 class StravaToolService:
     def list_tools(self) -> list[dict[str, Any]]:
         return list(TOOL_DEFINITIONS.values())
@@ -190,6 +224,10 @@ class StravaToolService:
             # Validation messages may contain arbitrary user-supplied values.
             raise ToolFailure(f"Invalid arguments for {name}; check the tool schema.", "invalid_arguments")
         try:
+            if name == 'update_route' and 'patch_file' in arguments:
+                arguments = resolve_patch_file(arguments)
+                if next(validator.iter_errors(arguments), None):
+                    raise ValueError('Invalid update arguments in patch_file; check the tool schema')
             with _SESSION_LOCK:
                 # Each service function creates a fresh StravaSession and reads
                 # the private cookie file. No browser launch, refresh or retry.
@@ -241,6 +279,7 @@ def create_sdk_server(service: StravaToolService) -> Any:
         return mcp_types.CallToolResult(
             content=[mcp_types.TextContent(type="text", text=json.dumps(payload, ensure_ascii=False, separators=(",", ":")))],
             structuredContent=payload,
+            _meta={"route_verification": payload.verification} if isinstance(payload, routes.VerifiedRoute) else None,
         )
 
     return server

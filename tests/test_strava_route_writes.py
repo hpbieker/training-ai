@@ -26,6 +26,7 @@ def editable():
 
 class RouteWriteTests(unittest.TestCase):
     def setUp(self):
+        sleep = mock.patch.object(routes.time, 'sleep'); sleep.start(); self.addCleanup(sleep.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         patch = mock.patch.object(routes, "StravaSession")
@@ -39,10 +40,137 @@ class RouteWriteTests(unittest.TestCase):
 
     def write(self, operation, args, before=None, after=None):
         after = after or self.route
-        states = [before or self.route, after] if operation == "update_route" else [after]
+        states = [before or self.route, after, after, after] if operation == "update_route" else [after, after, after]
         self.session.api.return_value = {"updateRoute": None} if operation == "update_route" else {"createRoute": self.id}
-        with mock.patch.object(routes, "_editable_route", side_effect=states), mock.patch.object(routes, "get_route", return_value=after):
+        with mock.patch.object(routes, "_editable_route", side_effect=states), mock.patch.object(routes, "_get_route_full", return_value=after):
             return mcp.StravaToolService().call_tool(operation, args)
+
+    def test_success_exposes_verification_without_changing_source_json(self):
+        result=self.write('create_route', {'props':self.props,'confirm':True})
+        self.assertEqual(result,self.route)
+        self.assertTrue(result.verification['write_acknowledged'])
+        self.assertEqual(result.verification['detail']['status'],'exact')
+        self.assertNotIn('verification',result)
+
+    def test_waypoint_null_normalization_is_accepted(self):
+        saved=copy.deepcopy(self.route)
+        for e in saved['elements']:e['waypoint'].pop('metadata')
+        result=self.write('create_route', {'props':self.props,'confirm':True},after=saved)
+        self.assertEqual(result.verification['editor']['waypoints'],'equivalent_within_tolerance')
+
+    def test_metadata_mismatch_has_specific_diagnostics(self):
+        saved=copy.deepcopy(self.route);saved['title']='Other'
+        with self.assertRaises(mcp.ToolFailure) as err:
+            self.write('create_route', {'props':self.props,'confirm':True},after=saved)
+        self.assertEqual(err.exception.details['verification']['metadata_mismatches'],['name'])
+        self.assertTrue(err.exception.details['write_acknowledged'])
+        self.session.api.assert_called_once()
+
+    def test_detail_geometry_checked_even_when_editor_matches(self):
+        self.session.api.return_value={'createRoute':self.id}
+        detail=copy.deepcopy(self.route);detail['legs']=[]
+        with mock.patch.object(routes,'_editable_route',return_value=self.route), mock.patch.object(routes,'_get_route_full',return_value=detail), self.assertRaises(mcp.ToolFailure) as err:
+            mcp.StravaToolService().call_tool('create_route',{'props':self.props,'confirm':True})
+        self.assertEqual(err.exception.details['verification']['source'],'detail')
+        self.assertEqual(err.exception.details['verification']['status'],'unresolved')
+
+    def test_readback_requires_two_matches_and_only_one_write(self):
+        result = self.write('create_route', {'props':self.props,'confirm':True})
+        self.assertEqual(result.verification['readback_rounds'], 2)
+        self.assertEqual(result.verification['consecutive_matches'], 2)
+        self.session.api.assert_called_once()
+
+    def test_immediate_match_then_changed_detail_is_not_success(self):
+        wrong = copy.deepcopy(self.route); wrong['legs'] = []
+        self.session.api.return_value = {'createRoute':self.id}
+        with mock.patch.object(routes, '_editable_route', return_value=self.route), mock.patch.object(routes, '_get_route_full', side_effect=[self.route, wrong, wrong]), self.assertRaises(mcp.ToolFailure) as error:
+            mcp.StravaToolService().call_tool('create_route', {'props':self.props,'confirm':True})
+        self.assertTrue(error.exception.details['write_acknowledged'])
+        self.session.api.assert_called_once()
+
+    def test_delayed_correct_readback_can_settle_without_resubmission(self):
+        wrong = copy.deepcopy(self.route); wrong['title'] = 'Old title'
+        self.session.api.return_value = {'createRoute':self.id}
+        with mock.patch.object(routes, '_editable_route', side_effect=[wrong,self.route,self.route]), mock.patch.object(routes, '_get_route_full', return_value=self.route):
+            result = mcp.StravaToolService().call_tool('create_route', {'props':self.props,'confirm':True})
+        self.assertEqual(result.verification['readback_rounds'], 3)
+        self.session.api.assert_called_once()
+
+    def test_stale_geometry_is_rejected_before_submit(self):
+        with mock.patch.object(routes, '_editable_route', return_value=self.route), mock.patch.object(routes, '_get_route_full', return_value=self.route), self.assertRaises(mcp.ToolFailure) as error:
+            mcp.StravaToolService().call_tool('update_route', {'route_id':self.id,'patch':self.props,
+                'base_geometry_sha256':'0'*64,'confirm':True})
+        self.assertEqual(error.exception.code, 'invalid_arguments')
+        self.session.api.assert_not_called()
+
+    def test_fresh_editor_and_detail_baselines_can_differ(self):
+        # Detail paths and editor paths may use different representations.
+        detail = copy.deepcopy(self.route)
+        detail['legs'][0]['paths'][0]['polyline']['data'] = '??AA'
+        patch = routes._write_props(detail)
+        patch.pop('routePrefs')
+        self.session.api.return_value = {'updateRoute':None}
+        with mock.patch.object(routes, '_editable_route', return_value=self.route), mock.patch.object(routes, '_get_route_full', return_value=detail):
+            result = mcp.StravaToolService().call_tool('update_route', {'route_id':self.id,'patch':patch,
+                'base_geometry_sha256':routes.fingerprint(detail),'confirm':True})
+        self.assertEqual(result.verification['detail']['status'],'exact')
+        sent = json.loads((self.session.tmp_dir/'route-write-request.json').read_text())['props']
+        self.assertEqual(sent['legs'][0]['paths'],self.route['legs'][0]['paths'])
+
+    def test_multiple_paths_are_rejected_before_submit(self):
+        props = copy.deepcopy(self.props)
+        props['legs'][0]['paths'] *= 2
+        with self.assertRaises(mcp.ToolFailure):
+            mcp.StravaToolService().call_tool('create_route', {'props':props,'confirm':True})
+        self.session.api.assert_not_called()
+
+    def test_build_save_full_private_file_and_compact_response(self):
+        response = {'buildRoute':[{'legs':self.props['legs']}], 'future':{'values':[1,None]}}
+        self.session.api.return_value = response
+        result = mcp.StravaToolService().call_tool('build_route', {'requests':[
+            {'elements':self.props['elements'],'routePrefs':self.props['routePrefs']}], 'save_full':True})
+        path = Path(result['full_build_file']); self.addCleanup(path.unlink, missing_ok=True)
+        self.assertEqual(json.loads(path.read_text()),response)
+        self.assertEqual(path.stat().st_mode & 0o777,0o600)
+        self.assertEqual(result['full_build_byte_size'],path.stat().st_size)
+        self.assertEqual(result['result_count'],1)
+        self.assertEqual(result['leg_count'],1)
+        self.assertNotIn('buildRoute',result)
+        self.session.api.assert_called_once()
+
+    def test_patch_file_passes_prepared_envelope_without_losing_guard(self):
+        path = Path(self.temp.name)/'update.json'
+        value = {'route_id':self.id,'patch':{'name':'From file'},'base_geometry_sha256':'a'*64}
+        path.write_text(json.dumps(value))
+        with mock.patch.object(routes,'update_route',return_value={'ok':True}) as update:
+            mcp.StravaToolService().call_tool('update_route',{'route_id':self.id,'patch_file':str(path),'confirm':True})
+        update.assert_called_once_with(**value,confirm=True)
+        self.assertEqual(json.loads(path.read_text()),value)
+
+    def test_patch_file_invalid_inputs_never_reach_service(self):
+        path = Path(self.temp.name)/'update.json'
+        cases = [
+            ({'route_id':'99','patch':{'name':'x'}}, {}),
+            ({'route_id':self.id,'patch':{'invented':True}}, {}),
+            ({'route_id':self.id,'patch':{'name':'x'},'confirm':True}, {}),
+            ({'route_id':self.id,'patch':{'name':'x'},'base_geometry_sha256':'a'*64}, {'base_geometry_sha256':'b'*64}),
+            ({'route_id':self.id,'patch':{'name':'x'}}, {'patch':{'name':'inline'}}),
+        ]
+        with mock.patch.object(routes,'update_route') as update:
+            for value, extra in cases:
+                path.write_text(json.dumps(value))
+                with self.subTest(value=value), self.assertRaises(mcp.ToolFailure):
+                    mcp.StravaToolService().call_tool('update_route',{'route_id':self.id,'patch_file':str(path),'confirm':True,**extra})
+            for raw in ('not json', '{"route_id":"1","route_id":"2","patch":{}}', '{"route_id":NaN,"patch":{}}'):
+                path.write_text(raw)
+                with self.assertRaises(mcp.ToolFailure):
+                    mcp.StravaToolService().call_tool('update_route',{'route_id':self.id,'patch_file':str(path),'confirm':True})
+            for filename in ('relative.json',self.temp.name,str(path)+'missing'):
+                with self.assertRaises(mcp.ToolFailure):
+                    mcp.StravaToolService().call_tool('update_route',{'route_id':self.id,'patch_file':filename,'confirm':True})
+            with self.assertRaises(mcp.ToolFailure):
+                mcp.StravaToolService().call_tool('update_route',{'route_id':self.id,'patch_file':str(path)})
+            update.assert_not_called()
 
     def test_create_native_payload_and_default_private(self):
         props = copy.deepcopy(self.props)
