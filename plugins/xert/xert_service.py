@@ -186,6 +186,14 @@ class XertService:
             "activities": [compact_activity_load(detail) for detail in details],
         }
 
+    def list_activity_summaries(self, start_date, end_date, *, include_fields=(), limit=None):
+        from xert_activity_summaries import list_activity_summaries
+        _validate_date_range(start_date, end_date)
+        return list_activity_summaries(
+            self._auth.web_opener(), start_date, end_date,
+            include_fields=include_fields, limit=limit,
+        )
+
     def get_activity(self, path: str, *, view: str = "summary") -> dict[str, Any]:
         path = _require_identifier(path, "activity path")
         if view not in {"summary", "full", "session"}:

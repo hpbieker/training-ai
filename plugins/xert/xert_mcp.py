@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from xert_service import XertService
+from xert_activity_summaries import SUMMARY_FIELDS
 from list_query import apply_list_query, query_fields, query_properties
 
 
 ALL_TOOL_NAMES = (
+    "list_activity_summaries",
     "list_activities",
     "get_activity",
     "list_workouts",
@@ -43,6 +45,7 @@ ALL_TOOL_NAMES = (
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
+    "list_activity_summaries": {"title": "List Xert Activity Summaries", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
     "list_activities": {
         "title": "List Xert Activities",
         "readOnlyHint": True,
@@ -328,6 +331,40 @@ def _workout_row_operations_schema(description: str) -> dict[str, object]:
 
 
 TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
+    "list_activity_summaries": {
+        "name": "list_activity_summaries",
+        "description": (
+            "List Xert activity summaries in an inclusive local-date range. "
+            "Returns newest first; limit selects the N newest activities within the period. "
+            "Older periods may take longer to retrieve. "
+            "period_complete is false when limit stops reading before the period is covered. "
+            "Signature includes ftp, pp and ltp in W, and atc in J."
+        ),
+        "inputSchema": {
+            "type": "object", "additionalProperties": False,
+            "required": ["start_date", "end_date"],
+            "properties": {
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                "includeFields": {"type": "array", "items": {"type": "string", "enum": list(SUMMARY_FIELDS)}, "uniqueItems": True, "default": [], "description": "Optional activity summary fields."},
+                "limit": {"type": "integer", "minimum": 1, "description": "Return at most the N newest activities in the period. Omit for the whole period."},
+            },
+        },
+        "outputSchema": {
+            "type": "object", "additionalProperties": False,
+            "properties": {
+                "activities": _array("Newest-first activity summaries."),
+                "count": {"type": "integer"}, "pages_fetched": {"type": "integer"},
+                "period_complete": {"type": "boolean"},
+                "stop_reason": {"type": "string", "enum": ["start_date", "limit", "history_end"]},
+                "order": {"type": "string", "enum": ["newest_first"]},
+                "start_date": {"type": "string"}, "end_date": {"type": "string"},
+                "includeFields": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["activities", "count", "pages_fetched", "period_complete", "stop_reason", "order", "start_date", "end_date", "includeFields"],
+        },
+        "annotations": TOOL_ANNOTATIONS["list_activity_summaries"],
+    },
     "list_activities": {
         "name": "list_activities",
         "description": (
@@ -1201,6 +1238,15 @@ class XertToolService:
 
     @staticmethod
     def _dispatch(service: XertService, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        if name == "list_activity_summaries":
+            fields = _validate_include_fields(arguments.get("includeFields", []), allowed=SUMMARY_FIELDS)
+            limit = arguments.get("limit")
+            if limit is not None and (type(limit) is not int or limit < 1):
+                raise ValueError("limit must be a positive integer")
+            result = service.list_activity_summaries(
+                arguments["start_date"], arguments["end_date"], include_fields=fields, limit=limit,
+            )
+            return {**result, "start_date": arguments["start_date"], "end_date": arguments["end_date"], "includeFields": list(fields)}
         if name == "list_activities":
             start = arguments["start_date"]
             end = arguments["end_date"]

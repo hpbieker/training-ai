@@ -130,6 +130,7 @@ class XertMcpSchemaTests(unittest.TestCase):
         self.assertEqual(
             MCP.ALL_TOOL_NAMES,
             (
+                "list_activity_summaries",
                 "list_activities",
                 "get_activity",
                 "list_workouts",
