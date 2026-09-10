@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 from xert_service import XertService
 from xert_activity_summaries import SUMMARY_FIELDS
+from xert_beta_preview import get_activity_beta_preview
 from list_query import apply_list_query, query_fields, query_properties
 
 
@@ -21,6 +22,7 @@ ALL_TOOL_NAMES = (
     "list_activity_summaries",
     "list_activities",
     "get_activity",
+    "get_activity_beta_preview",
     "list_workouts",
     "get_workout",
     "list_planner_events",
@@ -58,6 +60,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "readOnlyHint": False,
         "destructiveHint": False,
         "idempotentHint": False,
+        "openWorldHint": True,
+    },
+    "get_activity_beta_preview": {
+        "title": "Get Experimental Xert Beta Activity Preview",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
         "openWorldHint": True,
     },
     "list_workouts": {
@@ -466,6 +475,45 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["get_activity"],
+    },
+    "get_activity_beta_preview": {
+        "name": "get_activity_beta_preview",
+        "description": (
+            "Run Xert Beta 2's experimental activity model locally using authenticated preview data. "
+            "Results, including Beta XSS, are not standard Xert values and can differ. Set "
+            "save_series=true only to save model time series to a private temporary JSON file. "
+            "This tool never changes Xert activities, signatures, options, or segments."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_path": {"type": "string", "minLength": 1,
+                                  "description": "Xert activity path returned by list_activities."},
+                "save_series": {"type": "boolean", "default": False,
+                                "description": "Save the full experimental Beta model series to a private temporary JSON file."},
+            },
+            "required": ["activity_path"], "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_path": {"type": "string"}, "name": {"type": ["string", "null"]},
+                "source": {"type": "string"}, "experimental": {"const": True},
+                "standard_xert_comparable": {"const": False},
+                "caveats": {"type": "array", "items": {"type": "string"}},
+                "bundle_sha256": {"type": "string"},
+                "options_used": _object("Beta model options used for this calculation."),
+                "signature_used": _object("Beta signature used for this calculation."),
+                "metrics": _object("Aggregated experimental Beta model time series."),
+                "xss": _object("Experimental Beta XSS; not standard Xert XSS."),
+                "energy": _object("Experimental Beta energy model output."),
+                "series_file": {"type": "string", "description": "Private series JSON path when save_series is true."},
+                "series_format": {"type": "string"}, "series_byte_size": {"type": "integer"},
+            },
+            "required": ["activity_path", "source", "experimental", "standard_xert_comparable", "caveats", "metrics", "xss"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["get_activity_beta_preview"],
     },
     "list_workouts": {
         "name": "list_workouts",
@@ -1303,6 +1351,11 @@ class XertToolService:
                     "session_byte_size": byte_size,
                 })
             return output
+        if name == "get_activity_beta_preview":
+            save_series = arguments.get("save_series", False)
+            if not isinstance(save_series, bool):
+                raise ValueError("save_series must be a boolean")
+            return get_activity_beta_preview(arguments["activity_path"], save_series=save_series)
         if name == "list_workouts":
             keywords = arguments.get("name_keywords")
             include_fields = _validate_include_fields(
