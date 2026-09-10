@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 from html.parser import HTMLParser
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -114,8 +115,8 @@ def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, 
     return json.loads(result.stdout)
 
 
-def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) -> dict[str, Any]:
-    """Compute an experimental, read-only Beta 2 preview for one activity."""
+def _load_activity_beta_props(activity_path: str) -> tuple[dict[str, Any], str, str]:
+    """Read the Beta model state from one completed activity without retaining HTML."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", activity_path):
         raise ValueError("Expected an activity path, not a URL")
     service = XertService()
@@ -133,7 +134,45 @@ def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) 
     props = _props(embed)
     if props["activity"].get("path") != activity_path:
         raise ValueError("Preview activity identity does not match request")
-    result = _run_wasm(props, bundle_bytes.decode(), bundle_url)
+    return props, bundle_bytes.decode(), bundle_url
+
+
+def _interval_summaries(series: dict[str, list[float]], intervals: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Summarize calculated work repetitions and their following RIB recoveries."""
+    summaries: list[dict[str, Any]] = []
+    for interval in intervals:
+        start, end = interval["start_index"], interval["end_index"]
+        times = series["elapsed_s"][start:end]
+        power = series["power_w"][start:end]
+        lactate = series["lactate_model_mmol_l"][start:end]
+        if not times:
+            raise ValueError("Workout interval has no Beta model samples")
+        lactate_stats = _stats(lactate, times)
+        lactate_stats["delta"] = lactate_stats["end"] - lactate_stats["start"]
+        summary: dict[str, Any] = {
+            "row_index": interval["row_index"], "repetition": interval["repetition"],
+            "name": interval["name"], "start_s": times[0], "end_s": times[-1] + 1,
+            "duration_s": len(times),
+            "power_w": {"average": sum(power) / len(power), "minimum": min(power), "maximum": max(power)},
+            "lactate_model_mmol_l": lactate_stats,
+        }
+        recovery = interval.get("recovery")
+        if recovery:
+            recovery_times = series["elapsed_s"][recovery["start_index"]:recovery["end_index"]]
+            recovery_lactate = series["lactate_model_mmol_l"][recovery["start_index"]:recovery["end_index"]]
+            recovery_stats = _stats(recovery_lactate, recovery_times)
+            recovery_stats["delta"] = recovery_stats["end"] - recovery_stats["start"]
+            summary["recovery"] = {
+                "start_s": recovery_times[0], "end_s": recovery_times[-1] + 1,
+                "duration_s": len(recovery_times), "power_w": recovery["power_w"],
+                "lactate_model_mmol_l": recovery_stats,
+            }
+        summaries.append(summary)
+    return summaries
+
+
+def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any], save_series: bool,
+                       series_context: dict[str, Any], intervals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     model, signature = result["computed"], result["signature_used"]
     times = [value / 1000 for value in model["ts"]]
     series = {
@@ -154,7 +193,7 @@ def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) 
     metrics["muscle_glycogen_burned_g"] = {"end": series["muscle_glycogen_burned_g"][-1]}
     metrics["muscle_glycogen_replenished_g"] = {"end": series["muscle_glycogen_replenished_g"][-1]}
     output: dict[str, Any] = {
-        "activity_path": activity_path, "name": props["activity"].get("name"),
+        **source_fields,
         "source": "xert_beta_local_wasm", "experimental": True,
         "standard_xert_comparable": False,
         "caveats": ["Experimental Beta 2 model estimates, not physiological measurements.",
@@ -165,12 +204,129 @@ def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) 
         "xss": {key: model[value] for key, value in (("total", "xss"), ("low", "xlss"), ("high", "xhss"), ("peak", "xpss"))},
         "energy": {"carbs_g": model["total_carbs_used"], "fat_g": model["total_fat_used"]},
     }
+    if intervals is not None:
+        output["intervals"] = _interval_summaries(series, intervals)
     if save_series:
         descriptor, file_name = tempfile.mkstemp(prefix="xert-beta-preview-series-", suffix=".json")
         with os.fdopen(descriptor, "w") as stream:
-            json.dump({"activity_path": activity_path, "bundle_sha256": BUNDLE_SHA256,
+            json.dump({**series_context, "bundle_sha256": BUNDLE_SHA256,
                        "signature_used": signature, "options_used": result["options_used"], "series": series}, stream,
                       allow_nan=False)
         output.update({"series_file": file_name, "series_format": SERIES_FORMAT,
                        "series_byte_size": os.path.getsize(file_name)})
     return output
+
+
+def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) -> dict[str, Any]:
+    """Compute an experimental, read-only Beta 2 preview for one activity."""
+    props, bundle, bundle_url = _load_activity_beta_props(activity_path)
+    result = _run_wasm(props, bundle, bundle_url)
+    return _series_and_output(
+        result=result,
+        source_fields={"activity_path": activity_path, "name": props["activity"].get("name")},
+        save_series=save_series,
+        series_context={"activity_path": activity_path},
+    )
+
+
+def _number(value: Any, label: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        raise ValueError(f"{label} must be a finite number")
+    return float(value)
+
+
+def _positive_int(value: Any, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{label} must be a positive integer")
+    return value
+
+
+def _power_values(row: dict[str, Any], *, signature: dict[str, Any], sequence: int) -> list[float]:
+    """Expand one supported Workout Designer row into one-second power samples."""
+    duration = _positive_int(row.get("duration_seconds"), f"rows[{sequence}].duration_seconds")
+    power_type = row.get("power_type", "absolute")
+    power = _number(row.get("power"), f"rows[{sequence}].power")
+    ftp = _number(signature.get("ftp"), "Beta signature ftp")
+    multiplier = {"absolute": 1.0, "relative_ftp": ftp / 100,
+                  "ramp_absolute": 1.0, "ramp_ftp": ftp / 100}
+    if power_type == "ramp_ltp":
+        multiplier[power_type] = _number(signature.get("ltp"), "Beta signature ltp") / 100
+    if power_type not in multiplier:
+        raise ValueError(f"rows[{sequence}].power_type is unsupported by Beta preview")
+    start = power * multiplier[power_type]
+    if not power_type.startswith("ramp_"):
+        return [start] * duration
+    end = _number(row.get("power_second_value"), f"rows[{sequence}].power_second_value") * multiplier[power_type]
+    return [start + (end - start) * index / max(1, duration - 1) for index in range(duration)]
+
+
+def _expand_workout(rows: list[dict[str, Any]], signature: dict[str, Any]) -> tuple[list[float], list[dict[str, Any]]]:
+    if not isinstance(rows, list) or not rows:
+        raise ValueError("rows must be a non-empty array")
+    samples: list[float] = []
+    intervals: list[dict[str, Any]] = []
+    for sequence, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ValueError(f"rows[{sequence}] must be an object")
+        repeats = row.get("interval_count", 1)
+        if not isinstance(repeats, int) or isinstance(repeats, bool) or repeats < 0:
+            raise ValueError(f"rows[{sequence}].interval_count must be a non-negative integer")
+        work = _power_values(row, signature=signature, sequence=sequence)
+        rib_duration = row.get("rib_duration_seconds", 0)
+        if not isinstance(rib_duration, int) or isinstance(rib_duration, bool) or rib_duration < 0:
+            raise ValueError(f"rows[{sequence}].rib_duration_seconds must be a non-negative integer")
+        rib_type = row.get("rib_power_type", "absolute")
+        rib_power = _number(row.get("rib_power", 0), f"rows[{sequence}].rib_power")
+        if rib_type == "relative_ftp":
+            rib_power *= _number(signature.get("ftp"), "Beta signature ftp") / 100
+        elif rib_type != "absolute":
+            raise ValueError(f"rows[{sequence}].rib_power_type is unsupported by Beta preview")
+        for repetition in range(repeats):
+            start = len(samples)
+            samples.extend(work)
+            interval: dict[str, Any] = {
+                "row_index": sequence, "repetition": repetition + 1,
+                "name": str(row.get("name") or f"Row {sequence + 1}"),
+                "start_index": start, "end_index": len(samples),
+            }
+            if rib_duration:
+                recovery_start = len(samples)
+                interval["recovery"] = {
+                    "start_index": recovery_start, "end_index": recovery_start + rib_duration,
+                    "power_w": rib_power,
+                }
+            samples.extend([rib_power] * rib_duration)
+            intervals.append(interval)
+    if not samples:
+        raise ValueError("Workout rows expand to no time-series samples")
+    return samples, intervals
+
+
+def _expand_workout_rows(rows: list[dict[str, Any]], signature: dict[str, Any]) -> list[float]:
+    """Backward-compatible power-only workout expansion for internal callers/tests."""
+    return _expand_workout(rows, signature)[0]
+
+
+def calculate_workout_beta_preview(rows: list[dict[str, Any]], *, beta_model_source_activity_path: str,
+                                   save_series: bool = False) -> dict[str, Any]:
+    """Calculate an unsaved workout with the Beta state sourced from one activity."""
+    props, bundle, bundle_url = _load_activity_beta_props(beta_model_source_activity_path)
+    power, intervals = _expand_workout(rows, props["signature"])
+    count = len(power)
+    records = {
+        "time": [index * 1000 for index in range(count)], "dist": [0.0] * count,
+        "lat": [None] * count, "lng": [None] * count, "spd": [0.0] * count,
+        "cad": [0.0] * count, "power": power,
+    }
+    calculation_props = {**props, "activity": {"path": "unsaved-workout", "name": "Unsaved workout",
+                                                   "recordsData": records}}
+    result = _run_wasm(calculation_props, bundle, bundle_url)
+    return _series_and_output(
+        result=result,
+        source_fields={"beta_model_source_activity_path": beta_model_source_activity_path,
+                       "workout_duration_s": count},
+        save_series=save_series,
+        series_context={"beta_model_source_activity_path": beta_model_source_activity_path,
+                        "workout_rows": rows},
+        intervals=intervals,
+    )

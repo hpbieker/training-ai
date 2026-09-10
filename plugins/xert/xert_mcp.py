@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from xert_service import XertService
 from xert_activity_summaries import SUMMARY_FIELDS
-from xert_beta_preview import get_activity_beta_preview
+from xert_beta_preview import calculate_workout_beta_preview, get_activity_beta_preview
 from list_query import apply_list_query, query_fields, query_properties
 
 
@@ -23,6 +23,7 @@ ALL_TOOL_NAMES = (
     "list_activities",
     "get_activity",
     "get_activity_beta_preview",
+    "calculate_workout_beta_preview",
     "list_workouts",
     "get_workout",
     "list_planner_events",
@@ -64,6 +65,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     },
     "get_activity_beta_preview": {
         "title": "Get Experimental Xert Beta Activity Preview",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "calculate_workout_beta_preview": {
+        "title": "Calculate Experimental Xert Beta Workout Preview",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -514,6 +522,55 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "additionalProperties": False,
         },
         "annotations": TOOL_ANNOTATIONS["get_activity_beta_preview"],
+    },
+    "calculate_workout_beta_preview": {
+        "name": "calculate_workout_beta_preview",
+        "description": (
+            "Calculate an unsaved workout with Xert Beta 2's experimental model. "
+            "beta_model_source_activity_path supplies only the Beta signature and model options; "
+            "the power profile comes entirely from rows. Includes an experimental summary for each "
+            "work repetition and its following rest-in-between segment. Beta XSS and all calculated values are "
+            "not standard Xert values and can differ. This tool never saves or edits a workout, "
+            "activity, signature, or options."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "rows": _workout_rows_schema("Complete unsaved workout rows to model."),
+                "beta_model_source_activity_path": {
+                    "type": "string", "minLength": 1,
+                    "description": "Activity used only to obtain Beta signature and model options.",
+                },
+                "save_series": {
+                    "type": "boolean", "default": False,
+                    "description": "Save the full experimental Beta model series to a private temporary JSON file.",
+                },
+            },
+            "required": ["rows", "beta_model_source_activity_path"], "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {
+                "beta_model_source_activity_path": {"type": "string"},
+                "workout_duration_s": {"type": "integer"},
+                "source": {"type": "string"}, "experimental": {"const": True},
+                "standard_xert_comparable": {"const": False},
+                "caveats": {"type": "array", "items": {"type": "string"}},
+                "bundle_sha256": {"type": "string"},
+                "options_used": _object("Beta model options used for this calculation."),
+                "signature_used": _object("Beta signature used for this calculation."),
+                "metrics": _object("Aggregated experimental Beta model time series."),
+                "xss": _object("Experimental Beta XSS; not standard Xert XSS."),
+                "energy": _object("Experimental Beta energy model output."),
+                "intervals": {"type": "array", "items": _object("Experimental per-work-interval and recovery summaries.")},
+                "series_file": {"type": "string", "description": "Private series JSON path when save_series is true."},
+                "series_format": {"type": "string"}, "series_byte_size": {"type": "integer"},
+            },
+            "required": ["beta_model_source_activity_path", "workout_duration_s", "source", "experimental",
+                         "standard_xert_comparable", "caveats", "metrics", "xss", "intervals"],
+            "additionalProperties": False,
+        },
+        "annotations": TOOL_ANNOTATIONS["calculate_workout_beta_preview"],
     },
     "list_workouts": {
         "name": "list_workouts",
@@ -1356,6 +1413,15 @@ class XertToolService:
             if not isinstance(save_series, bool):
                 raise ValueError("save_series must be a boolean")
             return get_activity_beta_preview(arguments["activity_path"], save_series=save_series)
+        if name == "calculate_workout_beta_preview":
+            save_series = arguments.get("save_series", False)
+            if not isinstance(save_series, bool):
+                raise ValueError("save_series must be a boolean")
+            return calculate_workout_beta_preview(
+                arguments["rows"],
+                beta_model_source_activity_path=arguments["beta_model_source_activity_path"],
+                save_series=save_series,
+            )
         if name == "list_workouts":
             keywords = arguments.get("name_keywords")
             include_fields = _validate_include_fields(
