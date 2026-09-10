@@ -88,6 +88,16 @@ def _stats(values: list[float], times: list[float]) -> dict[str, float]:
             "maximum": values[hi], "maximum_at_s": times[hi], "end": values[-1]}
 
 
+def _duration_at_or_above(values: list[float], times: list[float], threshold: float) -> float:
+    """Return model time at or above a threshold, using source timestamps."""
+    if len(values) != len(times) or len(values) < 2:
+        raise ValueError("Invalid Beta model series length")
+    durations = [max(0.0, later - earlier) for earlier, later in zip(times, times[1:])]
+    # The renderer treats the final sample as one ordinary sample interval.
+    final_duration = durations[-1] if durations else 0.0
+    return sum(duration for value, duration in zip(values, [*durations, final_duration]) if value >= threshold)
+
+
 def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, Any]:
     node = shutil.which("node")
     if not node:
@@ -137,6 +147,10 @@ def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) 
     }
     metrics = {key: _stats(values, times) for key, values in series.items() if key not in {
         "elapsed_s", "power_w", "muscle_glycogen_burned_g", "muscle_glycogen_replenished_g"}}
+    metrics["lactate_model_mmol_l"]["duration_at_or_above_s"] = {
+        f"{threshold:g}_mmol_l": _duration_at_or_above(series["lactate_model_mmol_l"], times, threshold)
+        for threshold in (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
+    }
     metrics["muscle_glycogen_burned_g"] = {"end": series["muscle_glycogen_burned_g"][-1]}
     metrics["muscle_glycogen_replenished_g"] = {"end": series["muscle_glycogen_replenished_g"][-1]}
     output: dict[str, Any] = {

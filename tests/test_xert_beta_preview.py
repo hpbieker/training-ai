@@ -31,6 +31,13 @@ initialOptions: {"movingAverage":5}
         with self.assertRaises(ValueError):
             P._stats([4], [])
 
+    def test_lactate_threshold_duration_uses_timestamps(self):
+        values = [1, 3, 5, 1]
+        times = [0, 2, 5, 9]
+        self.assertEqual(P._duration_at_or_above(values, times, 2), 7)
+        self.assertEqual(P._duration_at_or_above(values, times, 4), 4)
+        self.assertEqual(P._duration_at_or_above(values, times, 7), 0)
+
     def test_only_expected_beta_origin(self):
         for url in ["https://example.com/a", "http://beta.xertonline.com/a", None]:
             with self.assertRaises(ValueError):
