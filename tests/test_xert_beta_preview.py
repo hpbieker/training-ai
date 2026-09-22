@@ -21,7 +21,7 @@ class BetaPreviewTests(unittest.TestCase):
             P._run_wasm({}, "unreviewed", "https://beta.xertonline.com/js/svelte.js")
 
     @unittest.skipUnless(P.shutil.which("node"), "Node.js required")
-    def test_runner_matches_reviewed_signature_rounding_clamps_and_option_defaults(self):
+    def test_runner_matches_current_frontend_signature_rounding_clamps_and_option_defaults(self):
         bundle = '''Module = (() => {
           return async () => ({mpaChartData: (...args) => ({signature: {ltp: 234.5}, args})});
         })();
@@ -30,8 +30,12 @@ class BetaPreviewTests(unittest.TestCase):
             "signature": {"ftp": 300.16, "pp": 900.16, "atc": 15000.4, "m": 0,
                           "initial_gmg_balance": -5000, "mgc": 5000, "pcrc": 200,
                           "glut4r": 500, "gross_eff": .23456, "lt1_mmol": 5,
-                          "smgf": .999, "l_bmr": 1200.4, "l_tau": 400.6,
-                          "l_ptolr": 38.4, "l_mmol_factor": 480.6},
+                          "amgf": .999, "active_muscle_kg_per_kg": .499,
+                          "blood_tank_l_per_kg": .09111, "blood_lactate_j_per_mmol": 1000,
+                          "muscle_lactate_oxidation_tau_s": 400.6,
+                          "muscle_blood_exchange_tau_s": 10.4,
+                          "nonworking_tissue_clearance_tau_s": 6000.6,
+                          "gng_tau_s": 4000.6, "gng_max_w": 50.6},
             "initialOptions": {"movingAverage": 5, "min_proximity": 0, "use_pcrc": False},
             "carb_bias": 1.5,
             "activity": {"recordsData": {k: [0, 1] for k in
@@ -42,14 +46,21 @@ class BetaPreviewTests(unittest.TestCase):
         for key, value in {"ftp": 300.2, "atc": 15000, "pnr": 500, "hie": 15,
                            "mgc": 4000, "initial_gmg_balance": -4000, "pcrc": 1000,
                            "glut4r": 400, "gross_eff": .235, "lt1_mmol": 4,
-                           "smgf": .95, "l_tau": 401, "l_mmol_factor": 481,
+                           "amgf": .95, "active_muscle_kg_per_kg": .4,
+                           "blood_tank_l_per_kg": .1,
+                           "blood_lactate_j_per_mmol": 1099.6332484472616,
+                           "muscle_lactate_oxidation_tau_s": 300,
+                           "muscle_blood_exchange_tau_s": 20,
+                           "nonworking_tissue_clearance_tau_s": 6000,
+                           "gng_tau_s": 3600, "gng_max_w": 40,
                            "ltp": 234.5}.items():
             self.assertEqual(sig[key], value, key)
         self.assertEqual(options["min_proximity"], 0)
         self.assertFalse(options["use_pcrc"])
         self.assertTrue(options["use_mg_replenishment"])
+        self.assertTrue(options["use_lactate_fuel"])
         self.assertFalse(options["do_extractSig"])
-        self.assertEqual(options["a_tte"], 1200)
+        self.assertEqual(options["anchor_tte"], 1200)
         self.assertEqual(out["computed"]["args"][8], 0)
         self.assertEqual(out["computed"]["args"][-2:], [True, False])
 

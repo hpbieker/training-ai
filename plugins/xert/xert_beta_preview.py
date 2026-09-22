@@ -34,23 +34,33 @@ const input=JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 const ctx={window:{},import_meta:{url:input.bundle_url},console:{log:()=>{},warn:()=>{},error:()=>{}},
  atob,btoa,TextDecoder,TextEncoder,WebAssembly,performance,setTimeout,clearTimeout};
 vm.createContext(ctx); vm.runInContext(fs.readFileSync(process.argv[3],'utf8'),ctx,{timeout:10000});
-(async()=>{ const mod=await ctx.Module({print:()=>{},printErr:()=>{}}); const t=input.activity.recordsData,e={...input.signature};
- // Mirror initSigDisplay/buildEditedSignature in the pinned frontend (g/h display).
- const rounded=(v,n)=>v==null?0:+v.toFixed(n), clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
- for(const k of ['ftp','pp','initial_gmg_balance','glut4r','pcrc','mgc'])e[k]=rounded(e[k],1);
- for(const k of ['atc','l_bmr','l_ptolr','l_tau','l_mmol_factor'])e[k]=rounded(e[k],0);
- e.mgc=clamp(e.mgc,100,4000);e.initial_gmg_balance=clamp(e.initial_gmg_balance,-e.mgc,e.mgc);
- e.glut4r=clamp(e.glut4r,0,400);e.pcrc=clamp(e.pcrc,1000,20000);
- e.gross_eff=e.gross_eff==null?0.23:clamp(+(e.gross_eff*100).toFixed(1)/100,0.15,0.3);
- e.lt1_mmol=e.lt1_mmol==null?1.2:clamp(rounded(e.lt1_mmol,2),1,4);
- e.smgf=e.smgf==null?0.5:clamp(rounded(e.smgf,2),0.05,0.95);
+(async()=>{ const mod=await ctx.Module({print:()=>{},printErr:()=>{}}); const t=input.activity.recordsData,s=input.signature,e={...s};
+ // Mirror the active frontend's initSigDisplay/buildEditedSignature.  The UI
+ // round-trips its default g/h GLUT4R display values before every chart run.
+ const rounded=(v,n)=>+Number(v).toFixed(n), clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+ e.ftp=rounded(s.ftp,1); e.atc=rounded(s.atc,0); e.pp=rounded(s.pp,1);
+ e.mgc=clamp(rounded(s.mgc,1),100,4000);
+ e.initial_gmg_balance=clamp(rounded(s.initial_gmg_balance,1),-e.mgc,e.mgc);
+ e.glut4r=clamp(rounded(s.glut4r,1),0,400); e.pcrc=clamp(rounded(s.pcrc,1),1000,20000);
+ e.gross_eff=s.gross_eff==null?0.23:clamp(rounded(s.gross_eff*100,1)/100,0.15,0.3);
+ e.active_muscle_kg_per_kg=clamp(rounded(s.active_muscle_kg_per_kg,2),0.05,0.4);
+ e.blood_tank_l_per_kg=clamp(rounded(s.blood_tank_l_per_kg,3),0.1,0.7);
+ const factor=s.blood_lactate_j_per_mmol/(s.blood_tank_l_per_kg*s.gross_eff);
+ e.blood_lactate_j_per_mmol=Number.isFinite(factor)&&factor>0
+   ?factor*e.blood_tank_l_per_kg*e.gross_eff:s.blood_lactate_j_per_mmol;
+ e.muscle_lactate_oxidation_tau_s=clamp(rounded(s.muscle_lactate_oxidation_tau_s,0),10,300);
+ e.muscle_blood_exchange_tau_s=clamp(rounded(s.muscle_blood_exchange_tau_s,0),20,1200);
+ e.nonworking_tissue_clearance_tau_s=clamp(rounded(s.nonworking_tissue_clearance_tau_s,0),200,6000);
+ e.gng_tau_s=clamp(rounded(s.gng_tau_s,0),200,3600); e.gng_max_w=clamp(rounded(s.gng_max_w,0),0,40);
+ e.lt1_mmol=s.lt1_mmol==null?1.2:clamp(rounded(s.lt1_mmol,2),1,4);
+ e.amgf=s.amgf==null?0:clamp(rounded(s.amgf,2),0.05,0.95);
  e.hie=e.atc/1000;e.pnr=e.atc/(e.m>0?e.m:30);e.carb_bias=input.carb_bias;
  const o=input.initialOptions;
  const defaults={degree:2,max_param_change:0.04,use_pcrc:true,single_param:false,debugLevel:0,
  use_mg_depletion:true,pcrDelay:5,min_proximity:0.8,params_to_fit:15,use_nonPcr_power:false,
- use_mg_replenishment:true,allow_supercompensation:false};
+ use_mg_replenishment:true,allow_supercompensation:false,use_lactate_fuel:true};
  const options=Object.fromEntries(Object.entries(defaults).map(([k,v])=>[k,o[k]??v]));
- Object.assign(options,{n_avg:o.movingAverage,a_tte:1200,do_extractSig:false});
+ Object.assign(options,{n_avg:o.movingAverage,anchor_tte:1200,do_extractSig:false});
  const b=mod.mpaChartData(t.time,t.dist,t.lat,t.lng,t.spd,t.cad,t.power,options,0,e,true,false);
  process.stdout.write(JSON.stringify({computed:b,signature_used:{...e,...b.signature},options_used:options}));
 })().catch(()=>{process.stderr.write('Xert WASM calculation failed\\n');process.exitCode=1});
