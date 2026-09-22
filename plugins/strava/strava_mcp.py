@@ -160,6 +160,11 @@ TOOL_DEFINITIONS = {row["name"]: row for row in [
         "destination_dir": {"type": "string", "pattern": "^/", "description": "Absolute local destination directory."},
         "overwrite": {"type": "boolean", "default": False},
     }, ["activity_id", "media_id", "destination_dir"], write=True),
+    _tool("delete_activity_media", "Permanently remove one exact attached photo or video. List the activity media first, supply its returned media_id, and set confirm=true. Fresh readback verifies removal.", {
+        "activity_id": ID,
+        "media_id": {"type": "string", "minLength": 1, "description": "Exact media_id returned by list_activity_media; may be a UUID."},
+        "confirm": {"type": "boolean", "const": True},
+    }, ["activity_id", "media_id", "confirm"], write=True),
     _tool("upload_activity_media", "Attach one explicitly authorized local image or video and verify it through fresh media-list readback. List existing media first; after an uncertain failure, list again before retrying to avoid duplicates.", {
         "activity_id": ID,
         "file_path": {"type": "string", "pattern": "^/", "description": "Absolute path to an existing JPG, JPEG, PNG, GIF, MP4, or MOV file."},

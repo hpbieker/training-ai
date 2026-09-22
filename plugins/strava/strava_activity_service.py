@@ -184,8 +184,78 @@ def download_activity_media(
     }
 
 
+def delete_activity_media(
+    *,
+    activity_id: int | str,
+    media_id: int | str,
+    confirm: bool,
+    cookie_file: Path | None = None,
+) -> dict[str, Any]:
+    """Remove one exact attached media item and confirm it no longer appears."""
+    if not confirm:
+        raise ValueError("delete_activity_media requires confirm=true")
+    wanted_id = str(media_id)
+    with StravaSession(cookie_file or default_cookie_file()) as session:
+        edit_html, props = _fetch_edit_media(session, activity_id)
+        row = next(
+            (item for item in props["media"] if isinstance(item, dict) and _media_identifier(item) == wanted_id),
+            None,
+        )
+        if row is None:
+            raise ValueError(f"No media with ID {media_id!r} is attached to activity {activity_id!r}.")
+        pairs = urllib.parse.parse_qsl(
+            activity_metadata.build_form_body(
+                edit_html,
+                activity_name=None,
+                tag=None,
+                tag_supplied=False,
+                current_tag=None,
+                trainer=None,
+                visibility=None,
+                start_time_hidden=None,
+                bike_id=None,
+            ),
+            keep_blank_values=True,
+        )
+        pairs.append((f"photos[{wanted_id}][_destroy]", "true"))
+        session.request(
+            f"https://www.strava.com/activities/{activity_id}",
+            method="POST",
+            headers=[
+                "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Content-Type: application/x-www-form-urlencoded",
+                "Origin: https://www.strava.com",
+                f"Referer: https://www.strava.com/activities/{activity_id}/edit",
+            ],
+            data=urllib.parse.urlencode(pairs, doseq=True).encode("utf-8"),
+        )
+        deadline = time.monotonic() + 5.0
+        while True:
+            _, current = _fetch_edit_media(session, activity_id)
+            still_attached = any(
+                isinstance(item, dict) and _media_identifier(item) == wanted_id
+                for item in current["media"]
+            )
+            if not still_attached:
+                return {
+                    "activity_id": int(activity_id) if str(activity_id).isdigit() else str(activity_id),
+                    "deleted_media_id": wanted_id,
+                    "verified": True,
+                }
+            if time.monotonic() >= deadline:
+                raise StravaError(
+                    "Strava accepted the media deletion request, but readback did not confirm removal."
+                )
+            time.sleep(0.4)
+
+
 def _csrf_from_edit_html(edit_html: str) -> str:
-    match = re.search(r'<meta name="csrf" content="([^"]+)"', edit_html)
+    match = re.search(
+        r'<meta\b(?=[^>]*\bname=["\'](?:csrf|csrf-token)["\'])'
+        r'(?=[^>]*\bcontent=["\']([^"\']+)["\'])[^>]*>',
+        edit_html,
+        re.IGNORECASE,
+    )
     if not match:
         raise StravaError("Strava activity edit page did not expose a CSRF token.")
     return html.unescape(match.group(1))
@@ -228,14 +298,25 @@ def _upload_media_blob(
         isinstance(name, str) and isinstance(value, str) for name, value in upload_headers.items()
     ):
         raise StravaError("Strava did not provide valid media upload headers.")
+    # These headers belong to the signed storage URL; overriding Content-Type
+    # invalidates its signature. Header names are case-insensitive.
+    storage_headers = [f"{name}: {value}" for name, value in upload_headers.items()]
+    if not any(name.lower() == "content-type" for name in upload_headers):
+        storage_headers.append("Content-Type: application/octet-stream")
     session.request(
         metadata["uri"],
         method="PUT",
-        headers=[*([f"{name}: {value}" for name, value in upload_headers.items()]), "Content-Type: application/octet-stream"],
+        headers=storage_headers,
         data=file_path.read_bytes(),
         include_cookie=False,
     )
     return media_uuid
+
+
+def _matches_upload(row: dict[str, Any], media_uuid: str) -> bool:
+    # Strava assigns a numeric id after attachment but retains our upload UUID
+    # as unique_id. Do not accept an unrelated newly added photo as proof.
+    return any(str(row.get(field, "")) == media_uuid for field in ("unique_id", "uuid", "id", "media_id"))
 
 
 def upload_activity_media(
@@ -304,7 +385,7 @@ def upload_activity_media(
         while True:
             _, current = _fetch_edit_media(session, activity_id)
             attached = next(
-                (item for item in current["media"] if isinstance(item, dict) and _media_identifier(item) == media_uuid),
+                (item for item in current["media"] if isinstance(item, dict) and _matches_upload(item, media_uuid)),
                 None,
             )
             if attached is not None:

@@ -79,10 +79,12 @@ class StravaMcpTests(unittest.TestCase):
             "delete_route": {"route_id": "12", "confirm": True},
             "list_activities": {"since": "2026-09-01"},
             "get_activity": {"activity_id": "12"},
+            "get_activity_kudos": {"activity_id": "12"},
             "list_gear": {}, "get_gear": {"gear_id": "3"},
             "list_activity_media": {"activity_id": "12"},
             "download_activity_media": {"activity_id": "12", "media_id": "media-uuid", "destination_dir": "/private/tmp/media"},
             "upload_activity_media": {"activity_id": "12", "file_path": "/private/tmp/ride.jpg", "caption": "Ride", "confirm": True},
+            "delete_activity_media": {"activity_id": "12", "media_id": "44", "confirm": True},
             "update_activity": {"activity_id": "12", "patch": {"mute": True}, "confirm": True},
             "update_activities": {"activity_ids": ["12"], "patch": {"tag": None}, "confirm": True},
         }
@@ -192,7 +194,7 @@ async def run():
         async with ClientSession(read, write) as client:
             await client.initialize()
             catalog = await client.list_tools()
-            assert len(catalog.tools) == 15
+            assert len(catalog.tools) == 17
             assert all(tool.outputSchema for tool in catalog.tools)
             result = await client.call_tool("get_activity", {"activity_id": "12"})
             assert result.isError
