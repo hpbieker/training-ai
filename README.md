@@ -174,7 +174,7 @@ Whenever their cached snapshots need refreshing, supply the applicable
 
 ```bash
 python3 -B scripts/recommend_training.py \
-  --planning-context-json '{"date":"2026-06-26","local_timezone":"Europe/Oslo","now":"2026-06-26T08:00:00+02:00","planned_at":"2026-06-26T10:30:00+02:00","availability":{"windows":[]},"cycling":{"available_modalities":["indoor_cycling","outdoor_cycling"],"unavailable_reasons":{}},"route":{"surface_preference":"road","start_anchor":{"display_name":"Dagaliveien 17B, Oslo","lat":59.95581576954476,"lng":10.688188956334665,"radius_km":0.25}}}' \
+  --planning-context-json '{"date":"2026-06-26","local_timezone":"Europe/Oslo","now":"2026-06-26T08:00:00+02:00","planned_at":"2026-06-26T10:30:00+02:00","availability":{"windows":[]},"cycling":{"available_modalities":["indoor_cycling","outdoor_cycling"],"unavailable_reasons":{}},"route":{"surface_preference":"road","start_anchor":{"display_name":"Example start","lat":60.0,"lng":10.0,"radius_km":0.25}}}' \
   --plan-selection-json '{"intensity_goal":"vt1"}' \
   --training-target-json '{"minutes":75,"load":60}' \
   --summary
@@ -235,10 +235,10 @@ duration and distance.
 python3 -B scripts/route_recommendations.py \
   --date 2026-06-26 \
   --years 5 \
-  --route-context-json '{"start_anchor":{"display_name":"Dagaliveien 17B, Oslo","lat":59.95581576954476,"lng":10.688188956334665,"radius_km":0.25},"surface_preference":"road","target_distance_km":80}'
+  --route-context-json '{"start_anchor":{"display_name":"Example start","lat":60.0,"lng":10.0,"radius_km":0.25},"surface_preference":"road","target_distance_km":80}'
 ```
 
-Use `--query Sørkedalen` or another fragment only when the user asks for that
+Use `--query Example route` or another fragment only when the user asks for that
 route family. Set `allow_away` to `true` inside `--route-context-json` only when routes away from the selected anchor should be
 eligible. In chat recommendations, cite the selected prior activity by route
 name, date and activity id. The route helper's `url` field is the Intervals.icu
@@ -260,11 +260,11 @@ Route results may include `route_flexibility` from GPS analysis. When
 prescription:
 
 - `out_and_back_adjustable` means the ride substantially retraces the same road,
-  so examples like Sørkedalen can be scaled by doing fewer/more loops or by
+  so loop-based routes can be scaled by doing fewer/more loops or by
   turning earlier/later.
 - `repeatable_segment_adjustable` means the activity contains a repeated
-  corridor or climb, so interval routes such as OB/Olav Bulls vei or
-  Gressbanen-Tryvann can be shortened by doing fewer repeats or shorter climbs.
+  corridor or climb, so interval routes can be shortened by doing fewer
+  repeats or shorter climbs.
 
 For chat recommendations, prefer a direct short variant when one matches the
 day. If only a longer scalable reference exists, prescribe the relevant fraction
