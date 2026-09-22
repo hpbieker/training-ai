@@ -53,7 +53,8 @@ def save_activity_package(
         json.dumps(activity, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    shutil.copyfile(streams_file, streams_path)
+    if streams_file.resolve() != streams_path.resolve():
+        shutil.copyfile(streams_file, streams_path)
 
     if json.loads(metadata_path.read_text(encoding="utf-8")) != activity:
         raise RuntimeError("saved activity metadata did not verify")
