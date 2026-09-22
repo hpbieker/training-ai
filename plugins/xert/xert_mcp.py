@@ -488,6 +488,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "get_activity_beta_preview",
         "description": (
             "Run Xert Beta 2's experimental activity model locally using authenticated preview data. "
+            "Returns modeled lactate, muscle-glycogen balance, MPA, and dynamic TP/HIE; lactate and "
+            "glycogen are model estimates, not physiological measurements. "
             "Results, including Beta XSS, are not standard Xert values and can differ. Set "
             "save_series=true only to save model time series to a private temporary JSON file. "
             "This tool never changes Xert activities, signatures, options, or segments."
@@ -512,7 +514,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "bundle_sha256": {"type": "string"},
                 "options_used": _object("Beta model options used for this calculation."),
                 "signature_used": _object("Beta signature used for this calculation."),
-                "metrics": _object("Aggregated experimental Beta model time series."),
+                "metrics": _object("Aggregated experimental Beta model time series, including lactate_model_mmol_l, muscle_glycogen_remaining_g, dynamic_tp_w, dynamic_hie_kj, and mpa_w."),
                 "xss": _object("Experimental Beta XSS; not standard Xert XSS."),
                 "energy": _object("Experimental Beta energy model output."),
                 "series_file": {"type": "string", "description": "Private series JSON path when save_series is true."},
@@ -529,7 +531,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "Calculate an unsaved workout with Xert Beta 2's experimental model. "
             "beta_model_source_activity_path supplies only the Beta signature and model options; "
             "the power profile comes entirely from rows. Includes an experimental summary for each "
-            "work repetition and its following rest-in-between segment. Beta XSS and all calculated values are "
+            "work repetition and its following rest-in-between segment, including modeled lactate, muscle-glycogen "
+            "balance, MPA, and dynamic TP/HIE. Beta XSS and all calculated values are "
             "not standard Xert values and can differ. This tool never saves or edits a workout, "
             "activity, signature, or options."
         ),
@@ -559,10 +562,10 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "bundle_sha256": {"type": "string"},
                 "options_used": _object("Beta model options used for this calculation."),
                 "signature_used": _object("Beta signature used for this calculation."),
-                "metrics": _object("Aggregated experimental Beta model time series."),
+                "metrics": _object("Aggregated experimental Beta model time series, including lactate_model_mmol_l, muscle_glycogen_remaining_g, dynamic_tp_w, dynamic_hie_kj, and mpa_w."),
                 "xss": _object("Experimental Beta XSS; not standard Xert XSS."),
                 "energy": _object("Experimental Beta energy model output."),
-                "intervals": {"type": "array", "items": _object("Experimental per-work-interval and recovery summaries.")},
+                "intervals": {"type": "array", "items": _object("Per-work-interval and recovery summaries, including the same modeled physiological fields.")},
                 "series_file": {"type": "string", "description": "Private series JSON path when save_series is true."},
                 "series_format": {"type": "string"}, "series_byte_size": {"type": "integer"},
             },

@@ -26,21 +26,35 @@ from xert_service import XertService
 
 
 BETA = "https://beta.xertonline.com"
-BUNDLE_SHA256 = "87f393f744cd3cbc2ffb1a1db51ed33d15f79f888995cb4a72eef6c60d207a11"
+# Reviewed against the Beta frontend published 2026-09-12.
+BUNDLE_SHA256 = "343a6527f8f12cc4eb9428e293895b767b6a54df6c1dd73810cc635298efddf9"
 SERIES_FORMAT = "xert-beta-preview-series-v1"
 
 RUNNER = r'''
 const fs=require('fs'), vm=require('vm');
 const input=JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-const ctx={window:{},ykt:{url:input.bundle_url},console:{log:()=>{},warn:()=>{},error:()=>{}},
+const ctx={window:{},import_meta:{url:input.bundle_url},console:{log:()=>{},warn:()=>{},error:()=>{}},
  atob,btoa,TextDecoder,TextEncoder,WebAssembly,performance,setTimeout,clearTimeout};
 vm.createContext(ctx); vm.runInContext(fs.readFileSync(process.argv[3],'utf8'),ctx,{timeout:10000});
-(async()=>{ const mod=await ctx.Tte({print:()=>{},printErr:()=>{}}); const t=input.activity.recordsData,e={...input.signature};
- for(const k of ['ftp','pp','initial_gmg_balance','glut4r','pcrc','mgc'])e[k]=+e[k].toFixed(1);
- e.atc=+e.atc.toFixed(0);e.hie=e.atc/1000;e.pnr=e.atc/e.m;e.carb_bias=input.carb_bias;
- const options={...input.initialOptions,n_avg:input.initialOptions.movingAverage,a_tte:1200,do_extractSig:false};
+(async()=>{ const mod=await ctx.Module({print:()=>{},printErr:()=>{}}); const t=input.activity.recordsData,e={...input.signature};
+ // Mirror initSigDisplay/buildEditedSignature in the pinned frontend (g/h display).
+ const rounded=(v,n)=>v==null?0:+v.toFixed(n), clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+ for(const k of ['ftp','pp','initial_gmg_balance','glut4r','pcrc','mgc'])e[k]=rounded(e[k],1);
+ for(const k of ['atc','l_bmr','l_ptolr','l_tau','l_mmol_factor'])e[k]=rounded(e[k],0);
+ e.mgc=clamp(e.mgc,100,4000);e.initial_gmg_balance=clamp(e.initial_gmg_balance,-e.mgc,e.mgc);
+ e.glut4r=clamp(e.glut4r,0,400);e.pcrc=clamp(e.pcrc,1000,20000);
+ e.gross_eff=e.gross_eff==null?0.23:clamp(+(e.gross_eff*100).toFixed(1)/100,0.15,0.3);
+ e.lt1_mmol=e.lt1_mmol==null?1.2:clamp(rounded(e.lt1_mmol,2),1,4);
+ e.smgf=e.smgf==null?0.5:clamp(rounded(e.smgf,2),0.05,0.95);
+ e.hie=e.atc/1000;e.pnr=e.atc/(e.m>0?e.m:30);e.carb_bias=input.carb_bias;
+ const o=input.initialOptions;
+ const defaults={degree:2,max_param_change:0.04,use_pcrc:true,single_param:false,debugLevel:0,
+ use_mg_depletion:true,pcrDelay:5,min_proximity:0.8,params_to_fit:15,use_nonPcr_power:false,
+ use_mg_replenishment:true,allow_supercompensation:false};
+ const options=Object.fromEntries(Object.entries(defaults).map(([k,v])=>[k,o[k]??v]));
+ Object.assign(options,{n_avg:o.movingAverage,a_tte:1200,do_extractSig:false});
  const b=mod.mpaChartData(t.time,t.dist,t.lat,t.lng,t.spd,t.cad,t.power,options,0,e,true,false);
- process.stdout.write(JSON.stringify({computed:b,signature_used:e,options_used:options}));
+ process.stdout.write(JSON.stringify({computed:b,signature_used:{...e,...b.signature},options_used:options}));
 })().catch(()=>{process.stderr.write('Xert WASM calculation failed\\n');process.exitCode=1});
 '''
 
@@ -103,7 +117,11 @@ def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, 
     node = shutil.which("node")
     if not node:
         raise ValueError("Node.js is required for Xert Beta preview")
-    factory = "var " + bundle[bundle.index("Tte="):bundle.index(",qte=Tte")] + ";"
+    # Keep the fail-closed hash check here too: direct callers must not execute
+    # an unreviewed vendor bundle.
+    if hashlib.sha256(bundle.encode()).hexdigest() != BUNDLE_SHA256:
+        raise ValueError("Xert Beta frontend changed; preview calculation is disabled pending adapter review")
+    factory = "var " + bundle[bundle.index("Module = (() => {"):bundle.index("      xert_default = Module;")]
     props = {**props, "bundle_url": bundle_url}
     with tempfile.TemporaryDirectory(prefix="xert-beta-preview-") as temporary:
         root = Path(temporary)
@@ -139,6 +157,15 @@ def _load_activity_beta_props(activity_path: str) -> tuple[dict[str, Any], str, 
 
 def _interval_summaries(series: dict[str, list[float]], intervals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Summarize calculated work repetitions and their following RIB recoveries."""
+    def glycogen(start: int, end: int, times: list[float]) -> dict[str, Any]:
+        remaining = _stats(series["muscle_glycogen_remaining_g"][start:end], times)
+        remaining["delta"] = remaining["end"] - remaining["start"]
+        return {
+            "remaining_g": remaining,
+            "burned_g": series["muscle_glycogen_burned_g"][end - 1] - series["muscle_glycogen_burned_g"][start],
+            "replenished_g": series["muscle_glycogen_replenished_g"][end - 1] - series["muscle_glycogen_replenished_g"][start],
+        }
+
     summaries: list[dict[str, Any]] = []
     for interval in intervals:
         start, end = interval["start_index"], interval["end_index"]
@@ -155,6 +182,7 @@ def _interval_summaries(series: dict[str, list[float]], intervals: list[dict[str
             "duration_s": len(times),
             "power_w": {"average": sum(power) / len(power), "minimum": min(power), "maximum": max(power)},
             "lactate_model_mmol_l": lactate_stats,
+            "muscle_glycogen": glycogen(start, end, times),
         }
         recovery = interval.get("recovery")
         if recovery:
@@ -166,6 +194,7 @@ def _interval_summaries(series: dict[str, list[float]], intervals: list[dict[str
                 "start_s": recovery_times[0], "end_s": recovery_times[-1] + 1,
                 "duration_s": len(recovery_times), "power_w": recovery["power_w"],
                 "lactate_model_mmol_l": recovery_stats,
+                "muscle_glycogen": glycogen(recovery["start_index"], recovery["end_index"], recovery_times),
             }
         summaries.append(summary)
     return summaries

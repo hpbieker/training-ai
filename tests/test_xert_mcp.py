@@ -134,6 +134,7 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "list_activities",
                 "get_activity",
                 "get_activity_beta_preview",
+                "calculate_workout_beta_preview",
                 "list_workouts",
                 "get_workout",
                 "list_planner_events",
@@ -404,6 +405,30 @@ class XertMcpDispatchTests(unittest.TestCase):
             self.tools.call_tool(
                 "get_activity_beta_preview", {"activity_path": "a1", "save_series": "yes"}
             )
+
+    @patch.object(MCP, "calculate_workout_beta_preview")
+    def test_beta_workout_preview_is_separate_read_only_tool(self, preview) -> None:
+        preview.return_value = {
+            "beta_model_source_activity_path": "a1", "workout_duration_s": 600,
+            "source": "xert_beta_local_wasm", "experimental": True,
+            "standard_xert_comparable": False, "caveats": [], "metrics": {}, "xss": {},
+        }
+        result = self.tools.call_tool("calculate_workout_beta_preview", {
+            "beta_model_source_activity_path": "a1",
+            "rows": [{"duration_seconds": 600, "power": 200}],
+            "save_series": True,
+        })
+        self.assertTrue(result["experimental"])
+        preview.assert_called_once_with(
+            [{"duration_seconds": 600, "power": 200}],
+            beta_model_source_activity_path="a1", save_series=True,
+        )
+        with self.assertRaisesRegex(MCP.ToolFailure, "save_series must be a boolean"):
+            self.tools.call_tool("calculate_workout_beta_preview", {
+                "beta_model_source_activity_path": "a1",
+                "rows": [{"duration_seconds": 600, "power": 200}],
+                "save_series": "yes",
+            })
 
     def test_rejects_unknown_and_missing_arguments(self) -> None:
         with self.assertRaisesRegex(MCP.ToolFailure, "unknown argument"):
