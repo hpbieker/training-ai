@@ -76,6 +76,12 @@ initialOptions: {"movingAverage":5}
         self.assertEqual(P._duration_at_or_above(values, times, 4), 4)
         self.assertEqual(P._duration_at_or_above(values, times, 7), 0)
 
+    def test_lactate_conversion_supports_current_and_legacy_beta_signatures(self):
+        self.assertEqual(P._lactate_mmol_l([0, 5416.0], {"blood_lactate_j_per_mmol": 5416}), [1.0, 2.0])
+        self.assertEqual(P._lactate_mmol_l([481.0], {"l_mmol_factor": 481}), [1.0])
+        with self.assertRaisesRegex(ValueError, "valid lactate conversion"):
+            P._lactate_mmol_l([100], {"blood_lactate_j_per_mmol": 0})
+
     def test_only_expected_beta_origin(self):
         for url in ["https://example.com/a", "http://beta.xertonline.com/a", None]:
             with self.assertRaises(ValueError):

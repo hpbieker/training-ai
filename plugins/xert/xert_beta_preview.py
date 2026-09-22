@@ -111,6 +111,18 @@ def _duration_at_or_above(values: list[float], times: list[float], threshold: fl
     return sum(duration for value, duration in zip(values, [*durations, final_duration]) if value >= threshold)
 
 
+def _lactate_mmol_l(values: list[float], signature: dict[str, Any]) -> list[float]:
+    """Convert the WASM lactate series using the frontend's active signature schema."""
+    blood_lactate_j_per_mmol = signature.get("blood_lactate_j_per_mmol")
+    if isinstance(blood_lactate_j_per_mmol, (int, float)) and blood_lactate_j_per_mmol > 0:
+        # Current Beta UI: venous lactate = 1.0 mM baseline + blood tank / J per mmol.
+        return [1.0 + value / blood_lactate_j_per_mmol for value in values]
+    legacy_factor = signature.get("l_mmol_factor")
+    if isinstance(legacy_factor, (int, float)) and legacy_factor > 0:
+        return [value / legacy_factor for value in values]
+    raise ValueError("Xert Beta signature lacks a valid lactate conversion factor")
+
+
 def _wasm_factory(bundle: str) -> str:
     """Extract the reviewed Emscripten factory interface from a Beta bundle.
 
@@ -223,7 +235,7 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
         "elapsed_s": times,
         "power_w": model["ps"], "mpa_w": model["mpas"],
         "dynamic_tp_w": model["ftps"], "dynamic_hie_kj": [value / 1000 for value in model["hies"]],
-        "lactate_model_mmol_l": [value / signature["l_mmol_factor"] for value in model["lactates"]],
+        "lactate_model_mmol_l": _lactate_mmol_l(model["lactates"], signature),
         "muscle_glycogen_remaining_g": [signature["mgc"] - value for value in model["gmg_depleted"]],
         "muscle_glycogen_burned_g": model["gmg_burned"],
         "muscle_glycogen_replenished_g": model["gmg_replenished"],
