@@ -111,6 +111,53 @@ def _duration_at_or_above(values: list[float], times: list[float], threshold: fl
     return sum(duration for value, duration in zip(values, [*durations, final_duration]) if value >= threshold)
 
 
+def _integral_kj(values: list[float], times: list[float]) -> float:
+    """Integrate a model power series using source timestamps."""
+    if len(values) != len(times) or len(values) < 2:
+        raise ValueError("Invalid Beta model series length")
+    durations = [max(0.0, later - earlier) for earlier, later in zip(times, times[1:])]
+    final_duration = durations[-1]
+    return sum(value * duration for value, duration in zip(values, [*durations, final_duration])) / 1000
+
+
+def _substrates_and_energy(model: dict[str, Any], series: dict[str, list[float]],
+                           times: list[float], signature: dict[str, Any]) -> dict[str, Any]:
+    """Return the compact activity totals shown by the Beta substrates UI."""
+    gross_eff = _number(signature.get("gross_eff"), "Beta signature gross_eff")
+    if gross_eff <= 0:
+        raise ValueError("Beta signature gross_eff must be positive")
+    carbs_g = model["total_carbs_used"]
+    fat_g = model["total_fat_used"]
+    glycogen_burned_g = model.get("gmg_burned_total", series["muscle_glycogen_burned_g"][-1])
+    glycogen_depleted_g = model.get("gmg_depleted_total", signature["mgc"] -
+                                    series["muscle_glycogen_remaining_g"][-1])
+    glycogen_replenished_g = model.get("gmg_replenished_total", series["muscle_glycogen_replenished_g"][-1])
+    glucose_burned_g = model.get("gbg_burned_total", carbs_g - glycogen_burned_g)
+    regeneration_kj = _integral_kj(series["glucose_regeneration_w"], times)
+    regeneration_fat_kj = _integral_kj(series["fat_used_for_regeneration_w"], times)
+    residual_lactate_j = model["lactates"][-1]
+    return {
+        "total_carbs_g": carbs_g,
+        "fat_g": fat_g,
+        "calories_kcal": _integral_kj(series["power_w"], times) / gross_eff / 4.184,
+        "glycogen": {
+            "burned_g": glycogen_burned_g,
+            "depleted_g": glycogen_depleted_g,
+            "replenished_g": glycogen_replenished_g,
+        },
+        "glucose": {
+            "used_g": carbs_g - glycogen_depleted_g,
+            "burned_g": glucose_burned_g,
+        },
+        "carb_to_fat_ratio": carbs_g / fat_g if fat_g else None,
+        "additional_energy": {
+            # Beta's UI also assumes the remaining blood lactate is converted after the activity.
+            "regenerated_glucose_g": (regeneration_kj * 1000 / gross_eff + residual_lactate_j) / (4.184 * 4 * 1000),
+            "fat_used_for_regeneration_g": regeneration_fat_kj * 1000 / gross_eff / (4.184 * 9 * 1000),
+        },
+    }
+
+
 def _lactate_mmol_l(values: list[float], signature: dict[str, Any]) -> list[float]:
     """Convert the WASM lactate series using the frontend's active signature schema."""
     blood_lactate_j_per_mmol = signature.get("blood_lactate_j_per_mmol")
@@ -236,12 +283,15 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
         "power_w": model["ps"], "mpa_w": model["mpas"],
         "dynamic_tp_w": model["ftps"], "dynamic_hie_kj": [value / 1000 for value in model["hies"]],
         "lactate_model_mmol_l": _lactate_mmol_l(model["lactates"], signature),
+        "glucose_regeneration_w": model["gng"],
+        "fat_used_for_regeneration_w": model["gngFat"],
         "muscle_glycogen_remaining_g": [signature["mgc"] - value for value in model["gmg_depleted"]],
         "muscle_glycogen_burned_g": model["gmg_burned"],
         "muscle_glycogen_replenished_g": model["gmg_replenished"],
     }
     metrics = {key: _stats(values, times) for key, values in series.items() if key not in {
-        "elapsed_s", "power_w", "muscle_glycogen_burned_g", "muscle_glycogen_replenished_g"}}
+        "elapsed_s", "power_w", "glucose_regeneration_w", "fat_used_for_regeneration_w",
+        "muscle_glycogen_burned_g", "muscle_glycogen_replenished_g"}}
     metrics["lactate_model_mmol_l"]["duration_at_or_above_s"] = {
         f"{threshold:g}_mmol_l": _duration_at_or_above(series["lactate_model_mmol_l"], times, threshold)
         for threshold in (1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0)
@@ -258,7 +308,7 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
         "bundle_sha256": bundle_sha256, "options_used": result["options_used"],
         "signature_used": signature, "metrics": metrics,
         "xss": {key: model[value] for key, value in (("total", "xss"), ("low", "xlss"), ("high", "xhss"), ("peak", "xpss"))},
-        "energy": {"carbs_g": model["total_carbs_used"], "fat_g": model["total_fat_used"]},
+        "substrates_and_energy": _substrates_and_energy(model, series, times, signature),
     }
     if intervals is not None:
         output["intervals"] = _interval_summaries(series, intervals)

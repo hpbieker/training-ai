@@ -1,4 +1,5 @@
 import importlib.util
+import json
 from pathlib import Path
 import sys
 import unittest
@@ -76,11 +77,54 @@ initialOptions: {"movingAverage":5}
         self.assertEqual(P._duration_at_or_above(values, times, 4), 4)
         self.assertEqual(P._duration_at_or_above(values, times, 7), 0)
 
+    def test_power_integral_uses_timestamps(self):
+        self.assertEqual(P._integral_kj([0, 2, 2], [0, 2, 5]), .012)
+
+    def test_substrates_and_energy_matches_beta_ui_aggregates(self):
+        series = {
+            "power_w": [200, 200], "glucose_regeneration_w": [0, 2],
+            "fat_used_for_regeneration_w": [0, .36], "muscle_glycogen_burned_g": [0, 204],
+            "muscle_glycogen_remaining_g": [400, 220], "muscle_glycogen_replenished_g": [0, 24],
+        }
+        model = {"total_carbs_used": 259, "total_fat_used": 108, "lactates": [0, 180],
+                 "gmg_burned_total": 204, "gmg_depleted_total": 180,
+                 "gmg_replenished_total": 24, "gbg_burned_total": 55}
+        summary = P._substrates_and_energy(model, series, [0, 1], {"gross_eff": .23, "mgc": 400})
+        self.assertEqual(summary["glycogen"], {"burned_g": 204, "depleted_g": 180, "replenished_g": 24})
+        self.assertEqual(summary["glucose"], {"used_g": 79, "burned_g": 55})
+        self.assertEqual(summary["carb_to_fat_ratio"], 259 / 108)
+        self.assertGreater(summary["additional_energy"]["regenerated_glucose_g"], 0)
+
     def test_lactate_conversion_supports_current_and_legacy_beta_signatures(self):
         self.assertEqual(P._lactate_mmol_l([0, 5416.0], {"blood_lactate_j_per_mmol": 5416}), [1.0, 2.0])
         self.assertEqual(P._lactate_mmol_l([481.0], {"l_mmol_factor": 481}), [1.0])
         with self.assertRaisesRegex(ValueError, "valid lactate conversion"):
             P._lactate_mmol_l([100], {"blood_lactate_j_per_mmol": 0})
+
+    def test_saved_series_includes_glucose_regeneration_and_its_fat_cost(self):
+        result = {
+            "computed": {
+                "ts": [0, 1000], "ps": [200, 200], "mpas": [500, 500], "ftps": [300, 300],
+                "hies": [10000, 10000], "lactates": [0, 100], "gng": [0, 2], "gngFat": [0, .36],
+                "gmg_depleted": [0, 1], "gmg_burned": [0, 1], "gmg_replenished": [0, 0],
+                "xss": 1, "xlss": 1, "xhss": 0, "xpss": 0,
+                "total_carbs_used": 1, "total_fat_used": 1,
+            },
+            "signature_used": {"mgc": 400, "gross_eff": .23, "blood_lactate_j_per_mmol": 100}, "options_used": {},
+        }
+        output = P._series_and_output(
+            result=result, source_fields={}, save_series=True, series_context={}, bundle_sha256="test"
+        )
+        path = Path(output["series_file"])
+        try:
+            series = json.loads(path.read_text())["series"]
+            self.assertEqual(series["glucose_regeneration_w"], [0, 2])
+            self.assertEqual(series["fat_used_for_regeneration_w"], [0, .36])
+            self.assertNotIn("glucose_regeneration_w", output["metrics"])
+            self.assertNotIn("fat_used_for_regeneration_w", output["metrics"])
+            self.assertIn("substrates_and_energy", output)
+        finally:
+            path.unlink(missing_ok=True)
 
     def test_only_expected_beta_origin(self):
         for url in ["https://example.com/a", "http://beta.xertonline.com/a", None]:
