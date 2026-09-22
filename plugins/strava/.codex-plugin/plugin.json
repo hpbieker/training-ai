@@ -1,6 +1,6 @@
 {
   "name": "strava",
-  "version": "0.1.0+codex.20260908150113",
+  "version": "0.1.0+codex.20260917191336",
   "description": "Local MCP tools for Strava activities, gear and media using a private browser session, plus route helpers.",
   "author": {
     "name": "Hans Petter Bieker"

@@ -501,6 +501,37 @@ def get_gear(
     raise ValueError(f"No gear with ID {gear_id!r} found{suffix}.")
 
 
+def get_activity_kudos(*, activity_id: int | str, cookie_file: Path | None = None) -> dict[str, Any]:
+    """Read the activity's kudos list through Strava's browser-session endpoint."""
+    if not re.fullmatch(r"[0-9]+", str(activity_id)):
+        raise ValueError("activity_id must be a numeric Strava activity ID")
+    with StravaSession(cookie_file or default_cookie_file()) as session:
+        body, _, _ = session.request(
+            f"https://www.strava.com/feed/activity/{activity_id}/kudos",
+            headers=[
+                "Accept: application/json",
+                "X-Requested-With: XMLHttpRequest",
+                f"Referer: https://www.strava.com/activities/{activity_id}",
+            ],
+        )
+    try:
+        payload = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise StravaError("Strava returned non-JSON kudos data.") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("athletes"), list):
+        raise StravaError("Strava returned an unexpected kudos response.")
+    athletes = payload["athletes"]
+    if not all(isinstance(row, dict) for row in athletes):
+        raise StravaError("Strava returned an invalid kudos athlete.")
+    return {
+        "activity_id": str(activity_id),
+        "count": len(athletes),
+        "athletes": athletes,
+        "is_owner": payload.get("is_owner"),
+        "kudosable": payload.get("kudosable"),
+    }
+
+
 def get_activity(*, activity_id: int | str, cookie_file: Path | None = None) -> dict[str, Any]:
     with StravaSession(cookie_file or default_cookie_file()) as session:
         activity_metadata.SESSION = session

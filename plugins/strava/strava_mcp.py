@@ -146,6 +146,7 @@ TOOL_DEFINITIONS = {row["name"]: row for row in [
         "per_page": {"type": "integer", "minimum": 1, "default": 100},
     }, ["since"]),
     _tool("get_activity", "Read one activity and current editable metadata, including bike and start-time privacy.", {"activity_id": ID}, ["activity_id"]),
+    _tool("get_activity_kudos", "Read athletes who gave kudos to an activity using the existing browser session. count is the number of returned athletes; athlete fields retain the source format. Read-only: does not give kudos.", {"activity_id": ID}, ["activity_id"]),
     _tool("list_gear", "List the account's active and retired bikes and shoes.", {}, []),
     _tool("get_gear", "Read one bike or shoe from the account's gear collections.", {
         "gear_id": ID, "gear_type": {"type": "string", "enum": ["bike", "shoe"]},

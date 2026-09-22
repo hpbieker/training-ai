@@ -65,6 +65,13 @@ Use `list_gear` to retrieve current and retired bikes and shoes. `get_gear`
 accepts an ID returned by that list; provide `gear_type` (`bike` or `shoe`) when
 the type is already known.
 
+Use `get_activity_kudos(activity_id)` to read who gave kudos to one exact
+activity through the existing browser session. It returns `athletes` with native
+source fields, `count` (the number of returned athletes), `is_owner`, and
+`kudosable`. It never gives kudos. Missing or malformed data is an error, not
+zero kudos. The browser endpoint exposes no pagination metadata; `count` is
+the returned list size rather than a separately verified total.
+
 Use `list_activity_media` with one exact activity ID before downloading or
 uploading. `download_activity_media` requires the returned `media_id` and an
 explicit `destination_dir`; it will not overwrite a local file unless
