@@ -72,6 +72,14 @@ Treat helper output as structured evidence, not the final recommendation.
 
 Read [references/outdoor-routes.md](references/outdoor-routes.md).
 
+### Strava workout card
+
+When the user asks to add a banner, card, or workout image to a completed
+Strava activity, use `scripts/generate_strava_workout_card.py` by default.
+Call it with the current Intervals.icu activity directory, `--xert-session`
+for the matching saved Xert session, and `--output` for the PNG. Inspect the
+result, then attach it through the Strava media workflow.
+
 ## Output
 
 - Answer in chat unless the user explicitly requests a report file.
