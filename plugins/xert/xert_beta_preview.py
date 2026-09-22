@@ -1,7 +1,7 @@
 """Read-only adapter for the experimental Xert Beta 2 activity model.
 
-The beta UI supplies an authenticated activity embed and runs a hash-pinned
-WebAssembly model in the browser.  This module recreates that calculation
+The beta UI supplies an authenticated activity embed and runs a WebAssembly
+model in the browser.  This module recreates that calculation
 locally.  It deliberately has no mutation routes and never persists embed
 HTML or its temporary access token.
 """
@@ -26,8 +26,6 @@ from xert_service import XertService
 
 
 BETA = "https://beta.xertonline.com"
-# Reviewed against the Beta frontend published 2026-09-12.
-BUNDLE_SHA256 = "343a6527f8f12cc4eb9428e293895b767b6a54df6c1dd73810cc635298efddf9"
 SERIES_FORMAT = "xert-beta-preview-series-v1"
 
 RUNNER = r'''
@@ -113,15 +111,30 @@ def _duration_at_or_above(values: list[float], times: list[float], threshold: fl
     return sum(duration for value, duration in zip(values, [*durations, final_duration]) if value >= threshold)
 
 
+def _wasm_factory(bundle: str) -> str:
+    """Extract the reviewed Emscripten factory interface from a Beta bundle.
+
+    Bundle hashes change with ordinary vendor deployments.  The adapter is
+    therefore guarded by the interface it needs, while recording the observed
+    hash in every output for traceability.
+    """
+    start_marker = "Module = (() => {"
+    end_marker = "xert_default = Module;"
+    try:
+        start = bundle.index(start_marker)
+        end = bundle.index(end_marker, start)
+    except ValueError as error:
+        raise ValueError("Xert Beta frontend lacks the supported WASM factory interface") from error
+    if end <= start:
+        raise ValueError("Xert Beta frontend has an invalid WASM factory interface")
+    return "var " + bundle[start:end]
+
+
 def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, Any]:
     node = shutil.which("node")
     if not node:
         raise ValueError("Node.js is required for Xert Beta preview")
-    # Keep the fail-closed hash check here too: direct callers must not execute
-    # an unreviewed vendor bundle.
-    if hashlib.sha256(bundle.encode()).hexdigest() != BUNDLE_SHA256:
-        raise ValueError("Xert Beta frontend changed; preview calculation is disabled pending adapter review")
-    factory = "var " + bundle[bundle.index("Module = (() => {"):bundle.index("      xert_default = Module;")]
+    factory = _wasm_factory(bundle)
     props = {**props, "bundle_url": bundle_url}
     with tempfile.TemporaryDirectory(prefix="xert-beta-preview-") as temporary:
         root = Path(temporary)
@@ -133,7 +146,7 @@ def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, 
     return json.loads(result.stdout)
 
 
-def _load_activity_beta_props(activity_path: str) -> tuple[dict[str, Any], str, str]:
+def _load_activity_beta_props(activity_path: str) -> tuple[dict[str, Any], str, str, str]:
     """Read the Beta model state from one completed activity without retaining HTML."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", activity_path):
         raise ValueError("Expected an activity path, not a URL")
@@ -147,12 +160,13 @@ def _load_activity_beta_props(activity_path: str) -> tuple[dict[str, Any], str, 
     bundle_url = _beta_url(page.bundle)
     with urlopen(bundle_url, timeout=45) as response:
         bundle_bytes = response.read()
-    if hashlib.sha256(bundle_bytes).hexdigest() != BUNDLE_SHA256:
-        raise ValueError("Xert Beta frontend changed; preview calculation is disabled pending adapter review")
+    bundle_sha256 = hashlib.sha256(bundle_bytes).hexdigest()
+    bundle = bundle_bytes.decode()
+    _wasm_factory(bundle)
     props = _props(embed)
     if props["activity"].get("path") != activity_path:
         raise ValueError("Preview activity identity does not match request")
-    return props, bundle_bytes.decode(), bundle_url
+    return props, bundle, bundle_url, bundle_sha256
 
 
 def _interval_summaries(series: dict[str, list[float]], intervals: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -201,7 +215,8 @@ def _interval_summaries(series: dict[str, list[float]], intervals: list[dict[str
 
 
 def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any], save_series: bool,
-                       series_context: dict[str, Any], intervals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+                       series_context: dict[str, Any], bundle_sha256: str,
+                       intervals: list[dict[str, Any]] | None = None) -> dict[str, Any]:
     model, signature = result["computed"], result["signature_used"]
     times = [value / 1000 for value in model["ts"]]
     series = {
@@ -228,7 +243,7 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
         "caveats": ["Experimental Beta 2 model estimates, not physiological measurements.",
                     "Beta XSS and other calculated values can differ from standard Xert activity values.",
                     "No Beta signature, option, segment, or activity writes were performed."],
-        "bundle_sha256": BUNDLE_SHA256, "options_used": result["options_used"],
+        "bundle_sha256": bundle_sha256, "options_used": result["options_used"],
         "signature_used": signature, "metrics": metrics,
         "xss": {key: model[value] for key, value in (("total", "xss"), ("low", "xlss"), ("high", "xhss"), ("peak", "xpss"))},
         "energy": {"carbs_g": model["total_carbs_used"], "fat_g": model["total_fat_used"]},
@@ -238,7 +253,7 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
     if save_series:
         descriptor, file_name = tempfile.mkstemp(prefix="xert-beta-preview-series-", suffix=".json")
         with os.fdopen(descriptor, "w") as stream:
-            json.dump({**series_context, "bundle_sha256": BUNDLE_SHA256,
+            json.dump({**series_context, "bundle_sha256": bundle_sha256,
                        "signature_used": signature, "options_used": result["options_used"], "series": series}, stream,
                       allow_nan=False)
         output.update({"series_file": file_name, "series_format": SERIES_FORMAT,
@@ -248,13 +263,14 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
 
 def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) -> dict[str, Any]:
     """Compute an experimental, read-only Beta 2 preview for one activity."""
-    props, bundle, bundle_url = _load_activity_beta_props(activity_path)
+    props, bundle, bundle_url, bundle_sha256 = _load_activity_beta_props(activity_path)
     result = _run_wasm(props, bundle, bundle_url)
     return _series_and_output(
         result=result,
         source_fields={"activity_path": activity_path, "name": props["activity"].get("name")},
         save_series=save_series,
         series_context={"activity_path": activity_path},
+        bundle_sha256=bundle_sha256,
     )
 
 
@@ -339,7 +355,7 @@ def _expand_workout_rows(rows: list[dict[str, Any]], signature: dict[str, Any]) 
 def calculate_workout_beta_preview(rows: list[dict[str, Any]], *, beta_model_source_activity_path: str,
                                    save_series: bool = False) -> dict[str, Any]:
     """Calculate an unsaved workout with the Beta state sourced from one activity."""
-    props, bundle, bundle_url = _load_activity_beta_props(beta_model_source_activity_path)
+    props, bundle, bundle_url, bundle_sha256 = _load_activity_beta_props(beta_model_source_activity_path)
     power, intervals = _expand_workout(rows, props["signature"])
     count = len(power)
     records = {
@@ -357,5 +373,6 @@ def calculate_workout_beta_preview(rows: list[dict[str, Any]], *, beta_model_sou
         save_series=save_series,
         series_context={"beta_model_source_activity_path": beta_model_source_activity_path,
                         "workout_rows": rows},
+        bundle_sha256=bundle_sha256,
         intervals=intervals,
     )

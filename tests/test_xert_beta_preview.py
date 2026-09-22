@@ -1,5 +1,4 @@
 import importlib.util
-import hashlib
 from pathlib import Path
 import sys
 import unittest
@@ -16,8 +15,8 @@ spec.loader.exec_module(P)
 
 
 class BetaPreviewTests(unittest.TestCase):
-    def test_unreviewed_bundle_is_rejected_before_execution(self):
-        with self.assertRaisesRegex(ValueError, "pending adapter review"):
+    def test_unsupported_wasm_factory_is_rejected_before_execution(self):
+        with self.assertRaisesRegex(ValueError, "supported WASM factory interface"):
             P._run_wasm({}, "unreviewed", "https://beta.xertonline.com/js/svelte.js")
 
     @unittest.skipUnless(P.shutil.which("node"), "Node.js required")
@@ -37,8 +36,7 @@ class BetaPreviewTests(unittest.TestCase):
             "activity": {"recordsData": {k: [0, 1] for k in
                          ("time", "dist", "lat", "lng", "spd", "cad", "power")}},
         }
-        with patch.object(P, "BUNDLE_SHA256", hashlib.sha256(bundle.encode()).hexdigest()):
-            out = P._run_wasm(props, bundle, "https://beta.xertonline.com/js/svelte.js")
+        out = P._run_wasm(props, bundle, "https://beta.xertonline.com/js/svelte.js")
         sig, options = out["signature_used"], out["options_used"]
         for key, value in {"ftp": 300.2, "atc": 15000, "pnr": 500, "hie": 15,
                            "mgc": 4000, "initial_gmg_balance": -4000, "pcrc": 1000,
