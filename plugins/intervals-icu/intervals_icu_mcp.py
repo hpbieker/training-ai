@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import csv
+import hashlib
+from collections import Counter
 import os
 import sys
 import tempfile
@@ -42,6 +45,8 @@ from intervals_icu_api import (  # noqa: E402
     search_activities,
     search_activity_intervals,
     update_activity,
+    get_activity_intervals,
+    update_activity_intervals,
     update_wellness,
     update_event,
     upload_activity_file,
@@ -1187,6 +1192,64 @@ class IntervalsIcuAuthSession:
     def api_kwargs(self) -> dict[str, str]:
         return self.credentials.api_kwargs()
 
+_INTERVAL_ITEM = {
+    "type": "object", "additionalProperties": False,
+    "properties": {
+        "id": {"type": "integer", "description": "Existing interval ID; omit for a new interval."},
+        "start_index": {"type": "integer", "minimum": 0},
+        "end_index": {"type": "integer", "minimum": 1},
+        "type": {"type": "string", "enum": ["WORK", "RECOVERY"]},
+    },
+    "required": ["start_index", "end_index", "type"],
+}
+for _interval_tool in ("get_activity_intervals", "update_activity_intervals"):
+    _write = _interval_tool.startswith("update")
+    _properties = {
+        "activity_id": {"type": "string"},
+        "athlete": {"type": ["string", "integer"], "default": "me"},
+    }
+    if _write:
+        _properties.update({
+            "intervals": {"type": "array", "items": _INTERVAL_ITEM, "minItems": 1},
+            "expected_revision": {"type": "string", "description": "Revision from get_activity_intervals; required even for preview."},
+            "replace_all": {"type": "boolean", "default": False},
+            "dry_run": {"type": "boolean", "default": True},
+        })
+    TOOL_DEFINITIONS[_interval_tool] = {
+        "name": _interval_tool,
+        "description": (
+            "Preview or save completed-activity intervals. Uses stream sample indices, NOT elapsed seconds. "
+            "Merge by ID by default; omit ID to create. replace_all explicitly replaces the entire list. "
+            "Checks revision and bounds, returns before/after, and verifies saved intervals by fresh readback. "
+            "Only use dry_run=false for user-authorized changes."
+            if _write else
+            "Read completed-activity interval IDs, sample boundaries, times and types, plus a revision for safe updates."
+        ),
+        "inputSchema": {"type": "object", "properties": _properties,
+                        "required": ["activity_id"] + (["intervals", "expected_revision"] if _write else []),
+                        "additionalProperties": False},
+        "annotations": {"readOnlyHint": not _write, "destructiveHint": _write,
+                        "idempotentHint": not _write, "openWorldHint": True},
+    }
+
+
+def _interval_rows(dto):
+    rows = dto.get("icu_intervals")
+    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+        raise ToolFailure("Missing or invalid source intervals", "source_error")
+    return [{k: row[k] for k in ("id", "start_index", "end_index", "start_time", "end_time", "type") if k in row}
+            for row in rows]
+
+
+def _interval_revision(activity_id, rows):
+    canonical = sorted(rows, key=lambda row: json.dumps(row, sort_keys=True))
+    return hashlib.sha256(json.dumps([activity_id, canonical], sort_keys=True).encode()).hexdigest()
+
+
+def _interval_signature(row):
+    return (row["start_index"], row["end_index"], row["type"])
+
+
 class IntervalsIcuToolService:
     def __init__(
         self,
@@ -1203,6 +1266,8 @@ class IntervalsIcuToolService:
         activities_getter: Callable[..., list[dict[str, Any]]] = get_activities,
         streams_downloader: Callable[..., Path] = download_activity_streams_csv,
         activity_file_downloader: Callable[..., Path] = download_activity_file,
+        interval_getter: Callable[..., dict[str, Any]] = get_activity_intervals,
+        interval_updater: Callable[..., dict[str, Any]] = update_activity_intervals,
         activity_updater: Callable[..., dict[str, Any]] = update_activity,
         activity_deleter: Callable[..., dict[str, Any]] = delete_activity,
         activity_uploader: Callable[..., dict[str, Any]] = upload_activity_file,
@@ -1230,6 +1295,8 @@ class IntervalsIcuToolService:
         self._activities_getter = activities_getter
         self._streams_downloader = streams_downloader
         self._activity_file_downloader = activity_file_downloader
+        self._interval_getter = interval_getter
+        self._interval_updater = interval_updater
         self._activity_updater = activity_updater
         self._activity_deleter = activity_deleter
         self._activity_uploader = activity_uploader
@@ -1482,6 +1549,71 @@ class IntervalsIcuToolService:
                 }
                 if selected_athlete is not None:
                     response["athlete"] = selected_athlete
+                return response
+            if name in {"get_activity_intervals", "update_activity_intervals"}:
+                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
+                activity_id = _required_string(arguments, "activity_id")
+                if selected_athlete is not None:
+                    owned = self._activities_getter(activity_ids=[activity_id], athlete_id=athlete_id,
+                                                   include_intervals=False, **auth)
+                    if not any(row.get("id") == activity_id for row in owned):
+                        raise ToolFailure("Activity not found for selected athlete", "invalid_arguments")
+                before = _interval_rows(self._interval_getter(activity_id=activity_id, **auth))
+                revision = _interval_revision(activity_id, before)
+                response = {"activity_id": activity_id, "intervals": before, "revision": revision}
+                if selected_athlete is not None:
+                    response["athlete"] = selected_athlete
+                if name == "get_activity_intervals":
+                    return response
+                if arguments.get("expected_revision") != revision:
+                    raise ToolFailure("Intervals changed; read again and review the new state", "revision_conflict")
+                replace_all = arguments.get("replace_all", False)
+                dry_run = arguments.get("dry_run", True)
+                if type(replace_all) is not bool or type(dry_run) is not bool:
+                    raise ToolFailure("replace_all and dry_run must be booleans", "invalid_arguments")
+                requested = arguments.get("intervals")
+                if not isinstance(requested, list) or not requested:
+                    raise ToolFailure("intervals must be a non-empty list", "invalid_arguments")
+                ids = set()
+                source_by_id = {r.get("id"): r for r in before}
+                for row in requested:
+                    if (not isinstance(row, dict) or set(row) - {"id", "start_index", "end_index", "type"}
+                        or any(type(row.get(k)) is not int for k in ("start_index", "end_index"))
+                        or row.get("type") not in {"WORK", "RECOVERY"}
+                        or not 0 <= row["start_index"] < row["end_index"]):
+                        raise ToolFailure("Invalid interval fields or boundaries", "invalid_arguments")
+                    if "id" in row:
+                        if type(row["id"]) is not int or row["id"] in ids or row["id"] not in source_by_id:
+                            raise ToolFailure("Interval ID must be unique and already exist", "invalid_arguments")
+                        ids.add(row["id"])
+                desired = ([] if replace_all else [r for r in before if r.get("id") not in ids]) + requested
+                ordered = sorted(desired, key=lambda r: r["start_index"])
+                if any(a["end_index"] > b["start_index"] for a, b in zip(ordered, ordered[1:])):
+                    raise ToolFailure("Resulting intervals overlap", "invalid_arguments")
+                with tempfile.TemporaryDirectory(prefix="interval-bounds-") as directory:
+                    path = self._streams_downloader(activity_id=activity_id,
+                        output_path=Path(directory) / "time.csv", stream_types=["time"], **auth)
+                    with Path(path).open(encoding="utf-8-sig", newline="") as stream:
+                        reader = csv.DictReader(stream)
+                        if not reader.fieldnames or "time" not in reader.fieldnames:
+                            raise ToolFailure("Time stream unavailable for boundary validation", "source_error")
+                        sample_count = sum(1 for _ in reader)
+                if any(r["end_index"] > sample_count for r in desired):
+                    raise ToolFailure("Interval exceeds stream sample count", "invalid_arguments")
+                response.update(before=before, after=ordered, dry_run=dry_run, verified=False)
+                if dry_run:
+                    return response
+                fresh = _interval_rows(self._interval_getter(activity_id=activity_id, **auth))
+                if _interval_revision(activity_id, fresh) != revision:
+                    raise ToolFailure("Intervals changed during preparation; read again", "revision_conflict")
+                self._interval_updater(activity_id=activity_id, intervals=requested,
+                                       replace_all=replace_all, **auth)
+                after = _interval_rows(self._interval_getter(activity_id=activity_id, **auth))
+                if (Counter(map(_interval_signature, after)) != Counter(map(_interval_signature, desired))
+                    or any(not any(a.get("id") == d.get("id") and _interval_signature(a) == _interval_signature(d)
+                                   for a in after) for d in desired if "id" in d and d["type"] == "WORK")):
+                    raise ToolFailure("Write completed but readback differs; inspect before retrying", "verification_error")
+                response.update(after=after, intervals=after, revision=_interval_revision(activity_id, after), verified=True)
                 return response
             if name == "update_activity":
                 _, selected_athlete = self._selected_athlete(arguments, auth)

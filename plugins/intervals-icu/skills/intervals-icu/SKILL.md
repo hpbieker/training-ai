@@ -136,6 +136,25 @@ When an activity has an `id` but no URL field, build the web link
 as `https://intervals.icu/activities/<activity-id>`, for example
 `https://intervals.icu/activities/i158694373`.
 
+## Completed Activity Interval Editing
+
+- `get_activity_intervals` reads interval IDs, sample boundaries, source times,
+  WORK/RECOVERY types, and a revision token. Both interval tools accept `athlete`.
+- `update_activity_intervals` accepts complete boundaries/type for each requested
+  interval; include an existing ID to adjust it, omit ID to create. It defaults
+  to merge and `dry_run=true`, returning before/after without writing.
+- Pass `expected_revision` from the read. Set `replace_all=true` only when the
+  user authorized replacing the entire interval list. Set `dry_run=false` only
+  for authorized writes; readback verifies boundaries, types, IDs, and preserved
+  intervals. Do not retry an uncertain write blindly.
+- Boundaries are stream sample indices, not elapsed seconds. Map proposed times
+  through the time stream, especially for irregular recording. The tool checks
+  positive length, bounds, duplicate IDs, and overlap in the resulting list.
+- Revision checks detect changes before writing, but the API has no documented
+  atomic compare-and-swap; a concurrent edit during the request can still race.
+- Automatic interval detection belongs to the analysis layer. Show uncertain
+  boundaries as proposals and never treat inferred boundaries as recorded laps.
+
 ## Freshness And Data Handoff
 
 - Fetch live data for same-day analysis, readiness, or post-workout evaluation unless the caller explicitly requests offline/cache-only work.

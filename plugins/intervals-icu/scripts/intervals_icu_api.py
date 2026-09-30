@@ -792,6 +792,37 @@ def get_activities(
     return activities
 
 
+def get_activity_intervals(*, activity_id: str, api_key: str | None = None,
+                           bearer_token: str | None = None) -> dict[str, Any]:
+    """Read completed-activity intervals from the dedicated source endpoint."""
+    result = _request_json(f"/activity/{activity_id}/intervals",
+                          IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token))
+    if not isinstance(result, dict) or not isinstance(result.get("icu_intervals"), list):
+        raise TypeError("Expected an IntervalsDTO with icu_intervals")
+    return result
+
+
+def update_activity_intervals(*, activity_id: str, intervals: list[dict[str, Any]],
+                              replace_all: bool = False, api_key: str | None = None,
+                              bearer_token: str | None = None) -> dict[str, Any]:
+    """Merge by interval ID, or explicitly replace the complete interval list."""
+    # The source treats submitted intervals as WORK irrespective of type.
+    # Recovery is derived from the gaps between work intervals.
+    if not replace_all:
+        existing = get_activity_intervals(activity_id=activity_id, api_key=api_key,
+                                          bearer_token=bearer_token)["icu_intervals"]
+        changed_ids = {row["id"] for row in intervals if "id" in row}
+        intervals = [row for row in existing if row.get("id") not in changed_ids] + intervals
+    work = [row for row in intervals if row.get("type") == "WORK"]
+    result = _request_json(f"/activity/{activity_id}/intervals",
+                          IntervalsIcuCredentials(api_key=api_key, bearer_token=bearer_token),
+                          method="PUT", params={"all": "true"},
+                          json_body=work)
+    if not isinstance(result, dict):
+        raise TypeError("Expected an IntervalsDTO")
+    return result
+
+
 def update_activity(
     *,
     activity_id: str,

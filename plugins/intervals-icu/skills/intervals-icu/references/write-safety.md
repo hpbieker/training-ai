@@ -51,3 +51,17 @@ Read this file before any Intervals.icu mutation.
   update or deletion. `create_event` and `update_event` accept an inclusive user
   end date but store an exclusive end boundary. Verify every result; deletion
   additionally requires `confirm` to match the event id.
+
+## Completed Activity Intervals
+
+Read `get_activity_intervals` first and retain its revision. Preview with
+`update_activity_intervals` (dry_run defaults to true), showing before and after.
+Use dry_run=false only for authorized changes. Merge is the default; replace_all
+requires authorization for the complete replacement. On revision conflict, read
+and review again. On an uncertain write or verification failure, inspect current
+source state before retrying. Never infer sample indices directly from seconds.
+
+The API treats submitted rows as WORK, regardless of their type. The adapter
+submits work intervals only; recovery is derived from gaps. Merge preserves
+existing unmodified work rows while constructing the complete work list.
+Recovery IDs may change when the server regenerates gaps.
