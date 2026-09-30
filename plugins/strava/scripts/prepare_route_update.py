@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from strava_mcp import UPDATE_ROUTE_PATCH
@@ -118,8 +119,11 @@ def main():
     parser.add_argument('--to-point', type=int, help='Inclusive zero-based polyline vertex within --leg')
     parser.add_argument('--elevation-profile', type=Path, help='JSON [distance_m, elevation_m] pairs for 2D GeoJSON')
     parser.add_argument('--output-dir', type=Path, required=True, help='New private output directory')
+    parser.add_argument('--maps', action='store_true', help='Render before/after and overview; may fetch OSM tiles, never writes to Strava')
+    parser.add_argument('--map-cache-dir', type=Path, help='Persistent tile cache for --maps')
     args = parser.parse_args()
     try:
+        if args.map_cache_dir and not args.maps: raise ValueError('--map-cache-dir requires --maps')
         source_bytes = args.route.read_bytes()
         source = json.loads(source_bytes)
         if args.edits:
@@ -159,6 +163,17 @@ def main():
         result={'route_id': update['route_id'], 'update_file': str((args.output_dir/'update.json').resolve()),
                 'report_file': str((args.output_dir/'report.json').resolve()),
                 'new_element_count': report['new_element_count']}
+        if args.maps:
+            renderer=Path(__file__).resolve().parents[3]/'scripts/render_route_map.py'
+            command=[sys.executable,'-B',str(renderer),'--route',result['update_file'],
+                     '--before',str(args.route.resolve()),'--output',str(args.output_dir/'after.png')]
+            if args.map_cache_dir:command.extend(['--cache-dir',str(args.map_cache_dir)])
+            rendered=subprocess.run(command,capture_output=True,text=True)
+            if rendered.returncode:
+                raise ValueError(f"Update prepared at {result['update_file']}, but map rendering failed: {rendered.stderr.strip()}. Retry render_route_map.py with --route update.json --before the original source and --output after.png; do not re-prepare or save automatically.")
+            result['maps']=json.loads(rendered.stdout)['maps']
+            report['maps']=result['maps']
+            (args.output_dir/'report.json').write_text(json.dumps(report,ensure_ascii=False,separators=(',',':'),allow_nan=False))
         print(json.dumps(result))
 
     except Exception as exc:

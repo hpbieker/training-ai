@@ -238,6 +238,15 @@ cannot be combined with single-edit flags.
 
 Inspect geometry before submitting. Pass the prepared file directly:
 
+Use `prepare_route_update.py --maps` to generate before/after maps with identical
+automatic bounds plus an overview, alongside the prepared update. It invokes
+the repo's `scripts/render_route_map.py` directly; no geometry conversion is
+needed. `--map-cache-dir` optionally selects the OSM tile cache. This option
+may fetch background tiles, but does not build or save a Strava route; ordinary
+preparation remains offline. The result and report list the generated maps.
+To retry maps independently, pass the update file to `render_route_map.py
+--route UPDATE --before ORIGINAL --output after.png`.
+
 ```json
 {"route_id": "3532440438889330932", "patch_file": "/absolute/path/update.json", "confirm": true}
 ```

@@ -122,6 +122,50 @@ def tag_props(edit_html: str) -> dict[str, Any]:
     return json.loads(html.unescape(match.group(1)))
 
 
+def media_form_pairs(edit_html: str) -> list[tuple[str, str]]:
+    """Serialize the existing MediaUploader items into Strava's edit form."""
+    match = re.search(
+        r"data-react-class='MediaUploader' data-react-props='([^']*)'", edit_html
+    )
+    if not match:
+        return []
+    try:
+        props = json.loads(html.unescape(match.group(1)))
+    except json.JSONDecodeError as exc:
+        raise StravaError("Strava activity edit page returned invalid media state.") from exc
+    if not isinstance(props, dict) or not isinstance(props.get("media"), list):
+        raise StravaError("Strava activity edit page returned unexpected media state.")
+
+    media_type_ids = {"photo": "1", "video": "2"}
+    pairs: list[tuple[str, str]] = []
+    for rank, item in enumerate(props["media"]):
+        if not isinstance(item, dict):
+            raise StravaError("Strava activity edit page returned an invalid media item.")
+        media_id = next(
+            (
+                str(item[field])
+                for field in ("id", "uuid", "media_id")
+                if item.get(field) is not None
+            ),
+            None,
+        )
+        if not media_id:
+            raise StravaError("Strava activity edit page returned media without an ID.")
+        raw_type = item.get("media_type", item.get("type", 1))
+        media_type = str(raw_type)
+        if not media_type.isdigit():
+            media_type = media_type_ids.get(media_type.casefold(), "1")
+        prefix = f"photos[{media_id}]"
+        pairs.extend(
+            [
+                (f"{prefix}[caption]", str(item.get("caption") or "")),
+                (f"{prefix}[rank]", str(rank)),
+                (f"{prefix}[media_type]", media_type),
+            ]
+        )
+    return pairs
+
+
 def selected_form_value(select: dict[str, Any]) -> str:
     for option in select["options"]:
         attrs = option["attrs"]
@@ -200,6 +244,11 @@ def build_form_body(
         name = textarea["attrs"].get("name")
         if name:
             pairs.append((name, html.unescape(textarea["text"])))
+
+    # MediaUploader keeps existing attachments in React props rather than
+    # ordinary form inputs. Re-submit them with metadata edits so a tag/name
+    # change does not silently detach every photo or video.
+    pairs.extend(media_form_pairs(edit_html))
 
     effective_tag = tag if tag_supplied else current_tag
     pairs.append(("activity[tags][]", ""))

@@ -197,6 +197,7 @@ def delete_activity_media(
     wanted_id = str(media_id)
     with StravaSession(cookie_file or default_cookie_file()) as session:
         edit_html, props = _fetch_edit_media(session, activity_id)
+        current_tag = activity_metadata.fetch_activity(str(activity_id)).get("selected_tag_type")
         row = next(
             (item for item in props["media"] if isinstance(item, dict) and _media_identifier(item) == wanted_id),
             None,
@@ -209,7 +210,7 @@ def delete_activity_media(
                 activity_name=None,
                 tag=None,
                 tag_supplied=False,
-                current_tag=None,
+                current_tag=current_tag,
                 trainer=None,
                 visibility=None,
                 start_time_hidden=None,
@@ -339,6 +340,7 @@ def upload_activity_media(
         raise ValueError("file_path must be a JPG, PNG, GIF, MP4, or MOV media file")
     with StravaSession(cookie_file or default_cookie_file()) as session:
         edit_html, props = _fetch_edit_media(session, activity_id)
+        current_tag = activity_metadata.fetch_activity(str(activity_id)).get("selected_tag_type")
         athlete_id = props.get("athleteId")
         if not isinstance(athlete_id, int):
             raise StravaError("Strava activity edit page did not expose the athlete ID.")
@@ -354,7 +356,7 @@ def upload_activity_media(
                 activity_name=None,
                 tag=None,
                 tag_supplied=False,
-                current_tag=None,
+                current_tag=current_tag,
                 trainer=None,
                 visibility=None,
                 start_time_hidden=None,
