@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "training-visuals": {
+      "command": "python3",
+      "args": [
+        "-B",
+        "./training_visuals_mcp.py"
+      ],
+      "cwd": "."
+    }
+  }
+}

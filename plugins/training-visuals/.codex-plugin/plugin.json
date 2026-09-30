@@ -1,0 +1,22 @@
+{
+  "name": "training-visuals",
+  "version": "0.1.0+codex.20260924155242",
+  "description": "Interactive training visualizations from existing route data.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "interface": {
+    "displayName": "Training Visuals",
+    "shortDescription": "Explore planned and completed cycling routes on a map.",
+    "longDescription": "Interactive route maps with zoom and panning, independent of the source service. Accepts GeoJSON, GPX and local route artifacts. Does not change training data.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "Data Analysis"
+    ],
+    "defaultPrompt": [
+      "Show this cycling route on an interactive map."
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

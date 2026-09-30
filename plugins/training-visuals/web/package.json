@@ -1,0 +1,16 @@
+{
+  "name": "training-visuals-ui",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "python3 ../scripts/build_ui.py"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "2.0.0",
+    "leaflet": "1.9.4"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
