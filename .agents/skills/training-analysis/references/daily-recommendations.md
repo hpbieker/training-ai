@@ -14,16 +14,14 @@ cycling are available, retain one concrete alternative for the final answer
 without letting it replace the winner. Resolve modality availability from
 explicit user input or personal context, never from the repository.
 
-When calendar context is used, classify events before calculating availability
-and scan the whole planning day from the configured earliest start through the
-latest normal finish. Apply the user's calendar semantics from personal context
-rather than treating every returned event as a hard blocker. Keep
-confirmed/fixed appointments blocking. Treat user-defined open blocks and
-tentative events as non-blocking, and treat movable meal events as requirements
-that need practical time around the workout rather than fixed-time blockers.
-After placing movable meals practically, preserve every resulting usable
-interval in chronological order in `availability.windows`; never stop after the
-first plausible interval when a later one exists.
+For calendar-based planning, have the assistant classify each event and pass it
+as a `planning_context.calendar.events` row (`subject`, `start`, `end`,
+`classification`, optional `id`). Use the parser's classifications:
+`fixed_blocker`, `open_training`, `tentative_nonblocking`, `movable_event`,
+`flexible_appointment`, `indoor_overlap_candidate`, and `unknown`; unknowns
+block time. Include local-offset `day_start`/`day_end` and setup/cleanup
+buffers. For movable events, pass the minimum duration and whether shortening
+is permitted; use the placement returned by the helper.
 
 Treat the earliest feasible workout start in every availability window as a
 separate `planned_at` candidate. Evaluate candidates independently, keeping
@@ -74,10 +72,9 @@ For every agent-driven recommendation, provide a complete
 `--planning-context-json` that satisfies `recommend_training.py`'s validation.
 Prefer a small persisted `planning-context.json` working file when the context
 is assembled across several source reads. Before candidate evaluation, resolve
-the plan role and derive all availability windows from the freshly read
-calendar by applying the configured start boundary and workout-placement
-preference, classifying fixed, open, tentative, and movable events, and
-applying the complete setup, workout, and cleanup window. Run the helper once
+the plan role, classify the freshly read calendar into `calendar.events`, and
+pass day boundaries and setup/cleanup buffers. The helper derives candidate
+windows and applies the complete setup, workout, and cleanup window. Run it
 per candidate with that candidate's explicit `planned_at` and Xert advice, then
 once more with the selected `planned_at` to create the final recommendation
 packet.

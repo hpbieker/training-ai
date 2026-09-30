@@ -464,10 +464,18 @@ def main() -> None:
         else generated_at
     )
     try:
-        available_windows = parse_availability_payload(
-            planning_context["availability"],
-            expected_timezone=local_timezone,
-            argument_name="--planning-context-json availability",
+        available_windows = (
+            calendar_availability_windows(
+                planning_context["calendar"],
+                local_timezone=local_timezone,
+                day=args.date,
+            )
+            if planning_context["calendar"].get("events") is not None
+            else parse_availability_payload(
+                planning_context["availability"],
+                expected_timezone=local_timezone,
+                argument_name="--planning-context-json availability",
+            )
         )
     except argparse.ArgumentTypeError as exc:
         parser.error(str(exc))
@@ -723,6 +731,13 @@ def main() -> None:
         remainder_disposition=remainder_disposition,
     )
     target_resolution["split_note"] = target_resolution["split"]["guidance"]
+    if planning_context["calendar"].get("events") is not None:
+        target_resolution["split"]["movable_event_placement"] = place_movable_events(
+            planning_context["calendar"],
+            sessions=target_resolution["split"].get("sessions") or [],
+            local_timezone=local_timezone,
+            day=args.date,
+        )
     target_minutes = float(target_resolution["target_minutes"])
     target_load = float(target_resolution["target_load"])
     route_session_target_minutes = (
@@ -1542,6 +1557,10 @@ def parse_calendar_context_payload(
             "practical_stop",
             "hard_stop",
             "remainder_disposition",
+            "events",
+            "day_start",
+            "day_end",
+            "setup_buffer_minutes",
         }
     )
     if unknown:
@@ -1591,12 +1610,147 @@ def parse_calendar_context_payload(
         raise argparse.ArgumentTypeError(
             "calendar.remainder_disposition must be unscheduled, dropped, moved, or conditionally_split"
         )
+    setup = payload.get("setup_buffer_minutes", 0)
+    if isinstance(setup, bool) or not isinstance(setup, (int, float)) or setup < 0:
+        raise argparse.ArgumentTypeError(
+            "calendar.setup_buffer_minutes must be a non-negative number"
+        )
+    day_bounds = {}
+    for field in ("day_start", "day_end"):
+        value = payload.get(field)
+        if value is None:
+            day_bounds[field] = None
+            continue
+        instant = parse_availability_instant(value, field=f"calendar.{field}")
+        if instant.astimezone(local_timezone).utcoffset() != instant.utcoffset():
+            raise argparse.ArgumentTypeError(
+                f"calendar.{field} UTC offset must match local_timezone"
+            )
+        day_bounds[field] = instant.astimezone(local_timezone).isoformat(timespec="seconds")
+    events = payload.get("events")
+    if events is not None:
+        if not isinstance(events, list):
+            raise argparse.ArgumentTypeError("calendar.events must be an array")
+        events = [parse_calendar_event(event, index=index, local_timezone=local_timezone)
+                  for index, event in enumerate(events)]
+        if not day_bounds["day_start"] or not day_bounds["day_end"]:
+            raise argparse.ArgumentTypeError(
+                "calendar.day_start and calendar.day_end are required with calendar.events"
+            )
+        if datetime.fromisoformat(day_bounds["day_end"]) <= datetime.fromisoformat(day_bounds["day_start"]):
+            raise argparse.ArgumentTypeError("calendar.day_end must be after day_start")
     return {
         "cleanup_buffer_minutes": float(cleanup),
+        "setup_buffer_minutes": float(setup),
+        **day_bounds,
+        "events": events,
         "assumptions": [value.strip() for value in assumptions],
         **stops,
         "remainder_disposition": disposition,
     }
+
+
+def parse_calendar_event(event: Any, *, index: int, local_timezone: Any) -> dict[str, Any]:
+    prefix = f"calendar.events[{index}]"
+    if not isinstance(event, dict):
+        raise argparse.ArgumentTypeError(f"{prefix} must be an object")
+    allowed = {
+        "id", "subject", "start", "end", "classification",
+        "minimum_duration_minutes", "shorten_if_no_feasible_placement",
+    }
+    if set(event) - allowed:
+        raise argparse.ArgumentTypeError(f"{prefix} has unsupported fields: " + ", ".join(sorted(set(event) - allowed)))
+    subject = event.get("subject")
+    classification = event.get("classification")
+    if not isinstance(subject, str) or not subject.strip():
+        raise argparse.ArgumentTypeError(f"{prefix}.subject must be a non-empty string")
+    allowed_classes = {
+        "fixed_blocker", "open_training", "tentative_nonblocking",
+        "movable_event", "flexible_appointment", "indoor_overlap_candidate",
+        "unknown",
+    }
+    if classification not in allowed_classes:
+        raise argparse.ArgumentTypeError(f"{prefix}.classification must be one of: " + ", ".join(sorted(allowed_classes)))
+    start = parse_availability_instant(event.get("start"), field=f"{prefix}.start")
+    end = parse_availability_instant(event.get("end"), field=f"{prefix}.end")
+    if start.astimezone(local_timezone).utcoffset() != start.utcoffset() or end.astimezone(local_timezone).utcoffset() != end.utcoffset() or end <= start:
+        raise argparse.ArgumentTypeError(f"{prefix} must have valid local offsets and end after start")
+    result = {"id": event.get("id"), "subject": subject.strip(), "classification": classification,
+              "start": start.astimezone(local_timezone).isoformat(timespec="seconds"),
+              "end": end.astimezone(local_timezone).isoformat(timespec="seconds")}
+    if classification == "movable_event":
+        minimum = event.get("minimum_duration_minutes", (end - start).total_seconds() / 60)
+        if isinstance(minimum, bool) or not isinstance(minimum, (int, float)) or minimum <= 0 or minimum > (end - start).total_seconds() / 60:
+            raise argparse.ArgumentTypeError(f"{prefix}.minimum_duration_minutes must be positive and no longer than the event")
+        shorten = event.get("shorten_if_no_feasible_placement", False)
+        if not isinstance(shorten, bool):
+            raise argparse.ArgumentTypeError(f"{prefix}.shorten_if_no_feasible_placement must be boolean")
+        result["minimum_duration_minutes"] = float(minimum)
+        result["shorten_if_no_feasible_placement"] = shorten
+    return result
+
+
+def calendar_availability_windows(calendar: dict[str, Any], *, local_timezone: Any, day: str) -> list[dict[str, Any]]:
+    start = datetime.fromisoformat(calendar["day_start"])
+    end = datetime.fromisoformat(calendar["day_end"])
+    blockers = sorted(
+        (datetime.fromisoformat(event["start"]), datetime.fromisoformat(event["end"]))
+        for event in calendar["events"]
+        if event["classification"]
+        in {"fixed_blocker", "flexible_appointment", "unknown", "indoor_overlap_candidate"}
+        and datetime.fromisoformat(event["end"]) > start
+        and datetime.fromisoformat(event["start"]) < end
+    )
+    free = []
+    cursor = start
+    for block_start, block_end in blockers:
+        block_start, block_end = max(start, block_start), min(end, block_end)
+        if block_start > cursor:
+            free.append((cursor, block_start))
+        cursor = max(cursor, block_end)
+    if cursor < end:
+        free.append((cursor, end))
+    setup = timedelta(minutes=calendar["setup_buffer_minutes"])
+    cleanup = timedelta(minutes=calendar["cleanup_buffer_minutes"])
+    return [{"start": a + setup, "end": b - cleanup, "time_zone": str(local_timezone)}
+            for a, b in free if b - cleanup > a + setup]
+
+
+def place_movable_events(calendar: dict[str, Any], *, sessions: list[dict[str, Any]], local_timezone: Any, day: str) -> dict[str, Any]:
+    movable_events = [event for event in calendar["events"] if event["classification"] == "movable_event"]
+    if not movable_events:
+        return {"status": "no_movable_events", "placements": []}
+    day_start, day_end = datetime.fromisoformat(calendar["day_start"]), datetime.fromisoformat(calendar["day_end"])
+    occupied = [
+        (datetime.fromisoformat(event["start"]), datetime.fromisoformat(event["end"]))
+        for event in calendar["events"]
+        if event["classification"] in {"fixed_blocker", "flexible_appointment", "unknown"}
+    ]
+    occupied += [(datetime.fromisoformat(s["start"]), datetime.fromisoformat(s["end"])) for s in sessions if s.get("start") and s.get("end")]
+    placements = []
+    for movable in sorted(movable_events, key=lambda item: item["start"]):
+        original, minimum = (datetime.fromisoformat(movable["end"]) - datetime.fromisoformat(movable["start"])), timedelta(minutes=movable["minimum_duration_minutes"])
+        candidates = [original.total_seconds() / 60]
+        if movable["shorten_if_no_feasible_placement"] and minimum < original:
+            candidates.append(minimum.total_seconds() / 60)
+        placed = None
+        for minutes in candidates:
+            duration = timedelta(minutes=minutes)
+            starts = [datetime.fromisoformat(movable["start"]), day_start] + [b for _, b in occupied]
+            for candidate in sorted(set(starts), key=lambda t: (abs((t - datetime.fromisoformat(movable["start"])).total_seconds()), t)):
+                finish = candidate + duration
+                if candidate < day_start or finish > day_end or any(candidate < b and finish > a for a, b in occupied):
+                    continue
+                placed = {"subject": movable["subject"], "start": candidate.isoformat(timespec="seconds"), "end": finish.isoformat(timespec="seconds"), "duration_minutes": minutes, "shortened": minutes < original.total_seconds() / 60}
+                break
+            if placed:
+                break
+        if not placed:
+            placements.append({"subject": movable["subject"], "status": "unplaced", "reason": "no_feasible_placement"})
+        else:
+            occupied.append((datetime.fromisoformat(placed["start"]), datetime.fromisoformat(placed["end"])))
+            placements.append({"status": "placed", **placed})
+    return {"status": "placed" if all(item["status"] == "placed" for item in placements) else "conflict", "placements": placements}
 
 
 def planning_context_instant(
@@ -5259,6 +5413,7 @@ def build_llm_context(
                 calendar_context,
                 planned_at=planned_at,
                 available_windows=available_windows,
+                sessions=(decision.get("target_resolution") or {}).get("split", {}).get("sessions") or [],
             ),
         },
         "same_day_activity_context": same_day_activity,
@@ -5318,18 +5473,39 @@ def calendar_context_with_slack(
     *,
     planned_at: datetime,
     available_windows: list[dict[str, datetime]],
+    sessions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     result = dict(calendar_context)
-    window = current_available_window(planned_at, available_windows)
-    if window is None:
+    session_ends = [
+        datetime.fromisoformat(session["end"])
+        for session in sessions or []
+        if session.get("end")
+    ]
+    if not session_ends:
         result["cleanup_ends_at"] = None
         result["practical_stop_slack_minutes"] = None
         result["hard_stop_slack_minutes"] = None
         return result
-    cleanup_end = window["end"] + timedelta(
+    cleanup_end = max(session_ends) + timedelta(
         minutes=float(calendar_context.get("cleanup_buffer_minutes") or 0)
     )
     result["cleanup_ends_at"] = cleanup_end.isoformat(timespec="seconds")
+    if not result.get("hard_stop"):
+        next_fixed = min(
+            (
+                event
+                for event in calendar_context.get("events") or []
+                if event["classification"] == "fixed_blocker"
+                and datetime.fromisoformat(event["start"]) >= cleanup_end
+            ),
+            key=lambda event: event["start"],
+            default=None,
+        )
+        if next_fixed:
+            result["hard_stop"] = {
+                "subject": next_fixed["subject"],
+                "at": next_fixed["start"],
+            }
     for field, output_field in (
         ("practical_stop", "practical_stop_slack_minutes"),
         ("hard_stop", "hard_stop_slack_minutes"),
