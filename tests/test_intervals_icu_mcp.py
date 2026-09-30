@@ -72,7 +72,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         path.write_bytes(b"activity-file")
         return path
 
-    def test_advertises_exactly_twenty_five_tools(self):
+    def test_advertises_expected_tools(self):
         self.assertEqual(
             [tool["name"] for tool in self.service().list_tools()],
             [
@@ -86,8 +86,100 @@ class IntervalsIcuMcpTests(unittest.TestCase):
                 "list_activity_messages", "get_training_plan", "get_athlete_summary",
                 "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
+                "get_activity_intervals", "update_activity_intervals",
             ],
         )
+
+    def interval_service(self):
+        state = [{"id": 1, "start_index": 0, "end_index": 10, "type": "WORK"}]
+        writes = []
+        def read(**kwargs):
+            return {"icu_intervals": [dict(row) for row in state]}
+        def write(**kwargs):
+            writes.append(kwargs)
+            rows = kwargs["intervals"]
+            if kwargs["replace_all"]:
+                state.clear()
+            else:
+                state[:] = [r for r in state if r["id"] not in {v.get("id") for v in rows}]
+            state.extend(dict(row, id=row.get("id", 10 + i)) for i, row in enumerate(rows))
+            return read()
+        def streams(**kwargs):
+            path = Path(kwargs["output_path"])
+            path.write_text("\ufefftime\n" + "\n".join(str(i * 2) for i in range(21)))
+            return path
+        service = self.service(interval_getter=read, interval_updater=write, streams_downloader=streams)
+        revision = service.call_tool("get_activity_intervals", {"activity_id": "i1"})["revision"]
+        args = {"activity_id": "i1", "expected_revision": revision,
+                "intervals": [{"id": 1, "start_index": 0, "end_index": 8, "type": "WORK"}]}
+        return service, state, writes, args
+
+    def test_interval_preview_and_verified_merge(self):
+        service, state, writes, args = self.interval_service()
+        preview = service.call_tool("update_activity_intervals", args)
+        self.assertEqual(preview["before"][0]["end_index"], 10)
+        self.assertEqual(preview["after"][0]["end_index"], 8)
+        self.assertFalse(writes)
+        args["intervals"].append({"start_index": 10, "end_index": 20, "type": "RECOVERY"})
+        result = service.call_tool("update_activity_intervals", dict(args, dry_run=False))
+        self.assertTrue(result["verified"])
+        self.assertFalse(writes[0]["replace_all"])
+        self.assertEqual(len(result["after"]), 2)
+
+    def test_interval_conflict_blocks_write(self):
+        service, state, writes, args = self.interval_service()
+        state[0]["end_index"] = 11
+        with self.assertRaises(MCP.ToolFailure) as error:
+            service.call_tool("update_activity_intervals", dict(args, dry_run=False))
+        self.assertEqual(error.exception.code, "revision_conflict")
+        self.assertFalse(writes)
+
+    def test_interval_validation_blocks_writes(self):
+        for row in [{"start_index": -1, "end_index": 8, "type": "WORK"},
+                    {"start_index": 0, "end_index": 100, "type": "WORK"},
+                    {"start_index": 0, "end_index": 0, "type": "WORK"},
+                    {"start_index": True, "end_index": 8, "type": "WORK"},
+                    {"id": 99, "start_index": 0, "end_index": 8, "type": "WORK"},
+                    {"start_index": 0, "end_index": 8, "type": "OTHER"}]:
+            with self.subTest(row=row):
+                service, state, writes, args = self.interval_service()
+                with self.assertRaises(MCP.ToolFailure):
+                    service.call_tool("update_activity_intervals", dict(args, intervals=[row], dry_run=False, replace_all=True))
+                self.assertFalse(writes)
+
+    def test_interval_replace_is_explicit_and_readback_verified(self):
+        service, state, writes, args = self.interval_service()
+        args["intervals"] = [{"start_index": 0, "end_index": 20, "type": "WORK"}]
+        with self.assertRaises(MCP.ToolFailure):
+            service.call_tool("update_activity_intervals", args)
+        result = service.call_tool("update_activity_intervals", dict(args, replace_all=True, dry_run=False))
+        self.assertTrue(result["verified"])
+        self.assertTrue(writes[0]["replace_all"])
+        service, state, writes, args = self.interval_service()
+        service._interval_updater = lambda **kwargs: {}
+        with self.assertRaises(MCP.ToolFailure) as error:
+            service.call_tool("update_activity_intervals", dict(args, dry_run=False))
+        self.assertEqual(error.exception.code, "verification_error")
+
+    def test_interval_transport_derives_recovery_from_gaps(self):
+        old = {"id": 1, "start_index": 0, "end_index": 10, "type": "WORK", "label": "keep"}
+        new = {"start_index": 20, "end_index": 30, "type": "WORK"}
+        pause = {"start_index": 10, "end_index": 20, "type": "RECOVERY"}
+        with mock.patch.object(API, "_request_json", return_value={"icu_intervals": [old]}) as request:
+            API.update_activity_intervals(activity_id="i1", intervals=[new, pause], api_key="secret")
+            self.assertEqual(request.call_args.kwargs["json_body"], [old, new])
+            API.update_activity_intervals(activity_id="i1", intervals=[new, pause], replace_all=True, api_key="secret")
+            self.assertEqual(request.call_args.kwargs["json_body"], [new])
+
+    def test_interval_api_transport(self):
+        with mock.patch.object(API, "_request_json", return_value={"icu_intervals": []}) as request:
+            API.get_activity_intervals(activity_id="i1", api_key="secret")
+            self.assertEqual(request.call_args.args[0], "/activity/i1/intervals")
+            API.update_activity_intervals(activity_id="i1", intervals=[], api_key="secret")
+            self.assertEqual(request.call_args.kwargs["params"], {"all": "true"})
+            self.assertEqual(request.call_args.kwargs["method"], "PUT")
+            API.update_activity_intervals(activity_id="i1", intervals=[], replace_all=True, api_key="secret")
+            self.assertEqual(request.call_args.kwargs["params"], {"all": "true"})
 
     def test_list_athletes_returns_compact_accessible_rows(self):
         result = self.service().call_tool("list_athletes", {})
@@ -1402,6 +1494,7 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
                 "list_activity_messages", "get_training_plan", "get_athlete_summary",
                 "list_wellness", "update_wellness",
                 "list_events", "create_event", "update_event", "delete_event",
+                "get_activity_intervals", "update_activity_intervals",
             ],
         )
 
