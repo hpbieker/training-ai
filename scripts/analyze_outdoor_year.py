@@ -16,8 +16,8 @@ from analysis import ARTIFACTS_DIR, load_activity_metadata, load_streams_csv, va
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Analyze saved outdoor rides for a year.")
-    parser.add_argument("--year", type=int, default=2026)
-    parser.add_argument("--vt1-watts", type=float, default=210.0)
+    parser.add_argument("--year", type=int, required=True, help="Calendar year to analyze")
+    parser.add_argument("--vt1-watts", type=float, required=True, help="VT1 anchor supplied by the caller")
     parser.add_argument("--output-dir", default="outputs/activity-inspect")
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--timeout", type=int, default=240, help="Seconds per activity inspection")
