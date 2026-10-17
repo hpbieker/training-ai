@@ -1,5 +1,39 @@
 # Activity Analysis
 
+## Reference Roles And Reading Order
+
+This file directs activity selection, inspection, interpretation, and plan-role
+classification. Use the following reading order for both single-session
+analysis and activity comparisons:
+
+1. Start here to identify the actual session structure and available evidence.
+2. Read the relevant specialist references below before interpreting their
+   measurements or drawing conclusions about the corresponding session demands.
+3. Read [physiological-response-synthesis.md](physiological-response-synthesis.md)
+   before forming an integrated physiological verdict. It owns expected
+   domain responses, evidence dependence, competing explanations, and the final
+   synthesis and reporting contract. Apply it to the qualified specialist
+   findings rather than presenting separate sensor verdicts as the conclusion.
+
+| When relevant | Reference and responsibility |
+| --- | --- |
+| BR, tidal volume, or minute ventilation | [respiration.md](respiration.md): respiratory measurement meaning, quality, and interpretation limits |
+| SmO2 or THb | [muscle-oxygen.md](muscle-oxygen.md): local oxygenation measurement context, quality, and interpretation limits |
+| CORE, estimated core or skin temperature, or Heat Strain Index | [thermal-sensing.md](thermal-sensing.md): thermal measurement quality and evidence required for thermal interpretations |
+| Long rides, late-session work, early-versus-late comparisons, severe intervals, material cadence or power variability, heat, or fueling context | [cycling-endurance-physiology.md](cycling-endurance-physiology.md): session demands, durability, and cross-sensor context |
+
+Read only the specialist references relevant to the question and available
+evidence. Missing optional sensors do not require reading their references.
+For a narrow mechanical question, use the relevant parts of this file without
+expanding it into an integrated physiological assessment.
+
+[sources.md](sources.md) documents the shared research basis and limits for
+respiration, muscle oxygen, and physiological synthesis. Consult its relevant
+topic when checking a claim's support, applicability, or uncertainty. Thermal
+and endurance references carry their own source sections. Follow those source
+links when the question requires checking the underlying research; source
+registries supplement the analysis workflow rather than defining another one.
+
 ## Selection And Inspection
 
 - Resolve and verify the exact source activity; treat “latest” as a discovery

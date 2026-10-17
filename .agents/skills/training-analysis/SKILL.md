@@ -35,12 +35,18 @@ daily recommendation.
 
 Read [references/activity-analysis.md](references/activity-analysis.md) to
 assess a completed session's execution, physiological response, and meaning.
+Follow its [reference reading order](references/activity-analysis.md#reference-roles-and-reading-order):
+this entrypoint selects the workflow, the activity reference directs the
+analysis, specialist references qualify the measurements, and the synthesis
+reference integrates the findings.
 
 ### Activity comparison
 
 Read [references/activity-analysis.md](references/activity-analysis.md) for
 each selected activity. Establish which sessions or work blocks are comparable,
-then assess the observed differences and their uncertainty.
+then assess the observed differences and their uncertainty. Use the same
+reference reading order, selecting the specialist guidance relevant to the
+measurements and session structures being compared.
 
 ### Molecular stimulus analysis
 
