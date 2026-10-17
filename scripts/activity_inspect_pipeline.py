@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,7 @@ ANALYSIS_OPTION_FIELDS = {
     "mode",
     "vt1_watts",
     "vt2_watts",
+    "prescribed_watts",
     "target",
     "threshold",
     "tolerance",
@@ -75,7 +77,7 @@ def parse_analysis_options_json(raw: str) -> dict[str, Any]:
     if payload.get("debug_beta") and payload.get("shape", "brief") != "brief":
         raise argparse.ArgumentTypeError("debug_beta requires brief shape")
     numeric_fields = {
-        "vt1_watts", "vt2_watts", "target", "threshold", "tolerance",
+        "vt1_watts", "vt2_watts", "prescribed_watts", "target", "threshold", "tolerance",
         "auto_min_power", "auto_tolerance",
     }
     for field in numeric_fields & payload.keys():
@@ -84,6 +86,10 @@ def parse_analysis_options_json(raw: str) -> dict[str, Any]:
             raise argparse.ArgumentTypeError(
                 f"analysis-option {field} must be a non-negative number"
             )
+    if "prescribed_watts" in payload:
+        prescribed = payload["prescribed_watts"]
+        if not math.isfinite(prescribed) or prescribed <= 0:
+            raise argparse.ArgumentTypeError("prescribed_watts must be finite and positive")
     boolean_fields = {
         "auto_blocks", "steady_vt1", "no_auto_outdoor_vt1",
         "no_auto_indoor_vt1", "include_intervals", "debug_beta",
@@ -229,6 +235,7 @@ def build_inspect_args(options: dict[str, Any]) -> list[str]:
     for flag, value in (
         ("--vt1-watts", options.get("vt1_watts")),
         ("--vt2-watts", options.get("vt2_watts")),
+        ("--prescribed-watts", options.get("prescribed_watts")),
         ("--target", options.get("target")),
         ("--threshold", options.get("threshold")),
         ("--tolerance", options.get("tolerance")),

@@ -14,6 +14,31 @@ def ride(step=1, duration=1200):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_prescribed_power_is_independent_of_vt2_anchor(self):
+        from activity_inspect import vt2_quality
+        rows = ride()
+        for row in rows:
+            row['watts'] = '280'
+        block = summarize_block(rows, start_index=0, end_index=len(rows), label='work')
+        args = ({'name': 'VT2 test'}, rows, [block], [])
+        explicit = vt2_quality(*args, vt2_watts=295, prescribed_watts=280)
+        assessed = explicit['blocks'][0]
+        self.assertEqual(explicit['anchor_watts'], 295)
+        self.assertEqual(assessed['target_watts'], 280)
+        self.assertEqual(assessed['target_source'], 'explicit_prescription')
+        self.assertEqual(assessed['execution_score'], 100)
+        self.assertEqual(assessed['power_control']['avg_delta_w'], 0)
+        unknown = vt2_quality(*args, vt2_watts=295)
+        unassessed = unknown['blocks'][0]
+        self.assertEqual(unassessed['verdict'], 'target_attainment_unresolved')
+        self.assertNotIn('execution_score', unassessed)
+        self.assertNotIn('target_watts', unassessed)
+        self.assertEqual(unassessed['power_control']['power_sd_w'], 0)
+        self.assertEqual(unknown['session_quality']['target_attainment'], 'unresolved')
+        self.assertNotIn('worst_execution_block', unknown['session_quality'])
+        off_target = vt2_quality(*args, vt2_watts=295, prescribed_watts=310)['blocks'][0]
+        self.assertIn('target_mismatch', off_target['limiter_hints'])
+
     def test_power_normalization_is_limited_to_descriptive_response_fields(self):
         rows = ride()
         changes = {

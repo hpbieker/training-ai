@@ -15,6 +15,15 @@ from activity_inspect_pipeline import (
 
 
 class ActivityInspectPipelineArgumentsTests(unittest.TestCase):
+    def test_prescription_is_forwarded_separately_from_anchor(self):
+        options = parse_analysis_options_json('{"vt2_watts":295,"prescribed_watts":280}')
+        args = build_inspect_args(options)
+        self.assertEqual(args[args.index('--vt2-watts') + 1], '295')
+        self.assertEqual(args[args.index('--prescribed-watts') + 1], '280')
+        for value in ['0', '-1', 'NaN', 'Infinity', 'true']:
+            with self.assertRaises(argparse.ArgumentTypeError):
+                parse_analysis_options_json('{"prescribed_watts":' + value + '}')
+
     def test_beta_debug_is_opt_in_and_requires_brief(self):
         normal = parse_analysis_options_json('{}')
         debug = parse_analysis_options_json('{"debug_beta":true}')

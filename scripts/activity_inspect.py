@@ -126,6 +126,10 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--prescribed-watts", type=float,
+        help="Explicit common power target for assessed VT2 blocks; independent of the VT2 anchor",
+    )
+    parser.add_argument(
         "--fields",
         default=",".join(DEFAULT_FIELDS),
         help="Comma-separated stream fields to summarize",
@@ -169,6 +173,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.brief and args.compact:
         parser.error("--brief and --compact are alternative output shapes; choose one")
+    if args.prescribed_watts is not None and not valid_vt2_anchor(args.prescribed_watts):
+        parser.error("--prescribed-watts must be finite and positive")
     if args.debug_beta and not args.brief:
         parser.error("--debug-beta requires --brief")
     try:
@@ -309,6 +315,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
         result["_indoor_vt1_disabled"] = args.no_auto_indoor_vt1
         result["_vt1_watts"] = args.vt1_watts
         result["_vt2_watts"] = args.vt2_watts
+        result["_prescribed_watts"] = getattr(args, "prescribed_watts", None)
         result = brief_result(result, debug_beta=getattr(args, "debug_beta", False))
     elif args.compact:
         result = compact_result(result, fields)
@@ -580,6 +587,7 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
         work_blocks,
         recoveries,
         vt2_watts=result.get("_vt2_watts"),
+        prescribed_watts=result.get("_prescribed_watts"),
     )
     if vt2_quality_result:
         brief["vt2_quality"] = vt2_quality_result
@@ -829,9 +837,12 @@ def vt2_quality(
     recoveries: list[dict[str, Any]],
     *,
     vt2_watts: Any,
+    prescribed_watts: float | None = None,
 ) -> dict[str, Any] | None:
     """Return VT2/threshold-control diagnostics without touching VT1 scoring."""
 
+    if prescribed_watts is not None and not valid_vt2_anchor(prescribed_watts):
+        raise ValueError("Prescribed power must be finite and positive")
     name = str(activity.get("name") or "").lower().replace("₂", "2")
     intended_session = "vt2" if "vt2" in name else "unspecified"
     if not valid_vt2_anchor(vt2_watts):
@@ -852,7 +863,7 @@ def vt2_quality(
             rows,
             block,
             index=index,
-            target_watts=float(vt2_watts),
+            target_watts=prescribed_watts,
             anchor_watts=vt2_watts,
         )
         for index, block in candidates
@@ -934,7 +945,10 @@ def vt2_session_quality(
             "power_fade_pct": rounded(power_fade_pct, digits=1),
             "power_change_context": "descriptive first-to-last block means; targets and durations may differ",
             "execution_score": minimum_numeric(comparable, "execution_score"),
-            "worst_execution_block": {"n": worst.get("n"), "execution_score": worst.get("execution_score")},
+            "worst_execution_block": ({"n": worst.get("n"), "execution_score": worst.get("execution_score")}
+                                      if worst.get("execution_score") is not None else None),
+            "target_attainment": ("assessed" if all(b.get("execution_score") is not None for b in blocks)
+                                  else "unresolved"),
             "physiological_comparison": "not_automatically_inferred_across_blocks",
             "limiter_hints": limiter_hints,
         }
@@ -1045,7 +1059,9 @@ def vt2_block_quality(
             "label": brief_block_label(block, index=index),
             "duration_s": duration_s,
             "target_watts": rounded(target_watts, digits=0),
-            "target_source": "vt2_anchor" if isinstance(anchor_watts, (int, float)) else "block_average",
+            "target_source": "explicit_prescription" if target_watts is not None else "unavailable",
+            "target_attainment": ("assessed" if stability.get("execution_score") is not None
+                                  else "unresolved"),
             "watts_avg": rounded(watts_avg, digits=0),
             "watts_max": watts_max,
             "execution_score": execution_score,
@@ -1091,11 +1107,22 @@ def vt2_power_stability(
     if not stats or not clock:
         return {}
     avg_w = stats["avg"]
-    target = target_watts if isinstance(target_watts, (int, float)) else avg_w
     pairs = [(value(row, "watts"), w) for row, w in zip(rows, clock[1]) if value(row, "watts") is not None]
     valid_duration = sum(w for _, w in pairs)
     def proportion(predicate):
         return 100 * sum(w for watts, w in pairs if predicate(watts)) / valid_duration
+    variance = sum(w * (watts - avg_w) ** 2 for watts, w in pairs) / valid_duration
+    descriptive = {
+        "avg_w": rounded(avg_w, digits=0),
+        "power_sd_w": rounded(math.sqrt(variance), digits=1),
+        "power_cv_pct": rounded(math.sqrt(variance) / avg_w * 100, digits=1) if avg_w else None,
+    }
+    if target_watts is None:
+        return drop_none({**descriptive, "target_attainment": "unresolved",
+                          "reason": "missing_prescribed_power", "limiter_hints": []})
+    if not valid_vt2_anchor(target_watts):
+        raise ValueError("Prescribed power must be finite and positive")
+    target = target_watts
     within_10 = proportion(lambda w: abs(w-target) <= 10)
     within_20 = proportion(lambda w: abs(w-target) <= 20)
     below_20 = proportion(lambda w: w < target-20)
@@ -1116,7 +1143,8 @@ def vt2_power_stability(
         limiter_hints.append("variable_power")
     return drop_none(
         {
-            "avg_w": rounded(avg_w, digits=0),
+            **descriptive,
+            "target_attainment": "assessed",
             "target_watts": rounded(target, digits=0),
             "avg_delta_w": rounded(avg_delta, digits=0),
             "pct_within_target_10w": rounded(within_10, digits=1),
@@ -1210,6 +1238,8 @@ def thermal_evidence_assessment(
 
 
 def vt2_execution_verdict(stability: dict[str, Any]) -> str:
+    if stability.get("reason") == "missing_prescribed_power":
+        return "target_attainment_unresolved"
     score = stability.get("execution_score")
     if not isinstance(score, (int, float)):
         return "execution_unavailable"
