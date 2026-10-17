@@ -218,7 +218,7 @@ def delete_activity_media(
             ),
             keep_blank_values=True,
         )
-        pairs.append((f"photos[{wanted_id}][_destroy]", "true"))
+        pairs.append((f"photos[{activity_metadata.media_form_identifier(row)}][_destroy]", "true"))
         session.request(
             f"https://www.strava.com/activities/{activity_id}",
             method="POST",

@@ -142,7 +142,8 @@ class StravaMcpTests(unittest.TestCase):
         source.write_bytes(b"test-image")
         before = {"athleteId": 7, "media": []}
         after = {"athleteId": 7, "media": [{"uuid": "uploaded-uuid", "media_type": 1, "caption": "Ride"}]}
-        with mock.patch.object(mcp_server.activities, "_fetch_edit_media", side_effect=[('<meta name="csrf" content="token">', before), ("", after)]), mock.patch.object(mcp_server.activities, "_upload_media_blob", return_value="uploaded-uuid"), mock.patch.object(api.StravaSession, "request", return_value=(b"", 200, "https://www.strava.com/activities/12")):
+        edit_html = '<meta name="csrf" content="token"><div data-react-class=\'MediaUploader\' data-react-props=\'{"media":[]}\'></div>'
+        with mock.patch.object(mcp_server.activities, "_fetch_edit_media", side_effect=[(edit_html, before), ("", after)]), mock.patch.object(mcp_server.activities.activity_metadata, "fetch_activity", return_value={"selected_tag_type": "Workout"}), mock.patch.object(mcp_server.activities, "_upload_media_blob", return_value="uploaded-uuid"), mock.patch.object(api.StravaSession, "request", return_value=(b"", 200, "https://www.strava.com/activities/12")):
             result = self.service.call_tool("upload_activity_media", {"activity_id": "12", "file_path": str(source), "caption": "Ride", "confirm": True})
         self.assertTrue(result["verified"])
         self.assertEqual(result["uploaded"]["media_id"], "uploaded-uuid")

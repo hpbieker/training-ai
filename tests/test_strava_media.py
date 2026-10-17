@@ -92,6 +92,7 @@ class StravaMediaTests(unittest.TestCase):
             unrelated = {"id": 98, "unique_id": "someone-else", "media_type": 1}
             with (
                 mock.patch.object(service, "StravaSession"),
+                mock.patch.object(service.activity_metadata, "fetch_activity", return_value={"selected_tag_type": "Workout"}),
                 mock.patch.object(service, "_upload_media_blob", return_value="upload-uuid") as upload,
                 mock.patch.object(service.activity_metadata, "build_form_body", return_value="_method=put"),
                 mock.patch.object(service, "_fetch_edit_media", side_effect=[

@@ -21,6 +21,11 @@ Keep the edit-page CSRF token and `_strava4_session` cookie from the same live
 session. Do not split the edit GET and form POST across unrelated cookie state;
 a mismatch can redirect to the dashboard without applying the change.
 
+Existing media must be submitted as `photos[unique_id]` (or its UUID fallback),
+never keyed by the numeric attachment ID. Metadata updates must refuse unknown
+media state and verify that media UUIDs, captions, order, and types survive the
+write. A successful metadata readback alone does not confirm media preservation.
+
 ## Activity Media
 
 List the exact activity's media before downloading or changing it. Download

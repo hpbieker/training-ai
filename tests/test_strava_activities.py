@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 import urllib.parse
+from unittest import mock
 from pathlib import Path
 
 
@@ -41,10 +42,45 @@ EDIT_HTML = """
   </select>
 </form>
 <div data-react-class='ActivityTagInput' data-react-props='{&quot;trainerOption&quot;:{&quot;selected&quot;:true}}'></div>
+<div data-react-class='MediaUploader' data-react-props='{&quot;media&quot;:[]}'></div>
 """
 
 
 class StravaActivityTests(unittest.TestCase):
+    def test_metadata_form_preserves_media_by_uuid_not_numeric_id(self) -> None:
+        media = {"media": [{"id": 12592657117, "unique_id": "photo-uuid", "media_type": 1, "caption": "Ride"}]}
+        page = EDIT_HTML.replace('{&quot;media&quot;:[]}', json.dumps(media).replace('"', '&quot;'))
+        body = metadata.build_form_body(
+            page, activity_name=None, tag=None, tag_supplied=False,
+            current_tag="Workout", trainer=None, visibility="everyone",
+            start_time_hidden=None, bike_id=None,
+        )
+        pairs = urllib.parse.parse_qs(body, keep_blank_values=True)
+        self.assertEqual(pairs["photos[photo-uuid][caption]"], ["Ride"])
+        self.assertFalse(any("12592657117" in key for key in pairs))
+
+    def test_unknown_media_state_blocks_metadata_write(self) -> None:
+        with self.assertRaisesRegex(metadata.StravaError, "media state"):
+            metadata.media_form_pairs("<form></form>")
+        with self.assertRaisesRegex(metadata.StravaError, "UUID"):
+            metadata.media_form_pairs("<div data-react-class='MediaUploader' data-react-props='{\"media\":[{\"id\":44}]}'></div>")
+
+    def test_metadata_update_rejects_lost_media_even_when_metadata_matches(self) -> None:
+        before = EDIT_HTML.replace('{&quot;media&quot;:[]}', '{&quot;media&quot;:[{&quot;id&quot;:44,&quot;unique_id&quot;:&quot;photo-uuid&quot;}]}')
+        with (
+            mock.patch.object(metadata, "fetch_edit", side_effect=[before, EDIT_HTML]),
+            mock.patch.object(metadata, "fetch_activity", return_value={"visibility": "everyone"}),
+            mock.patch.object(metadata, "session", return_value=mock.Mock()) as session,
+            mock.patch.object(metadata.time, "monotonic", side_effect=[0, 6]),
+        ):
+            with self.assertRaisesRegex(metadata.StravaError, "preserved_media"):
+                metadata.update_activity(
+                    "12", activity_name=None, tag=None, tag_supplied=False,
+                    trainer=None, visibility="everyone", start_time_hidden=None,
+                    bike_id=None, bike_name=None,
+                )
+            session.return_value.request.assert_called_once()
+
     def test_safari_bootstrap_exports_private_strava_cookie_header(self) -> None:
         fake = """#!/bin/sh
 jar=''

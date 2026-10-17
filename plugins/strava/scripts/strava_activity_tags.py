@@ -122,13 +122,23 @@ def tag_props(edit_html: str) -> dict[str, Any]:
     return json.loads(html.unescape(match.group(1)))
 
 
+def media_form_identifier(item: dict[str, Any]) -> str:
+    # Strava's photos/photo_fields template keys the form by unique_id,
+    # not the numeric attachment ID returned by media listing.
+    for field in ("unique_id", "uuid"):
+        value = item.get(field)
+        if isinstance(value, str) and value.strip():
+            return value
+    raise StravaError("Strava media lacks its form UUID; refusing a potentially destructive write.")
+
+
 def media_form_pairs(edit_html: str) -> list[tuple[str, str]]:
     """Serialize the existing MediaUploader items into Strava's edit form."""
     match = re.search(
         r"data-react-class='MediaUploader' data-react-props='([^']*)'", edit_html
     )
     if not match:
-        return []
+        raise StravaError("Strava activity edit page did not expose media state; refusing a write.")
     try:
         props = json.loads(html.unescape(match.group(1)))
     except json.JSONDecodeError as exc:
@@ -141,16 +151,7 @@ def media_form_pairs(edit_html: str) -> list[tuple[str, str]]:
     for rank, item in enumerate(props["media"]):
         if not isinstance(item, dict):
             raise StravaError("Strava activity edit page returned an invalid media item.")
-        media_id = next(
-            (
-                str(item[field])
-                for field in ("id", "uuid", "media_id")
-                if item.get(field) is not None
-            ),
-            None,
-        )
-        if not media_id:
-            raise StravaError("Strava activity edit page returned media without an ID.")
+        media_id = media_form_identifier(item)
         raw_type = item.get("media_type", item.get("type", 1))
         media_type = str(raw_type)
         if not media_type.isdigit():
@@ -294,6 +295,7 @@ def update_activity(
     mute: bool | None = None,
 ) -> dict[str, Any]:
     edit_html = fetch_edit(activity_id)
+    expected_media = media_form_pairs(edit_html)
     before = fetch_activity(activity_id)
     resolved_bike_id = resolve_bike_id(edit_html, bike_id, bike_name)
     body = build_form_body(
@@ -358,9 +360,11 @@ def update_activity(
             "bike_id": str(edit.get("bike_id")) if edit.get("bike_id") is not None else None,
         }
         last_unverified = [field for field, value in expected.items() if actual.get(field) != value]
+        if media_form_pairs(edit_html) != expected_media:
+            last_unverified.append("preserved_media")
         if not last_unverified:
             activity["_edit_html"] = edit_html
-            activity["_verified_fields"] = sorted(expected)
+            activity["_verified_fields"] = sorted([*expected, "preserved_media"])
             return activity
         if time.monotonic() >= deadline:
             fields = ", ".join(last_unverified)
