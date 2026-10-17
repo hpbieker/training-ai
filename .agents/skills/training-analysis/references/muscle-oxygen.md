@@ -365,20 +365,32 @@ Use cautious language:
 
 ## Reporting Contract
 
-When Moxy data materially influence an activity analysis, report:
+When these data materially influence an activity analysis, prepare the
+following findings for the
+[integrated synthesis](physiological-response-synthesis.md#synthesize-the-verdict).
+This is the shared handoff structure, not a requirement for six separate
+sections in the user-facing answer. Report only decisive details and relevant
+limitations there; leave the overall session verdict and training consequence
+to the synthesis.
 
-1. measurement site and setup when known;
-2. signal coverage and important quality limitations;
-3. signal representation, side handling, and any normalization;
-4. the matched work or recovery windows being compared;
-5. SmO2 pattern and the exact recovery-kinetics metric;
-6. THb trend only when the setup is stable and the trend is interpretable;
-7. alignment or disagreement with power, HR, respiration, temperature, and
-   feel/RPE;
-8. threshold provenance or model-validation level when either affects the
-   interpretation;
-9. confidence and the main unresolved confounders, including relevant athlete
-   phenotype differences.
+1. **Data quality and context:** measurement site and setup when known,
+   coverage, important limitations, signal representation, side handling, and
+   any normalization.
+2. **Decisive observation and window:** identify the matched work or recovery
+   windows. Describe the SmO2 pattern and the exact recovery-kinetics metric
+   when used. Include THb trends only with stable setup and interpretable data.
+3. **Expected response:** relate the observation to the actual intensity domain,
+   work-recovery structure, and elapsed time, using the domain guidance above.
+4. **Supported interpretation:** explain what the local pattern supports and
+   its alignment or disagreement with power, HR, respiration, temperature, and
+   feel/RPE. Preserve threshold provenance or model-validation level when
+   relevant, and keep observation separate from a proposed cause.
+5. **Uncertainty:** state confidence, unresolved confounders including relevant
+   athlete phenotype differences, and which missing context could change the
+   interpretation.
+6. **Measurement dependence:** SmO2 and THb share the local optical measurement
+   chain; they are complementary observations, not independent sensors. Retain
+   the site-specific scope when comparing with systemic measurements.
 
 Keep observed local response separate from modeled stimulus, total training
 load, readiness, and the final progression decision.

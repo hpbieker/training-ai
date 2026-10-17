@@ -118,17 +118,30 @@ threshold.
 
 ## Reporting Contract
 
-When thermal data materially influence an activity analysis, report:
+When these data materially influence an activity analysis, prepare the
+following findings for the
+[integrated synthesis](physiological-response-synthesis.md#synthesize-the-verdict).
+This is the shared handoff structure, not a requirement for six separate
+sections in the user-facing answer. Report only decisive details and relevant
+limitations there; leave the overall session verdict and training consequence
+to the synthesis.
 
-1. device and setup when known;
-2. coverage and important quality limitations;
-3. environment and cooling context;
-4. the within-session trend or matched blocks used;
-5. alignment or disagreement with power, heart rate, respiration, skin
-   temperature, and athlete report;
-6. the evidence grade: `thermal_context_present`, `thermal_cost_supported`, or
-   `heat_limited`;
-7. confidence and the main unresolved confounders.
+1. **Data quality and context:** device and setup when known, coverage,
+   important limitations, environment, and cooling context.
+2. **Decisive observation and window:** identify the within-session trend or
+   matched blocks used and describe the thermal observation with its timing.
+3. **Expected response:** relate the observation to workload, elapsed exposure,
+   environment, and cooling, accounting for the device's response limitations.
+4. **Supported interpretation:** explain alignment or disagreement with power,
+   heart rate, respiration, skin temperature, and athlete report. Use the
+   applicable evidence grade: `thermal_context_present`,
+   `thermal_cost_supported`, or `heat_limited`; leave the grade unresolved when
+   its criteria are not met. Keep observation separate from a proposed cause.
+5. **Uncertainty:** state confidence, unresolved confounders, and which missing
+   context could change the interpretation.
+6. **Measurement dependence:** disclose relevant shared inputs or processing
+   dependence, including paired HR in CORE processing. Do not treat derived
+   thermal indices as independent confirmation of their inputs.
 
 Keep thermal observations separate from mechanical execution, modeled
 stimulus, total training load, hydration, and the final progression decision.

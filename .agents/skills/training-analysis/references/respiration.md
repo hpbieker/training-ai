@@ -366,15 +366,30 @@ Use cautious language:
 
 ## Reporting Contract
 
-When Tyme Wear data materially influence an activity analysis, report:
+When these data materially influence an activity analysis, prepare the
+following findings for the
+[integrated synthesis](physiological-response-synthesis.md#synthesize-the-verdict).
+This is the shared handoff structure, not a requirement for six separate
+sections in the user-facing answer. Report only decisive details and relevant
+limitations there; leave the overall session verdict and training consequence
+to the synthesis.
 
-1. device and fit/placement context when known;
-2. signal coverage, export scaling, and important quality limitations;
-3. the matched work or recovery windows being compared;
-4. BR, VT, and VE separately, including what drove a change in VE;
-5. whether values are source-reported estimates or verified physical units;
-6. alignment or disagreement with power, HR, SmO2, temperature, and feel/RPE;
-7. confidence and the main unresolved confounders.
+1. **Data quality and context:** device and fit/placement when known, coverage,
+   export scaling, and important limitations. State whether values are
+   source-reported estimates or verified physical units.
+2. **Decisive observation and window:** identify the work or recovery windows
+   being compared. Describe BR, VT, and VE separately and what drove a change
+   in VE.
+3. **Expected response:** relate the observation to the actual intensity domain,
+   work-recovery structure, and elapsed time, using the domain guidance above.
+4. **Supported interpretation:** explain what the respiratory pattern supports
+   and its alignment or disagreement with power, HR, SmO2, temperature, and
+   feel/RPE. Keep observation separate from a proposed cause.
+5. **Uncertainty:** state confidence, unresolved confounders, and which missing
+   context could change the interpretation.
+6. **Measurement dependence:** BR, VT, and VE share one measurement chain;
+   agreement among them is not independent corroboration. Disclose shared
+   inputs in any derived ratios used.
 
 Keep observed breathing response separate from measured gas exchange, modeled
 stimulus, total training load, readiness, and the final progression decision.
