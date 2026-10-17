@@ -5,6 +5,29 @@ into one completed-activity interpretation. Use the device-specific references
 for measurement semantics and quality limits. Do not turn the synthesis into a
 numeric score or count correlated fields as independent evidence.
 
+This reference owns the general interpretation rules used by activity analysis
+and the specialist references. Device-specific files qualify measurements;
+this file combines their findings into the session verdict.
+
+## Keep Analysis Dimensions Separate
+
+Keep these dimensions explicit when their evidence is available:
+
+1. `mechanical_execution`: power, duration, interval structure, recoveries,
+   pacing, and target compliance;
+2. `acute_physiological_response`: heart rate, respiration, SmO2, temperature,
+   drift, and other direct within-session responses;
+3. `modeled_stimulus`: source-owned estimates such as Garmin Training Effect,
+   described as expected stimulus rather than observed adaptation;
+4. `total_cost_and_recovery`: source-specific load/recovery models, subjective
+   feel, soreness, and subsequent recovery evidence.
+
+A variable ride can be mechanically uneven yet physiologically tolerable, and
+controlled execution can still have high physiological cost. Do not let a
+modeled-stimulus label collapse these dimensions into one verdict. Use relevant
+available sensors, not power and HR alone, and check coverage and continuous
+gaps before using averages, extremes, or drift.
+
 ## Establish The Expected Response
 
 Before interpreting a physiological signal:
@@ -118,7 +141,9 @@ Preserve these dependencies:
 Increase confidence primarily when distinct evidence families align in timing
 and direction at matched work. Disagreement is information: report it and test
 measurement quality, timing, expected domain response, and alternative
-explanations before choosing a verdict.
+explanations before choosing a verdict. Do not settle disagreement by counting
+fields. Different signals may describe different aspects of the session; retain
+unresolved disagreement and limit the conclusion to what the evidence supports.
 
 ## Separate Response From Cost
 
@@ -180,6 +205,27 @@ work; passive recovery can lower the starting systemic response yet permit
 higher subsequent power. Therefore, compare intervals only when recovery
 architecture is sufficiently matched, and never use the lowest recovery HR as
 a general measure of the most complete physiological recovery.
+
+## Compare Sessions And Assess Adaptation
+
+- Identify the compared sessions or work windows. Match or disclose differences
+  in power, duration, recovery structure, elapsed time, accumulated prior work,
+  cadence, environment, fueling, sensor setup, and feel/RPE.
+- Prefer matched-work windows when power varies. HR/W, BR/W, and VE/W can
+  supplement the comparison, but inspect the underlying measurements and
+  shared denominator as described under [dependent evidence](#group-dependent-evidence).
+  Raw responses can fall while their per-watt ratios rise; neither pattern
+  alone establishes a change in physiological efficiency. Avoid interpreting
+  ratios during coasting, very low power, or workload transitions as efficiency.
+- Distinguish successful execution of one session, an observed difference
+  between sessions, and evidence of adaptation. For a single comparison,
+  describe the difference and plausible confounders. Require repeated,
+  sufficiently matched personal evidence before asserting a development trend
+  or changing a progression anchor on physiological grounds.
+- Briefly name the primary and strong secondary adaptation systems the actual
+  dose likely stimulated, and explain why. Keep this expected stimulus separate
+  from adaptation demonstrated by later performance or repeated observations.
+  Lower HR or ventilation alone does not establish a new threshold.
 
 ## Synthesize The Verdict
 

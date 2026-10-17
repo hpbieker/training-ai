@@ -199,16 +199,22 @@ Fueling is both an intervention and a confounder in cycling analysis.
 
 ## Integrated Interpretation
 
-For a long or composed cycling session:
+Use the shared
+[synthesis process](physiological-response-synthesis.md#synthesize-the-verdict)
+for the overall verdict and the
+[comparison and adaptation rules](physiological-response-synthesis.md#compare-sessions-and-assess-adaptation)
+for longitudinal conclusions and progression-anchor changes.
 
-1. Establish actual power structure, accumulated work, and timing.
-2. Identify matched early and late work windows.
-3. Verify sensor coverage and comparable setup.
-4. Describe mechanical and physiological change separately.
-5. Examine thermal and fueling context as potential contributors.
-6. Assess whether a fresh intensity boundary may have shifted during the ride.
-7. Separate observations, model outputs, and causal hypotheses.
-8. Require repeated matched evidence before changing a progression anchor.
+For a long or composed cycling session, add this endurance-specific context:
+
+- Quantify accumulated work before each compared block and identify matched
+  early and late windows.
+- Examine thermal exposure, cooling, and fueling as potential contributors to
+  late-session change, using the shared
+  [competing-mechanism rules](physiological-response-synthesis.md#explain-competing-mechanisms).
+- Assess whether fresh intensity anchors still describe the late-session
+  response. Apply the durability evidence limits above rather than inferring
+  a shifted threshold from drift alone.
 
 ## Evidence And Limits
 

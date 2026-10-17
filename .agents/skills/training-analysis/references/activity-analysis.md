@@ -78,33 +78,23 @@ python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
 
 ## Interpretation
 
-- Read
-  [physiological-response-synthesis.md](physiological-response-synthesis.md)
-  before combining heart rate or multiple physiological streams into the final
-  verdict. Establish the expected response for the actual intensity domain and
-  group dependent outputs into evidence families rather than counting fields.
-- Keep these four dimensions explicit and separate when their evidence is
-  available:
-  1. `mechanical_execution`: power, duration, interval structure, recoveries,
-     pacing, and target compliance;
-  2. `acute_physiological_response`: heart rate, respiration, SmO2, temperature,
-     drift, and other direct within-session responses;
-  3. `modeled_stimulus`: source-owned estimates such as Garmin aerobic and
-     anaerobic Training Effect, described as expected stimulus rather than
-     observed adaptation;
-  4. `total_cost_and_recovery`: source-specific load/recovery models, subjective
-     feel, soreness, and subsequent recovery evidence.
-- Report mechanical execution separately from physiological cost. A variable
-  ride can be mechanically uneven yet physiologically tolerable, and a tightly
-  controlled interval can still have excessive physiological cost. Do not let
-  a modeled-stimulus label collapse these dimensions into one verdict.
-- Briefly name the primary and strong secondary adaptation systems stimulated
-  by the actual dose, and explain why. Distinguish likely training signals from
-  adaptations proven to have occurred.
-- When power varies, prefer HR/BR/VE-per-watt drift over raw drift. Raw
-  physiology can fall while cost per watt rises.
-- Use relevant available sensors, not power and HR alone. Check data quality and
-  continuous gaps before calculating averages, extremes, or drift.
+Apply the shared interpretation rules in
+[physiological-response-synthesis.md](physiological-response-synthesis.md):
+
+- [analysis dimensions](physiological-response-synthesis.md#keep-analysis-dimensions-separate)
+  for execution, observed response, modeled stimulus, and recovery cost;
+- [dependent evidence](physiological-response-synthesis.md#group-dependent-evidence)
+  for correlated or conflicting signals;
+- [response versus cost](physiological-response-synthesis.md#separate-response-from-cost)
+  for acute responses and residual burden;
+- [competing mechanisms](physiological-response-synthesis.md#explain-competing-mechanisms)
+  for observations and possible causes;
+- [comparison and adaptation](physiological-response-synthesis.md#compare-sessions-and-assess-adaptation)
+  for matched windows, workload ratios, and claims of progress.
+
+Use the following source- and sensor-specific requirements alongside those
+shared rules:
+
 - For respiration, read [respiration.md](respiration.md). Distinguish BR, VT,
   and VE; check coverage, fit/placement context, export scaling, and arithmetic
   consistency before interpreting them. Analyze what drives VE, prefer
