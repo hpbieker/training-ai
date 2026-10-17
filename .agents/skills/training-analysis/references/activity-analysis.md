@@ -76,8 +76,32 @@ python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
   a control/cost diagnostic rather than exact target compliance.
 - Keep `beta_stability`, `beta_vo2`, and experimental VT1 metrics as
   development evidence. Do not present them as threshold diagnoses or let them
-  override the main score without a clear pattern. Prefer `beta_summary` for
+  determine physiological cost or plan progression. Prefer `beta_summary` for
   tabular summaries and preserve separate parts in mixed sessions.
+
+## Measurement Eligibility And Comparison Windows
+
+Read each field's `data_quality` and each `comparison` before interpreting a
+summary or change. Summaries use elapsed-time weighting. Missing coverage,
+long gaps, invalid values, or a missing/nonmonotonic clock can make a field
+unavailable for that period without invalidating other fields or valid blocks.
+Treat unavailable values as unknown, never as zero drift or normal response.
+
+`comparison` identifies contiguous stable work windows, their timestamps,
+power and cadence, elapsed work within the detected work run, and per-field
+eligibility. The selector excludes an initial transition period and checks
+mechanical comparability; separate work runs also require comparable elapsed
+work. Its window lengths and tolerances are engineering defaults, not validated
+physiological boundaries or proof of a steady state. Check the actual workout
+structure and context before using the selected windows. Short intervals or
+variable work may have no suitable windows; use their work-recovery architecture
+rather than forcing a steady-work drift comparison.
+
+The elapsed-time clock is assumed to be shared by source streams; unknown
+device lag is disclosed, not automatically corrected. Mechanical execution
+scores are power-compliance heuristics only. Main VT1/VT2 diagnostics no longer
+assign physiological response, recovery, or combined grades. Use the descriptive
+observations and shared synthesis rules for cost, cause, and progression.
 
 ## Interpretation
 

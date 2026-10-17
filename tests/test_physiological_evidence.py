@@ -1,0 +1,172 @@
+from pathlib import Path
+import sys
+import unittest
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+from physiological_evidence import quality, field_summary, matched_windows
+from analysis import summarize_block, summarize_rows
+from activity_inspect import vt2_block_quality, hr_recovery_after_block, indoor_vt1_assessment
+
+
+def ride(step=1, duration=1200):
+    return [dict(time=str(t), watts='290', cadence='90', heartrate=str(140 if t < 600 else 150),
+                 respiration='35', tidal_volume_min='80', smo2='5', core_temperature='39')
+            for t in range(0, duration, step)]
+
+
+class EvidenceTests(unittest.TestCase):
+    def test_sample_rate_does_not_change_comparison_or_coverage(self):
+        a = matched_windows(ride(), ['heartrate'])
+        b = matched_windows(ride(5), ['heartrate'])
+        self.assertEqual(a['early'], b['early'])
+        self.assertEqual(a['late'], b['late'])
+        self.assertEqual(a['fields']['heartrate']['delta'], 10)
+        self.assertEqual(a['fields']['heartrate'], b['fields']['heartrate'] | {
+            'early_quality': a['fields']['heartrate']['early_quality'],
+            'late_quality': a['fields']['heartrate']['late_quality']})
+        self.assertEqual(quality(ride(), 'heartrate')['valid_seconds'], 1200)
+        self.assertEqual(quality(ride(5), 'heartrate')['valid_seconds'], 1200)
+
+    def test_irregular_sampling_is_time_weighted(self):
+        rows = [dict(time=str(t), watts=str(w)) for t, w in [(0,100),(1,200),(6,200),(11,200)]]
+        self.assertAlmostEqual(field_summary(rows, 'watts')['avg'], (100+15*200)/16)
+
+    def test_missing_rows_are_counted_as_elapsed_gap(self):
+        rows = [r for r in ride() if not 300 <= float(r['time']) < 360]
+        q = quality(rows, 'heartrate')
+        self.assertGreaterEqual(q['longest_gap_seconds'], 60)
+        self.assertFalse(q['usable'])
+        self.assertIsNone(field_summary(rows, 'heartrate'))
+
+    def test_invalid_sensor_does_not_discard_valid_power(self):
+        rows = ride()
+        for row in rows[120:240]:
+            row['heartrate'] = 'nan'
+        result = matched_windows(rows, ['heartrate','respiration'])
+        self.assertEqual(result['status'], 'matched')
+        self.assertEqual(result['fields']['heartrate']['status'], 'unavailable')
+        self.assertEqual(result['fields']['respiration']['status'], 'usable')
+        self.assertIsNotNone(summarize_rows(rows, ['watts'])['watts'])
+
+    def test_invalid_clock_cannot_produce_drift(self):
+        for kind in ['missing', 'duplicate', 'reverse']:
+            rows = ride()
+            if kind == 'missing':
+                rows[2].pop('time')
+            else:
+                rows[2]['time'] = '1' if kind == 'duplicate' else '-1'
+            result = matched_windows(rows, ['heartrate'])
+            self.assertEqual(result['status'], 'unavailable')
+            self.assertEqual(result['fields'], {})
+
+    def test_unmatched_power_or_cadence_is_not_compared(self):
+        # Exactly two post-transition windows, with different workload.
+        for field, value in [('watts','350'), ('cadence','120')]:
+            rows = ride(duration=360)
+            for row in rows[240:]:
+                row[field] = value
+            self.assertEqual(matched_windows(rows, ['heartrate'])['status'], 'unavailable')
+
+    def test_transition_is_excluded_and_windows_are_reported(self):
+        rows = ride(duration=360)
+        for row in rows[:120]:
+            row['heartrate'] = '180'
+        result = matched_windows(rows, ['heartrate'])
+        self.assertEqual(result['early']['start_s'], 120)
+        self.assertEqual(result['late']['start_s'], 240)
+        self.assertEqual(result['fields']['heartrate']['delta'], 0)
+
+    def test_coasting_samples_are_not_stitched_into_work(self):
+        rows = ride()
+        for row in rows:
+            if int(row['time']) % 60 < 30:
+                row['watts'] = '0'
+        self.assertEqual(matched_windows(rows, ['heartrate'])['status'], 'unavailable')
+
+    def test_block_summary_exposes_windows_and_quality(self):
+        result = summarize_block(ride(5), start_index=0, end_index=240, label='work')
+        self.assertEqual(result['duration_seconds'], 1200)
+        self.assertEqual(result['comparison']['status'], 'matched')
+        self.assertEqual(result['drift']['heartrate'], 10)
+        self.assertTrue(result['data_quality']['heartrate']['usable'])
+
+    def test_missing_or_redundant_sensor_does_not_change_execution(self):
+        results = []
+        for extra in [False, True]:
+            rows = ride()
+            if not extra:
+                for row in rows:
+                    row.pop('tidal_volume_min')
+                    row.pop('smo2')
+                    row.pop('core_temperature')
+            block = summarize_block(rows, start_index=0, end_index=len(rows), label='work')
+            results.append(vt2_block_quality(rows, block, index=1, target_watts=290, anchor_watts=290))
+        self.assertEqual(results[0]['execution_score'], results[1]['execution_score'])
+        for result in results:
+            self.assertEqual(result['verdict'], 'power_execution_controlled')
+            self.assertNotIn('combined_score', result)
+            self.assertNotIn('response_score', result['physiology'])
+            self.assertNotIn('limiter_hints', result['physiology'])
+
+    def test_no_physiology_does_not_become_good_response(self):
+        rows = [dict(time=str(t), watts='290', cadence='90') for t in range(600)]
+        block = summarize_block(rows, start_index=0, end_index=len(rows), label='work')
+        result = vt2_block_quality(rows, block, index=1, target_watts=290, anchor_watts=290)
+        self.assertEqual(result['comparison']['fields']['heartrate']['status'], 'unavailable')
+        self.assertNotIn('hr_avg', result['physiology'])
+        self.assertNotIn('response_score', result)
+
+    def test_hr_recovery_window_is_seconds_not_samples(self):
+        for step in [1,5]:
+            rows = ride(step, duration=660)
+            result = hr_recovery_after_block(rows, {'end_index':600//step})
+            self.assertEqual(result['window_s'], 60)
+            self.assertEqual(result['start_s'], 600)
+            self.assertNotIn('recovery_score',result)
+
+    def test_hot_indoor_session_is_not_automatically_costly(self):
+        result = indoor_vt1_assessment(vt1_watts=215, rolling_60=[], moving_rows=ride(),
+                                      pedaling_rows=ride(), stability={})
+        self.assertEqual(result['verdict'], 'requires_physiological_synthesis')
+        self.assertNotIn('rating', result)
+
+    def test_separate_intervals_use_equivalent_elapsed_work(self):
+        rows = ride(duration=1500)
+        for row in rows:
+            t = int(row['time'])
+            if 600 <= t < 720:
+                row['watts'] = '100'
+        result = matched_windows(rows, ['heartrate'])
+        self.assertEqual(result['work_phase_comparison'], 'equivalent_elapsed_work')
+        self.assertLessEqual(abs(result['early']['elapsed_work_s']-result['late']['elapsed_work_s']), 60)
+
+    def test_short_intervals_are_not_forced_into_steady_drift(self):
+        rows = ride(duration=180)
+        self.assertEqual(matched_windows(rows, ['heartrate'])['status'], 'unavailable')
+
+    def test_trailing_empty_export_row_is_not_a_sample(self):
+        from tempfile import TemporaryDirectory
+        from analysis import load_streams_csv
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'streams.csv'
+            path.write_text('time,watts\n0,200\n1,200\n,\n')
+            rows = load_streams_csv(path)
+            self.assertEqual(len(rows), 2)
+            self.assertTrue(quality(rows, 'watts')['usable'])
+
+    def test_report_consumers_use_mechanical_control_only(self):
+        from analyze_indoor_activities import summarize_vt2, render_vt2_rows
+        from analyze_outdoor_year import summarize_vt2 as outdoor_summary, render_rows
+        rows = ride()
+        work = summarize_block(rows, start_index=0, end_index=len(rows), label='work')
+        block = vt2_block_quality(rows, work, index=1, target_watts=290, anchor_watts=290)
+        vt2 = {'blocks': [block]}
+        for summary, render in [(summarize_vt2(vt2, block), render_vt2_rows),
+                                (outdoor_summary(vt2, block), lambda rows: render_rows(rows, mode='vt2'))]:
+            self.assertNotIn('response_score', summary)
+            report = render([{'date':'2026-10-17','name':'test','vt2':summary}])
+            self.assertIn('power_execution_controlled', report)
+            self.assertNotIn('Resp', report)
+
+
+if __name__ == '__main__':
+    unittest.main()

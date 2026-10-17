@@ -245,21 +245,13 @@ def summarize_vt2(vt2: dict[str, Any], session: dict[str, Any]) -> dict[str, Any
         "watts_avg": session.get("watts_avg"),
         "power_fade_pct": session.get("power_fade_pct"),
         "execution_score": session.get("execution_score"),
-        "response_score": session.get("response_score"),
-        "heat_adjusted_response_score": session.get("heat_adjusted_response_score"),
-        "recovery_score": session.get("recovery_score"),
-        "combined_score": session.get("combined_score"),
-        "heat_penalty_points": physiology.get("heat_penalty_points"),
         "limiter_hints": session.get("limiter_hints") or [],
     }
 
 
 def controlled_vt2_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     controlled_verdicts = {
-        "controlled_vt2",
-        "controlled_high_cost_vt2",
-        "heat_limited_controlled_vt2",
-        "near_upper_control_limit",
+        "power_execution_controlled",
     }
     return [
         block
@@ -302,7 +294,7 @@ def summarize_period(
             "best_indoor_vt1": sorted(vt1_rows, key=lambda item: vt1_sort_key(item), reverse=True)[:15],
             "best_vt2_control": sorted(
                 controlled_vt2_rows,
-                key=lambda item: item["vt2"].get("combined_score") or 0,
+                key=lambda item: item["vt2"].get("execution_score") or 0,
                 reverse=True,
             )[:15],
         },
@@ -315,10 +307,7 @@ def is_controlled_vt2_row(item: dict[str, Any]) -> bool:
     vt2 = item.get("vt2") or {}
     verdict = vt2.get("verdict")
     if verdict not in {
-        "controlled_vt2",
-        "controlled_high_cost_vt2",
-        "heat_limited_controlled_vt2",
-        "near_upper_control_limit",
+        "power_execution_controlled",
     }:
         return False
     if float(vt2.get("execution_score") or 0) < 65:
@@ -330,9 +319,8 @@ def is_controlled_vt2_row(item: dict[str, Any]) -> bool:
 
 def vt1_sort_key(item: dict[str, Any]) -> tuple[float, float, float]:
     vt1 = item.get("vt1") or {}
-    rating_order = {"A": 5, "A-": 4, "B": 3, "C": 2, "D": 1}
     return (
-        rating_order.get(str(vt1.get("rating")), 0),
+        float(vt1.get("pct_within_vt1_10w") or 0),
         float(vt1.get("pedaling_min") or 0),
         float(vt1.get("pct_within_vt1_10w") or 0),
     )
@@ -390,23 +378,20 @@ def render_vt1_rows(rows: list[dict[str, Any]]) -> str:
 def render_vt2_rows(rows: list[dict[str, Any]]) -> str:
     if not rows:
         return "_Ingen._"
-    header = "| Dato | Okt | Terskel | Reps | VT2 | Watt | Score | Exec | Resp | Heat |"
-    sep = "|---|---|---:|---:|---|---:|---:|---:|---:|---:|"
+    header = "| Dato | Okt | Terskel | Reps | VT2 | Watt | Power control |"
+    sep = "|---|---|---:|---:|---|---:|---:|"
     body = []
     for row in rows:
         vt2 = row.get("vt2") or {}
         body.append(
-            "| {date} | {name} | {threshold} | {reps} | {verdict} | {watts} | {score} | {exec} | {resp} | {heat} |".format(
+            "| {date} | {name} | {threshold} | {reps} | {verdict} | {watts} | {exec} |".format(
                 date=row["date"],
                 name=escape_pipe(row["name"]),
                 threshold=fmt_minutes(vt2.get("controlled_duration_s")),
                 reps=fmt(vt2.get("controlled_reps")),
                 verdict=escape_pipe(vt2.get("verdict")),
                 watts=fmt(vt2.get("watts_avg")),
-                score=fmt(vt2.get("combined_score")),
                 exec=fmt(vt2.get("execution_score")),
-                resp=fmt(vt2.get("response_score")),
-                heat=fmt(vt2.get("heat_penalty_points")),
             )
         )
     return "\n".join([header, sep, *body])

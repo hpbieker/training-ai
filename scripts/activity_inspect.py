@@ -16,6 +16,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from physiological_evidence import timeline, quality, field_summary, matched_windows
+
 from analysis import (
     CORE_STREAMS,
     SavedActivity,
@@ -28,12 +30,14 @@ from analysis import (
     resolve_activity_ref,
     summarize_block,
     summarize_rows,
-    half_drift,
-    half_relative_to_power_drift,
+    matched_work_drift,
+    matched_relative_to_power_drift,
     usable_analysis_fields,
     value,
 )
 
+
+MAX_RECOVERY_INTERVAL = 10
 
 DEFAULT_FIELDS = [
     "watts",
@@ -202,6 +206,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
     rows = activity.streams
     add_environmental_derivatives(rows)
     fields = usable_analysis_fields(activity, requested_fields)
+    total_comparison = matched_windows(rows, fields)
 
     result: dict[str, Any] = {
         "activity": activity_metadata(activity),
@@ -213,8 +218,9 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
         },
         "total": {
             "summary": summarize_rows(rows, fields),
-            "drift": half_drift(rows, fields),
-            "relative_to_power_drift": half_relative_to_power_drift(rows),
+            "comparison": total_comparison,
+            "drift": {f: v.get("delta") for f, v in total_comparison["fields"].items()},
+            "relative_to_power_drift": {f: v.get("per_watt_change_pct") for f, v in total_comparison["fields"].items()},
         },
         "moxy": {
             "recovery_reoxygenation": recovery_reoxygenation(activity),
@@ -242,8 +248,8 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
             detection={"target": target, "method": "detect_steady_power_segment"},
         )
         result["steady_vt1_segment"]["summary"] = summarize_rows(segment_rows, fields)
-        result["steady_vt1_segment"]["drift"] = half_drift(segment_rows, fields)
-        result["steady_vt1_segment"]["relative_to_power_drift"] = half_relative_to_power_drift(
+        result["steady_vt1_segment"]["drift"] = matched_work_drift(segment_rows, fields)
+        result["steady_vt1_segment"]["relative_to_power_drift"] = matched_relative_to_power_drift(
             segment_rows
         )
 
@@ -433,6 +439,7 @@ def compact_summary_block(block: dict[str, Any], fields: list[str]) -> dict[str,
             if value is not None and field in fields
         },
         "data_quality_flags": compact_quality(block.get("data_quality") or {}),
+        "comparison": block.get("comparison"),
     }
 
 
@@ -476,6 +483,9 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
     hard_block = hardest_block(work_blocks)
     beta_stability = beta_stability_debug(result["activity"], work_blocks, recoveries)
     beta_vo2 = beta_vo2_debug(result["activity"], rows, saved_work_intervals, vo2_recoveries)
+    for experimental in (beta_stability, beta_vo2):
+        if experimental:
+            experimental["interpretation_limit"] = "Unvalidated development heuristics; not physiological cost, threshold, or progression evidence."
     long_pauses = detect_pause_segments(rows, min_seconds=60)
     include_outdoor_vt1 = should_include_outdoor_vt1(
         result["activity"],
@@ -496,7 +506,7 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
             "ignored_fields": result["streams"].get("ignored_fields", []),
             "data_quality_issues": compact_quality(result["streams"]["data_quality"]),
         },
-        "total": brief_total(result["total"]),
+        "total": {**brief_total(result["total"]), "comparison": result["total"].get("comparison")},
         "long_pauses": long_pauses,
         "key_efforts": key_efforts(rows),
         "peaks": peak_summary(rows),
@@ -831,15 +841,6 @@ def vt2_quality(
     if not blocks:
         return None
 
-    ratings = [block.get("combined_score") for block in blocks if isinstance(block.get("combined_score"), (int, float))]
-    heat_adjusted = [
-        block.get("heat_adjusted_response_score")
-        for block in blocks
-        if isinstance(block.get("heat_adjusted_response_score"), (int, float))
-    ]
-    limiter_hints: list[str] = []
-    for block in blocks:
-        limiter_hints.extend(block.get("limiter_hints") or [])
     best = max(blocks, key=lambda block: block.get("duration_s") or 0)
     session_quality = vt2_session_quality(blocks, recoveries)
 
@@ -847,20 +848,14 @@ def vt2_quality(
         {
             "status": "experimental",
             "meaning": (
-                "VT2/threshold control diagnostics. Execution and physiological cost are "
-                "scored separately so heat or respiration can explain high cost without "
-                "marking the power control itself as poor."
+                "Mechanical execution diagnostics and descriptive physiological evidence. "
+                "No physiological cost, recovery, or combined score is assigned."
             ),
             "anchor_watts": rounded(vt2_watts, digits=0) if isinstance(vt2_watts, (int, float)) else None,
             "mode": "trainer" if activity.get("trainer") else "outdoor_or_variable",
             "block_count": len(blocks),
             "best_duration_block": best,
             "session_quality": session_quality,
-            "avg_combined_score": rounded(sum(ratings) / len(ratings), digits=1) if ratings else None,
-            "avg_heat_adjusted_response_score": (
-                rounded(sum(heat_adjusted) / len(heat_adjusted), digits=1) if heat_adjusted else None
-            ),
-            "limiter_hints": unique(limiter_hints),
             "blocks": blocks,
         }
     )
@@ -870,7 +865,7 @@ def vt2_session_quality(
     blocks: list[dict[str, Any]],
     recoveries: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """Summarize VT2 stability across the complete comparable work series."""
+    """Summarize mechanical execution; no cross-block physiological inference."""
 
     comparable = [
         block
@@ -898,14 +893,6 @@ def vt2_session_quality(
         else None
     )
     worst = min(comparable, key=vt2_block_control_key)
-    relevant_recoveries = [
-        recovery
-        for recovery in recoveries
-        if isinstance(recovery.get("after_work_block"), int)
-        and 1 <= recovery["after_work_block"] <= len(comparable)
-    ]
-    first_recovery = relevant_recoveries[0] if relevant_recoveries else {}
-    last_recovery = relevant_recoveries[-1] if relevant_recoveries else {}
     limiter_hints = unique(
         hint
         for block in comparable
@@ -914,59 +901,27 @@ def vt2_session_quality(
 
     return drop_none(
         {
-            "verdict": worst.get("verdict"),
-            "rating": worst.get("rating"),
-            "block_count": len(comparable),
+            "verdict": worst.get("verdict") if len(comparable) == len(blocks) else "execution_incomplete_evidence",
+            "interpretation": "mechanical execution only; physiological cost requires synthesis",
+            "block_count": len(blocks),
+            "valid_power_block_count": len(comparable),
             "total_duration_s": rounded(total_duration, digits=0),
             "watts_avg": rounded(weighted_watts, digits=0),
             "watts_start": rounded(watts_start, digits=0),
             "watts_end": rounded(watts_end, digits=0),
             "power_fade_pct": rounded(power_fade_pct, digits=1),
+            "power_change_context": "descriptive first-to-last block means; targets and durations may differ",
             "execution_score": minimum_numeric(comparable, "execution_score"),
-            "response_score": minimum_numeric(comparable, "response_score"),
-            "heat_adjusted_response_score": minimum_numeric(
-                comparable,
-                "heat_adjusted_response_score",
-            ),
-            "recovery_score": minimum_numeric(comparable, "recovery_score"),
-            "combined_score": minimum_numeric(comparable, "combined_score"),
-            "combined_score_start": rounded(first.get("combined_score"), digits=1),
-            "combined_score_end": rounded(last.get("combined_score"), digits=1),
-            "worst_block": {
-                "n": worst.get("n"),
-                "label": worst.get("label"),
-                "verdict": worst.get("verdict"),
-                "combined_score": worst.get("combined_score"),
-                "limiter_hints": worst.get("limiter_hints") or [],
-            },
-            "recovery_trend": drop_none(
-                {
-                    "hr_drop_start": first_recovery.get("hr_drop_start_to_min"),
-                    "hr_drop_end": last_recovery.get("hr_drop_start_to_min"),
-                    "smo2_peak_start": first_recovery.get("smo2_peak"),
-                    "smo2_peak_end": last_recovery.get("smo2_peak"),
-                }
-            ),
+            "worst_execution_block": {"n": worst.get("n"), "execution_score": worst.get("execution_score")},
+            "physiological_comparison": "not_automatically_inferred_across_blocks",
             "limiter_hints": limiter_hints,
         }
     )
 
 
 def vt2_block_control_key(block: dict[str, Any]) -> tuple[int, float]:
-    order = {
-        "above_control_limit": 0,
-        "variable_or_off_target_vt2": 1,
-        "near_upper_control_limit": 2,
-        "controlled_high_cost_vt2": 3,
-        "heat_limited_controlled_vt2": 4,
-        "controlled_vt2": 5,
-    }
-    verdict_rank = order.get(str(block.get("verdict") or ""), -1)
-    combined_score = block.get("combined_score")
-    return (
-        verdict_rank,
-        float(combined_score) if isinstance(combined_score, (int, float)) else -1.0,
-    )
+    score = block.get("execution_score")
+    return (0, float(score) if isinstance(score, (int, float)) else -1.0)
 
 
 def minimum_numeric(items: list[dict[str, Any]], key: str) -> float | int | None:
@@ -1045,18 +1000,21 @@ def vt2_block_quality(
         return None
     segment = rows[start:end]
     pedaling = [row for row in segment if outdoor_pedaling_row(row)]
-    if len(pedaling) < 5 * 60:
+    if not timeline(segment) or timeline(segment)[2] < 5 * 60:
         return None
 
     stats = indoor_segment_stats(pedaling)
-    summary = block.get("summary") or {}
-    drift = block.get("drift") or {}
-    relative_drift = block.get("relative_to_power_drift") or {}
+    summary = summarize_rows(segment, DEFAULT_FIELDS)
+    comparison = matched_windows(segment, DEFAULT_FIELDS)
+    drift = {f: v.get("delta") for f, v in comparison["fields"].items()}
+    relative_drift = {f: v.get("per_watt_change_pct") for f, v in comparison["fields"].items()}
     watts_avg = stat(summary, "watts", "avg", digits=1)
     watts_max = stat(summary, "watts", "max", digits=0)
     duration_s = rounded(block.get("duration_seconds"), digits=0)
     stability = vt2_power_stability(segment, target_watts)
-    response = vt2_response_scores(
+    if not quality(segment, "watts")["usable"]:
+        stability = {"execution_score": None, "limiter_hints": [], "status": "power_quality_insufficient"}
+    response = vt2_response_observations(
         hr_per_w_drift=relative_drift.get("heartrate"),
         ve_per_w_drift=relative_drift.get("tidal_volume_min"),
         br_per_w_drift=relative_drift.get("respiration"),
@@ -1077,21 +1035,8 @@ def vt2_block_quality(
         execution_score=stability.get("execution_score"),
     )
     recovery = hr_recovery_after_block(rows, block)
-    recovery_score = vt2_recovery_score(recovery)
     execution_score = stability.get("execution_score")
-    response_score = response.get("response_score")
-    heat_adjusted = response.get("heat_adjusted_response_score")
-    combined_score = None
-    if isinstance(execution_score, (int, float)) and isinstance(response_score, (int, float)):
-        recovery_component = recovery_score if isinstance(recovery_score, (int, float)) else response_score
-        combined_score = clamp(execution_score * 0.45 + response_score * 0.40 + recovery_component * 0.15, 0, 100)
-
-    limiter_hints = []
-    limiter_hints.extend(stability.get("limiter_hints") or [])
-    limiter_hints.extend(response.get("limiter_hints") or [])
-    if isinstance(recovery_score, (int, float)) and recovery_score < 60:
-        limiter_hints.append("slow_hr_recovery")
-
+    limiter_hints = stability.get("limiter_hints") or []
     return drop_none(
         {
             "n": index,
@@ -1102,13 +1047,11 @@ def vt2_block_quality(
             "watts_avg": rounded(watts_avg, digits=0),
             "watts_max": watts_max,
             "execution_score": execution_score,
-            "response_score": response_score,
-            "heat_adjusted_response_score": heat_adjusted,
-            "recovery_score": recovery_score,
-            "combined_score": rounded(combined_score, digits=1),
-            "rating": vt2_score_rating(combined_score) if isinstance(combined_score, (int, float)) else None,
-            "verdict": vt2_verdict(stability, response, combined_score),
-            "limiter_hints": unique(limiter_hints) or ["stable"],
+            "verdict": vt2_execution_verdict(stability),
+            "interpretation": "mechanical execution only; physiological cost requires synthesis",
+            "limiter_hints": unique(limiter_hints),
+            "comparison": comparison,
+            "data_quality": data_quality_summary(segment, DEFAULT_FIELDS),
             "power_control": stability,
             "physiology": drop_none(
                 {
@@ -1141,15 +1084,20 @@ def vt2_power_stability(
     rows: list[dict[str, str]],
     target_watts: float | None,
 ) -> dict[str, Any]:
-    watts = [sample for row in rows if (sample := value(row, "watts")) is not None]
-    if not watts:
+    stats = field_summary(rows, "watts")
+    clock = timeline(rows)
+    if not stats or not clock:
         return {}
-    avg_w = sum(watts) / len(watts)
+    avg_w = stats["avg"]
     target = target_watts if isinstance(target_watts, (int, float)) else avg_w
-    within_10 = pct_watts_between(watts, target - 10, target + 10)
-    within_20 = pct_watts_between(watts, target - 20, target + 20)
-    below_20 = pct_watts_below(watts, target - 20)
-    above_20 = pct_watts_above(watts, target + 20)
+    pairs = [(value(row, "watts"), w) for row, w in zip(rows, clock[1]) if value(row, "watts") is not None]
+    valid_duration = sum(w for _, w in pairs)
+    def proportion(predicate):
+        return 100 * sum(w for watts, w in pairs if predicate(watts)) / valid_duration
+    within_10 = proportion(lambda w: abs(w-target) <= 10)
+    within_20 = proportion(lambda w: abs(w-target) <= 20)
+    below_20 = proportion(lambda w: w < target-20)
+    above_20 = proportion(lambda w: w > target+20)
     avg_delta = avg_w - target
     penalty = min(30, abs(avg_delta) * 1.2)
     if isinstance(within_20, (int, float)):
@@ -1179,71 +1127,14 @@ def vt2_power_stability(
     )
 
 
-def vt2_response_scores(
-    *,
-    hr_per_w_drift: Any,
-    ve_per_w_drift: Any,
-    br_per_w_drift: Any,
-    smo2_min: Any,
-    smo2_drift: Any,
-    core_temp_max: Any,
-    core_temp_drift: Any,
-    vt_drift: Any,
-) -> dict[str, Any]:
-    penalty = 0.0
-    limiter_hints: list[str] = []
-    watch_notes: list[str] = []
-
-    if isinstance(hr_per_w_drift, (int, float)) and hr_per_w_drift > 4:
-        amount = min(25, (hr_per_w_drift - 4) * 2.5)
-        penalty += amount
-        limiter_hints.append("cardiac_drift" if hr_per_w_drift > 8 else "cardiac_drift_watch")
-    if isinstance(ve_per_w_drift, (int, float)) and ve_per_w_drift > 6:
-        amount = min(25, (ve_per_w_drift - 6) * 2.0)
-        penalty += amount
-        limiter_hints.append("ventilation_drift" if ve_per_w_drift > 12 else "ventilation_drift_watch")
-    if isinstance(br_per_w_drift, (int, float)) and br_per_w_drift > 8:
-        amount = min(20, (br_per_w_drift - 8) * 1.8)
-        penalty += amount
-        limiter_hints.append("breathing_rate_drift" if br_per_w_drift > 14 else "breathing_rate_drift_watch")
-    if isinstance(smo2_min, (int, float)):
-        if smo2_min < 10:
-            penalty += 12
-            limiter_hints.append("very_low_smo2")
-        elif smo2_min < 18:
-            penalty += 6
-            watch_notes.append("low_smo2")
-    if isinstance(smo2_drift, (int, float)) and smo2_drift < -4:
-        penalty += min(12, abs(smo2_drift) * 1.5)
-        limiter_hints.append("falling_smo2")
-    if isinstance(vt_drift, (int, float)) and vt_drift < -12:
-        penalty += min(10, abs(vt_drift + 12) * 0.7)
-        limiter_hints.append("falling_tidal_volume")
-    if isinstance(core_temp_max, (int, float)):
-        watch_notes.append("wearable_core_temperature_present")
-    if isinstance(core_temp_drift, (int, float)) and core_temp_drift > 0.4:
-        watch_notes.append("wearable_core_temperature_rising")
-
-    response_score = clamp(100 - penalty, 0, 100)
-    return drop_none(
-        {
-            "response_score": rounded(response_score, digits=1),
-            # Kept for output compatibility. Thermal context no longer changes
-            # the physiological score without aligned evidence.
-            "heat_adjusted_response_score": rounded(response_score, digits=1),
-            "heat_penalty_points": 0.0,
-            "hr_per_watt_drift_pct": rounded(hr_per_w_drift, digits=1),
-            "ve_per_watt_drift_pct": rounded(ve_per_w_drift, digits=1),
-            "br_per_watt_drift_pct": rounded(br_per_w_drift, digits=1),
-            "smo2_min": rounded(smo2_min, digits=1),
-            "smo2_drift": rounded(smo2_drift, digits=1),
-            "vt_drift": rounded(vt_drift, digits=1),
-            "core_temp_max": rounded(core_temp_max, digits=2),
-            "core_temp_drift": rounded(core_temp_drift, digits=2),
-            "limiter_hints": unique(limiter_hints),
-            "watch_notes": unique(watch_notes),
-        }
-    )
+def vt2_response_observations(**values: Any) -> dict[str, Any]:
+    names = {"hr_per_w_drift": "hr_per_watt_drift_pct",
+             "ve_per_w_drift": "ve_per_watt_drift_pct",
+             "br_per_w_drift": "br_per_watt_drift_pct"}
+    return drop_none({
+        "interpretation": "descriptive observations; no automatic cost or limiter classification",
+        **{names.get(k, k): rounded(v, digits=2) for k, v in values.items()},
+    })
 
 
 def thermal_evidence_assessment(
@@ -1316,57 +1207,11 @@ def thermal_evidence_assessment(
     }
 
 
-def vt2_recovery_score(recovery: dict[str, Any] | None) -> float | None:
-    if not recovery:
-        return None
-    drop = recovery.get("drop_bpm")
-    if not isinstance(drop, (int, float)):
-        return None
-    if drop >= 30:
-        return 100.0
-    if drop >= 20:
-        return 85.0
-    if drop >= 12:
-        return 65.0
-    return 45.0
-
-
-def vt2_verdict(
-    stability: dict[str, Any],
-    response: dict[str, Any],
-    combined_score: float | None,
-) -> str | None:
-    execution = stability.get("execution_score")
-    thermal_grade = (response.get("thermal_evidence") or {}).get("grade")
-    if not isinstance(combined_score, (int, float)):
-        return None
-    if isinstance(execution, (int, float)) and execution < 65:
-        return "variable_or_off_target_vt2"
-    if combined_score >= 82:
-        base_verdict = "controlled_vt2"
-    elif combined_score >= 68:
-        base_verdict = "controlled_high_cost_vt2"
-    elif combined_score >= 55:
-        base_verdict = "near_upper_control_limit"
-    else:
-        base_verdict = "above_control_limit"
-    if base_verdict == "controlled_vt2" and thermal_grade == "heat_limited":
-        return "heat_limited_controlled_vt2"
-    return base_verdict
-
-
-def vt2_score_rating(score: float | None) -> str | None:
+def vt2_execution_verdict(stability: dict[str, Any]) -> str:
+    score = stability.get("execution_score")
     if not isinstance(score, (int, float)):
-        return None
-    if score >= 88:
-        return "A"
-    if score >= 78:
-        return "B"
-    if score >= 68:
-        return "C"
-    if score >= 58:
-        return "D"
-    return "E"
+        return "execution_unavailable"
+    return "power_execution_controlled" if score >= 65 else "power_execution_variable_or_off_target"
 
 
 def should_include_indoor_vt1(
@@ -1480,8 +1325,8 @@ def indoor_vt1_quality(
         "30s": rolling_power_by_time(analysis_rows, 30, pause_ranges),
         "60s": rolling_power_by_time(analysis_rows, 60, pause_ranges),
     }
-    first, middle, final = split_rows_by_count(pedaling_rows, parts=3)
-    vt1_first, vt1_middle, vt1_final = split_rows_by_count(vt1_stability_rows, parts=3)
+    first, middle, final = split_rows_by_elapsed_time(pedaling_rows, parts=3)
+    vt1_first, vt1_middle, vt1_final = split_rows_by_elapsed_time(vt1_stability_rows, parts=3)
     segment_stats = {
         "first_third": indoor_segment_stats(first),
         "middle_third": indoor_segment_stats(middle),
@@ -1492,7 +1337,7 @@ def indoor_vt1_quality(
         "middle_third": indoor_segment_stats(vt1_middle),
         "final_third": indoor_segment_stats(vt1_final),
     }
-    stability = indoor_stability(vt1_first, vt1_final)
+    stability = descriptive_work_change(analysis_rows)
     assessment = indoor_vt1_assessment(
         vt1_watts=vt1_watts,
         rolling_60=rolling["60s"],
@@ -1708,7 +1553,7 @@ def indoor_power_control(rows: list[dict[str, str]], vt1_watts: float) -> dict[s
     }
 
 
-def split_rows_by_count(
+def split_rows_by_elapsed_time(
     rows: list[dict[str, str]],
     *,
     parts: int,
@@ -1717,11 +1562,13 @@ def split_rows_by_count(
         return []
     if not rows:
         return [[] for _ in range(parts)]
-    size = len(rows)
-    return [
-        rows[round(size * index / parts): round(size * (index + 1) / parts)]
-        for index in range(parts)
-    ]
+    clock = timeline(rows)
+    if not clock:
+        return [[] for _ in range(parts)]
+    times, _, duration = clock
+    return [[row for row, t in zip(rows, times)
+             if i * duration / parts <= t-times[0] < (i+1)*duration/parts]
+            for i in range(parts)]
 
 
 def indoor_segment_stats(segment: list[dict[str, str]]) -> dict[str, Any]:
@@ -1799,110 +1646,11 @@ def indoor_vt1_assessment(
     pedaling_rows: list[dict[str, str]],
     stability: dict[str, Any],
 ) -> dict[str, Any]:
-    cap10 = round(vt1_watts + 10)
-    cap20 = round(vt1_watts + 20)
-    cap30 = round(vt1_watts + 30)
-    cap50 = round(vt1_watts + 50)
-    cap10_pct = rolling_time_over(rolling_60, pedaling_rows, cap10).get("pct") or 0
-    cap20_min = rolling_time_over(rolling_60, moving_rows, cap20).get("min") or 0
-    cap30_min = rolling_time_over(rolling_60, moving_rows, cap30).get("min") or 0
-    cap50_min = rolling_time_over(rolling_60, moving_rows, cap50).get("min") or 0
-    duration_min = len(pedaling_rows) / 60
-    hr_drift = stability.get("hr_per_w_delta_pct")
-    ve_drift = stability.get("ve_per_w_delta_pct")
-    br_drift = stability.get("br_per_w_delta_pct")
-    core_delta = stability.get("core_temp_delta_c")
-    core_max = max_field(pedaling_rows, "core_temperature")
-
-    score = 0
-    limiter_hints: list[str] = []
-    watch_notes: list[str] = []
-    notes: list[str] = []
-
-    if cap50_min > 1 or cap30_min > max(3, duration_min * 0.03):
-        score += 2
-        limiter_hints.append("power_above_vt1")
-    elif cap20_min > max(5, duration_min * 0.08) or cap10_pct > 30:
-        score += 1
-        limiter_hints.append("upper_vt1_power")
-
-    if isinstance(hr_drift, (int, float)):
-        if hr_drift > 6:
-            score += 2
-            limiter_hints.append("cardiac_drift")
-        elif hr_drift > 3:
-            score += 1
-            watch_notes.append("cardiac_drift_watch")
-        notes.append(f"HR/W drift {hr_drift:.1f}%")
-
-    if isinstance(ve_drift, (int, float)):
-        if ve_drift > 12:
-            score += 2
-            limiter_hints.append("ventilation_drift")
-        elif ve_drift > 6:
-            score += 1
-            watch_notes.append("ventilation_drift_watch")
-        notes.append(f"VE/W drift {ve_drift:.1f}%")
-
-    if isinstance(br_drift, (int, float)):
-        if br_drift > 10:
-            if not any("ventilation" in hint for hint in limiter_hints):
-                score += 1
-                limiter_hints.append("breathing_rate_drift")
-            else:
-                watch_notes.append("breathing_rate_drift_watch")
-        notes.append(f"BR/W drift {br_drift:.1f}%")
-
-    if isinstance(core_max, (int, float)):
-        if core_max >= 38.3:
-            score += 2
-            limiter_hints.append("heat_cost")
-        elif core_max >= 38.0 or (
-            core_max >= 37.9
-            and isinstance(core_delta, (int, float))
-            and core_delta > 0.5
-        ):
-            score += 1
-            watch_notes.append("heat_cost_watch")
-        notes.append(f"core max {core_max:.2f} C")
-
-    if cap10_pct:
-        notes.append(f"60s power over VT1+10 for {cap10_pct:.1f}% of pedaling time")
-    if cap30_min:
-        notes.append(f"60s power over VT1+30 for {cap30_min:.1f} min")
-
-    if duration_min >= 150 and score == 1:
-        score = 0
-        notes.append("duration-adjusted: small drift accepted for long VT1")
-
-    if score <= 0:
-        rating = "A"
-        verdict = "controlled_indoor_vt1"
-    elif score == 1:
-        rating = "A-"
-        verdict = "controlled_with_minor_cost"
-    elif score == 2:
-        rating = "B"
-        verdict = "controlled_but_costly"
-    elif score <= 4:
-        rating = "C"
-        verdict = "too_costly_for_clean_vt1"
-    else:
-        rating = "D"
-        verdict = "likely_above_vt1_or_poorly_controlled"
-
-    if not limiter_hints and score > 0:
-        limiter_hints.append("combined_sensor_drift")
-    elif not limiter_hints:
-        limiter_hints.append("stable")
-
     return {
-        "rating": rating,
-        "verdict": verdict,
-        "limiter_hints": unique(limiter_hints),
-        "watch_notes": unique(watch_notes),
-        "score": score,
-        "notes": notes,
+        "verdict": "requires_physiological_synthesis",
+        "meaning": "Power compliance and sensor observations are separate; no physiological grade is assigned.",
+        "comparison_status": stability.get("comparison", {}).get("status", "unavailable"),
+        "limiter_hints": [],
     }
 
 
@@ -2235,11 +1983,9 @@ def outdoor_vt1_block_quality(
             "lng_start": rounded(value(start_row, "lng"), digits=5),
             "lat_end": rounded(value(end_row, "lat"), digits=5),
             "lng_end": rounded(value(end_row, "lng"), digits=5),
-            "rating": quality.get("rating"),
-            "combined_score": quality.get("combined_score"),
+                        "execution_score": quality.get("execution_score"),
             "control_score": quality.get("control_score"),
-            "session_value_score": quality.get("session_value_score"),
-            "pedaling_avg_w": pedaling.get("pedaling_avg_w"),
+                        "pedaling_avg_w": pedaling.get("pedaling_avg_w"),
             "pct_in_180_210w": pedaling.get("pct_in_endurance_window"),
             "pct_above_210w": pedaling.get("pct_above_target_window"),
             "cap_vt1_plus_10_pct": components.get("cap_vt1_plus_10_pct"),
@@ -2252,14 +1998,9 @@ def outdoor_vt1_block_quality(
 
 
 def vt1_block_sort_key(block: dict[str, Any]) -> tuple[float, float, float]:
-    combined = block.get("combined_score")
-    control = block.get("control_score")
-    value_ = block.get("session_value_score")
-    return (
-        float(combined) if isinstance(combined, (int, float)) else -1.0,
-        float(control) if isinstance(control, (int, float)) else -1.0,
-        float(value_) if isinstance(value_, (int, float)) else -1.0,
-    )
+    score = block.get("control_score")
+    return (float(score) if isinstance(score, (int, float)) else -1.0,
+            float(block.get("duration_min") or 0), 0.0)
 
 
 def rows_in_elapsed_range(
@@ -2333,7 +2074,7 @@ def outdoor_late_session_control(
     rolling_60: dict[int, float | None],
     vt1_watts: float,
 ) -> dict[str, Any]:
-    first, middle, final = split_rows_by_count(pedaling_rows, parts=3)
+    first, middle, final = split_rows_by_elapsed_time(pedaling_rows, parts=3)
     cap10 = round(vt1_watts + 10)
     cap30 = round(vt1_watts + 30)
     cap50 = round(vt1_watts + 50)
@@ -2430,7 +2171,7 @@ def outdoor_smo2_response(
     ]
     if len(matched) < 10 * 60:
         return None
-    early, late = split_rows_by_count(matched, parts=2)
+    early, late = split_rows_by_elapsed_time(matched, parts=2)
     early_smo2 = average_field(early, "smo2")
     late_smo2 = average_field(late, "smo2")
     all_smo2 = [sample for row in pedaling_rows if (sample := value(row, "smo2")) is not None]
@@ -2728,44 +2469,19 @@ def matched_power_drift(
     *,
     vt1_watts: float,
 ) -> dict[str, Any] | None:
-    low = vt1_watts - 20
-    high = vt1_watts + 10
-    matched = [
-        row
-        for row in pedaling_rows
-        if (watts := value(row, "watts")) is not None and low <= watts <= high
-    ]
-    if len(matched) < 10 * 60:
-        return None
-    midpoint = len(matched) // 2
-    early = matched[:midpoint]
-    late = matched[midpoint:]
-    early_stats = outdoor_segment_stats(early)
-    late_stats = outdoor_segment_stats(late)
-    return drop_none(
-        {
-            "power_window_watts": [round(low), round(high)],
-            "matched_min": rounded(len(matched) / 60, digits=1),
-            "early": early_stats,
-            "late": late_stats,
-            "hr_per_w_delta_pct": pct_delta(
-                early_stats.get("hr_per_w"),
-                late_stats.get("hr_per_w"),
-            ),
-            "w_per_hr_delta_pct": pct_delta(
-                early_stats.get("w_per_hr"),
-                late_stats.get("w_per_hr"),
-            ),
-            "ve_per_w_delta_pct": pct_delta(
-                early_stats.get("ve_per_w"),
-                late_stats.get("ve_per_w"),
-            ),
-            "br_per_w_delta_pct": pct_delta(
-                early_stats.get("br_per_w"),
-                late_stats.get("br_per_w"),
-            ),
-        }
-    )
+    return descriptive_work_change(pedaling_rows)
+
+
+def descriptive_work_change(rows: list[dict[str, str]]) -> dict[str, Any]:
+    comparison = matched_windows(rows, DEFAULT_FIELDS)
+    fields = comparison["fields"]
+    return drop_none({
+        "comparison": comparison,
+        "hr_per_w_delta_pct": fields.get("heartrate", {}).get("per_watt_change_pct"),
+        "ve_per_w_delta_pct": fields.get("tidal_volume_min", {}).get("per_watt_change_pct"),
+        "br_per_w_delta_pct": fields.get("respiration", {}).get("per_watt_change_pct"),
+        "core_temp_delta_c": fields.get("core_temperature", {}).get("delta"),
+    })
 
 
 def outdoor_vt1_quality_scores(
@@ -2796,32 +2512,10 @@ def outdoor_vt1_quality_scores(
     )
     execution_score = clamp(100 - execution_penalty, 0, 100)
 
-    duration_score = clamp(pedaling_min / 150 * 45, 0, 45)
-    continuity_score = clamp((pedaling_min / moving_min * 100) / 100 * 15, 0, 15) if moving_min else 0
-    response_penalty = 0.0
-    if isinstance(hr_drift, (int, float)) and hr_drift > 3:
-        response_penalty += min(35, (hr_drift - 3) * 4.0)
-    if isinstance(ve_drift, (int, float)) and ve_drift > 6:
-        response_penalty += min(35, (ve_drift - 6) * 2.5)
-    if isinstance(br_drift, (int, float)) and br_drift > 8:
-        response_penalty += min(20, (br_drift - 8) * 2.0)
-    response_score = clamp(100 - response_penalty, 0, 100)
-    stability_score = response_score * 0.25
-    execution_value_score = execution_score * 0.15
-    session_value_score = clamp(
-        duration_score + continuity_score + stability_score + execution_value_score,
-        0,
-        100,
-    )
-    combined_score = clamp(execution_score * 0.45 + response_score * 0.30 + session_value_score * 0.25, 0, 100)
-
     return {
         "execution_score": rounded(execution_score, digits=1),
-        "response_score": rounded(response_score, digits=1),
         "control_score": rounded(execution_score, digits=1),
-        "session_value_score": rounded(session_value_score, digits=1),
-        "combined_score": rounded(combined_score, digits=1),
-        "rating": outdoor_score_rating(combined_score),
+        "meaning": "Mechanical power-compliance heuristic only; not physiological cost or training value.",
         "components": {
             "pedaling_min": rounded(pedaling_min, digits=1),
             "cap_vt1_plus_10_pct": rounded(cap10, digits=1),
@@ -2857,8 +2551,6 @@ def outdoor_endurance_characterization(
     cap50_min = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 50), "min")
     cap90_min = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 90), "min")
     execution_score = quality_scores.get("execution_score")
-    response_score = quality_scores.get("response_score")
-    session_value_score = quality_scores.get("session_value_score")
 
     strict_vt1_fit = "controlled"
     if assessment.get("verdict") == "too_hard_for_strict_vt1":
@@ -2873,33 +2565,11 @@ def outdoor_endurance_characterization(
     else:
         stimulus = "controlled_endurance"
 
-    physiological_response = "unknown"
-    if isinstance(response_score, (int, float)):
-        if response_score >= 85:
-            physiological_response = "controlled"
-        elif response_score >= 65:
-            physiological_response = "moderate_drift"
-        else:
-            physiological_response = "high_cost"
-
+    physiological_response = "requires_synthesis"
     summary = stimulus
-    if strict_vt1_fit == "controlled" and physiological_response == "high_cost":
-        summary = "controlled_high_cost_endurance"
-    if (
-        strict_vt1_fit in {"poor", "partial"}
-        and physiological_response in {"controlled", "moderate_drift"}
-        and isinstance(session_value_score, (int, float))
-        and session_value_score >= 68
-    ):
-        summary = "not_strict_vt1_but_useful_endurance"
-
     notes = []
     if strict_vt1_fit == "poor":
         notes.append("strict VT1 execution is poor; do not use the VT1 rating as the whole ride verdict")
-    if physiological_response == "controlled":
-        notes.append("matched-power physiological response stayed controlled")
-    if physiological_response == "high_cost":
-        notes.append("power control was acceptable but physiological response was high-cost")
     if cap50_min > 10:
         notes.append(f"substantial time above VT1+50: {cap50_min:.1f} min")
     if climb_min > 30:
@@ -2919,8 +2589,6 @@ def outdoor_endurance_characterization(
             "cap_vt1_plus_50_min": rounded(cap50_min, digits=1),
             "cap_vt1_plus_90_min": rounded(cap90_min, digits=1),
             "execution_score": rounded(execution_score, digits=1),
-            "response_score": rounded(response_score, digits=1),
-            "session_value_score": rounded(session_value_score, digits=1),
             "matched_hr_per_w_delta_pct": rounded((matched_drift or {}).get("hr_per_w_delta_pct"), digits=1),
             "matched_ve_per_w_delta_pct": rounded((matched_drift or {}).get("ve_per_w_delta_pct"), digits=1),
             "matched_br_per_w_delta_pct": rounded((matched_drift or {}).get("br_per_w_delta_pct"), digits=1),
@@ -3367,8 +3035,8 @@ def last_numeric(rows: list[dict[str, str]], field: str) -> float | None:
 
 
 def average_field(rows: list[dict[str, str]], field: str) -> float | None:
-    values = [parsed for row in rows if (parsed := value(row, field)) is not None]
-    return sum(values) / len(values) if values else None
+    stats = field_summary(rows, field)
+    return stats["avg"] if stats else None
 
 
 def add_environmental_derivatives(rows: list[dict[str, str]]) -> None:
@@ -3407,13 +3075,13 @@ def saturation_vapor_pressure_kpa(temp_c: float) -> float:
 
 
 def min_field(rows: list[dict[str, str]], field: str) -> float | None:
-    values = [parsed for row in rows if (parsed := value(row, field)) is not None]
-    return min(values) if values else None
+    stats = field_summary(rows, field)
+    return stats["min"] if stats else None
 
 
 def max_field(rows: list[dict[str, str]], field: str) -> float | None:
-    values = [parsed for row in rows if (parsed := value(row, field)) is not None]
-    return max(values) if values else None
+    stats = field_summary(rows, field)
+    return stats["max"] if stats else None
 
 
 def positive_altitude_gain(rows: list[dict[str, str]]) -> float:
@@ -4533,19 +4201,24 @@ def hr_recovery_after_block(
     end_index = block.get("end_index")
     if not isinstance(end_index, int) or end_index >= len(rows):
         return None
-    start_hr = value(rows[max(0, end_index - 1)], "heartrate")
-    if start_hr is None:
+    boundary = value(rows[end_index], "time")
+    previous = rows[max(0, end_index - 1)]
+    start_hr = value(previous, "heartrate")
+    if boundary is None or start_hr is None or not timeline(rows[max(0, end_index-1):end_index+1]):
         return None
-    window = rows[end_index : min(len(rows), end_index + window_seconds)]
-    hr_values = [sample for row in window if (sample := value(row, "heartrate")) is not None]
-    if not hr_values:
-        return None
-    low = min(hr_values)
+    window = [row for row in rows[end_index:] if (t := value(row, "time")) is not None and boundary <= t < boundary + window_seconds]
+    q = quality(window, "heartrate")
+    if not q["usable"] or q.get("duration_seconds", 0) < window_seconds - MAX_RECOVERY_INTERVAL:
+        return {"status": "unavailable", "data_quality": q, "reason": "incomplete_or_invalid_recovery_window"}
+    summary = field_summary(window, "heartrate")
+    low_row = min((row for row in window if value(row, "heartrate") is not None), key=lambda row: value(row, "heartrate"))
     return {
-        "window_s": window_seconds,
-        "start_hr": rounded(start_hr, digits=0),
-        "low_hr": rounded(low, digits=0),
-        "drop_bpm": rounded(start_hr - low, digits=0),
+        "status": "observed", "interpretation": "HR decline only; not whole-body recovery",
+        "window_s": window_seconds, "start_s": boundary,
+        "minimum_at_s": value(low_row, "time"),
+        "start_hr": rounded(start_hr, digits=0), "low_hr": rounded(summary["min"], digits=0),
+        "drop_bpm": rounded(start_hr - summary["min"], digits=0),
+        "recovery_power": field_summary(window, "watts"), "data_quality": q,
     }
 
 
@@ -4569,6 +4242,8 @@ def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
             "label": brief_block_label(block, index=index),
             "source": source,
             "source_index": block.get("index"),
+            "comparison": block.get("comparison"),
+            "data_quality": compact_quality(block.get("data_quality") or {}),
             "duration_s": rounded(block.get("duration_seconds"), digits=0),
             "watts_avg": rounded(watts_avg, digits=0),
             "watts_max": stat(summary, "watts", "max", digits=0),
@@ -4666,6 +4341,8 @@ def brief_post_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any
         {
             "n": index,
             "source_index": block.get("index"),
+            "comparison": block.get("comparison"),
+            "data_quality": compact_quality(block.get("data_quality") or {}),
             "duration_s": rounded(block.get("duration_seconds"), digits=0),
             "watts_avg": stat(summary, "watts", "avg", digits=0),
             "watts_drift": rounded(drift.get("watts"), digits=1),
@@ -4768,6 +4445,10 @@ def compact_quality(quality: dict[str, Any]) -> dict[str, Any]:
             "missing": int(stats["missing"]),
             "longest_gap": int(stats["longest_gap"]),
             "meaningful_gap": bool(stats["meaningful_gap"]),
+            "usable": stats.get("usable"),
+            "reasons": stats.get("reasons", []),
+            "longest_gap_seconds": stats.get("longest_gap_seconds"),
+            "missing_fraction": stats.get("missing_fraction"),
         }
         for field, stats in quality.items()
         if stats.get("meaningful_gap") or not stats.get("has_values")

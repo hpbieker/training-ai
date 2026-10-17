@@ -165,10 +165,7 @@ def summarize_vt1(
             "climb_moving_pct": characterization.get("climb_moving_pct"),
         },
         "rating": scores.get("rating"),
-        "combined_score": scores.get("combined_score"),
         "execution_score": scores.get("execution_score"),
-        "response_score": scores.get("response_score"),
-        "session_value_score": scores.get("session_value_score"),
         "pedaling_min": ((vt1.get("duration") or {}).get("pedaling_min")),
         "best60": compact_best_block(best60),
         "best90": compact_best_block(best90),
@@ -179,10 +176,8 @@ def compact_best_block(block: dict[str, Any] | None) -> dict[str, Any] | None:
     if not block:
         return None
     return {
-        "combined_score": block.get("combined_score"),
-        "rating": block.get("rating"),
+        "execution_score": block.get("control_score"),
         "control_score": block.get("control_score"),
-        "session_value_score": block.get("session_value_score"),
         "pedaling_avg_w": block.get("pedaling_avg_w"),
         "start_min": block.get("start_min"),
         "end_min": block.get("end_min"),
@@ -201,11 +196,6 @@ def summarize_vt2(vt2: dict[str, Any], best: dict[str, Any]) -> dict[str, Any] |
         "duration_s": best.get("duration_s"),
         "watts_avg": best.get("watts_avg"),
         "execution_score": best.get("execution_score"),
-        "response_score": best.get("response_score"),
-        "heat_adjusted_response_score": best.get("heat_adjusted_response_score"),
-        "recovery_score": best.get("recovery_score"),
-        "combined_score": best.get("combined_score"),
-        "heat_penalty_points": physiology.get("heat_penalty_points"),
         "limiter_hints": best.get("limiter_hints") or [],
     }
 
@@ -296,46 +286,20 @@ def summarize_year(
     vt1_rankable = [
         item
         for item in results
-        if isinstance((item.get("vt1") or {}).get("combined_score"), (int, float))
+        if isinstance((item.get("vt1") or {}).get("execution_score"), (int, float))
         and isinstance(item.get("moving_min"), (int, float))
         and item["moving_min"] >= 30
     ]
     ranked_vt1 = sorted(
         vt1_rankable,
-        key=lambda item: (item["vt1"].get("combined_score") or 0, item["vt1"].get("session_value_score") or 0),
+        key=lambda item: (item["vt1"].get("execution_score") or 0, item.get("moving_min") or 0),
         reverse=True,
-    )
-    useful_endurance = sorted(
-        [
-            item
-            for item in vt1_rankable
-            if (item.get("vt1") or {}).get("characterization", {}).get("summary")
-            == "not_strict_vt1_but_useful_endurance"
-        ],
-        key=lambda item: (
-            item["vt1"].get("session_value_score") or 0,
-            item["vt1"].get("response_score") or 0,
-            item.get("moving_min") or 0,
-        ),
-        reverse=True,
-    )
-    poor_response = sorted(
-        [
-            item
-            for item in vt1_rankable
-            if isinstance((item.get("vt1") or {}).get("response_score"), (int, float))
-            and item["vt1"]["response_score"] < 65
-        ],
-        key=lambda item: item["vt1"].get("response_score") or 0,
     )
     ranked_vt2 = sorted(
         [item for item in results if item.get("vt2")],
-        key=lambda item: item["vt2"].get("combined_score") or 0,
+        key=lambda item: item["vt2"].get("execution_score") or 0,
         reverse=True,
     )
-    heat_limited = [
-        item for item in results if item.get("vt2") and item["vt2"].get("verdict") == "heat_limited_controlled_vt2"
-    ]
     return {
         "overview": {
             "year": year,
@@ -349,13 +313,10 @@ def summarize_year(
             "best_vt1_overall": ranked_vt1[:10],
             "best_vt1_60min": sorted(
                 [item for item in results if (item.get("vt1") or {}).get("best60")],
-                key=lambda item: item["vt1"]["best60"].get("combined_score") or 0,
+                key=lambda item: item["vt1"]["best60"].get("execution_score") or 0,
                 reverse=True,
             )[:10],
-            "useful_endurance_not_strict_vt1": useful_endurance[:10],
-            "poor_physiological_response": poor_response[:10],
             "best_vt2_control": ranked_vt2[:10],
-            "heat_limited_vt2": heat_limited,
         },
         "activities": results,
         "duplicates": duplicates,
@@ -381,12 +342,6 @@ def render_markdown(summary: dict[str, Any]) -> str:
         "## Beste 60 min VT1-vinduer",
         render_rows(summary["rankings"]["best_vt1_60min"], mode="vt1_60"),
         "",
-        "## Nyttig endurance, men ikke streng VT1",
-        render_rows(summary["rankings"]["useful_endurance_not_strict_vt1"], mode="useful_endurance"),
-        "",
-        "## Svak fysiologisk respons",
-        render_rows(summary["rankings"]["poor_physiological_response"], mode="all"),
-        "",
         "## Beste VT2/threshold-kontroll",
         render_rows(summary["rankings"]["best_vt2_control"], mode="vt2"),
         "",
@@ -404,25 +359,22 @@ def render_rows(rows: list[dict[str, Any]], *, mode: str) -> str:
     if not rows:
         return "_Ingen._"
     if mode == "vt2":
-        header = "| Dato | Okt | VT2 | Watt | Score | Exec | Resp | Heat |"
-        sep = "|---|---|---:|---:|---:|---:|---:|---:|"
+        header = "| Dato | Okt | VT2 | Watt | Power control |"
+        sep = "|---|---|---:|---:|---:|"
         body = [
-            "| {date} | {name} | {verdict} | {watts} | {score} | {exec} | {resp} | {heat} |".format(
+            "| {date} | {name} | {verdict} | {watts} | {exec} |".format(
                 date=row["date"],
                 name=escape_pipe(row["name"]),
                 verdict=escape_pipe((row.get("vt2") or {}).get("verdict")),
                 watts=fmt((row.get("vt2") or {}).get("watts_avg")),
-                score=fmt((row.get("vt2") or {}).get("combined_score")),
                 exec=fmt((row.get("vt2") or {}).get("execution_score")),
-                resp=fmt((row.get("vt2") or {}).get("response_score")),
-                heat=fmt((row.get("vt2") or {}).get("heat_penalty_points")),
             )
             for row in rows
         ]
         return "\n".join([header, sep, *body])
 
-    header = "| Dato | Okt | Min | TL | VT1 score | Exec | Resp | Stimulus | 60min | VT2 |"
-    sep = "|---|---|---:|---:|---:|---:|---:|---|---:|---|"
+    header = "| Dato | Okt | Min | TL | Power control | Structure | 60min | VT2 |"
+    sep = "|---|---|---:|---:|---:|---|---:|---|"
     body = []
     for row in rows:
         vt1 = row.get("vt1") or {}
@@ -430,16 +382,14 @@ def render_rows(rows: list[dict[str, Any]], *, mode: str) -> str:
         best60 = vt1.get("best60") or {}
         vt2 = row.get("vt2") or {}
         body.append(
-            "| {date} | {name} | {mins} | {tl} | {score} | {exec} | {resp} | {stimulus} | {best60} | {vt2} |".format(
+            "| {date} | {name} | {mins} | {tl} | {exec} | {stimulus} | {best60} | {vt2} |".format(
                 date=row["date"],
                 name=escape_pipe(row["name"]),
                 mins=fmt(row.get("moving_min")),
                 tl=fmt(row.get("training_load")),
-                score=fmt(vt1.get("combined_score")),
                 exec=fmt(vt1.get("execution_score")),
-                resp=fmt(vt1.get("response_score")),
                 stimulus=escape_pipe(characterization.get("summary") or characterization.get("stimulus") or ""),
-                best60=fmt(best60.get("combined_score")),
+                best60=fmt(best60.get("execution_score")),
                 vt2=escape_pipe(vt2.get("verdict") or ""),
             )
         )

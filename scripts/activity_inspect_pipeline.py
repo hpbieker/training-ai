@@ -321,6 +321,8 @@ def source_file_metadata(activity_dir: Path) -> dict[str, dict[str, Any]]:
         "activity_json": file_metadata(activity_dir / "activity.json"),
         "streams_csv": file_metadata(activity_dir / "streams.csv"),
         "activity_inspect_py": file_metadata(activity_inspect_script()),
+        "analysis_py": file_metadata(activity_inspect_script().with_name("analysis.py")),
+        "physiological_evidence_py": file_metadata(activity_inspect_script().with_name("physiological_evidence.py")),
     }
 
 

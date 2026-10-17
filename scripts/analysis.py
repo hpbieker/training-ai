@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from statistics import median
+from physiological_evidence import numeric, timeline, quality, field_summary, matched_windows
 from typing import Any, Iterable
 
 
@@ -89,13 +90,19 @@ def load_streams_csv(path: str | Path) -> list[dict[str, str]]:
             normalize_stream_fieldname(field)
             for field in (reader.fieldnames or [])
         ]
-        return [
+        rows = [
             {
                 normalize_stream_fieldname(key): value
                 for key, value in row.items()
             }
             for row in reader
         ]
+
+        # Some source exports end with an empty delimiter row, not a sample.
+        # Trim only the suffix so saved interval indices remain unchanged.
+        while rows and all(v in (None, "") for v in rows[-1].values()):
+            rows.pop()
+        return rows
 
 
 def normalize_stream_fieldname(fieldname: str | None) -> str:
@@ -204,13 +211,7 @@ def iter_saved_activities(artifacts_dir: str | Path = ARTIFACTS_DIR) -> Iterable
 def value(row: dict[str, str], key: str) -> float | None:
     """Parse a numeric stream value."""
 
-    raw = row.get(key)
-    if raw in ("", None):
-        return None
-    try:
-        return float(raw)
-    except ValueError:
-        return None
+    return numeric(row, key)
 
 
 def stream_values(rows: Iterable[dict[str, str]], key: str) -> list[float]:
@@ -225,21 +226,8 @@ def summarize_rows(
 ) -> dict[str, dict[str, float] | None]:
     """Summarize rows with avg/min/max/start/end/count for each field."""
 
-    summary: dict[str, dict[str, float] | None] = {}
-    for field in fields:
-        values = stream_values(rows, field)
-        if not values:
-            summary[field] = None
-            continue
-        summary[field] = {
-            "avg": sum(values) / len(values),
-            "min": min(values),
-            "max": max(values),
-            "start": values[0],
-            "end": values[-1],
-            "count": float(len(values)),
-        }
-    return summary
+    clock = timeline(rows)
+    return {field: field_summary(rows, field, clock) for field in fields}
 
 
 def data_quality_summary(
@@ -248,123 +236,33 @@ def data_quality_summary(
 ) -> dict[str, dict[str, float | int | bool]]:
     """Summarize missing values and longer gaps for each stream field."""
 
-    result: dict[str, dict[str, float | int | bool]] = {}
-    total = len(rows)
-    for field in fields:
-        missing = 0
-        longest_gap = 0
-        current_gap = 0
-        present = 0
-        for row in rows:
-            if value(row, field) is None:
-                missing += 1
-                current_gap += 1
-                longest_gap = max(longest_gap, current_gap)
-            else:
-                present += 1
-                current_gap = 0
-        result[field] = {
-            "total": total,
-            "present": present,
-            "missing": missing,
-            "missing_fraction": missing / total if total else 0.0,
-            "longest_gap": longest_gap,
-            "has_values": present > 0,
-            "meaningful_gap": longest_gap >= 30 or missing / total >= 0.05 if total else False,
-        }
-    return result
+    clock = timeline(rows)
+    return {field: quality(rows, field, clock) for field in fields}
 
 
-def half_drift(
+def matched_work_drift(
     rows: list[dict[str, str]],
     fields: Iterable[str] = CORE_STREAMS,
 ) -> dict[str, float | None]:
-    """Return second-half average minus first-half average for each field."""
+    """Return quality-gated change between stable matched work windows."""
 
-    if len(rows) < 2:
-        return {field: None for field in fields}
-    split = len(rows) // 2
-    first = summarize_rows(rows[:split], fields)
-    second = summarize_rows(rows[split:], fields)
-    drift: dict[str, float | None] = {}
-    for field in fields:
-        first_avg = first[field]["avg"] if first[field] else None
-        second_avg = second[field]["avg"] if second[field] else None
-        drift[field] = (
-            second_avg - first_avg
-            if first_avg is not None and second_avg is not None
-            else None
-        )
-    return drift
+    fields = list(fields)
+    comparison = matched_windows(rows, fields)
+    return {field: comparison['fields'].get(field, {}).get('delta') for field in fields}
 
 
-def half_relative_to_power_drift(
+def matched_relative_to_power_drift(
     rows: list[dict[str, str]],
     fields: Iterable[str] = ("heartrate", "respiration", "tidal_volume_min"),
     *,
     power_field: str = "watts",
     min_power: float = 50.0,
 ) -> dict[str, float | None]:
-    """Return percent drift in field-per-watt from first half to second half."""
+    """Return descriptive field-per-watt change between stable matched windows."""
 
-    if len(rows) < 2:
-        return {field: None for field in fields}
-    split = len(rows) // 2
-    return {
-        field: relative_to_power_change(
-            rows[:split],
-            rows[split:],
-            field=field,
-            power_field=power_field,
-            min_power=min_power,
-        )
-        for field in fields
-    }
-
-
-def relative_to_power_change(
-    first_rows: list[dict[str, str]],
-    second_rows: list[dict[str, str]],
-    *,
-    field: str,
-    power_field: str,
-    min_power: float,
-) -> float | None:
-    first_ratio = average_field_per_watt(
-        first_rows,
-        field=field,
-        power_field=power_field,
-        min_power=min_power,
-    )
-    second_ratio = average_field_per_watt(
-        second_rows,
-        field=field,
-        power_field=power_field,
-        min_power=min_power,
-    )
-    if first_ratio is None or second_ratio is None or first_ratio == 0:
-        return None
-    return (second_ratio - first_ratio) / first_ratio * 100
-
-
-def average_field_per_watt(
-    rows: list[dict[str, str]],
-    *,
-    field: str,
-    power_field: str,
-    min_power: float,
-) -> float | None:
-    ratios = []
-    for row in rows:
-        field_value = value(row, field)
-        watts = value(row, power_field)
-        if (
-            field_value is not None
-            and watts is not None
-            and watts >= min_power
-        ):
-            ratios.append(field_value / watts)
-    return sum(ratios) / len(ratios) if ratios else None
+    fields = list(fields)
+    comparison = matched_windows(rows, fields)
+    return {field: comparison['fields'].get(field, {}).get('per_watt_change_pct') for field in fields}
 
 
 def summarize_block(
@@ -383,11 +281,14 @@ def summarize_block(
     end_row_index = max(start_index, end_index - 1)
     end_time = value(rows[end_row_index], "time") if rows and end_row_index < len(rows) else None
     duration_seconds = (
-        end_time - start_time + 1
+        (timeline(block_rows)[2] if timeline(block_rows) else end_time - start_time)
         if start_time is not None and end_time is not None and end_time >= start_time
         else len(block_rows)
     )
+    fields = list(fields)
+    comparison = matched_windows(block_rows, fields)
     return {
+        "comparison": comparison,
         "label": label,
         "start_index": start_index,
         "end_index": end_index,
@@ -397,8 +298,8 @@ def summarize_block(
         "duration_minutes": duration_seconds / 60 if duration_seconds is not None else None,
         "detection": detection or {},
         "summary": summarize_rows(block_rows, fields),
-        "drift": half_drift(block_rows, fields),
-        "relative_to_power_drift": half_relative_to_power_drift(block_rows),
+        "drift": {f: comparison["fields"].get(f, {}).get("delta") for f in fields},
+        "relative_to_power_drift": {f: comparison["fields"].get(f, {}).get("per_watt_change_pct") for f in ("heartrate", "respiration", "tidal_volume_min")},
         "data_quality": data_quality_summary(block_rows, fields),
     }
 
@@ -563,7 +464,7 @@ def moxy_interval_summary(activity: SavedActivity) -> list[dict[str, Any]]:
                 "type": interval.get("type"),
                 "rows": len(rows),
                 "stats": summarize_rows(rows),
-                "drift": half_drift(rows),
+                "drift": matched_work_drift(rows),
             }
         )
     return summaries

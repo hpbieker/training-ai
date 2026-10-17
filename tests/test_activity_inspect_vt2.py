@@ -13,7 +13,7 @@ from activity_inspect import (  # noqa: E402
     default_output_path,
     thermal_evidence_assessment,
     vt2_session_quality,
-    vt2_verdict,
+    vt2_execution_verdict,
 )
 
 
@@ -45,28 +45,10 @@ class EnvironmentalDerivativeTests(unittest.TestCase):
         self.assertNotIn("skin_air_vapor_pressure_gradient_kpa", rows[0])
 
 
-def block(
-    n: int,
-    *,
-    verdict: str,
-    watts: float = 290,
-    combined: float = 90,
-    response: float = 90,
-) -> dict:
-    return {
-        "n": n,
-        "label": f"block-{n}",
-        "duration_s": 1200,
-        "watts_avg": watts,
-        "execution_score": 98,
-        "response_score": response,
-        "heat_adjusted_response_score": response,
-        "recovery_score": 100,
-        "combined_score": combined,
-        "rating": "A" if combined >= 88 else "B",
-        "verdict": verdict,
-        "limiter_hints": ["stable"] if verdict == "controlled_vt2" else ["cardiac_drift_watch"],
-    }
+def block(n, *, watts=290, execution=98):
+    return {"n": n, "label": f"block-{n}", "duration_s": 1200,
+            "watts_avg": watts, "execution_score": execution,
+            "verdict": vt2_execution_verdict({"execution_score": execution})}
 
 
 class DefaultOutputPathTests(unittest.TestCase):
@@ -86,66 +68,20 @@ class DefaultOutputPathTests(unittest.TestCase):
 
 
 class Vt2SessionQualityTests(unittest.TestCase):
-    def test_bad_last_block_controls_session_verdict(self):
-        result = vt2_session_quality(
-            [
-                block(1, verdict="controlled_vt2", combined=92),
-                block(2, verdict="controlled_vt2", combined=90),
-                block(3, verdict="controlled_high_cost_vt2", watts=282, combined=74),
-            ],
-            [],
-        )
-
-        self.assertEqual(result["verdict"], "controlled_high_cost_vt2")
-        self.assertEqual(result["combined_score"], 74)
-        self.assertEqual(result["worst_block"]["n"], 3)
+    def test_session_tracks_mechanical_execution_without_cost_grade(self):
+        result = vt2_session_quality([block(1), block(2), block(3, watts=282, execution=60)], [])
+        self.assertEqual(result["verdict"], "power_execution_variable_or_off_target")
+        self.assertEqual(result["worst_execution_block"]["n"], 3)
         self.assertAlmostEqual(result["power_fade_pct"], 2.8)
+        self.assertNotIn("combined_score", result)
+        self.assertNotIn("response_score", result)
 
-    def test_even_controlled_blocks_produce_controlled_session(self):
-        result = vt2_session_quality(
-            [
-                block(1, verdict="controlled_vt2", watts=290, combined=91),
-                block(2, verdict="controlled_vt2", watts=290, combined=90),
-                block(3, verdict="controlled_vt2", watts=289, combined=89),
-            ],
-            [
-                {"after_work_block": 1, "hr_drop_start_to_min": 40, "smo2_peak": 55},
-                {"after_work_block": 3, "hr_drop_start_to_min": 36, "smo2_peak": 52},
-            ],
-        )
-
-        self.assertEqual(result["verdict"], "controlled_vt2")
-        self.assertEqual(result["block_count"], 3)
-        self.assertEqual(result["total_duration_s"], 3600)
-        self.assertEqual(result["recovery_trend"]["smo2_peak_start"], 55)
-        self.assertEqual(result["recovery_trend"]["smo2_peak_end"], 52)
-
-
-class Vt2HeatVerdictTests(unittest.TestCase):
-    def test_absolute_core_temperature_does_not_create_heat_limited_verdict(self):
-        verdict = vt2_verdict(
-            {"execution_score": 95},
-            {
-                "response_score": 94,
-                "core_temp_max": 38.7,
-                "thermal_evidence": {"grade": "thermal_context_present"},
-            },
-            88,
-        )
-
-        self.assertEqual(verdict, "controlled_vt2")
-
-    def test_heat_limited_requires_explicit_heat_limited_evidence_grade(self):
-        verdict = vt2_verdict(
-            {"execution_score": 95},
-            {
-                "response_score": 94,
-                "thermal_evidence": {"grade": "heat_limited"},
-            },
-            88,
-        )
-
-        self.assertEqual(verdict, "heat_limited_controlled_vt2")
+    def test_recovery_extrema_do_not_become_recovery_grade(self):
+        result = vt2_session_quality([block(1), block(2)],
+                                     [{"after_work_block": 1, "hr_drop_start_to_min": 40}])
+        self.assertEqual(result["verdict"], "power_execution_controlled")
+        self.assertNotIn("recovery_score", result)
+        self.assertNotIn("recovery_trend", result)
 
 
 class ThermalEvidenceAssessmentTests(unittest.TestCase):

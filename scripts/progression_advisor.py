@@ -377,13 +377,13 @@ def advice_payload(
 
 def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dict[str, Any]:
     beta_summary = result.get("beta_summary") or {}
-    vt2_quality = result.get("vt2_quality") or {}
+    vt2_quality = (result.get("vt2_quality") or {}).get("session_quality") or {}
     hardest = result.get("hardest_block") or {}
     total = result.get("total") or {}
     stability = "unknown"
     physiological_cost = "unknown"
 
-    verdict = str(vt2_quality.get("verdict") or beta_summary.get("status") or "").lower()
+    verdict = str(vt2_quality.get("verdict") or "").lower()
     if any(token in verdict for token in ("failed", "unstable", "variable")):
         stability = "unstable_or_failed"
     elif any(token in verdict for token in ("controlled", "stable")):
@@ -402,10 +402,8 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
         number(total.get("core_temp_max")),
     ]
     max_core = max([value for value in difficulty_markers if value is not None], default=None)
-    if max_drift is not None:
-        physiological_cost = "high" if max_drift >= 12 else "moderate" if max_drift >= 6 else "low"
-    if max_core is not None and max_core >= 38.3 and physiological_cost != "high":
-        physiological_cost = "moderate"
+    # Drift and wearable temperature remain observations, not cost diagnoses.
+    physiological_cost = "requires_synthesis"
 
     return {
         "category": beta_summary.get("category"),
