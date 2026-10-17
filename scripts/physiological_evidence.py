@@ -98,7 +98,7 @@ def field_summary(rows, field, clock=None):
 
 
 def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
-                    power_tolerance=0.05, cadence_tolerance=0.10):
+                    power_tolerance=0.05, cadence_tolerance=0.10, window_context=None):
     """Find contiguous stable early/late windows; never stitch isolated samples.
 
     Windows use elapsed time, skip the initial transition and windows with
@@ -116,6 +116,66 @@ def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
     if clock is None:
         result['reasons'] = ['missing_or_nonmonotonic_time']
         return result
+    times, _, duration = clock
+    if window_context is None:
+        window_context = prepare_windows(rows, transition_seconds=transition_seconds,
+                                         window_seconds=window_seconds)
+    if (window_context['transition_seconds'], window_context['window_seconds']) != (transition_seconds, window_seconds):
+        raise ValueError('Window context and comparison policy must match')
+    # Keep the activity-wide grid and work-run history. A block may only use
+    # complete windows inside its own elapsed-time bounds.
+    included_rows = {id(row) for row in rows}
+    candidates = [(chunk, window) for chunk, window in window_context['candidates']
+                  if window['start_s'] >= times[0]
+                  and window['end_s'] <= times[0] + duration
+                  and all(id(row) in included_rows for row in chunk)]
+    result['candidate_windows'] = len(candidates)
+    # Prefer the widest temporal separation that satisfies mechanical matching.
+    pairs = []
+    for i, (early, e) in enumerate(candidates):
+        for late, l in candidates[i+1:]:
+            if e['work_run_start_s'] != l['work_run_start_s'] and abs(e['elapsed_work_s']-l['elapsed_work_s']) > window_seconds / 2:
+                continue
+            if abs(l['power_avg']/e['power_avg']-1) > power_tolerance:
+                continue
+            if e['cadence_avg'] is not None and l['cadence_avg'] is not None:
+                if e['cadence_avg'] <= 0 or abs(l['cadence_avg']/e['cadence_avg']-1) > cadence_tolerance:
+                    continue
+            pairs.append((l['start_s']-e['start_s'], early, e, late, l))
+    if not pairs:
+        result['reasons'] = ['no_comparable_stable_windows']
+        return result
+    _, early, e, late, l = max(pairs, key=lambda pair: pair[0])
+    result.update(status='matched', early=e, late=l,
+                  work_phase_comparison='same_continuous_work' if e['work_run_start_s'] == l['work_run_start_s'] else 'equivalent_elapsed_work',
+                  cadence_comparison='matched' if e['cadence_avg'] is not None and l['cadence_avg'] is not None else 'unresolved',
+                  prior_work_context='elapsed time differs; fueling, cooling and prior recovery require context')
+    for field in fields:
+        q1, q2 = quality(early, field), quality(late, field)
+        a, b = field_summary(early, field), field_summary(late, field)
+        item = dict(status='usable' if a and b else 'unavailable', early_quality=q1, late_quality=q2)
+        if a and b:
+            item.update(early_avg=a['avg'], late_avg=b['avg'], delta=b['avg']-a['avg'])
+            if a['avg'] and field not in {'watts', 'cadence'}:
+                item['per_watt_change_pct'] = ((b['avg']/l['power_avg'])/(a['avg']/e['power_avg'])-1)*100
+        result['fields'][field] = item
+    return result
+
+
+def prepare_windows(rows, *, transition_seconds=120, window_seconds=120):
+    """Prepare stable windows once on the complete, unfiltered activity stream.
+
+    Reuse this context for contiguous blocks from that same stream. It retains
+    source rows and must be rebuilt if the source data or window policy changes.
+    """
+    return dict(transition_seconds=transition_seconds, window_seconds=window_seconds,
+                candidates=_stable_windows(rows, transition_seconds, window_seconds))
+
+
+def _stable_windows(rows, transition_seconds, window_seconds):
+    clock = timeline(rows)
+    if clock is None:
+        return []
     times, _, duration = clock
     # Track sustained work runs so separate intervals can be compared at
     # equivalent elapsed work, rather than an onset against a late plateau.
@@ -159,34 +219,4 @@ def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
                                                power_avg=power['avg'], cadence_avg=cadence['avg'] if cadence else None,
                                                work_run_start_s=run_starts[cursor], elapsed_work_s=start-run_starts[cursor])))
         start += window_seconds
-    result['candidate_windows'] = len(candidates)
-    # Prefer the widest temporal separation that satisfies mechanical matching.
-    pairs = []
-    for i, (early, e) in enumerate(candidates):
-        for late, l in candidates[i+1:]:
-            if e['work_run_start_s'] != l['work_run_start_s'] and abs(e['elapsed_work_s']-l['elapsed_work_s']) > window_seconds / 2:
-                continue
-            if abs(l['power_avg']/e['power_avg']-1) > power_tolerance:
-                continue
-            if e['cadence_avg'] is not None and l['cadence_avg'] is not None:
-                if e['cadence_avg'] <= 0 or abs(l['cadence_avg']/e['cadence_avg']-1) > cadence_tolerance:
-                    continue
-            pairs.append((l['start_s']-e['start_s'], early, e, late, l))
-    if not pairs:
-        result['reasons'] = ['no_comparable_stable_windows']
-        return result
-    _, early, e, late, l = max(pairs, key=lambda pair: pair[0])
-    result.update(status='matched', early=e, late=l,
-                  work_phase_comparison='same_continuous_work' if e['work_run_start_s'] == l['work_run_start_s'] else 'equivalent_elapsed_work',
-                  cadence_comparison='matched' if e['cadence_avg'] is not None and l['cadence_avg'] is not None else 'unresolved',
-                  prior_work_context='elapsed time differs; fueling, cooling and prior recovery require context')
-    for field in fields:
-        q1, q2 = quality(early, field), quality(late, field)
-        a, b = field_summary(early, field), field_summary(late, field)
-        item = dict(status='usable' if a and b else 'unavailable', early_quality=q1, late_quality=q2)
-        if a and b:
-            item.update(early_avg=a['avg'], late_avg=b['avg'], delta=b['avg']-a['avg'])
-            if a['avg'] and field not in {'watts', 'cadence'}:
-                item['per_watt_change_pct'] = ((b['avg']/l['power_avg'])/(a['avg']/e['power_avg'])-1)*100
-        result['fields'][field] = item
-    return result
+    return candidates

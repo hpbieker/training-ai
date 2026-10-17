@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from statistics import median
-from physiological_evidence import numeric, timeline, quality, field_summary, matched_windows
+from physiological_evidence import numeric, timeline, quality, field_summary, matched_windows, prepare_windows
 from typing import Any, Iterable
 
 
@@ -273,6 +273,7 @@ def summarize_block(
     label: str,
     fields: Iterable[str] = CORE_STREAMS,
     detection: dict[str, Any] | None = None,
+    window_context=None,
 ) -> dict[str, Any]:
     """Return a standard block summary for chat-oriented analysis."""
 
@@ -286,7 +287,8 @@ def summarize_block(
         else len(block_rows)
     )
     fields = list(fields)
-    comparison = matched_windows(block_rows, fields)
+    comparison = matched_windows(block_rows, fields, window_context=(
+        window_context if window_context is not None else prepare_windows(rows)))
     return {
         "comparison": comparison,
         "label": label,

@@ -16,7 +16,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from physiological_evidence import timeline, quality, field_summary, matched_windows
+from physiological_evidence import timeline, quality, field_summary, matched_windows, prepare_windows
 
 from analysis import (
     CORE_STREAMS,
@@ -30,8 +30,6 @@ from analysis import (
     resolve_activity_ref,
     summarize_block,
     summarize_rows,
-    matched_work_drift,
-    matched_relative_to_power_drift,
     usable_analysis_fields,
     value,
 )
@@ -206,7 +204,8 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
     rows = activity.streams
     add_environmental_derivatives(rows)
     fields = usable_analysis_fields(activity, requested_fields)
-    total_comparison = matched_windows(rows, fields)
+    window_context = prepare_windows(rows)
+    total_comparison = matched_windows(rows, fields, window_context=window_context)
 
     result: dict[str, Any] = {
         "activity": activity_metadata(activity),
@@ -235,7 +234,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
             result["streams"]["data_quality"],
         )
     if not args.no_intervals:
-        result["intervals"] = interval_summaries(activity, fields)
+        result["intervals"] = interval_summaries(activity, fields, window_context=window_context)
 
     if args.steady_vt1:
         segment_rows, start, end, target = detect_steady_power_segment(rows)
@@ -245,13 +244,10 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
             end_index=end,
             label="steady_vt1",
             fields=fields,
+            window_context=window_context,
             detection={"target": target, "method": "detect_steady_power_segment"},
         )
         result["steady_vt1_segment"]["summary"] = summarize_rows(segment_rows, fields)
-        result["steady_vt1_segment"]["drift"] = matched_work_drift(segment_rows, fields)
-        result["steady_vt1_segment"]["relative_to_power_drift"] = matched_relative_to_power_drift(
-            segment_rows
-        )
 
     if args.target is not None or args.threshold is not None:
         blocks = detect_power_blocks(
@@ -270,6 +266,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
                 end_index=block.end_index,
                 label=block.label,
                 fields=fields,
+                window_context=window_context,
                 detection=block.detection,
             )
             for block in blocks
@@ -291,6 +288,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
                 end_index=block.end_index,
                 label=block.label,
                 fields=fields,
+                window_context=window_context,
                 detection=block.detection,
             )
             for block in blocks
@@ -298,6 +296,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
 
     if args.brief:
         result["_rows"] = rows
+        result["_window_context"] = window_context
         result["_outdoor_vt1_requested"] = args.outdoor_vt1
         result["_outdoor_vt1_disabled"] = args.no_auto_outdoor_vt1
         result["_indoor_vt1_requested"] = args.indoor_vt1
@@ -337,7 +336,8 @@ def activity_metadata(activity) -> dict[str, Any]:
     }
 
 
-def interval_summaries(activity, fields: list[str]) -> list[dict[str, Any]]:
+def interval_summaries(activity, fields: list[str], *, window_context=None) -> list[dict[str, Any]]:
+    window_context = window_context if window_context is not None else prepare_windows(activity.streams)
     summaries = []
     for index, interval in enumerate(activity.intervals, start=1):
         start = int(interval.get("start_index") or 0)
@@ -348,6 +348,7 @@ def interval_summaries(activity, fields: list[str]) -> list[dict[str, Any]]:
             end_index=end,
             label=interval.get("name") or interval.get("type") or f"interval_{index}",
             fields=fields,
+            window_context=window_context,
             detection={"source": "intervals_icu"},
         )
         summary.update(
@@ -553,6 +554,7 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
     if include_indoor_vt1 and isinstance(vt1_watts, (int, float)):
         brief["indoor_vt1_quality"] = indoor_vt1_quality(
             rows,
+            window_context=result.get("_window_context"),
             work_blocks=work_blocks,
             vt1_watts=float(vt1_watts),
             pauses=long_pauses,
@@ -1005,7 +1007,9 @@ def vt2_block_quality(
 
     stats = indoor_segment_stats(pedaling)
     summary = summarize_rows(segment, DEFAULT_FIELDS)
-    comparison = matched_windows(segment, DEFAULT_FIELDS)
+    comparison = block.get("comparison")
+    if comparison is None:
+        comparison = matched_windows(segment, DEFAULT_FIELDS, window_context=prepare_windows(rows))
     drift = {f: v.get("delta") for f, v in comparison["fields"].items()}
     relative_drift = {f: v.get("per_watt_change_pct") for f, v in comparison["fields"].items()}
     watts_avg = stat(summary, "watts", "avg", digits=1)
@@ -1300,6 +1304,7 @@ def indoor_vt1_quality(
     vt1_watts: float,
     pauses: list[dict[str, Any]],
     auto_triggered: bool,
+    window_context=None,
 ) -> dict[str, Any]:
     """Return indoor VT1 quality diagnostics for steady trainer work."""
 
@@ -1337,7 +1342,8 @@ def indoor_vt1_quality(
         "middle_third": indoor_segment_stats(vt1_middle),
         "final_third": indoor_segment_stats(vt1_final),
     }
-    stability = descriptive_work_change(analysis_rows)
+    stability = descriptive_work_change(analysis_rows, window_context=(
+        window_context if window_context is not None else prepare_windows(rows)))
     assessment = indoor_vt1_assessment(
         vt1_watts=vt1_watts,
         rolling_60=rolling["60s"],
@@ -2472,8 +2478,8 @@ def matched_power_drift(
     return descriptive_work_change(pedaling_rows)
 
 
-def descriptive_work_change(rows: list[dict[str, str]]) -> dict[str, Any]:
-    comparison = matched_windows(rows, DEFAULT_FIELDS)
+def descriptive_work_change(rows: list[dict[str, str]], *, window_context=None) -> dict[str, Any]:
+    comparison = matched_windows(rows, DEFAULT_FIELDS, window_context=window_context)
     fields = comparison["fields"]
     return drop_none({
         "comparison": comparison,

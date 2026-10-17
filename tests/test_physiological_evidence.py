@@ -2,7 +2,7 @@ from pathlib import Path
 import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from physiological_evidence import quality, field_summary, matched_windows
+from physiological_evidence import quality, field_summary, matched_windows, prepare_windows
 from analysis import summarize_block, summarize_rows
 from activity_inspect import vt2_block_quality, hr_recovery_after_block, indoor_vt1_assessment
 
@@ -14,6 +14,39 @@ def ride(step=1, duration=1200):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_block_boundary_shift_reuses_activity_windows(self):
+        rows = ride(duration=1800)
+        # A clipped transition used to reinitialize the running power baseline.
+        for row in rows[:741]:
+            row['watts'] = '120'
+        for row in rows[741:750]:
+            row['watts'] = '265'
+        context = prepare_windows(rows)
+        total = matched_windows(rows, ['heartrate'], window_context=context)
+        for start in [741, 742, 750, 760]:
+            block = summarize_block(rows, start_index=start, end_index=len(rows),
+                                    label='work', window_context=context)
+            self.assertEqual(block['comparison']['early'], total['early'])
+            self.assertEqual(block['comparison']['late'], total['late'])
+            self.assertEqual(block['drift']['heartrate'], total['fields']['heartrate']['delta'])
+            self.assertEqual(block['comparison'], summarize_block(
+                rows, start_index=start, end_index=len(rows), label='work')['comparison'])
+            diagnostic = vt2_block_quality(rows, block, index=1,
+                                           target_watts=290, anchor_watts=290)
+            self.assertEqual(diagnostic['comparison'], block['comparison'])
+
+    def test_context_windows_stay_inside_block_and_preserve_gaps(self):
+        rows = ride()
+        context = prepare_windows(rows)
+        block = rows[181:959]
+        result = matched_windows(block, ['heartrate'], window_context=context)
+        self.assertGreaterEqual(result['early']['start_s'], 181)
+        self.assertLessEqual(result['late']['end_s'], 959)
+        # A filtered-out source sample must not silently reappear via context.
+        filtered = [r for r in rows if int(r['time']) % 120 != 60]
+        self.assertEqual(matched_windows(filtered, ['heartrate'],
+                         window_context=context)['status'], 'unavailable')
+
     def test_sample_rate_does_not_change_comparison_or_coverage(self):
         a = matched_windows(ride(), ['heartrate'])
         b = matched_windows(ride(5), ['heartrate'])
