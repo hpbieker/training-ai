@@ -15,6 +15,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Health & Fitness"
+    },
+    {
+      "name": "olympiatoppen",
+      "source": {
+        "source": "local",
+        "path": "./plugins/olympiatoppen"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Health & Fitness"
     }
   ]
 }

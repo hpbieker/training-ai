@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "olympiatoppen": {
+      "command": "python3",
+      "args": ["-B", "./olympiatoppen_mcp.py"],
+      "cwd": "."
+    }
+  }
+}

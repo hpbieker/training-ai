@@ -1,0 +1,19 @@
+{
+  "name": "olympiatoppen",
+  "version": "0.1.5",
+  "description": "Read logged workouts and session details from Olympiatoppen's training diary.",
+  "author": {"name": "Hans Petter Bieker"},
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Olympiatoppen",
+    "shortDescription": "Read Olympiatoppen diary sessions and workout details.",
+    "longDescription": "Olympiatoppen provides local MCP tools to list logged sessions, inspect one session, and manage its private browser session.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "composerIcon": "./assets/olympiatoppen-icon.png",
+    "logo": "./assets/olympiatoppen-icon.png",
+    "capabilities": ["Read logged workouts", "Inspect workout details"],
+    "defaultPrompt": ["List workouts from Olympiatoppen for a date range.", "Inspect a specific Olympiatoppen diary session."]
+  }
+}

@@ -13,6 +13,7 @@ from this repo's persistence, orchestration and cross-source analysis.
 - Yr: `plugins/yr/skills/yr/SKILL.md`
 - Garmin Connect: `plugins/garmin-connect/skills/garmin-connect/SKILL.md`
 - Intervals.icu: `plugins/intervals-icu/skills/intervals-icu/SKILL.md`
+- Olympiatoppen: `plugins/olympiatoppen/skills/olympiatoppen/SKILL.md`
 
 ## Use Intervals.icu
 
@@ -28,6 +29,14 @@ For first-time MCP setup, store the Intervals.icu API key in the user-owned
 
 `INTERVALS_ICU_API_KEY` can override the file. The MCP server loads the key at
 startup; it is not passed as a tool argument.
+
+## Use Olympiatoppen
+
+Olympiatoppen diary reads are available through the local plugin in
+`plugins/olympiatoppen/skills/olympiatoppen/SKILL.md`. Install the plugin to
+use `list_workouts` and `get_activity`; renew the private browser session with
+`import_session` from the authenticated Nettleser session when authentication
+is required.
 
 ## Use Xert
 
