@@ -1,0 +1,82 @@
+{
+  "date": "2026-10-17",
+  "effort": "medium",
+  "repeats_per_case": 1,
+  "input_manifest_sha256": "98f19e80f25f0303a12d5ad51cffc50909365a811d37ad953b36e588d1d10ea5",
+  "input_hashes_unchanged": true,
+  "review_method": "Manual reading of all answers and command transcripts, against predeclared criteria and tool definitions. Proposed calls only, no live execution.",
+  "runs": [
+    {
+      "model": "gpt-6-luna",
+      "case": "ignore_flags",
+      "status": "completed",
+      "review": "needs_precision",
+      "notes": "Correctly excludes HR/drift and time/distance totals, preserves unknown partial-ignore scope and does not discard whole activity. However, opens by permitting power analysis without conditioning that permission on unresolved ignore_parts. This is broader than the evidence supports.",
+      "answer": "`8%` pulsdrift kan ikke vurderes som tegn på dårlig aerob kontroll her: økten har `icu_ignore_hr: true`, så puls, watt/puls og pulsdrift skal utelates fra analysen. Effekt er tillatt (`icu_ignore_power: false`), og strømmenes oppgitte snitteffekt er 200 W. Varighet og distanse kan beskrives ved en bevisst øktinspeksjon, men time og 30 km skal **ikke** med i totaler som skal matche Intervals.icu, fordi `icu_ignore_time: true`. Dette flagget forkaster ikke hele økten. `ignore_parts` er uavklart i både omfang og koding; bevar payloaden, men ikke anta hvilke deler eller målinger den påvirker.\n\nRelevante MCP-kall som kan gi mer grunnlag, uten å utføre dem:\n\n- `get_activity` med `{\"activity_id\":\"i9001\",\"includeFields\":[\"icu_ignore_hr\",\"icu_ignore_power\",\"icu_ignore_time\",\"icu_training_load\",\"icu_intensity\",\"average_heartrate\",\"icu_average_watts\",\"decoupling\",\"interval_summary\",\"stream_types\"],\"save_full\":true}` for aktivitetens felt og komplett kildeaktivitet.\n- `get_activity_streams` med `{\"activity_id\":\"i9001\"}` for alle tilgjengelige strømmer, slik at økten kan inspiseres uten å bruke pulsdata i analysen.\n\nKildedataene oppgir ikke dato eller pulsstømmenes innhold, så det er ikke grunnlag her for å foreslå et datobundet oppslag eller å tolke `ignore_parts`.",
+      "answer_sha256": "a3d0c700787a27a03e6809529846569ffea8e1b1a5b62ec22d079b476201e4b1"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "ignore_flags",
+      "status": "completed",
+      "review": "needs_precision",
+      "notes": "Correctly excludes HR/drift and time/distance totals, preserves unknown partial-ignore scope and does not discard whole activity. However, opens by permitting power analysis without conditioning that permission on unresolved ignore_parts. This is broader than the evidence supports.",
+      "answer": "For økt `i9001` kan vi bruke effektdataene til å undersøke arbeidet; oppsummeringen oppgir 200 W i snitt. De 8 % pulsdrift kan **ikke** tolkes som tegn på dårlig aerob kontroll, fordi `icu_ignore_hr=true` sier at puls og pulsdrift skal ignoreres.\n\nTimen og 30 km skal **ikke** inn i uketotaler som skal matche Intervals.icu: `icu_ignore_time=true`. Flagget hindrer ikke at vi undersøker øktens tidsforløp. `ignore_parts` betyr heller ikke at hele økten må forkastes. Hvilke deler eller mål det gjelder, er ukjent i testpakken.\n\nForeslåtte MCP-kall, **ikke utført**: `get_activity({\"activity_id\":\"i9001\",\"save_full\":true})` og `get_activity_streams({\"activity_id\":\"i9001\"})`. Lokal øktdato og ukegrenser mangler, så datobundne kall kan ikke få konkrete argumenter uten å gjette.",
+      "answer_sha256": "2cd7f9206b567238039821922321d17c3c033c1adc58598745bf50e40323ae26"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "irregular_samples",
+      "status": "completed",
+      "review": "pass",
+      "notes": "Meets the targeted interpretation checks.",
+      "answer": "Forhåndsvisning: WORK-intervallet **id 7** flyttes fra indeks `1–4` til `2–5`. I tidsstrømmen tilsvarer det fra 5 sekunder til, men ikke med, prøven ved 20 sekunder.\n\nForeslått MCP-kall:\n\n```json\nupdate_activity_intervals({\n  \"activity_id\": \"i9002\",\n  \"intervals\": [\n    {\n      \"id\": 7,\n      \"start_index\": 2,\n      \"end_index\": 5,\n      \"type\": \"WORK\"\n    }\n  ],\n  \"expected_revision\": \"synthetic-revision-a\",\n  \"replace_all\": false,\n  \"dry_run\": true\n})\n```\n\nPausen er en `RECOVERY`-rad og kan ikke redigeres direkte; den avledes av mellomrommene mellom WORK-intervaller. Forhåndsvisningen viser bare WORK-radene, så den fastslår ikke hvordan pausen blir. Den fullstendige pausen må leses fra kildedata etter en lagring. Kallet er ikke utført, og ingenting er lagret.",
+      "answer_sha256": "30ee73c09bead5f25a4d9e010192af1b0f136e859e5fe204564255145892dfed"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "irregular_samples",
+      "status": "completed",
+      "review": "pass",
+      "notes": "Meets the targeted interpretation checks.",
+      "answer": "Den syntetiske lesingen viser WORK id 7 på indeks `[1,4)` og RECOVERY id 8 på `[4,6)`. Tidsrommet fra 5 sekunder til, men uten, prøven ved 20 sekunder tilsvarer indeks `[2,5)`.\n\n**Foreslått forhåndsvisning** med `update_activity_intervals`:\n\n```json\n{\n  \"activity_id\": \"i9002\",\n  \"intervals\": [\n    {\n      \"id\": 7,\n      \"start_index\": 2,\n      \"end_index\": 5,\n      \"type\": \"WORK\"\n    }\n  ],\n  \"expected_revision\": \"synthetic-revision-a\",\n  \"replace_all\": false,\n  \"dry_run\": true\n}\n```\n\nPausen (RECOVERY id 8) sendes ikke inn som en egen endring. Den kan bli regenerert fra gapene, og både ID og grenser kan endres. Forhåndsvisningens `after` viser bare WORK-intervaller, så pausens faktiske resultat er ukjent. Ingen kall ble utført eller endring lagret.",
+      "answer_sha256": "e5043f59412320cacde2970354af6f081b90c7ebd730636c6b357c96030efda3"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "limited_search",
+      "status": "completed",
+      "review": "pass",
+      "notes": "Correct complete-range discovery and no invented totals; minimal identity-only call will require additional type/duration/distance/ignore fields before totals. Follow-up not specified.",
+      "answer": "Nei, dette datagrunnlaget **bekrefter ikke at listen er komplett**. Det viser bare to `Ride`-treff fra et tekstsøk med `limit: 2`, og søket er merket `source_limited: true`. Det kan finnes flere sykkeløkter i perioden.\n\nKomplett liste og uketotaler kan derfor ikke fastslås ennå. Testpakken oppgir perioden **1.–17. oktober 2026**, men ingen fullstendige øktrader eller varighetsdata.\n\n**Neste kall:** `list_activities` med `{\"start_date\":\"2026-10-01\",\"end_date\":\"2026-10-17\"}`. Datoene er inklusive; utelat filter og grense for å hente hele perioden.\n\n**Fortsatt ukjent:** hvilke aktiviteter som faktisk er sykkeløkter, om datoperioden er komplett i kilden, og hvilke økter/varigheter som inngår i uketotalene.",
+      "answer_sha256": "d6184f5f5f080ff8077bf467f90029c23148fff0823954a624d36bd7ff270fc4"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "limited_search",
+      "status": "completed",
+      "review": "pass",
+      "notes": "Meets the targeted interpretation checks.",
+      "answer": "Nei, det kan ikke fastslås. Testpakken inneholder bare to søketreff for «Ride» (`i9004` 15. oktober og `i9003` 17. oktober). Søket er begrenset til to treff og merket `source_limited`; treffene mangler også aktivitetstype og tall for uketotaler.\n\n**Neste foreslåtte kall** (ikke utført):\n\n```json\nlist_activities({\n  \"start_date\": \"2026-10-01\",\n  \"end_date\": \"2026-10-17\",\n  \"includeFields\": [\"type\", \"duration_s\", \"distance_m\", \"icu_ignore_time\"],\n  \"sort\": [{\"field\": \"start_date_local\", \"direction\": \"asc\"}]\n})\n```\n\nFør svaret på det kallet er kjent, er **komplett sykkelliste og uketotaler for tid og distanse ukjent**. Resultatet må også kontrolleres for eventuelle tidsignorerte økter før totalene beregnes.",
+      "answer_sha256": "5ca3ccddc15ff743992b55852bb20c62c3816ad15a31bbfd7cbc5f98e3343835"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "wellness_missing",
+      "status": "completed",
+      "review": "pass",
+      "notes": "Correct wellness interpretation; one local schema-inspection command failed because list_events was not included in the package. Proposed list_events exists in the actual plugin but was omitted from this evaluation schema subset.",
+      "answer": "Wellness-dataene for **17. oktober 2026** gir et begrenset, men greit signal: søvnkvaliteten er **god** (2), registrert fatigue er **ingen** (0), og du beskriver dagsformen som normal. Sårhet og stress er **ikke registrert**; det betyr ikke at de er fraværende. HRV, hvilepuls og annen belastningskontekst mangler også.\n\nEn **rolig sykkeltur på 60 minutter** virker rimelig ut fra disse opplysningene. Vurderingen er foreløpig siden datagrunnlaget er smalt; hold økten lett og juster hvis kroppen kjennes annerledes underveis.\n\nFor å hente mer dagsformkontekst gjennom MCP kunne man foreslå:\n\n- `list_wellness` med `{\"start_date\":\"2026-10-17\",\"end_date\":\"2026-10-17\"}`\n- `list_events` med `{\"start_date\":\"2026-10-17\",\"end_date\":\"2026-10-17\"}` for eventuell sykdomshendelse\n\nDette er bare foreslåtte kall; de ble ikke utført.",
+      "answer_sha256": "739542ae674fc9df3461347e287bd508e7f08aef7c504a7801aa984afdf25e0f"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "wellness_missing",
+      "status": "completed",
+      "review": "pass",
+      "notes": "Meets the targeted interpretation checks.",
+      "answer": "Dataene for 17. oktober tyder på normal dagsform: Du sier at du føler deg normal, har registrert **ingen generell tretthet** (`fatigue: 0`) og **god søvnkvalitet** (`sleepQuality: 2`). Ømhet og stress er ikke registrert; `null` betyr ukjent, ikke fravær.\n\n**60 minutter rolig sykling virker rimelig** ut fra det som er oppgitt. Vurderingen er begrenset fordi ømhet, stress og eventuell sykdom er ukjent.\n\nForeslått MCP-kall for å kontrollere dagens rad: `list_wellness({\"start_date\":\"2026-10-17\",\"end_date\":\"2026-10-17\"})`. Skillen anbefaler også `list_events` for sykdomskontekst, men det kallet finnes ikke i `tools.json`. Ingen kall er utført.",
+      "answer_sha256": "00fa32dc114a13adc1fd1dc7826652cf380edb5e27a5ba4b777217d3a1413feb"
+    }
+  ]
+}

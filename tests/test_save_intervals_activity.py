@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -29,9 +30,12 @@ class SaveIntervalsActivityTests(unittest.TestCase):
             )
             streams_file.write_text("secs,watts\n0,200\n", encoding="utf-8")
 
+            manifest = root / "streams.json"
+            manifest.write_text(json.dumps({"activity_id": "i123", "streams_file": str(streams_file),
+                                           "sha256": hashlib.sha256(streams_file.read_bytes()).hexdigest()}))
             result = MODULE.save_activity_package(
                 activity_json=activity_json,
-                streams_file=streams_file,
+                streams_manifest=manifest,
                 output_dir=root / "intervals",
             )
 
@@ -49,7 +53,8 @@ class SaveIntervalsActivityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             activity_json = root / "activity.json"
-            missing_streams = root / "missing.csv"
+            manifest = root / "streams.json"
+            manifest.write_text(json.dumps({"activity_id": "i123", "streams_file": "missing.csv", "sha256": "invalid"}))
             for activity in (
                 {"start_date_local": "2026-08-17T10:00:00"},
                 {"id": "i123", "start_date_local": "invalid"},
@@ -59,9 +64,31 @@ class SaveIntervalsActivityTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     MODULE.save_activity_package(
                         activity_json=activity_json,
-                        streams_file=missing_streams,
+                        streams_manifest=manifest,
                         output_dir=root / "intervals",
                     )
+
+    def test_rejects_wrong_identity_or_changed_stream_before_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            activity = root / "activity.json"
+            activity.write_text(json.dumps({"id": "i123", "start_date_local": "2026-10-17"}))
+            streams = root / "streams.csv"
+            streams.write_text("time,watts\n0,200\n")
+            manifest = root / "streams.json"
+            digest = hashlib.sha256(streams.read_bytes()).hexdigest()
+            for identity, checksum in [("i456", digest), ("i123", "changed")]:
+                manifest.write_text(json.dumps({"activity_id": identity, "streams_file": str(streams), "sha256": checksum}))
+                with self.subTest(identity=identity, checksum=checksum), self.assertRaises(ValueError):
+                    MODULE.save_activity_package(activity_json=activity, streams_manifest=manifest, output_dir=root / "out")
+                self.assertFalse((root / "out").exists())
+
+    def test_rejects_conflicting_activity_envelope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "activity.json"
+            p.write_text(json.dumps({"activity_id": "i456", "activity": {"id": "i123"}}))
+            with self.assertRaises(ValueError):
+                MODULE.load_activity(p)
 
 
 if __name__ == "__main__":

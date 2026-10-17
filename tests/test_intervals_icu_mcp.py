@@ -91,18 +91,26 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
 
     def interval_service(self):
-        state = [{"id": 1, "start_index": 0, "end_index": 10, "type": "WORK"}]
+        state = [{"id": 1, "start_index": 0, "end_index": 10, "type": "WORK"},
+                 {"id": 2, "start_index": 10, "end_index": 21, "type": "RECOVERY"}]
         writes = []
         def read(**kwargs):
             return {"icu_intervals": [dict(row) for row in state]}
         def write(**kwargs):
             writes.append(kwargs)
             rows = kwargs["intervals"]
-            if kwargs["replace_all"]:
-                state.clear()
-            else:
-                state[:] = [r for r in state if r["id"] not in {v.get("id") for v in rows}]
-            state.extend(dict(row, id=row.get("id", 10 + i)) for i, row in enumerate(rows))
+            assert all(r["type"] == "WORK" for r in rows)
+            work = [] if kwargs["replace_all"] else [r for r in state
+                if r["type"] == "WORK" and r["id"] not in {v.get("id") for v in rows}]
+            work.extend(dict(row, id=row.get("id", 10 + i)) for i, row in enumerate(rows))
+            work.sort(key=lambda r: r["start_index"])
+            state[:] = work
+            cursor = 0
+            for i, row in enumerate(work + [{"start_index": 21, "end_index": 21}]):
+                if cursor < row["start_index"]:
+                    state.append({"id": 100 + len(writes) * 10 + i, "type": "RECOVERY",
+                                  "start_index": cursor, "end_index": row["start_index"]})
+                cursor = row["end_index"]
             return read()
         def streams(**kwargs):
             path = Path(kwargs["output_path"])
@@ -120,11 +128,15 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(preview["before"][0]["end_index"], 10)
         self.assertEqual(preview["after"][0]["end_index"], 8)
         self.assertFalse(writes)
-        args["intervals"].append({"start_index": 10, "end_index": 20, "type": "RECOVERY"})
+        args["intervals"].append({"start_index": 10, "end_index": 20, "type": "WORK"})
         result = service.call_tool("update_activity_intervals", dict(args, dry_run=False))
         self.assertTrue(result["verified"])
         self.assertFalse(writes[0]["replace_all"])
         self.assertEqual(len(result["after"]), 2)
+        self.assertEqual(preview["after_scope"], "work_intervals_only")
+        recovery = [r for r in result["intervals"] if r["type"] == "RECOVERY"]
+        self.assertEqual([(r["start_index"], r["end_index"]) for r in recovery], [(8, 10), (20, 21)])
+        self.assertNotIn(2, [r["id"] for r in recovery])
 
     def test_interval_conflict_blocks_write(self):
         service, state, writes, args = self.interval_service()
@@ -134,13 +146,28 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "revision_conflict")
         self.assertFalse(writes)
 
+    def test_work_boundary_can_expand_into_old_recovery(self):
+        service, state, writes, args = self.interval_service()
+        args["intervals"][0]["end_index"] = 12
+        preview = service.call_tool("update_activity_intervals", args)
+        self.assertEqual(preview["after"][0]["end_index"], 12)
+        self.assertFalse(writes)
+        result = service.call_tool("update_activity_intervals", dict(args, dry_run=False))
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["after"], preview["after"])
+        recovery = [r for r in result["intervals"] if r["type"] == "RECOVERY"]
+        self.assertEqual(recovery[0]["start_index"], 12)
+        self.assertNotEqual(recovery[0]["id"], 2)
+
     def test_interval_validation_blocks_writes(self):
         for row in [{"start_index": -1, "end_index": 8, "type": "WORK"},
                     {"start_index": 0, "end_index": 100, "type": "WORK"},
                     {"start_index": 0, "end_index": 0, "type": "WORK"},
                     {"start_index": True, "end_index": 8, "type": "WORK"},
                     {"id": 99, "start_index": 0, "end_index": 8, "type": "WORK"},
-                    {"start_index": 0, "end_index": 8, "type": "OTHER"}]:
+                    {"start_index": 0, "end_index": 8, "type": "OTHER"},
+                    {"start_index": 10, "end_index": 20, "type": "RECOVERY"},
+                    {"id": 2, "start_index": 10, "end_index": 20, "type": "WORK"}]:
             with self.subTest(row=row):
                 service, state, writes, args = self.interval_service()
                 with self.assertRaises(MCP.ToolFailure):
@@ -166,10 +193,14 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         new = {"start_index": 20, "end_index": 30, "type": "WORK"}
         pause = {"start_index": 10, "end_index": 20, "type": "RECOVERY"}
         with mock.patch.object(API, "_request_json", return_value={"icu_intervals": [old]}) as request:
-            API.update_activity_intervals(activity_id="i1", intervals=[new, pause], api_key="secret")
+            API.update_activity_intervals(activity_id="i1", intervals=[new], api_key="secret")
             self.assertEqual(request.call_args.kwargs["json_body"], [old, new])
-            API.update_activity_intervals(activity_id="i1", intervals=[new, pause], replace_all=True, api_key="secret")
+            API.update_activity_intervals(activity_id="i1", intervals=[new], replace_all=True, api_key="secret")
             self.assertEqual(request.call_args.kwargs["json_body"], [new])
+            request.reset_mock()
+            with self.assertRaises(ValueError):
+                API.update_activity_intervals(activity_id="i1", intervals=[pause], api_key="secret")
+            request.assert_not_called()
 
     def test_interval_api_transport(self):
         with mock.patch.object(API, "_request_json", return_value={"icu_intervals": []}) as request:
@@ -795,6 +826,13 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(result["byte_size"], path.stat().st_size)
             self.assertNotIn("streams", result)
+            manifest_path = Path(result["streams_manifest_file"])
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest_path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(manifest["activity_id"], "i1")
+            self.assertEqual(Path(manifest["streams_file"]), path.resolve())
+            self.assertEqual(manifest["sha256"], MCP.hashlib.sha256(path.read_bytes()).hexdigest())
+            manifest_path.unlink()
         finally:
             path.unlink(missing_ok=True)
 

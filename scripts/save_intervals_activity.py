@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
+import hashlib
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -24,13 +24,15 @@ def load_activity(path: Path) -> dict[str, Any]:
     activity = payload.get("activity", payload)
     if not isinstance(activity, dict):
         raise ValueError("activity JSON field 'activity' must contain one object")
+    if "activity_id" in payload and str(payload["activity_id"]) != str(activity.get("id")):
+        raise ValueError("activity envelope identity does not match activity")
     return activity
 
 
 def save_activity_package(
     *,
     activity_json: Path,
-    streams_file: Path,
+    streams_manifest: Path,
     output_dir: Path = DEFAULT_OUTPUT_DIR,
 ) -> dict[str, Path]:
     activity = load_activity(activity_json)
@@ -42,8 +44,20 @@ def save_activity_package(
         parsed_date = date.fromisoformat(start_date)
     except ValueError as exc:
         raise ValueError("activity is missing a valid start_date_local") from exc
+    manifest = json.loads(streams_manifest.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict) or str(manifest.get("activity_id")) != str(activity_id):
+        raise ValueError("stream manifest activity_id does not match activity metadata")
+    if not isinstance(manifest.get("streams_file"), str) or not manifest["streams_file"]:
+        raise ValueError("stream manifest is missing streams_file")
+    streams_file = Path(manifest["streams_file"])
+    if not streams_file.is_absolute():
+        streams_file = streams_manifest.parent / streams_file
     if not streams_file.is_file():
         raise ValueError(f"streams file does not exist: {streams_file}")
+
+    stream_bytes = streams_file.read_bytes()
+    if hashlib.sha256(stream_bytes).hexdigest() != manifest.get("sha256"):
+        raise ValueError("stream file checksum does not match its manifest")
 
     activity_dir = output_dir / "activities" / f"{parsed_date.isoformat()}_{activity_id}"
     activity_dir.mkdir(parents=True, exist_ok=True)
@@ -53,14 +67,16 @@ def save_activity_package(
         json.dumps(activity, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    if streams_file.resolve() != streams_path.resolve():
-        shutil.copyfile(streams_file, streams_path)
+    streams_path.write_bytes(stream_bytes)
 
     if json.loads(metadata_path.read_text(encoding="utf-8")) != activity:
         raise RuntimeError("saved activity metadata did not verify")
-    if streams_path.read_bytes() != streams_file.read_bytes():
+    if streams_path.read_bytes() != stream_bytes:
         raise RuntimeError("saved activity streams did not verify")
+    provenance_path = activity_dir / "streams-manifest.json"
+    provenance_path.write_text(json.dumps({**manifest, "streams_file": "streams.csv"}, indent=2) + "\n", encoding="utf-8")
     return {
+        "streams_manifest": provenance_path,
         "activity_dir": activity_dir,
         "activity_metadata": metadata_path,
         "streams_csv": streams_path,
@@ -72,13 +88,13 @@ def main() -> None:
         description="Save Intervals.icu MCP activity metadata and streams for local analysis."
     )
     parser.add_argument("--activity-json", required=True, type=Path)
-    parser.add_argument("--streams-file", required=True, type=Path)
+    parser.add_argument("--streams-manifest", required=True, type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     args = parser.parse_args()
     try:
         artifacts = save_activity_package(
             activity_json=args.activity_json,
-            streams_file=args.streams_file,
+            streams_manifest=args.streams_manifest,
             output_dir=args.output_dir,
         )
     except (OSError, ValueError, RuntimeError) as exc:

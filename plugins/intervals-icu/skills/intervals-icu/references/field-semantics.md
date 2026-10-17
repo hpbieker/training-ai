@@ -79,8 +79,18 @@
     the corresponding velocity or pace data in aggregate analysis.
   - `ignore_parts` is structured, partial-ignore metadata. Do not interpret a
     non-empty value as permission to discard the whole activity. Preserve it
-    in normalized handoffs, and avoid the affected portions or metrics only
-    when their scope can be resolved from the payload.
+    in normalized handoffs. Retrieve it from the `full_activity_file` returned
+    by `get_activity(activity_id=..., save_full=true)`, not through `includeFields`,
+    whose allowed field list excludes it. Resolve which metrics and sample ranges it excludes
+    before using those data; apply the exclusions when their scope is known.
+    A false whole-activity flag such as `icu_ignore_power=false` does not
+    override partial exclusions or establish that all power samples are usable.
+    If the partial-ignore scope is unresolved, do not declare power usable or
+    treat the whole-activity power average as validated merely because that
+    flag is false. You may report a value as source-reported with unresolved
+    exclusions, but defer conclusions that depend on its validity. Continue
+    with independently established unaffected metrics or portions; do not
+    discard the whole activity or guess the partial-ignore encoding.
 
 ## Wellness
 

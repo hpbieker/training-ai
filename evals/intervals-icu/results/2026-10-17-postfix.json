@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-17",
+  "effort": "medium",
+  "scope": "Same synthetic ignore_flags input, prompt and schema; updated skill. Two fresh sessions each on Sol and Luna.",
+  "input_manifest_sha256": "d793b773f3b11a9b5393f2b5ecc246ec87825ccd44f785f6d3e520fb52f3543d",
+  "input_hashes_unchanged": true,
+  "review_method": "Manual review of full answers and command transcripts; compare proposed includeFields against packaged MCP schema. No live tool calls.",
+  "runs": [
+    {
+      "model": "gpt-6-luna",
+      "repeat": 1,
+      "interpretation": "pass",
+      "tool_selection": "invalid_include_field",
+      "notes": "Proposes ignore_parts in includeFields, which is not allowed; retrieve complete activity with save_full=true instead.",
+      "answer": "- **Pulsedrift:** De 8 % kan ikke brukes til å vurdere aerob kontroll her. `icu_ignore_hr=true` betyr at puls og pulsdrift skal utelates fra analysen.\n- **Økttotaler:** `icu_ignore_time=true` betyr at timen og distansen ikke skal med i totaler som skal matche Intervals.icu. De oppgitte 3600 sekundene og 30 km kan fortsatt omtales som kildedata for økten, men ikke telles i slike totaler.\n- **Flaggene:** De betyr ikke at hele økten må forkastes. `ignore_parts` har uavklart omfang, så effektverdien på 200 W kan rapporteres som kildeverdi, men ikke behandles som validert. `icu_ignore_power=false` avklarer ikke delvise utelukkelser. Andre, uavhengig brukbare data kan beholdes.\n\nIngen MCP-kall er utført. Hvis man vil hente mer kontekst, foreslår jeg `get_activity` med `{\"activity_id\":\"i9001\",\"includeFields\":[\"icu_ignore_hr\",\"icu_ignore_power\",\"icu_ignore_time\",\"ignore_parts\",\"decoupling\"]}` og `get_activity_streams` med `{\"activity_id\":\"i9001\"}` for å inspisere strømdata. Kallene er forslag; **pulsdata skal fortsatt utelates** på grunn av HR-flagget.",
+      "answer_sha256": "e6b98d112ebcbb2347b9ce3f4eb0a32374544eda78c9665066943871d3b65195"
+    },
+    {
+      "model": "gpt-6-luna",
+      "repeat": 2,
+      "interpretation": "pass",
+      "tool_selection": "pass",
+      "notes": "Preserves unknown partial-ignore scope; no unconditional power validity; retains independently usable data.",
+      "answer": "- **Øktanalyse:** Bruk 3 600 sekunder som kildeoppgitt varighet og 30 km som kildeoppgitt distanse, men `icu_ignore_time=true` betyr at begge skal utelates fra uketotaler og sammenligninger som skal matche Intervals.icu. `icu_ignore_hr=true` gjør at pulsdata, W/HR og pulsdrift ikke skal brukes. Derfor kan ikke de oppgitte **8 % pulsdrift** tolkes som tegn på dårlig aerob kontroll.\n- **Flaggene:** `icu_ignore_power=false` gjør ikke automatisk effektdata gyldige: `ignore_parts` har uavklart omfang og koding. Behold derfor 200 W som kildeoppgitt, men ikke behandle det som validert før delvis ekskluderte data er avklart. Ukjente flaggdetaljer forblir ukjente. Flaggene betyr ikke at hele økten må forkastes; bruk uavhengige, gyldige data videre.\n\n**Mulige MCP-kall, ikke utført:** For å hente og kontrollere hele økten: `list_activities({start_date:\"<dato>\", end_date:\"<dato>\"})`, der datoen må avklares, deretter `get_activity({activity_id:\"i9001\", save_full:true})` og `get_activity_streams({activity_id:\"i9001\"})`. For uketotaler fra Intervals.icu: `get_athlete_summary({start_date:\"<ukestart>\", end_date:\"<ukeslutt>\"})`. Datoene er ukjente i testdataene; kallene er derfor skjematiske.",
+      "answer_sha256": "f9e44866f6350872c453237ea1c48ba152a8ecc04a975167c56ffd5eef480b09"
+    },
+    {
+      "model": "gpt-6-sol",
+      "repeat": 1,
+      "interpretation": "pass",
+      "tool_selection": "pass",
+      "notes": "Preserves unknown partial-ignore scope; no unconditional power validity; retains independently usable data.",
+      "answer": "**8 % pulsdrift kan ikke brukes som tegn på dårlig aerob kontroll her.** `icu_ignore_hr=true` gjør puls og pulsdrift uegnet for analysen. De oppgitte 200 W er bare en kilderapportert verdi: `ignore_parts` har ukjent omfang, så vi kan ikke fastslå hvilke effektdeler som er gyldige.\n\nTimen og 30 km skal **ikke** tas med i uketotaler som skal matche Intervals.icu, fordi `icu_ignore_time=true`. Flaggene betyr ikke at hele økten må forkastes; undersøk deler som kan valideres uavhengig.\n\nForeslåtte kall, **ikke utført**: `get_activity({\"activity_id\":\"i9001\",\"save_full\":true})` og `get_activity_streams({\"activity_id\":\"i9001\"})`. For å kontrollere identitet og ukesammendrag trengs ukjente lokale datoer før `list_activities({\"start_date\":dato,\"end_date\":dato})` og `get_athlete_summary({\"start_date\":ukestart,\"end_date\":ukeslutt})` kan angis konkret.",
+      "answer_sha256": "2c1703ecc5bdaeeea946506560244c37a37bb89fd51ff1bdd0750e56a7e343c2"
+    },
+    {
+      "model": "gpt-6-sol",
+      "repeat": 2,
+      "interpretation": "pass",
+      "tool_selection": "pass",
+      "notes": "Preserves unknown partial-ignore scope; no unconditional power validity; retains independently usable data.",
+      "answer": "Testpakken oppgir 3600 sekunder, 30 km, 200 W i snitt og 8 % pulsdrift for økt `i9001`. Tallene kan nevnes som **rapporterte verdier**, men `ignore_parts` har ukjent omfang.\n\n- **8 % pulsdrift:** Kan ikke tolkes som dårlig aerob kontroll. `icu_ignore_hr=true` sier at puls og pulsdrift ikke skal brukes i analysen.\n- **Uketotaler:** Nei. `icu_ignore_time=true` gjør at timen og distansen skal utelates fra totaler som skal matche Intervals.icu.\n- **Hele økten:** Skal ikke forkastes. Effektflagget er `false`, men det ukjente delvise unntaket gjør at 200 W ikke er validert som analysegrunnlag. Behold økten og avklar hvilke deler `ignore_parts` gjelder.\n\n**Foreslåtte MCP-kall, ikke utført:** Når øktdatoen er kjent, `list_activities({\"start_date\":\"<øktdato>\",\"end_date\":\"<øktdato>\"})` for å bekrefte ID, deretter `get_activity({\"activity_id\":\"i9001\",\"save_full\":true})` og `get_activity_streams({\"activity_id\":\"i9001\"})`. For å sammenligne med uketotalen: `get_athlete_summary({\"start_date\":\"<ukestart>\",\"end_date\":\"<ukeslutt>\"})`. Datoene finnes ikke i testpakken.",
+      "answer_sha256": "15a13bea24da21a5b765c6474e658e594c760440248aff34c39af1eef964a6ba"
+    }
+  ]
+}

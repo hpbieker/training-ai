@@ -44,7 +44,7 @@ registries supplement the analysis workflow rather than defining another one.
   package, then inspect it:
 
 ```bash
-python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json> --streams-file <mcp-streams-file>
+python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json> --streams-manifest <mcp-streams-manifest-file>
 python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
 ```
 

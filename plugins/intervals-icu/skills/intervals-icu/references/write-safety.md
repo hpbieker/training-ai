@@ -55,7 +55,8 @@ Read this file before any Intervals.icu mutation.
 ## Completed Activity Intervals
 
 Read `get_activity_intervals` first and retain its revision. Preview with
-`update_activity_intervals` (dry_run defaults to true), showing before and after.
+`update_activity_intervals` (dry_run defaults to true), showing the original rows and resulting WORK rows. RECOVERY rows are not valid
+write inputs or independent edit targets; adjust work boundaries to change gaps.
 Use dry_run=false only for authorized changes. Merge is the default; replace_all
 requires authorization for the complete replacement. On revision conflict, read
 and review again. On an uncertain write or verification failure, inspect current
@@ -64,4 +65,7 @@ source state before retrying. Never infer sample indices directly from seconds.
 The API treats submitted rows as WORK, regardless of their type. The adapter
 submits work intervals only; recovery is derived from gaps. Merge preserves
 existing unmodified work rows while constructing the complete work list.
-Recovery IDs may change when the server regenerates gaps.
+Recovery IDs and boundaries may change when the server regenerates gaps.
+Verification compares the complete WORK set and preserved WORK IDs; it does
+not require old recovery rows to survive. Read full regenerated intervals
+from the verified response's `intervals` field.

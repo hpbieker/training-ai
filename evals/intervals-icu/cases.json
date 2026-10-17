@@ -1,0 +1,128 @@
+[
+  {
+    "id": "wellness_missing",
+    "data": {
+      "date": "2026-10-17",
+      "wellness": {
+        "id": "2026-10-17",
+        "soreness": null,
+        "fatigue": 0,
+        "stress": null,
+        "sleepQuality": 2
+      },
+      "subjective_report": "Jeg føler meg normal.",
+      "planned_session": "60 minutes easy cycling"
+    },
+    "question": "Kan du oppsummere hva disse wellness-dataene sier om dagsformen og om den rolige økten virker rimelig?",
+    "checks": [
+      "Null soreness/stress remain unrecorded, not zero or adverse findings",
+      "Fatigue 0 means recorded none; sleepQuality 2 is subjective good",
+      "No false certainty from missing data or automatic downgrade"
+    ]
+  },
+  {
+    "id": "ignore_flags",
+    "data": {
+      "activity": {
+        "id": "i9001",
+        "icu_ignore_hr": true,
+        "icu_ignore_power": false,
+        "icu_ignore_time": true,
+        "ignore_parts": {
+          "source_specific_payload": [
+            12,
+            18
+          ]
+        }
+      },
+      "stream_summary": {
+        "elapsed_seconds": 3600,
+        "average_power_watts": 200,
+        "heart_rate_drift_percent": 8,
+        "distance_m": 30000
+      },
+      "ignore_parts_contract": "The scope and encoding of this source payload have not been resolved."
+    },
+    "question": "Oppsummer hva vi kan bruke i øktanalysen. Er 8 prosent pulsdrift et tegn på dårlig aerob kontroll, og skal timen og distansen med i uketotalene som skal matche Intervals.icu? Betyr flaggene at vi må forkaste hele økten?",
+    "checks": [
+      "Do not use ignored HR or HR drift for physiological conclusion",
+      "Exclude time/distance from source-matching totals, retain elapsed stream for inspection",
+      "Do not discard whole activity due to partial ignore; preserve unresolved scope without claiming clean full power analysis"
+    ]
+  },
+  {
+    "id": "irregular_samples",
+    "data": {
+      "activity_id": "i9002",
+      "interval_read": {
+        "revision": "synthetic-revision-a",
+        "intervals": [
+          {
+            "id": 7,
+            "start_index": 1,
+            "end_index": 4,
+            "type": "WORK"
+          },
+          {
+            "id": 8,
+            "start_index": 4,
+            "end_index": 6,
+            "type": "RECOVERY"
+          }
+        ]
+      },
+      "time_stream": [
+        0,
+        2,
+        5,
+        9,
+        14,
+        20,
+        27,
+        35
+      ],
+      "requested_boundary_semantics": "Use samples from elapsed time 5 seconds up to but excluding the sample at elapsed time 20 seconds."
+    },
+    "question": "Vis en forhåndsvisning av endringen av WORK-intervallet id 7 til det oppgitte tidsrommet. Vis nøyaktige argumenter til verktøyet. Ikke lagre endringen. Hva skjer med pausen?",
+    "checks": [
+      "start_index 2 and end_index 5, not seconds 5 and 20",
+      "existing ID7 revision supplied dry_run true merge preserved",
+      "Only WORK submitted; recovery regenerated, no independent recovery edit or real write"
+    ]
+  },
+  {
+    "id": "limited_search",
+    "data": {
+      "requested_period": {
+        "start_date": "2026-10-01",
+        "end_date": "2026-10-17"
+      },
+      "search_result": {
+        "query": "Ride",
+        "limit": 2,
+        "source_count": 2,
+        "matched_count": 2,
+        "source_limited": true,
+        "count": 2,
+        "activities": [
+          {
+            "id": "i9003",
+            "name": "Ride",
+            "start_date_local": "2026-10-17T09:00:00"
+          },
+          {
+            "id": "i9004",
+            "name": "Ride",
+            "start_date_local": "2026-10-15T09:00:00"
+          }
+        ]
+      }
+    },
+    "question": "Er dette alle sykkeløktene mine i perioden? Jeg vil ha en komplett liste og uketotaler. Oppgi neste verktøykall og hva som fortsatt er ukjent.",
+    "checks": [
+      "Search count not full period coverage",
+      "Propose list_activities with exact inclusive date-only range and no truncating limit",
+      "Do not derive totals from two hits or invent unseen duration; obtain type/time/distance/ignore context"
+    ]
+  }
+]

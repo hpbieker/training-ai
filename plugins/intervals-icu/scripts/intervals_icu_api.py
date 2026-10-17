@@ -806,6 +806,8 @@ def update_activity_intervals(*, activity_id: str, intervals: list[dict[str, Any
                               replace_all: bool = False, api_key: str | None = None,
                               bearer_token: str | None = None) -> dict[str, Any]:
     """Merge by interval ID, or explicitly replace the complete interval list."""
+    if any(row.get("type") != "WORK" for row in intervals):
+        raise ValueError("Only WORK intervals can be submitted; recovery is source-generated")
     # The source treats submitted intervals as WORK irrespective of type.
     # Recovery is derived from the gaps between work intervals.
     if not replace_all:

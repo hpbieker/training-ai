@@ -84,7 +84,8 @@ Choose the narrowest workflow that answers the request:
   Its `includeFields` selection affects only inline summaries; saved full files
   remain complete. Both inline summaries and saved full activities are ordered
   to match the requested `activity_ids`, independent of source response order;
-  `get_activity_streams` saves selected streams to a private temporary file;
+  `get_activity_streams` saves selected streams to a private temporary file and
+  returns `streams_manifest_file`, binding the activity ID, file path and SHA-256;
   `get_activity_file` saves the original upload or reconstructed FIT file to a
   private temporary file.
 - `list_activity_power_curves` returns Intervals.icu's per-activity power-curve
@@ -129,8 +130,9 @@ For a completed-activity analysis through MCP, use exactly this sequence:
 2. Select and verify the exact activity id.
 3. Call `get_activity(save_full=true)` and `get_activity_streams` for that id.
    These two calls may run concurrently after identity is resolved. Pass the
-   returned `full_activity_file` and `streams_file` directly to the repo
-   persistence helper.
+   returned `full_activity_file` and `streams_manifest_file` directly to the repo
+   persistence helper. The helper verifies activity identity and stream checksum
+   before saving; do not assemble an unverified metadata/CSV pair.
 
 When an activity has an `id` but no URL field, build the web link
 as `https://intervals.icu/activities/<activity-id>`, for example
@@ -140,13 +142,16 @@ as `https://intervals.icu/activities/<activity-id>`, for example
 
 - `get_activity_intervals` reads interval IDs, sample boundaries, source times,
   WORK/RECOVERY types, and a revision token. Both interval tools accept `athlete`.
-- `update_activity_intervals` accepts complete boundaries/type for each requested
-  interval; include an existing ID to adjust it, omit ID to create. It defaults
+- `update_activity_intervals` accepts complete boundaries and `type=WORK` only.
+  Include an existing WORK ID to adjust it, omit ID to create. RECOVERY rows
+  cannot be edited independently; adjust adjacent work boundaries instead. It defaults
   to merge and `dry_run=true`, returning before/after without writing.
 - Pass `expected_revision` from the read. Set `replace_all=true` only when the
   user authorized replacing the entire interval list. Set `dry_run=false` only
-  for authorized writes; readback verifies boundaries, types, IDs, and preserved
-  intervals. Do not retry an uncertain write blindly.
+  for authorized writes. Preview `after` contains only the resulting WORK rows
+  (`after_scope=work_intervals_only`); it does not predict generated pauses.
+  Readback verifies work boundaries, IDs and preserved work rows; `intervals`
+  contains the full source readback including regenerated recovery rows. Do not retry an uncertain write blindly.
 - Boundaries are stream sample indices, not elapsed seconds. Map proposed times
   through the time stream, especially for irregular recording. The tool checks
   positive length, bounds, duplicate IDs, and overlap in the resulting list.
@@ -170,6 +175,14 @@ as `https://intervals.icu/activities/<activity-id>`, for example
 Read [references/field-semantics.md](references/field-semantics.md) before
 interpreting activity load, stream fields, ignore flags, intervals, wellness,
 or subjective fields.
+
+Check whole-activity flags and `ignore_parts` together. A false whole-activity
+flag does not clear partial exclusions. If their scope is unknown, distinguish
+source-reported values from validated analysis inputs and defer affected
+conclusions until the scope is resolved; retain independently unaffected data.
+To inspect `ignore_parts`, call `get_activity(activity_id=..., save_full=true)`
+and read the returned `full_activity_file`. It is not an allowed `includeFields`
+value; do not request it in the compact summary.
 
 ## Remote Writes
 
