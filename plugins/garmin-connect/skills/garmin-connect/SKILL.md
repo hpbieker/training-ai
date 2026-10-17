@@ -118,19 +118,22 @@ Before uploading or deleting a course, read
 
 ## Semantics
 
-Read [references/field-semantics.md](references/field-semantics.md) before
-interpreting readiness, recovery time, Body Battery, HRV, sleep, stress,
-Training Status, load, Training Effect, stamina, or performance condition.
-For model reasoning about Training Effect, Stamina, or Recovery Time, also read
-[references/training-effect-and-stamina-models.md](references/training-effect-and-stamina-models.md).
-For model reasoning about aggregate Training Readiness or running/cycling
-VO2max, also read
-[references/readiness-and-vo2max-models.md](references/readiness-and-vo2max-models.md).
-For model reasoning about sleep, physiological stress, Body Battery, calories,
-or heartbeat-derived oxygen consumption, also read
-[references/wellness-and-energy-models.md](references/wellness-and-energy-models.md).
-Use [references/sources.md](references/sources.md) when a claim needs provenance,
-evidence-strength qualification, or a primary-source link.
+Choose the reading path that matches the question. Read only the relevant
+sections of [field-semantics.md](references/field-semantics.md) for field names,
+units, timestamps and data quality; then use the model reference below when
+interpreting the result. Do not load every reference for a simple field lookup.
+
+| Question | Model reference |
+| --- | --- |
+| Today's readiness, HRV, Training Readiness | [Readiness and VO2max](references/readiness-and-vo2max-models.md#training-readiness); add [Recovery Time](references/training-effect-and-stamina-models.md#recovery-time) when projecting its timer |
+| Completed workout, Training Effect, Stamina, Performance Condition | [Activity models](references/training-effect-and-stamina-models.md) |
+| Fitness development, Training Status, load balance, VO2max or Fitness Age | [Longitudinal models](references/readiness-and-vo2max-models.md#training-status-and-load-balance) |
+| Sleep, physiological stress, Body Battery or calories | [Wellness and energy](references/wellness-and-energy-models.md) |
+
+Combine paths only when the question spans them. Use
+[sources.md](references/sources.md) for primary-source links, accuracy claims
+and evidence-strength qualification. The field reference owns operational
+rules; the model references own model explanations and interpretation limits.
 
 Always consider the measurement timestamp and device-sync state. If expected
 same-day data is absent or stale enough to change the decision, report that and

@@ -1,0 +1,176 @@
+{
+  "cases": [
+    {
+      "id": "high_hrv",
+      "question": "Vurder Garmin-signalenes betydning for dagens planlagte intervalløkt. Bør HRV-statusen endre planen?",
+      "data": {
+        "synthetic": true,
+        "now": "2026-10-17T08:00:00+02:00",
+        "planned_at": "2026-10-17T10:00:00+02:00",
+        "sync_at": "2026-10-17T07:50:00+02:00",
+        "hrv": {
+          "night_date": "2026-10-17",
+          "status": "UNBALANCED",
+          "last_night_ms": 82,
+          "seven_day_ms": 78,
+          "baseline_ms": [
+            55,
+            70
+          ]
+        },
+        "sleep": {
+          "start": "2026-10-16T23:00:00+02:00",
+          "end": "2026-10-17T07:00:00+02:00",
+          "duration_hours": 8,
+          "score": 84
+        },
+        "resting_hr": {
+          "date": "2026-10-17",
+          "bpm": 48,
+          "recent_baseline_bpm": 48
+        },
+        "body_battery": {
+          "at_wake": 83,
+          "most_recent": 81,
+          "observed_at": "2026-10-17T07:50:00+02:00"
+        },
+        "training_readiness": {
+          "score": 72,
+          "observed_at": "2026-10-17T07:50:00+02:00",
+          "other_drivers": "not supplied"
+        },
+        "athlete_feel": "normal",
+        "illness_symptoms": "none reported",
+        "plan": "intervals; prescription and recent load not supplied"
+      },
+      "required": [
+        "HRV above baseline, not low",
+        "No automatic downgrade from label",
+        "No causal diagnosis or counting overlapping signals as independent votes"
+      ]
+    },
+    {
+      "id": "missing_sync",
+      "question": "Garmin viser null søvn og høyere hvilepuls. Hva sier dette om dagens planlagte trening, og hva bør jeg gjøre nå?",
+      "data": {
+        "synthetic": true,
+        "now": "2026-10-17T07:15:00+02:00",
+        "last_complete_sync": "2026-10-16T21:00:00+02:00",
+        "sleep": {
+          "date": "2026-10-17",
+          "duration_seconds": 0,
+          "start": null,
+          "end": null
+        },
+        "hrv": {
+          "date": "2026-10-16",
+          "last_night_ms": 48,
+          "status": "LOW"
+        },
+        "resting_hr": {
+          "date": "2026-10-17",
+          "bpm": 57,
+          "recent_baseline_bpm": 48
+        },
+        "body_battery": {
+          "most_recent": 18,
+          "observed_at": "2026-10-16T21:00:00+02:00"
+        },
+        "athlete_feel": "normal",
+        "plan": "90 minutes easy cycling at 10:00 today"
+      },
+      "required": [
+        "Zero sleep not real sleepless night",
+        "Previous HRV/BB and unsynced resting HR not current negative evidence",
+        "Request sync; no automatic downgrade solely from missing data"
+      ]
+    },
+    {
+      "id": "future_day",
+      "question": "Vurder Garmin-grunnlaget for intervaller i morgen klokken 08. Beregn Recovery Time ved øktstart og forklar hvilke andre signaler vi kan bruke da.",
+      "data": {
+        "synthetic": true,
+        "now": "2026-10-17T20:00:00+02:00",
+        "planned_at": "2026-10-18T08:00:00+02:00",
+        "latest_real_day": "2026-10-17",
+        "recovery_time": {
+          "observed_at": "2026-10-17T18:00:00+02:00",
+          "raw_recoveryTime_minutes": 1080,
+          "recovery_time_hours": 18
+        },
+        "sleep": {
+          "date": "2026-10-17",
+          "duration_hours": 8,
+          "score": 85
+        },
+        "hrv": {
+          "date": "2026-10-17",
+          "status": "BALANCED",
+          "last_night_ms": 65,
+          "seven_day_ms": 63,
+          "baseline_ms": [
+            55,
+            70
+          ]
+        },
+        "body_battery": {
+          "value": 70,
+          "observed_at": "2026-10-17T18:00:00+02:00"
+        },
+        "training_readiness": {
+          "value": 80,
+          "observed_at": "2026-10-17T18:00:00+02:00"
+        },
+        "intervening_training": "none planned",
+        "tomorrow_wellness": "not observed yet"
+      },
+      "required": [
+        "4 hours at planned start, measured from 18:00, conditional on no intervening training",
+        "Do not project sleep HRV BB or aggregate readiness into tomorrow",
+        "Not available yet differs from missing sync; timer not automatic veto or permission"
+      ]
+    },
+    {
+      "id": "activity_models",
+      "question": "Analyser hva Garmin-tallene sier om økten, treningsutbyttet og behovet for restitusjon. Betyr 5,0 og Stamina 3 at jeg er overtrent eller tom for glykogen?",
+      "data": {
+        "synthetic": true,
+        "activity": {
+          "duration_minutes": 120,
+          "prescribed_minutes": 120,
+          "prescribed_watts": 220,
+          "actual_mean_watts": 220,
+          "no_sustained_power_fade": true
+        },
+        "garmin": {
+          "aerobic_training_effect": 5.0,
+          "anaerobic_training_effect": 0.5,
+          "exercise_load": 300,
+          "available_stamina": {
+            "start": 100,
+            "minimum": 3,
+            "end": 18,
+            "minimum_context": "during final hard segment; rebounded during cooldown"
+          },
+          "potential_stamina": {
+            "start": 100,
+            "end": 30
+          },
+          "recovery_time_hours": 48
+        },
+        "sensor_coverage": "complete; no identified gaps",
+        "rpe": null,
+        "fueling": null,
+        "cooling": null,
+        "subsequent_recovery": null,
+        "individual_intensity_anchor": null,
+        "training_history": null
+      },
+      "required": [
+        "Modeled stimulus, not measured adaptation or overtraining diagnosis",
+        "Available rebound not glycogen restoration; no actual glycogen inference",
+        "Recovery demand unresolved; 48 h not blanket activity ban; delivered dose separate from model"
+      ]
+    }
+  ]
+}

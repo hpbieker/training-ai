@@ -225,7 +225,9 @@ Operational rules:
 Heart-rate-derived models can be affected by the context in which the same
 external work is performed. Inspect heat, humidity, altitude, illness,
 incomplete recovery, and sensor quality when Training Effect is surprising.
-Use graded context assessments:
+An unexpectedly high value is possible increased modeled load, not proof of
+higher actual recovery demand or a more successful adaptation. Use graded
+context assessments:
 
 | Status | Meaning |
 | --- | --- |

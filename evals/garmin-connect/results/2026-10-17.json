@@ -1,0 +1,532 @@
+{
+  "date": "2026-10-17",
+  "method": "16 fresh read-only CLI sessions on four synthetic semantic cases, two repeats per model at medium effort. Manual unblinded review; criteria not supplied to models. No live Garmin data or writes.",
+  "input_manifest_sha256": "e3c3552ceeea762125f93a3fa721db4302e64e07631b4033606abc26f6b9d545",
+  "snapshot_and_source_hashes_unchanged": true,
+  "limitations": [
+    "No pre-refactor control; not evidence of improvement caused by the reorganization.",
+    "Synthetic interpretation cases, not API schema, retrieval, normalization, or live synchronization tests.",
+    "Two repetitions per case/model; not a statistical model ranking.",
+    "Installed plugin cache was not changed; model sessions used copied revised source skill."
+  ],
+  "reviews": [
+    {
+      "model": "gpt-6-luna",
+      "case": "activity_models",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "Modeled stimulus, not measured adaptation or overtraining diagnosis",
+          "met": true
+        },
+        {
+          "criterion": "Available rebound not glycogen restoration; no actual glycogen inference",
+          "met": true
+        },
+        {
+          "criterion": "Recovery demand unresolved; 48 h not blanket activity ban; delivered dose separate from model",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [
+        "Opening calls the whole session hard without an individual anchor; later correctly attributes severe load to Garmin and retains recovery uncertainty."
+      ],
+      "answer": "Dette ser ut som en jevnt gjennomført, hard 2-timersøkt: snitteffekten traff foreskrevne 220 W, og det er oppgitt ingen vedvarende effektfade. Garmin modellerer likevel et svært stort aerobt treningsstimulus med **Aerobic Training Effect 5,0**, anaerob effekt **0,5** og øktbelastning **300**. 5,0 beskriver et overreaching-stort stimulus fra denne økten; det er ikke en diagnose på overtrening. **48 timers restitusjonstid** er Garmins anslag frem til neste harde økt, ikke et forbud mot lett aktivitet.\n\n**Stamina 3** var minimum for *Available Stamina* under siste harde segment. At den steg igjen i nedkjøringen passer med Garmins modell for kortvarig, intensitetsfølsom begrensning. *Potential Stamina* falt fra 100 til 30, som viser større modellert belastning gjennom økten. Ingen av tallene måler glykogen eller hvor mye du faktisk har igjen.\n\nTallene gir derfor ikke grunnlag for å si at du er overtrent eller tom for glykogen. De sier at Garmin anslår en svært krevende økt og anbefaler tid før neste harde økt. Følelse, matinntak og påfølgende restitusjon er ukjent her.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-activity_models-1.txt",
+      "answer_sha256": "c01bb692bbb14e0f9244d70c64d3bee546c3fd236679cb72a0aab5277d144a1b",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-activity_models-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat input.json'",
+        "/bin/zsh -lc 'cat skill/references/field-semantics.md skill/references/training-effect-and-stamina-models.md skill/references/sources.md'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "activity_models",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "Modeled stimulus, not measured adaptation or overtraining diagnosis",
+          "met": true
+        },
+        {
+          "criterion": "Available rebound not glycogen restoration; no actual glycogen inference",
+          "met": true
+        },
+        {
+          "criterion": "Recovery demand unresolved; 48 h not blanket activity ban; delivered dose separate from model",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Garmin modellerer økten som et svært stort aerobt treningsstimulus (5,0), med lite anaerobt stimulus (0,5). Du fulgte de foreskrevne 120 minuttene på 220 W uten vedvarende effektfall. Det tyder på at du fullførte økten som planlagt, men sier ikke alene hvor belastende den var for deg.\n\nStamina 3 kom under den siste harde delen og steg igjen i nedkjøringen. Det lave tallet er en modellert, kortvarig begrensning, ikke en måling av glykogen. Sammen med Potential Stamina på 30 ved slutt tyder det på betydelig modellert utmattelse, men beviser verken at du var tom for glykogen eller overtrent. Garmin beskriver Training Effect 5 som et overreaching-stort stimulus, ikke en diagnose på overtrening. 48 timers Recovery Time er Garmins anslag fram til du kan få maksimal nytte av neste harde økt; det forbyr ikke lett aktivitet.\n\n**Kort svar:** Tallene peker mot en svært krevende økt og behov for restitusjon før neste harde økt. De kan ikke fastslå glykogennivå eller overtrening. RPE, ernæring og påfølgende restitusjon er ikke oppgitt, så individuell tilstand kan ikke vurderes nærmere.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-activity_models-2.txt",
+      "answer_sha256": "cdc8b738eddd92f1143cf354fa5c85cb01c5227053757b3d6e470459ddbd5787",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-activity_models-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat input.json'",
+        "/bin/zsh -lc \"rg -n \\\"Training Effect|Stamina|Recovery Time|5\\\\.0|glycogen|overtrain|overtraining|limitations|stamina\\\" skill/references/field-semantics.md skill/references/training-effect-and-stamina-models.md skill/references/sources.md\"",
+        "/bin/zsh -lc \"sed -n '41,62p' skill/references/training-effect-and-stamina-models.md; sed -n '173,220p' skill/references/training-effect-and-stamina-models.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "future_day",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "4 hours at planned start, measured from 18:00, conditional on no intervening training",
+          "met": true
+        },
+        {
+          "criterion": "Do not project sleep HRV BB or aggregate readiness into tomorrow",
+          "met": true
+        },
+        {
+          "criterion": "Not available yet differs from missing sync; timer not automatic veto or permission",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Ved øktstart **i morgen kl. 08** blir beregnet Recovery Time **4 timer**: 18 timer registrert kl. 18 i dag, minus de 14 timene som går fram til start. Dette forutsetter ingen trening i mellomtiden. Det er en pekepinn på når Garmin anslår at du kan få fullt utbytte av neste harde økt, ikke et treningsforbud.\n\nVi kan også vurdere morgendagens søvn, HRV og HRV-status, hvilepuls, aktuell Body Battery og stress, nylig belastning og hvordan kroppen føles. Training Readiness kan oppsummeres hvis Garmin har oppdatert den etter morgenens synk, men må ses sammen med driverne, som overlapper. Dagens verdier (søvn 8 t/score 85, HRV balansert, Body Battery 70 og Readiness 80) er kun kontekst: de kan ikke behandles som morgendagens målinger. Garmin-grunnlaget alene avgjør derfor ikke om intervallene passer.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-future_day-1.txt",
+      "answer_sha256": "6dbe0d5b3b3a6382d2e9205c8a51f37f4edfa8c2b3ed724ce4da27b413f7e987",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-future_day-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc \"cat skill/SKILL.md && printf '\\\\n--- INPUT ---\\\\n' && cat input.json\"",
+        "/bin/zsh -lc 'rg -n \"Recovery Time|Training Readiness|Body Battery|HRV|sleep|projection|timestamp|readiness\" references/field-semantics.md references/readiness-and-vo2max-models.md references/training-effect-and-stamina-models.md references/wellness-and-energy-models.md references/sources.md'",
+        "/bin/zsh -lc 'rg --files skill'",
+        "/bin/zsh -lc 'rg -n -C 4 \"Recovery Time|Training Readiness|Body Battery|HRV|sleep|projection|timestamp|readiness\" skill/references/field-semantics.md skill/references/readiness-and-vo2max-models.md skill/references/training-effect-and-stamina-models.md skill/references/wellness-and-energy-models.md skill/references/sources.md'",
+        "/bin/zsh -lc \"sed -n '8,65p' skill/references/readiness-and-vo2max-models.md; sed -n '203,225p' skill/references/training-effect-and-stamina-models.md; rg -n -C 2 \\\"Body Battery|Stress|Sleep Score|HRV Status|resting heart|freshness|observed|timestamp\\\" skill/references/field-semantics.md skill/references/wellness-and-energy-models.md\""
+      ],
+      "failed_tool_commands": 1
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "future_day",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "4 hours at planned start, measured from 18:00, conditional on no intervening training",
+          "met": false
+        },
+        {
+          "criterion": "Do not project sleep HRV BB or aggregate readiness into tomorrow",
+          "met": true
+        },
+        {
+          "criterion": "Not available yet differs from missing sync; timer not automatic veto or permission",
+          "met": true
+        }
+      ],
+      "targeted_pass": false,
+      "notes": [
+        "Reports zero hours instead of four. Eighteen hours after 17 October 18:00 is 18 October 12:00, not midnight. Also ends with an unrequested Finnish phrase."
+      ],
+      "answer": "Med antakelse om ingen trening mellom observasjonen og øktstart er Recovery Time **0 timer kl. 08 i morgen**. Den var 18 timer kl. 18 i dag og teller ned til null rundt kl. 12 i natt. Garmin beskriver dette som tid til forventet beredskap for neste harde økt, ikke et forbud mot trening.\n\nAndre nyttige signaler ved øktstart er morgendagens søvn, HRV og Body Battery, samt hvordan du selv føler deg og eventuelle sykdoms- eller belastningssignaler. De er ikke observert ennå. Dagens HRV (balansert, 65 ms; sjudagerssnitt 63 ms), søvn (8 t, score 85), Body Battery (70) og Training Readiness (80) gir bakgrunn, men skal ikke videreføres som morgendagens målinger. Readiness er dessuten et sammensatt Garmin-estimat med overlappende drivere, eikä itsenäinen suorituskykymittari.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-future_day-2.txt",
+      "answer_sha256": "2224612cad941ea911c24a610490283a2f66bb3e7dd4eff27b831dd1d9213d05",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-future_day-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat input.json'",
+        "/bin/zsh -lc \"rg -n -i 'recovery time|timer|training readiness|future|planned|interval|sleep|HRV|body battery' references/field-semantics.md references/readiness-and-vo2max-models.md references/training-effect-and-stamina-models.md references/sources.md\"",
+        "/bin/zsh -lc \"rg -n -i 'recovery time|timer|training readiness|future|planned|interval|sleep|HRV|body battery' skill/references/field-semantics.md skill/references/readiness-and-vo2max-models.md skill/references/training-effect-and-stamina-models.md skill/references/sources.md\"",
+        "/bin/zsh -lc \"sed -n '1,32p' skill/references/field-semantics.md; sed -n '1,72p' skill/references/readiness-and-vo2max-models.md; sed -n '32,55p' skill/references/training-effect-and-stamina-models.md; sed -n '80,94p' skill/references/sources.md\""
+      ],
+      "failed_tool_commands": 1
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "high_hrv",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "HRV above baseline, not low",
+          "met": true
+        },
+        {
+          "criterion": "No automatic downgrade from label",
+          "met": true
+        },
+        {
+          "criterion": "No causal diagnosis or counting overlapping signals as independent votes",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Nei – HRV-statusen alene tilsier ikke å endre intervallplanen. Selv om Garmin viser «UNBALANCED», er både nattens snitt (82 ms) og sjudagerssnittet (78 ms) over den oppgitte baselinegrensen på 70 ms. Statusen betyr derfor ikke nødvendigvis lav HRV eller dårlig restitusjon.\n\nSøvn, hvilepuls, Body Battery, readiness (72), dagsform og symptomopplysninger gir heller ikke noe tydelig signal om å nedjustere. Behold planen ut fra dataene som er oppgitt; nylig treningsbelastning og intervalløktenes foreskrivelse mangler, så de kan ikke vurderes.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-high_hrv-1.txt",
+      "answer_sha256": "8151abeb6413d2e64c82d4b6f5913a892e43684760bf5359dc396156636c72b5",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-high_hrv-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat input.json'",
+        "/bin/zsh -lc 'rg -n -i \"HRV|unbalanced|training readiness|baseline|status\" references/field-semantics.md references/readiness-and-vo2max-models.md'",
+        "/bin/zsh -lc 'ls -la skill && ls -la skill/references && rg -n -i \"HRV|unbalanced|training readiness|baseline|status\" skill/references/field-semantics.md skill/references/readiness-and-vo2max-models.md'",
+        "/bin/zsh -lc \"sed -n '53,92p' skill/references/field-semantics.md && sed -n '8,70p' skill/references/readiness-and-vo2max-models.md && sed -n '71,91p' skill/references/readiness-and-vo2max-models.md\""
+      ],
+      "failed_tool_commands": 1
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "high_hrv",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "HRV above baseline, not low",
+          "met": true
+        },
+        {
+          "criterion": "No automatic downgrade from label",
+          "met": true
+        },
+        {
+          "criterion": "No causal diagnosis or counting overlapping signals as independent votes",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "**Nei, HRV-statusen alene bør ikke endre intervallplanen.** Syvdagerssnittet er 78 ms, godt over den oppgitte personlige baseline-grensen på 70 ms; `UNBALANCED` betyr ikke nødvendigvis lav HRV eller dårlig restitusjon. Andre signaler er også stort sett normale: god søvn, hvilepuls på egen baseline, høy Body Battery og normal følelse.\n\nGarmin Readiness 72 er bare et sammendrag, og belastning eller intervalloppskrift er ikke oppgitt. Behold derfor planen ut fra disse dataene, men juster etter dagsform underveis.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-high_hrv-2.txt",
+      "answer_sha256": "f03d6ffc59fe2c3d3749f9ed6ac2bf0fb2f1a5c4faed1f4e6dab736b49696ba5",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-high_hrv-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat input.json'",
+        "/bin/zsh -lc \"rg -n -C 3 'HRV|hrv|UNBALANCED|unbalanced|Training Readiness|status' skill/references/field-semantics.md skill/references/readiness-and-vo2max-models.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "missing_sync",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "Zero sleep not real sleepless night",
+          "met": true
+        },
+        {
+          "criterion": "Previous HRV/BB and unsynced resting HR not current negative evidence",
+          "met": true
+        },
+        {
+          "criterion": "Request sync; no automatic downgrade solely from missing data",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Dette er foreløpig **ikke et sikkert signal om dårlig restitusjon**. Søvn står til null uten start- og sluttid, HRV er fra i går, og hvilepulsen på 57 er ikke bekreftet av en full morgensynk. Body Battery 18 er også fra i går kveld. Skillens regler sier at slike manglende eller utdaterte data ikke skal brukes til å nedjustere treningen automatisk.\n\nSynk klokken nå og sjekk dagens søvn og målinger før økta. Hvis de fortsatt mangler, bruk dagsformen: Du føler deg normal, og planen er rolig sykling. Dataene alene gir derfor ikke grunnlag for å avlyse økta, men de gir heller ikke et pålitelig bilde av restitusjonen.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-missing_sync-1.txt",
+      "answer_sha256": "6e6131274744905eda758858057a1847da955225696b015e3987975906132461",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-missing_sync-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat input.json'",
+        "/bin/zsh -lc 'cat skill/references/field-semantics.md skill/references/wellness-and-energy-models.md skill/references/readiness-and-vo2max-models.md'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "missing_sync",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "Zero sleep not real sleepless night",
+          "met": true
+        },
+        {
+          "criterion": "Previous HRV/BB and unsynced resting HR not current negative evidence",
+          "met": true
+        },
+        {
+          "criterion": "Request sync; no automatic downgrade solely from missing data",
+          "met": false
+        }
+      ],
+      "targeted_pass": false,
+      "notes": [
+        "Initially treats missing data correctly, then recommends postponement/shortening if sleep remains missing OR resting HR is high after sync. Missing sleep data alone is not negative recovery evidence."
+      ],
+      "answer": "Garmin viser **ikke at du faktisk sov null**: søvndataene for i dag mangler start- og sluttid, og siste synk var i går kveld. HRV 48 («LOW») gjelder også i går. Hvilepulsen er 9 slag over nylig baseline, men uten en fullført morgensynk kan den ikke brukes som et pålitelig signal for i dag.\n\nDermed er dagens restitusjon usikker, ikke dokumentert dårlig. **Synk klokken før økten kl. 10.** Hvis søvn fortsatt mangler eller hvilepulsen er forhøyet etter synk, ville jeg utsatt økten eller gjort den kortere og svært lett. Hvis dataene ser normale ut og du føler deg som vanlig, er rolig sykling rimelig.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-missing_sync-2.txt",
+      "answer_sha256": "785627398994592ee350da7e1664fb7473f96b53a858101fdc55ac218b90a3d4",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-luna-missing_sync-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc \"cat skill/SKILL.md && printf '\\\\n---INPUT---\\\\n' && cat input.json\"",
+        "/bin/zsh -lc 'cat skill/references/wellness-and-energy-models.md && cat skill/references/field-semantics.md && cat skill/references/readiness-and-vo2max-models.md'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "activity_models",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "Modeled stimulus, not measured adaptation or overtraining diagnosis",
+          "met": true
+        },
+        {
+          "criterion": "Available rebound not glycogen restoration; no actual glycogen inference",
+          "met": true
+        },
+        {
+          "criterion": "Recovery demand unresolved; 48 h not blanket activity ban; delivered dose separate from model",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Økten varte de planlagte 120 minuttene, snittet traff 220 W, og det var ingen vedvarende effektfall. Det støtter at arbeidet ble gjennomført som planlagt.\n\nGarmin anslår **svært stor aerob stimulans (5,0)**, liten anaerob stimulans (0,5) og en aktivitetsbelastning på 300. Stamina falt til 3 under siste harde del, men steg til 18 under nedkjøringen; Potential Stamina endte på 30. Det passer med stor modellert belastning og en kortvarig begrensning mot slutten. **48 timers restitusjonstid** er Garmins anslag for når du er klar for neste harde økt, ikke et forbud mot rolig aktivitet.\n\n**Nei:** 5,0 alene er ingen diagnose på overtrening, og Stamina 3 måler ikke glykogen. Uten treningshistorikk, matinntak, opplevd anstrengelse og etterfølgende restitusjon kan vi ikke avgjøre om du var tom for glykogen eller hvordan du faktisk tåler belastningen.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-activity_models-1.txt",
+      "answer_sha256": "699531d846290dd52c5c7a8c18e4f37d62620841a3e7d5922b3b3bdf3798754f",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-activity_models-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat skill/references/field-semantics.md'",
+        "/bin/zsh -lc 'cat skill/references/training-effect-and-stamina-models.md'",
+        "/bin/zsh -lc 'cat input.json'",
+        "/bin/zsh -lc 'cat skill/references/sources.md'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "activity_models",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "Modeled stimulus, not measured adaptation or overtraining diagnosis",
+          "met": true
+        },
+        {
+          "criterion": "Available rebound not glycogen restoration; no actual glycogen inference",
+          "met": true
+        },
+        {
+          "criterion": "Recovery demand unresolved; 48 h not blanket activity ban; delivered dose separate from model",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Økten ble gjennomført som planlagt: 120 minutter med 220 W i snitt, uten vedvarende effektfall. Garmin anslår en svært stor **aerob treningsstimulus (5,0)**, liten anaerob effekt (0,5) og en øktbelastning på 300. Uten treningshistorikk kan 300 ikke settes i forhold til din vanlige belastning.\n\n**Stamina 3** var et kortvarig minimum under siste harde del. At tilgjengelig Stamina steg til 18 under nedkjøringen, mens Potential endte på 30, passer med både en midlertidig begrensning og bredere modellert utmattelse. Garmins **48 timers restitusjonstid** gjelder forventet beredskap for neste harde økt, ikke et forbud mot lett aktivitet.\n\nNei: Verken 5,0 eller Stamina 3 påviser overtrening eller tomme glykogenlagre. De er modellanslag. Opplysninger om matinntak, opplevd anstrengelse og senere restitusjon mangler.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-activity_models-2.txt",
+      "answer_sha256": "8cf1be421b7a1ab227fd8bc55e62e6a225b4b9c263c89c19e112b86b9f2bdbda",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-activity_models-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat input.json && cat skill/references/training-effect-and-stamina-models.md && cat skill/references/field-semantics.md'",
+        "/bin/zsh -lc 'cat skill/references/sources.md'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "future_day",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "4 hours at planned start, measured from 18:00, conditional on no intervening training",
+          "met": true
+        },
+        {
+          "criterion": "Do not project sleep HRV BB or aggregate readiness into tomorrow",
+          "met": true
+        },
+        {
+          "criterion": "Not available yet differs from missing sync; timer not automatic veto or permission",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Kl. 18 i dag viste Garmin **18 timer Recovery Time**. Fra da til intervallstart i morgen kl. 08 går det 14 timer, så anslaget er **4 timer igjen**, forutsatt ingen trening i mellomtiden. Garmin kan justere nedtellingen etter søvn, stress og aktivitet; den er ett signal for en hardøkt, ikke et automatisk ja eller nei.\n\nVed øktstart kan du vurdere morgendagens synkroniserte søvn, HRV, hvilepuls og Body Battery, sammen med hvordan du føler deg, nylig belastning og øktens plass i planen. Disse morgenverdiene er **ikke observert ennå**. Dagens søvnscore 85, balanserte HRV, Body Battery 70 og Training Readiness 80 kan gi bakgrunn, men skal ikke brukes som morgendagens målinger.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-future_day-1.txt",
+      "answer_sha256": "cf602ff8e2514ce24aba8814c716ef1d762c97124cc01b93ebd9c4bd23877e95",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-future_day-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat input.json'",
+        "/bin/zsh -lc \"rg -n 'Recovery Time|recoveryTime|Training Readiness|timestamp|sync|future|Body Battery|HRV|sleep|resting' skill/references/field-semantics.md skill/references/readiness-and-vo2max-models.md skill/references/training-effect-and-stamina-models.md\"",
+        "/bin/zsh -lc \"sed -n '1,95p' skill/references/readiness-and-vo2max-models.md\"",
+        "/bin/zsh -lc \"sed -n '1,95p' skill/references/field-semantics.md\"",
+        "/bin/zsh -lc \"sed -n '203,224p' skill/references/training-effect-and-stamina-models.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "future_day",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "4 hours at planned start, measured from 18:00, conditional on no intervening training",
+          "met": true
+        },
+        {
+          "criterion": "Do not project sleep HRV BB or aggregate readiness into tomorrow",
+          "met": true
+        },
+        {
+          "criterion": "Not available yet differs from missing sync; timer not automatic veto or permission",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Recovery Time ved øktstart kl. 08 er **anslagsvis 4 timer**: 18 timer kl. 18 i dag, minus 14 timer fram til start. Det forutsetter ingen trening i mellomtiden og at Garmins dynamiske estimat ikke endres. Resttid er relevant for harde intervaller, men er ikke et automatisk nei.\n\nVed øktstart kan vi bruke **nye, synkroniserte** data om nattens søvn, HRV, morgenpuls og Body Battery, samt egen følelse og øktens plass i planen. Dagens søvnscore 85, balanserte HRV og Training Readiness 80 gir bakgrunn, men kan ikke brukes som morgendagens målinger. Morgendagens velværedata er ennå ikke observert.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-future_day-2.txt",
+      "answer_sha256": "4d0cfd0bc35282e9bafa4e10ec4dca9eb06f1e15676b5ec0367440b38137c569",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-future_day-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat /private/tmp/garmin-skill-eval/future_day/skill/SKILL.md'",
+        "/bin/zsh -lc 'cat /private/tmp/garmin-skill-eval/future_day/input.json'",
+        "/bin/zsh -lc \"rg -n '\"'^#{1,4} |Recovery Time|Training Readiness|future|timestamp|HRV|Body Battery|sleep|resting'\"' /private/tmp/garmin-skill-eval/future_day/skill/references/field-semantics.md /private/tmp/garmin-skill-eval/future_day/skill/references/readiness-and-vo2max-models.md /private/tmp/garmin-skill-eval/future_day/skill/references/training-effect-and-stamina-models.md\"",
+        "/bin/zsh -lc \"sed -n '8,70p' /private/tmp/garmin-skill-eval/future_day/skill/references/readiness-and-vo2max-models.md\"",
+        "/bin/zsh -lc \"sed -n '203,222p' /private/tmp/garmin-skill-eval/future_day/skill/references/training-effect-and-stamina-models.md\"",
+        "/bin/zsh -lc \"sed -n '1,93p' /private/tmp/garmin-skill-eval/future_day/skill/references/field-semantics.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "high_hrv",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "HRV above baseline, not low",
+          "met": true
+        },
+        {
+          "criterion": "No automatic downgrade from label",
+          "met": true
+        },
+        {
+          "criterion": "No causal diagnosis or counting overlapping signals as independent votes",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "**Nei, HRV-statusen alene tilsier ikke å endre dagens intervalløkt.** «Unbalanced» skyldes her at sjudagerssnittet er *over* egen baseline (78 mot 55–70 ms), ikke lav HRV. Søvn på 8 timer, hvilepuls lik normalen, Body Battery 81 og normal følelse gir heller ikke et tydelig signal om å redusere økten. Gjennomfør som planlagt dersom oppvarmingen kjennes normal. Øktens intensitet og nylig treningsbelastning er ikke oppgitt, så de kan ikke vurderes.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-high_hrv-1.txt",
+      "answer_sha256": "b7802f27a72b70bf87aa549c42d4239379ba7ae919c769d00b5df3347f703077",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-high_hrv-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'pwd && rg --files skill && cat skill/SKILL.md && cat input.json'",
+        "/bin/zsh -lc \"rg -n -i 'hrv|readiness|unbalanced|high|baseline|sync|body battery|sleep|resting|recovery|interval|training' skill/references/field-semantics.md skill/references/readiness-and-vo2max-models.md skill/references/wellness-and-energy-models.md skill/references/sources.md\"",
+        "/bin/zsh -lc \"sed -n '1,92p' skill/references/field-semantics.md; sed -n '1,91p' skill/references/readiness-and-vo2max-models.md; sed -n '58,69p' skill/references/wellness-and-energy-models.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "high_hrv",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "HRV above baseline, not low",
+          "met": true
+        },
+        {
+          "criterion": "No automatic downgrade from label",
+          "met": true
+        },
+        {
+          "criterion": "No causal diagnosis or counting overlapping signals as independent votes",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "**HRV-statusen alene gir ikke grunn til å endre dagens intervalløkt.** «Unbalanced» skyldes her at sjudagerssnittet på 78 ms ligger *over* egen normalrange på 55–70 ms, ikke at HRV er lav. Åtte timers søvn, søvnscore 84, hvilepuls lik vanlig nivå, Body Battery 81 og normal egenfølelse støtter å gjennomføre planen.\n\nTraining Readiness 72 er «moderat», men er et samlemål som delvis bygger på de samme signalene. Siden øktens intensitet og nylig treningsbelastning ikke er oppgitt, ville jeg beholdt planen og brukt oppvarmingen til å vurdere om intervallene kjennes normale.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-high_hrv-2.txt",
+      "answer_sha256": "5d163d2f79e4917860022fc0de9d1fc4f43598126360b6aa69e30a9a6c31d3e0",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-high_hrv-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc \"cat skill/SKILL.md && printf '\\\\n--- INPUT ---\\\\n' && cat input.json\"",
+        "/bin/zsh -lc \"rg -n '\"'^#|HRV|Training Readiness|Body Battery|resting|sleep|unbalanced|Unbalanced'\"' skill/references/field-semantics.md skill/references/readiness-and-vo2max-models.md skill/references/wellness-and-energy-models.md skill/references/sources.md\"",
+        "/bin/zsh -lc \"sed -n '7,93p' skill/references/field-semantics.md && sed -n '8,91p' skill/references/readiness-and-vo2max-models.md && sed -n '58,68p' skill/references/wellness-and-energy-models.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "missing_sync",
+      "repeat": 1,
+      "required_findings": [
+        {
+          "criterion": "Zero sleep not real sleepless night",
+          "met": true
+        },
+        {
+          "criterion": "Previous HRV/BB and unsynced resting HR not current negative evidence",
+          "met": true
+        },
+        {
+          "criterion": "Request sync; no automatic downgrade solely from missing data",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Null søvn betyr ikke at du sov null timer. Siste fullførte synk var i går kveld, så dagens søvndata mangler, og hvilepulsen på 57 mot vanlig 48 er ennå ikke bekreftet av en morgensynk. Lav HRV og Body Battery 18 er også gårsdagens verdier.\n\n**Synk klokken nå, og vurder på nytt før sykkelturen kl. 10.** Ikke avlys den planlagte rolige turen på grunnlag av disse tallene alene. Hvis morgensynken bekrefter høyere hvilepuls og du føler deg dårligere, kort ned eller utsett turen.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-missing_sync-1.txt",
+      "answer_sha256": "0ff2b5ff3bca0369b5dddae3235736c07510292d6ccd6c77a6addb9d3db590e0",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-missing_sync-1.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat input.json'",
+        "/bin/zsh -lc \"rg -n '\"'^#{1,4} |sync|zero|sleep|resting|HRV|Body Battery'\"' skill/references/field-semantics.md\"",
+        "/bin/zsh -lc \"rg -n '\"'^#{1,4} |sync|sleep|HRV|resting|Body Battery'\"' skill/references/readiness-and-vo2max-models.md skill/references/wellness-and-energy-models.md\"",
+        "/bin/zsh -lc \"sed -n '8,90p' skill/references/readiness-and-vo2max-models.md\"",
+        "/bin/zsh -lc \"sed -n '30,69p' skill/references/wellness-and-energy-models.md\"",
+        "/bin/zsh -lc \"sed -n '1,94p' skill/references/field-semantics.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "missing_sync",
+      "repeat": 2,
+      "required_findings": [
+        {
+          "criterion": "Zero sleep not real sleepless night",
+          "met": true
+        },
+        {
+          "criterion": "Previous HRV/BB and unsynced resting HR not current negative evidence",
+          "met": true
+        },
+        {
+          "criterion": "Request sync; no automatic downgrade solely from missing data",
+          "met": true
+        }
+      ],
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Null søvn og hvilepuls 57 mot vanlig 48 er **ikke pålitelige grunnlag for å endre økten ennå**: Siste fullførte synkronisering var i går kl. 21, før nattens søvn. HRV og Body Battery er også fra i går.\n\nSynkroniser klokken nå og vurder de oppdaterte tallene og hvordan du føler deg før sykkelturen kl. 10. Hvis du fortsatt føler deg normal og morgendataene ikke gir grunn til bekymring, kan du gjennomføre de planlagte 90 minuttene rolig. Viser oppdaterte data tydelig dårlig restitusjon, eller føler du deg syk eller uvanlig sliten, bør du korte ned eller stå over.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-missing_sync-2.txt",
+      "answer_sha256": "4eff55e595914019d415665ab4f475c11d82a877d8c9ede0bc20deec6b9c176b",
+      "transcript_path": "outputs/garmin-skill-eval/2026-10-17/runs/gpt-6-sol-missing_sync-2.jsonl",
+      "commands": [
+        "/bin/zsh -lc 'cat input.json'",
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc \"rg -n '\"'^#{1,4} |sync|sleep|resting|HRV|Body Battery'\"' skill/references/field-semantics.md\"",
+        "/bin/zsh -lc \"rg -n '\"'^#{1,4} |sleep|HRV|resting|Body Battery|sync'\"' skill/references/readiness-and-vo2max-models.md skill/references/wellness-and-energy-models.md\"",
+        "/bin/zsh -lc \"sed -n '8,91p' skill/references/readiness-and-vo2max-models.md\"",
+        "/bin/zsh -lc \"sed -n '30,69p' skill/references/wellness-and-energy-models.md\"",
+        "/bin/zsh -lc \"sed -n '1,93p' skill/references/field-semantics.md\""
+      ],
+      "failed_tool_commands": 0
+    }
+  ]
+}
