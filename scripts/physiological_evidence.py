@@ -16,6 +16,18 @@ MAX_GAP_SECONDS = 30
 MAX_SAMPLE_INTERVAL = 10
 
 
+# Descriptive response-to-power ratios, never physiological cost estimates.
+POWER_NORMALIZED_FIELDS = frozenset({'heartrate', 'respiration', 'tidal_volume_min'})
+DELTA_UNITS = {
+    'core_temperature': 'degC',
+    'skin_temperature': 'degC',
+    'temp': 'degC',
+    'RuuviTemperature': 'degC',
+    'dewpoint_c': 'degC',
+    'smo2': 'percentage_points',
+}
+
+
 def numeric(row, field):
     try:
         result = float(row.get(field))
@@ -156,7 +168,9 @@ def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
         item = dict(status='usable' if a and b else 'unavailable', early_quality=q1, late_quality=q2)
         if a and b:
             item.update(early_avg=a['avg'], late_avg=b['avg'], delta=b['avg']-a['avg'])
-            if a['avg'] and field not in {'watts', 'cadence'}:
+            if field in DELTA_UNITS:
+                item['delta_unit'] = DELTA_UNITS[field]
+            if a['avg'] and field in POWER_NORMALIZED_FIELDS:
                 item['per_watt_change_pct'] = ((b['avg']/l['power_avg'])/(a['avg']/e['power_avg'])-1)*100
         result['fields'][field] = item
     return result

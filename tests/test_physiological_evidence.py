@@ -14,6 +14,32 @@ def ride(step=1, duration=1200):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_power_normalization_is_limited_to_descriptive_response_fields(self):
+        rows = ride()
+        changes = {
+            'heartrate': (140, 154), 'respiration': (35, 38.5),
+            'tidal_volume_min': (80, 88), 'tidal_volume': (2, 2.2),
+            'core_temperature': (38, 39), 'skin_temperature': (30, 31),
+            'temp': (20, 21), 'RuuviTemperature': (20, 21),
+            'dewpoint_c': (-1, 0), 'smo2': (50, 55),
+            'thb': (12, 13), 'Humidity': (40, 45), 'new_sensor': (10, 11),
+        }
+        for row in rows:
+            for field, (early, late) in changes.items():
+                row[field] = str(early if int(row['time']) < 600 else late)
+        result = matched_windows(rows, list(changes) + ['watts', 'cadence'])
+        normalized = {field for field, evidence in result['fields'].items()
+                      if 'per_watt_change_pct' in evidence}
+        self.assertEqual(normalized, {'heartrate', 'respiration', 'tidal_volume_min'})
+        for field in normalized:
+            self.assertAlmostEqual(result['fields'][field]['per_watt_change_pct'], 10)
+        for field in ['core_temperature', 'skin_temperature', 'temp',
+                      'RuuviTemperature', 'dewpoint_c']:
+            self.assertEqual(result['fields'][field]['delta'], 1)
+            self.assertEqual(result['fields'][field]['delta_unit'], 'degC')
+        self.assertEqual(result['fields']['smo2']['delta'], 5)
+        self.assertEqual(result['fields']['smo2']['delta_unit'], 'percentage_points')
+
     def test_beta_diagnostics_require_explicit_opt_in(self):
         from unittest.mock import patch
         from activity_inspect import brief_result
