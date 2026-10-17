@@ -327,39 +327,39 @@ def summarize_year(
 def render_markdown(summary: dict[str, Any]) -> str:
     overview = summary["overview"]
     lines = [
-        f"# Uteokter {overview['year']}",
+        f"# Outdoor rides {overview['year']}",
         "",
         (
-            f"Kilde: {overview['outdoor_activities']} lokale outdoor Ride-aktiviteter "
-            f"fra {overview['date_start']} til {overview['date_end']}. "
-            f"Duplikater fjernet: {overview.get('duplicates_removed', 0)}. "
+            f"Source: {overview['outdoor_activities']} locally saved outdoor Ride activities "
+            f"from {overview['date_start']} to {overview['date_end']}. "
+            f"Duplicates removed: {overview.get('duplicates_removed', 0)}. "
             f"Failures: {overview['errors']}."
         ),
         "",
-        "## Beste VT1-kontroll samlet",
+        "## Best overall VT1 power control",
         render_rows(summary["rankings"]["best_vt1_overall"], mode="vt1"),
         "",
-        "## Beste 60 min VT1-vinduer",
+        "## Best 60-minute VT1 windows",
         render_rows(summary["rankings"]["best_vt1_60min"], mode="vt1_60"),
         "",
-        "## Beste VT2/threshold-kontroll",
+        "## Best VT2/threshold power control",
         render_rows(summary["rankings"]["best_vt2_control"], mode="vt2"),
         "",
-        "## Alle uteokter",
+        "## All outdoor rides",
         render_rows(summary["activities"], mode="all"),
     ]
     if summary["errors"]:
         lines.extend(["", "## Errors", "```json", json.dumps(summary["errors"], indent=2), "```"])
     if summary.get("duplicates"):
-        lines.extend(["", "## Duplikater fjernet", "```json", json.dumps(summary["duplicates"], indent=2), "```"])
+        lines.extend(["", "## Duplicates removed", "```json", json.dumps(summary["duplicates"], indent=2), "```"])
     return "\n".join(lines) + "\n"
 
 
 def render_rows(rows: list[dict[str, Any]], *, mode: str) -> str:
     if not rows:
-        return "_Ingen._"
+        return "_None._"
     if mode == "vt2":
-        header = "| Dato | Okt | VT2 | Watt | Power control |"
+        header = "| Date | Activity | VT2 | Watts | Power control |"
         sep = "|---|---|---:|---:|---:|"
         body = [
             "| {date} | {name} | {verdict} | {watts} | {exec} |".format(
@@ -373,7 +373,7 @@ def render_rows(rows: list[dict[str, Any]], *, mode: str) -> str:
         ]
         return "\n".join([header, sep, *body])
 
-    header = "| Dato | Okt | Min | TL | Power control | Structure | 60min | VT2 |"
+    header = "| Date | Activity | Min | TL | Power control | Structure | 60min | VT2 |"
     sep = "|---|---|---:|---:|---:|---|---:|---|"
     body = []
     for row in rows:
