@@ -50,19 +50,29 @@ measurements and session structures being compared.
 
 ### Molecular stimulus analysis
 
-If the user asks about a workout's physiological, cellular, biochemical, or
-molecular stimuli, signalling pathways, or likely adaptations, analyze the
-stimuli the workout likely produced based on its actual intensity, duration,
-interval structure, and available sensor data.
+When the user asks about a workout's cellular, biochemical, or molecular
+stimuli, signalling pathways, or likely adaptations, first establish actual
+execution and physiological response through the
+[activity analysis workflow](references/activity-analysis.md). Reuse an existing
+analysis when it covers the same session and relevant evidence.
 
-Rank the most important signals, such as AMPK, CaMKII, p38, PGC-1alpha, p53,
-HIF-1alpha, VEGF, and eNOS, by likely strength. For each, explain why it was
-activated, what it affects, and which training adaptation it may contribute to.
+Use that analysis and relevant research references to explain plausible links
+between the actual intensity, duration, work-recovery structure, possible
+signalling, and expected adaptations. Select mechanisms for their relevance to
+the question rather than covering a fixed list of pathways or organ systems.
 
-Cover mitochondria, capillaries, muscle fibres, lactate, fuel use, ion handling,
-VO2 kinetics, and durability when relevant. Distinguish observed responses,
-likely signalling, and lasting adaptation. Finish with the primary effect,
-secondary effects, and what the workout stimulated little.
+Keep general research findings, observed responses in this session, plausible
+session-specific mechanisms, and demonstrated individual adaptation distinct.
+Do not present signalling pathways as measured to be activated or rank their
+individual activation strength without suitable measurement evidence. Ordinary
+activity streams may support a stimulus interpretation without establishing the
+molecular response or lasting adaptation.
+
+Apply the shared
+[competing-mechanism](references/physiological-response-synthesis.md#explain-competing-mechanisms)
+and [adaptation](references/physiological-response-synthesis.md#compare-sessions-and-assess-adaptation)
+rules. Explain the most relevant expected effects, the supporting session
+features and research, and what remains uncertain for this athlete.
 
 ### Readiness or daily recommendation
 
