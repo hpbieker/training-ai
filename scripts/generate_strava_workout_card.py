@@ -117,9 +117,13 @@ def xert_power_polygons(
 def load_activity(activity_dir: Path) -> dict[str, object]:
     path = activity_dir / "activity.json"
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"Cannot read saved Intervals activity: {path}") from exc
+    activity = payload.get("activity", payload) if isinstance(payload, dict) else None
+    if not isinstance(activity, dict):
+        raise ValueError(f"Saved Intervals activity has no activity object: {path}")
+    return activity
 
 
 def load_streams(activity_dir: Path) -> list[dict[str, float]]:
@@ -192,14 +196,27 @@ def workout_story(activity: dict[str, object], rows: list[dict[str, float]]) -> 
     """State the purposeful work, using Intervals' detected interval summary."""
     name = str(activity.get("name") or "").casefold()
     summaries = activity.get("interval_summary")
-    summary = next((item for item in summaries if isinstance(item, str)), "") if isinstance(summaries, list) else ""
-    match = re.fullmatch(r"(\d+)x (?:(\d+)m)?(?:(\d+)s)? (\d+)w", summary)
-    if match:
-        repetitions, minutes, seconds, watts = (int(value or 0) for value in match.groups())
-        if minutes == 0 and seconds == 0:
-            match = None
-    if match:
-        repetitions, minutes, seconds, watts = (int(value or 0) for value in match.groups())
+    parsed_summaries: list[tuple[int, int, int]] = []
+    if isinstance(summaries, list):
+        for summary in summaries:
+            if not isinstance(summary, str):
+                continue
+            match = re.fullmatch(r"(\d+)x (?:(\d+)m)?(?:(\d+)s)? (\d+)w", summary)
+            if not match:
+                continue
+            repetitions, minutes, seconds, watts = (int(value or 0) for value in match.groups())
+            duration = minutes * 60 + seconds
+            if duration > 0:
+                parsed_summaries.append((repetitions, duration, watts))
+
+    # Intervals.icu also lists warm-up and short finishing blocks. Prefer a
+    # repeated work set instead of treating the first summary as the workout.
+    repeated = [item for item in parsed_summaries if item[0] > 1]
+    candidates = repeated or parsed_summaries
+    selected = max(candidates, key=lambda item: (item[0], item[0] * item[1], item[2])) if candidates else None
+    if selected:
+        repetitions, seconds_total, watts = selected
+        minutes, seconds = divmod(seconds_total, 60)
         duration = f"{minutes}:{seconds:02d}" if seconds else f"{minutes}:00"
         work_label = f"{repetitions} × {duration} @ {watts} W"
         if "vo2" in name:
