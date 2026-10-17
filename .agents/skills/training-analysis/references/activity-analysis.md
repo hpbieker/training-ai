@@ -54,6 +54,36 @@ python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
   needed, `--no-intervals` when interval rows are irrelevant, and `--stdout`
   only when full terminal JSON is genuinely useful.
 
+## Session Context And Analysis Flow
+
+Establish the session's intended role, prescribed work and recoveries, applicable
+physiological anchors, and actual completed structure separately. Resolve these
+from the user's request and available workout/plan evidence; the activity name
+is a clue to intent, not proof of the prescription or completed dose. Preserve
+unknown values rather than substituting observed averages or an anchor.
+
+Pass resolved inputs explicitly to the helper:
+
+- `--vt1-watts` and `--vt2-watts` are physiological anchors for the activity's
+  date, not prescribed power targets.
+- `--prescribed-watts` is an explicitly known common power target for assessed
+  VT2 blocks. Without it, target attainment remains unresolved even when an
+  anchor is known. Do not use this common target for a session with different
+  targets across blocks.
+- `--target` selects blocks near a power level; it does not supply the
+  prescription. Check source interval boundaries and completed duration too:
+  power-based selection can omit interrupted or substantially off-target work.
+- Resolve ERG use from explicit session evidence. Trainer status alone does not
+  establish ERG. In confirmed ERG, stable power describes delivered load; it
+  does not independently demonstrate athlete control, spare capacity, or ease.
+- Use available feel/RPE and material cooling, fueling, illness, or prior-work
+  context. Ask only when a missing fact could change the conclusion.
+
+Inspect actual work and its measurement eligibility, interpret the response in
+that session context, then state the supported consequence. A script score or
+selected window does not replace this synthesis. Without comparable history,
+assess this session without claiming an individual development trend.
+
 ## Block Detection
 
 - Use a known target with `--target`, `--tolerance`, and `--min-block` when the
@@ -71,25 +101,32 @@ python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
 - For pure indoor trainer VT1, inspect `indoor_vt1_quality` and pass
   `--vt1-watts`. Treat warm-up/cooldown as part of a selected workout unless
   explicitly modifying it.
-- For threshold-like work, inspect `vt2_quality`. Pass `--vt2-watts` for a
-  known indoor target; omit it for variable outdoor work so the result remains
-  a control/cost diagnostic rather than exact target compliance.
-- Keep `beta_stability`, `beta_vo2`, and experimental VT1 metrics as
-  development evidence. Do not present them as threshold diagnoses or let them
-  determine physiological cost or plan progression. Prefer `beta_summary` for
-  tabular summaries and preserve separate parts in mixed sessions.
+- For threshold-like work, inspect `vt2_quality`. Pass `--vt2-watts` for
+  intensity classification and, separately, `--prescribed-watts` when a common
+  prescribed target is known. Without a valid anchor, intensity classification
+  is unresolved. Without a prescription, report descriptive stability rather
+  than target attainment. Current VT2 diagnostics select blocks by observed
+  power near the anchor; inspect the remaining work blocks before judging
+  completion of the whole prescription.
+- Standard output excludes beta diagnostics. Use `--brief --debug-beta` only
+  for explicitly requested development/debugging. Do not use `beta_summary`,
+  `beta_stability`, or `beta_vo2` as the basis of a coaching verdict or progression.
 
 ## Measurement Eligibility And Comparison Windows
 
 Read each field's `data_quality` and each `comparison` before interpreting a
 summary or change. Summaries use elapsed-time weighting. Missing coverage,
-long gaps, invalid values, or a missing/nonmonotonic clock can make a field
+long gaps, or a missing/nonmonotonic clock can make a field
 unavailable for that period without invalidating other fields or valid blocks.
-Treat unavailable values as unknown, never as zero drift or normal response.
+Invalid measurements count as missing coverage; their presence alone does not
+invalidate a series. Treat unavailable values as unknown, never as zero drift
+or normal response. A field's `series_quality` applies to the supplied activity
+or block, while `early_quality` and `late_quality` apply to selected windows.
+Preserve the accompanying `quality_note` when these scopes differ.
 
 `comparison` identifies contiguous stable work windows, their timestamps,
 power and cadence, elapsed work within the detected work run, and per-field
-eligibility. The selector excludes an initial transition period and checks
+eligibility. Blocks reuse the complete activity's window grid and work-run history. The selector excludes an initial transition period and checks
 mechanical comparability; separate work runs also require comparable elapsed
 work. Its window lengths and tolerances are engineering defaults, not validated
 physiological boundaries or proof of a steady state. Check the actual workout
@@ -102,6 +139,9 @@ device lag is disclosed, not automatically corrected. Mechanical execution
 scores are power-compliance heuristics only. Main VT1/VT2 diagnostics no longer
 assign physiological response, recovery, or combined grades. Use the descriptive
 observations and shared synthesis rules for cost, cause, and progression.
+`per_watt_change_pct` is available only for HR, BR, and VE and is descriptive,
+not an efficiency or cost measure. Temperature changes are in degrees Celsius;
+SmO2 changes are percentage points.
 
 ## Interpretation
 

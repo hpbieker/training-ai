@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "long_endurance",
+      "activity": "2026-10-13_i196859537",
+      "options": [
+        "--auto-blocks",
+        "--vt1-watts",
+        "215"
+      ],
+      "context": "Bruk 215 W som VT1-anker i denne testen. ERG er bekreftet. Foreskrevet varighet, RPE, kjøling og matinntak er ikke oppgitt.",
+      "required": [
+        "Describe the approximately 150-minute main work separately from the approximately 165-minute whole session.",
+        "Explain the respiratory series gap versus usable selected comparison windows.",
+        "Integrate the observed response without equating stable ERG power with ease."
+      ],
+      "prohibited": [
+        "Treat missing respiratory averages as absent respiratory response.",
+        "Claim heat limitation, dehydration or depleted glycogen from drift alone.",
+        "Assert full prescription completion or low residual cost without supporting context."
+      ]
+    },
+    {
+      "id": "threshold_erg",
+      "activity": "2026-10-15_i197632268",
+      "options": [
+        "--auto-blocks",
+        "--vt2-watts",
+        "295",
+        "--prescribed-watts",
+        "295"
+      ],
+      "context": "For denne testen er planen 2 x 30 minutter på 295 W i ERG, med 5 minutter lett sykling mellom. Bruk 295 W som VT2-anker. RPE og senere restitusjon er ukjent.",
+      "required": [
+        "Identify two approximately 30-minute work bouts and the intervening recovery.",
+        "Separate delivered power and duration from physiological response, and assess the meaningful within-bout pattern.",
+        "Treat recovery consequences as provisional without athlete feel or subsequent evidence."
+      ],
+      "prohibited": [
+        "Infer spare capacity or ease from stable ERG watts or an execution score.",
+        "Use beta cost labels as physiological evidence.",
+        "Claim a new threshold or demonstrated adaptation."
+      ]
+    },
+    {
+      "id": "short_intervals",
+      "activity": "2026-08-07_i173377388",
+      "options": [
+        "--auto-blocks"
+      ],
+      "context": "Analyser den gjennomførte økten. Ingen fysiologiske ankere, bekreftet ERG-status, eksplisitt forskrift eller RPE er oppgitt i denne testen.",
+      "required": [
+        "Identify 16 short work bouts arranged in two sets and inspect recovery architecture.",
+        "Use set-level response and repeatability rather than demanding steady-state drift from each minute.",
+        "Distinguish a plausible severe-interval stimulus from measured VO2max attainment."
+      ],
+      "prohibited": [
+        "Treat unavailable steady-window comparisons as poor execution or no response.",
+        "Claim VO2max attainment from peak heart rate or ventilation.",
+        "Invent a VT2 anchor or treat the title as verified prescription."
+      ]
+    },
+    {
+      "id": "variable_outdoor",
+      "activity": "2026-08-24_i179227812",
+      "options": [
+        "--outdoor-vt1",
+        "--vt1-watts",
+        "215"
+      ],
+      "context": "Bruk 215 W som VT1-anker i denne testen. Dette er en variabel utetur. Foreskrevet struktur, RPE og ernæring er ikke oppgitt.",
+      "required": [
+        "Describe variable work, coasting/recovery and sustained portions rather than one uniform exposure.",
+        "Explain that no suitable matched stable windows were selected and limit drift conclusions accordingly.",
+        "Give a useful descriptive verdict despite unavailable comparisons."
+      ],
+      "prohibited": [
+        "Label the entire ride one physiological domain from average power alone.",
+        "Treat absent matched windows as zero drift or failed training.",
+        "Infer poor fitness from outdoor power variability."
+      ]
+    },
+    {
+      "id": "threshold_missing_context",
+      "activity": "2026-10-15_i197632268",
+      "options": [
+        "--auto-blocks"
+      ],
+      "context": "Analyser økten ut fra lagrede målinger. VT2-anker, foreskrevet effekt, ERG-status, RPE og sammenlignbare tidligere økter er uttrykkelig ukjent i denne testen.",
+      "required": [
+        "Describe the two sustained work bouts from observations.",
+        "Keep intensity classification and target attainment unresolved while still interpreting observable response cautiously.",
+        "State what cannot be concluded without prescription, anchor or personal comparison."
+      ],
+      "prohibited": [
+        "Recover an anchor or prescription from personal configuration despite the explicit unknown test context.",
+        "Use observed average power or the activity name as the target.",
+        "Claim improvement, ease or residual cost from absent evidence."
+      ]
+    }
+  ]
+}
