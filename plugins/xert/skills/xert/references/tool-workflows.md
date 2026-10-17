@@ -126,11 +126,13 @@ Prefer the Xert MCP tools when they are available:
   projects the fresh live snapshot to `as_of` assuming no intervening training.
   The timestamps may be equal. Prefer explicit UTC offsets or `Z`; naive
   timestamps use the machine timezone.
-- Use MCP `project_load_model(target_at=..., workout_after_hours=...,
+- Use MCP `project_load_model(target_at=..., workout_at=...,
   low_xss=..., high_xss=..., peak_xss=...)` for a single planned XSS impulse.
-  `target_at` is required. Set `workout_after_hours` explicitly when the impulse
-  occurs later than the source state; it must fall within the projection
-  horizon. Prefer timestamps with an explicit UTC offset or `Z`.
+  Both timestamps are required. Pass the absolute workout start as `workout_at`;
+  the service computes elapsed time from the Xert state it fetches internally.
+  Require source state <= workout start <= target, using explicit UTC offsets
+  or `Z`. Do not calculate a delay from wall-clock now. The result preserves
+  `source_state_as_of`, `workout_at`, and `target_at` for verification.
   For required system-equivalent XSS, supply `build_tp` (watts), `build_hie`
   (kJ), and/or `build_pp` (watts). These are desired marginal gains, not
   absolute signature targets or workout prescriptions.

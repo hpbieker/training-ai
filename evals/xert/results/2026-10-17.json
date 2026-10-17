@@ -1,0 +1,92 @@
+{
+  "date": "2026-10-17",
+  "models": [
+    "gpt-6-sol",
+    "gpt-6-luna"
+  ],
+  "effort": "medium",
+  "repeats_per_case": 1,
+  "unit_tests": {
+    "passed": 155,
+    "python": "3.14",
+    "mcp": "1.30.0",
+    "anyio": "4.15.1"
+  },
+  "input_manifest_sha256": "739807e29e9b616ce17112b358c464854c30898448959d99f91bddcfdc760cb7",
+  "review_method": "Manual review against initial scenario checks plus inspection of proposed-call timestamp semantics in xert_service.py; no live tool execution. The timestamp-anchor issue was discovered during review, beyond the original explicit rubric.",
+  "input_hashes_unchanged": true,
+  "runs": [
+    {
+      "model": "gpt-6-luna",
+      "case": "capacity_vs_dose",
+      "status": "completed",
+      "review": "pass",
+      "finding": "Meets the scenario review criteria; no unsupported readiness veto, capacity target or duplicate subtraction.",
+      "answer": "Nei, ikke fyll automatisk opp til 180. **180 Low XSS er modellert kapasitet** for å nå friskhetsgrensen på det oppgitte tidspunktet, ikke et treningsmål eller bevis på at kroppen tåler dosen. Rådet på **75 Low XSS** er anbefalt dose i dagens rådskontekst. Siden planen er lett utholdenhet i dag og kvalitet i morgen, er det fornuftig å holde seg nær rådet og bevare overskudd til morgendagens økt. Normal dagsform alene begrunner ikke å øke til kapasitetstaket.\n\nTestdataene oppgir ingen treningshistorikk eller fysiologiske signaler utover «normal» dagsform, så en større dose kan ikke begrunnes her.",
+      "answer_sha256": "5edbffce044bcca7a9eb976f66602b8650674c5369f2fd02bbd05ad494360d68"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "capacity_vs_dose",
+      "status": "completed",
+      "review": "pass",
+      "finding": "Meets the scenario review criteria; no unsupported readiness veto, capacity target or duplicate subtraction.",
+      "answer": "Nei. **180 Low XSS er en modellert kapasitet** for å nå Xerts grense for «fresh» kl. 15 i morgen, ikke en anbefalt dose eller en garanti for at økten tåles godt. **75 Low XSS er dagens gjenstående råd**; eventuell allerede registrert trening er tatt med.\n\nSiden planen er rolig utholdenhet i dag og kvalitet i morgen, ville jeg sikte mot omtrent 75 Low XSS og justere etter dagsformen, fremfor å fylle opp til 180. Mer i dag gir ikke nødvendigvis mer utbytte og kan gjøre morgendagens kvalitetsøkt tyngre.",
+      "answer_sha256": "e86a6f66f8a93f3a447c61bc1c05cd27d1e125a274d6b383278ef4778b3b2e95"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "multiple_workouts",
+      "status": "completed",
+      "review": "needs_correction",
+      "finding": "Correct Planner aggregation and valid tool names, but workout_after_hours=33 is derived from scenario now rather than the unknown Xert source-state timestamp. Must first establish the source anchor; no unconditional numeric offset is justified.",
+      "answer": "Planner-modellen summerer øktene på samme lokale kalenderdag og legger samlet belastning inn ved siste økt. For 19. oktober kl. 08:00 blir impulsen derfor **100 Low, 3 High og 0,5 Peak XSS** kl. 17:00 den 18. oktober. Modellen for flere økter samme dag er beskrevet i skillens feltsemantikk.\n\nJeg ville brukt disse MCP-kallene:\n\n```json\nget_training_state({\"view\": \"summary\"})\n```\n\nHenter aktuell Training Load og Fitness Signature som referanse. Deretter:\n\n```json\nproject_load_model({\n  \"target_at\": \"2026-10-19T08:00:00+02:00\",\n  \"workout_after_hours\": 33,\n  \"low_xss\": 100,\n  \"high_xss\": 3,\n  \"peak_xss\": 0.5\n})\n```\n\n`33` timer er tiden fra oppgitt nåtid til siste økt. `project_load_model` støtter én XSS-impuls; aggregeringen av øktene følger Planner-modellen.\n\nHer kan jeg fastslå samlet XSS og foreslå kallene, men ikke beregne tall for Training Load eller signatur neste morgen: MCP-serveren er utilgjengelig, og testpakken mangler aktuell Xert-tilstand og lokal modell. Tallene fra projeksjonskallet er derfor ukjente.",
+      "answer_sha256": "4f5a50c465283fdf1888bc0470543e78d8972ab551b481dfe2a8747feeed6286"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "multiple_workouts",
+      "status": "completed",
+      "review": "needs_correction",
+      "finding": "Correct Planner aggregation and valid tool names, but workout_after_hours=33 is derived from scenario now rather than the unknown Xert source-state timestamp. Must first establish the source anchor; no unconditional numeric offset is justified.",
+      "answer": "Xert Planner modellerer de to øktene **som én samlet impuls ved siste øktstart**, 18. oktober kl. 17:00: Low 100, High 3 og Peak 0,5 XSS. Det er 33 timer etter tidspunktet i `input.json`; neste morgen kl. 08:00 er 48 timer etter.\n\nJeg ville brukt disse MCP-kallene:\n\n1. `get_training_state({\"view\":\"summary\"})` for gjeldende tilstand.\n2. `project_load_model({\"target_at\":\"2026-10-19T08:00:00+02:00\",\"workout_after_hours\":33,\"low_xss\":100,\"high_xss\":3,\"peak_xss\":0.5})` for Planner-scenariet.\n3. `project_load_model({\"target_at\":\"2026-10-19T08:00:00+02:00\",\"workout_after_hours\":33,\"low_xss\":0,\"high_xss\":0,\"peak_xss\":0})` som sammenligningsgrunnlag uten øktene.\n\nForskjellen mellom de to projeksjonene ville vist øktenes modellerte effekt på Training Load og marginal TP/HIE/PP-respons neste morgen. Her kan jeg bare summere XSS og fastslå modellens tidspunkt for impulsen. **Tall for Training Load og signatur er ukjente**, siden verken MCP-serveren, gjeldende Xert-tilstand eller den lokale modellen er tilgjengelig. Kallene er derfor kun beskrevet, ikke utført.",
+      "answer_sha256": "0231cffccb09c128b4ccac7833cc33190ce747e8f45c2bcd2b6f3eb4b015080b"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "positive_low_recovery",
+      "status": "completed",
+      "review": "pass",
+      "finding": "Meets the scenario review criteria; no unsupported readiness veto, capacity target or duplicate subtraction.",
+      "answer": "Du trenger ikke automatisk droppe halvtimen. Xert-dataene viser **3 timer Low-restitusjon** ved 09:00; det er modellert belastningskontekst, ikke et treningsforbud. Til 09:30 kan tallet ha endret seg, og vi vet ikke Xerts råd eller øktens faktiske belastning. Søvn og dagsform er normale, men du hadde en hard tur i går. En rolig, lett økt kan være rimelig hvis du fortsatt føler deg bra; avbryt eller hvil hvis kroppen kjennes uvanlig sliten.\n\nFor å vurdere Xert-bildet ved planlagt start, foreslår skillen disse lesekallene:\n\n- `get_training_state({\"view\":\"summary\"})`\n- `get_training_advice({\"view\":\"summary\",\"at\":\"2026-10-17T09:30:00+02:00\"})`\n\nDe er ikke utført, og resultatene er ukjente.",
+      "answer_sha256": "a4a17077a233cc4eeb9d50b1374d05570068e54941ebb7a6af01a0a0858c08a0"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "positive_low_recovery",
+      "status": "completed",
+      "review": "pass",
+      "finding": "Meets the scenario review criteria; no unsupported readiness veto, capacity target or duplicate subtraction.",
+      "answer": "Nei, du trenger ikke automatisk droppe den rolige halvtimen. I testdataene betyr **Low +3 timer kl. 09:00** at Low ennå ikke er «fresh» etter Xerts modell. Uten mer trening før start ville det være omtrent **+2,5 timer kl. 09:30**. Det er et signal om å holde belastningen lav, ikke et treningsforbud. Etter en hard tur i går, men normal søvn og normal følelse uten sykdom eller uvanlig stølhet, virker 30 minutter *virkelig rolig* sykling rimelig. Kort ned eller dropp økten hvis kroppen kjennes dårlig når du starter.\n\nForbeholdet er at øktens faktiske effekt og oppdatert Xert-råd er ukjent. Med tilkoblet MCP ville relevante **foreslåtte, ikke utførte** kall vært `get_training_state({\"view\":\"summary\"})` og `get_training_advice({\"view\":\"summary\",\"at\":\"2026-10-17T09:30:00+02:00\"})`.",
+      "answer_sha256": "07c223936b6d67d7766739a6a0a0c9f88658e485bfbfd5d453c6ab53ff8f7649"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "remaining_dose",
+      "status": "completed",
+      "review": "pass",
+      "finding": "Meets the scenario review criteria; no unsupported readiness veto, capacity target or duplicate subtraction.",
+      "answer": "Ifølge rådet gjenstår **80 Low XSS** til ettermiddagsøkten. Det er allerede justert for dagens sykling: opprinnelig mål 140, fullført 60, gjenstående 80. Ikke trekk de 60 fra en gang til. Dataene sier ikke hvor mange minutter økten varer.\n\nFor en konkret økt ville jeg først finne planen og hele øktstrukturen med `list_workouts` og `get_workout`. Deretter ville jeg hente signaturen med `get_training_state(view=\"summary\")` og bruke `solve_segment_duration` til å justere én utholdenhetsdel mot 80 Low XSS, med oppvarming, drag, pauser og nedkjøring låst. Kallet krever blant annet `signature`, `segments`, `adjustable_segment_index`, `target_metric: \"low_xss\"` og `target_value: 80`. Hvis økten ikke har en justerbar utholdenhetsdel, må varigheten beregnes på annen måte; testdataene gir ikke nok til å fastslå den.",
+      "answer_sha256": "99fc71e3f26f5c76af7e9c887af929c9549572619f7d022d09d1cb93f665423c"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "remaining_dose",
+      "status": "completed",
+      "review": "pass",
+      "finding": "Meets the scenario review criteria; no unsupported readiness veto, capacity target or duplicate subtraction.",
+      "answer": "Det gjenstår **80 Low XSS** til ettermiddagsøkten. Regnestykket er 140 opprinnelig mål − 60 allerede syklet = 80. Feltet `remaining_xss.low` er allerede 80, så dagens 60 skal ikke trekkes fra en gang til.\n\nVarigheten kan ikke bestemmes fra XSS alene. For en konkret økt ville jeg hente Fitness Signature med `get_training_state({\"view\":\"summary\"})`, fastsette hele øktens segmenter og bruke `solve_segment_duration` med `signature`, `segments`, `adjustable_segment_index` for ett justerbart segment under TP, `target_metric:\"low_xss\"` og `target_value:80`. Effekt og øvrig øktstruktur er ukjent i testpakken, så ingen varighet kan oppgis.",
+      "answer_sha256": "386476c2b0313f56b2d02e4c3d692d9a7a6851e90fdc5770b20bea527109ff3e"
+    }
+  ]
+}

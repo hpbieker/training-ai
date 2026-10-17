@@ -64,7 +64,9 @@ role and full workout first, then use `solve_segment_duration` on one sub-TP
 segment while preserving fixed work, warm-up, recovery and cool-down. Do not
 convert XSS to minutes using a mixed-activity historical rate.
 
-`project_load_model` accepts a single XSS impulse and explicit `target_at`.
+`project_load_model` requires absolute `workout_at` and `target_at` timestamps
+for a single XSS impulse. It computes the delay from its fetched source state;
+do not supply a wall-clock offset.
 Multi-workout simulation, daily ramps and history validation belong to local
 analysis code described in the [load reference](references/training-load-model.md);
 `simulate_calendar_sequence` is not an MCP tool. Do not pass CLI flags to MCP.

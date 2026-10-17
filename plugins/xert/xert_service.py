@@ -506,7 +506,7 @@ class XertService:
         return solve_segment_duration(**arguments)
 
     def project_load_model(
-        self, *, target_at: str, workout_after_hours: float = 0.0,
+        self, *, target_at: str, workout_at: str,
         low_xss: float = 0.0, high_xss: float = 0.0, peak_xss: float = 0.0,
         build_tp: float = 0.0, build_hie: float = 0.0, build_pp: float = 0.0,
     ) -> dict[str, Any]:
@@ -517,18 +517,22 @@ class XertService:
         at_state["recovery_offset"] = model["recovery_offset"]
         source_at = _aware_datetime(at_state.get("start_date"), "Xert state time")
         target = _aware_datetime(target_at, "target_at")
+        workout = _aware_datetime(workout_at, "workout_at")
+        if not source_at <= workout <= target:
+            raise ValueError("require Xert state <= workout_at <= target_at")
         horizon_days = (target - source_at).total_seconds() / 86400
-        if horizon_days < 0:
-            raise ValueError("target_at must not precede the current Xert state")
+        workout_after_days = (workout - source_at).total_seconds() / 86400
         payload = calculate_load_projection(
             at_state=at_state,
             ir_params=model["ir_params"],
             current_signature=training_info["signature"],
             planned_xss={"low": low_xss, "high": high_xss, "peak": peak_xss},
             horizon_days=horizon_days,
-            workout_after_days=workout_after_hours / 24,
+            workout_after_days=workout_after_days,
             desired_signature_gain={"ftp": build_tp, "hie": build_hie, "pp": build_pp},
         )
+        payload["source_state_as_of"] = source_at.isoformat()
+        payload["workout_at"] = workout.isoformat()
         payload["target_at"] = target.isoformat()
         return payload
 

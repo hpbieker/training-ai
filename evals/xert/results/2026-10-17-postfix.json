@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-17",
+  "effort": "medium",
+  "scope": "Targeted multiple-workout regression; same scenario/prompt as first run, updated skill and MCP schema. Proposed calls only; no live Xert execution.",
+  "input_manifest_sha256": "66b2599947d0169a97cb185a1fb6429b27d8b70da91b70d8fe3f1ada849fc154",
+  "input_hashes_unchanged": true,
+  "review_method": "Manual assessment of all four full answers and command transcripts.",
+  "runs": [
+    {
+      "model": "gpt-6-luna",
+      "repeat": 1,
+      "case": "multiple_workouts",
+      "status": "completed",
+      "review": "pass",
+      "answer": "For Planner ville jeg hentet starttilstanden og projisert dagens samlede dose ved siste planlagte økt. Xert-modellen aggregerer Planner-økter samme lokale dag og legger impulsen ved siste økts start.\n\nForeslåtte MCP-kall:\n\n1. `get_training_state({\"view\":\"summary\"})` — hente gjeldende TL, RL, signatur og modellparametere.\n2. `project_load_model({\"workout_at\":\"2026-10-18T17:00:00+02:00\",\"target_at\":\"2026-10-19T08:00:00+02:00\",\"low_xss\":100,\"high_xss\":3,\"peak_xss\":0.5})` — én samlet Planner-dose fra de to øktene.\n\nHer kan jeg fastslå samlet dose fra testdataene: **100 Low, 3 High og 0,5 Peak XSS**. Jeg kan ikke beregne TL-, RL- eller signaturverdiene neste morgen uten gjeldende Xert-tilstand og projeksjonsresultatet. Verktøyet er ikke koblet til, og den lokale flerøktsmodellen er ikke tilgjengelig; derfor oppgir jeg ingen numeriske projeksjonsresultater.",
+      "answer_sha256": "2f13e99c6603acd4c3995dff361246b55e75de708adad484b5a8e04d8f0fac4d",
+      "notes": "Correct absolute workout_at and target_at, aggregated 100/3/0.5 XSS, no old offset argument or fabricated result."
+    },
+    {
+      "model": "gpt-6-luna",
+      "repeat": 2,
+      "case": "multiple_workouts",
+      "status": "completed",
+      "review": "pass",
+      "answer": "Øktene er samme kalenderdag. Xert Planner summerer dosen for dagen og legger den inn ved siste økt, kl. 17:00. Samlet dose blir **Low 100, High 3, Peak 0,5 XSS**.\n\nJeg ville brukt disse kallene:\n\n1. `get_training_state(view=\"summary\")` for å lese gjeldende signatur og belastningstilstand.\n2. `project_load_model(target_at=\"2026-10-19T08:00:00+02:00\", workout_at=\"2026-10-18T17:00:00+02:00\", low_xss=100, high_xss=3, peak_xss=0.5)` for Planner-lignende projeksjon til neste morgen.\n\nHer kan jeg summere XSS og angi kallene, men ikke beregne endringen i Training Load eller signatur: MCP-serveren er frakoblet, og testpakken inneholder verken gjeldende tilstand eller Xerts modellparametere. `project_load_model` modellerer én impuls; å kalle den separat for hver økt ville ikke modellere den samlede Planner-effekten riktig. Skillen beskriver lokal simulering av flere hendelser, men den lokale modellen er ikke tilgjengelig her.",
+      "answer_sha256": "681979fb63a829daa3a74a36a37cffe4fd823fc9b3fc5e586d946b8979ab7ef6",
+      "notes": "Correct absolute workout_at and target_at, aggregated 100/3/0.5 XSS, no old offset argument or fabricated result."
+    },
+    {
+      "model": "gpt-6-sol",
+      "repeat": 1,
+      "case": "multiple_workouts",
+      "status": "completed",
+      "review": "pass",
+      "answer": "For **Xert Planner** legges de to øktene på samme lokale dag sammen og modelleres som én impuls ved den siste økten, **18. oktober kl. 17:00**. Samlet dose er **100 Low, 3 High og 0,5 Peak XSS**.\n\nJeg ville foreslått disse MCP-kallene, uten å utføre dem:\n\n```json\nget_training_state({\"view\":\"full\"})\nproject_load_model({\"workout_at\":\"2026-10-18T17:00:00+02:00\",\"target_at\":\"2026-10-19T08:00:00+02:00\",\"low_xss\":0,\"high_xss\":0,\"peak_xss\":0})\nproject_load_model({\"workout_at\":\"2026-10-18T17:00:00+02:00\",\"target_at\":\"2026-10-19T08:00:00+02:00\",\"low_xss\":100,\"high_xss\":3,\"peak_xss\":0.5})\n```\n\nDe to projeksjonene ville gitt en sammenligning med og uten de planlagte øktene neste morgen, forutsatt samme kildetilstand og ingen mellomliggende endringer. Med testpakken kan jeg beregne samlet XSS og at impulsen ligger **15 timer før målet**. Jeg kan ikke tallfeste endringen i Training Load eller TP/HIE/PP-signatur: nåværende Xert-tilstand og lokal flersesjonsmodell mangler, og MCP-serveren er frakoblet. Signaturresultatet ville uansett være en marginal modellprognose, ikke en garantert tilpasning.",
+      "answer_sha256": "271cc1292df44a8fab253a53e9111147c515259f8aced4c5e22c1f3fe5a16b1a",
+      "notes": "Correct absolute workout_at and target_at, aggregated 100/3/0.5 XSS, no old offset argument or fabricated result."
+    },
+    {
+      "model": "gpt-6-sol",
+      "repeat": 2,
+      "case": "multiple_workouts",
+      "status": "completed",
+      "review": "pass",
+      "answer": "Etter Xert Planner-modellen summeres de to øktene på samme kalenderdag: **100 Low, 3 High og 0,5 Peak XSS**. Den samlede belastningen legges inn ved den siste øktens start, **18. oktober kl. 17.00**.\n\nJeg ville brukt disse MCP-kallene:\n\n```text\nget_training_state({\"view\":\"full\"})\nproject_load_model({\n  \"workout_at\":\"2026-10-18T17:00:00+02:00\",\n  \"target_at\":\"2026-10-19T08:00:00+02:00\",\n  \"low_xss\":100,\n  \"high_xss\":3,\n  \"peak_xss\":0.5\n})\n```\n\nFor å måle forskjellen mot ingen planlagte økter ville jeg også kjørt `project_load_model` med samme tider og alle tre XSS-verdiene satt til `0`, med samme kildetilstand som sammenligningsgrunnlag.\n\nHer kan jeg summere XSS og angi riktig Planner-tidspunkt. Jeg kan **ikke beregne tall for Training Load, Recovery Load, Form eller TP/HIE/PP neste morgen**: testpakken mangler både gjeldende Xert-tilstand og den lokale modellen, og MCP-serveren er ikke tilkoblet. To separate enkeltøktprognoser ville heller ikke gjengi Planners samling av øktene.",
+      "answer_sha256": "298f9339f30673a25b07c74967ae105b3d098e8625a6e70b89635e7e0222198e",
+      "notes": "Correct absolute workout_at and target_at, aggregated 100/3/0.5 XSS, no old offset argument or fabricated result."
+    }
+  ]
+}

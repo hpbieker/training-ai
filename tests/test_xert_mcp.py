@@ -599,14 +599,62 @@ class XertMcpDispatchTests(unittest.TestCase):
             "adjustable_segment_index": 0, "target_metric": "low_xss", "target_value": 50,
         })["adjustable_duration_seconds"], 3600)
         self.assertEqual(self.tools.call_tool("project_load_model", {
+            "workout_at": "2026-08-18T09:00:00+02:00",
             "target_at": "2026-08-19T09:00:00+02:00",
         })["target_at"], "2026-08-19T09:00:00+02:00")
         self.assertFalse(self.tools.call_tool("calculate_workout", {
             "rows": [{"duration_seconds": 600, "power": 200}],
         })["saved"])
 
+    def test_projection_requires_absolute_workout_time(self):
+        for arguments in [
+            {"target_at": "2026-10-19T08:00:00+02:00"},
+            {"target_at": "2026-10-19T08:00:00+02:00", "workout_after_hours": 33},
+        ]:
+            with self.subTest(arguments=arguments), self.assertRaises(MCP.ToolFailure):
+                self.tools.call_tool("project_load_model", arguments)
+        self.assertEqual(self.fake.calls, [])
+
 
 class XertServiceTests(unittest.TestCase):
+    def test_projection_anchors_absolute_workout_to_fetched_source_state(self):
+        service = self._service(SERVICE.XertCredentials(username="user", password="secret"))
+        with (
+            patch.object(SERVICE, "_request_json", return_value={"signature": {}}),
+            patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value={
+                "at_state": {"start_date": "2026-10-17T08:00:00Z"},
+                "ir_params": {}, "recovery_offset": 0,
+            }),
+            patch.object(SERVICE, "calculate_load_projection", return_value={}) as calculate,
+        ):
+            result = service.project_load_model(
+                workout_at="2026-10-18T17:00:00+02:00",
+                target_at="2026-10-19T08:00:00+02:00", low_xss=100,
+            )
+        # The source is 10:00 local, not the scenario's wall-clock 08:00.
+        self.assertAlmostEqual(calculate.call_args.kwargs["workout_after_days"], 31 / 24)
+        self.assertAlmostEqual(calculate.call_args.kwargs["horizon_days"], 46 / 24)
+        self.assertEqual(result["source_state_as_of"], "2026-10-17T08:00:00+00:00")
+        self.assertEqual(result["workout_at"], "2026-10-18T17:00:00+02:00")
+
+    def test_projection_rejects_workout_outside_source_target_interval(self):
+        service = self._service(SERVICE.XertCredentials(username="user", password="secret"))
+        with (
+            patch.object(SERVICE, "_request_json", return_value={"signature": {}}),
+            patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value={
+                "at_state": {"start_date": "2026-10-17T08:00:00Z"},
+                "ir_params": {}, "recovery_offset": 0,
+            }),
+            patch.object(SERVICE, "calculate_load_projection", return_value={}) as calculate,
+        ):
+            for workout_at in ["2026-10-17T07:59:59Z", "2026-10-17T09:00:01Z"]:
+                with self.subTest(workout_at=workout_at), self.assertRaises(ValueError):
+                    service.project_load_model(workout_at=workout_at, target_at="2026-10-17T09:00:00Z")
+            calculate.assert_not_called()
+            for workout_at in ["2026-10-17T08:00:00Z", "2026-10-17T09:00:00Z"]:
+                service.project_load_model(workout_at=workout_at, target_at="2026-10-17T09:00:00Z")
+            self.assertEqual(calculate.call_count, 2)
+
     @staticmethod
     def _service(credentials):
         service = SERVICE.XertService(lambda: credentials)

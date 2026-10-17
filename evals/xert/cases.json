@@ -1,0 +1,115 @@
+[
+  {
+    "id": "remaining_dose",
+    "data": {
+      "date": "2026-10-17",
+      "planned_at": "2026-10-17T17:00:00+02:00",
+      "training_advice": {
+        "completed_xss": {
+          "low": 60,
+          "high": 0,
+          "peak": 0
+        },
+        "remaining_xss": {
+          "low": 80,
+          "high": 0,
+          "peak": 0
+        },
+        "original_target_xss": {
+          "low": 140,
+          "high": 0,
+          "peak": 0
+        }
+      },
+      "plan_role": "easy endurance; normal subjective condition"
+    },
+    "question": "Jeg har allerede syklet i dag. Hvor mye Low XSS gjenstår ifølge dette rådet til ettermiddagsøkten? Forklar regnestykket og hvordan du ville finne varigheten for en konkret økt.",
+    "checks": [
+      "Use 80 remaining, not 20 or 140",
+      "Use solver on full workout; request missing signature/structure rather than invent duration"
+    ]
+  },
+  {
+    "id": "capacity_vs_dose",
+    "data": {
+      "state_as_of": "2026-10-17T15:00:00+02:00",
+      "fresh_at": "2026-10-18T15:00:00+02:00",
+      "workout_capacity_xss": {
+        "low": 180,
+        "high": 4,
+        "peak": 1
+      },
+      "training_advice": {
+        "remaining_xss": {
+          "low": 75,
+          "high": 0,
+          "peak": 0
+        }
+      },
+      "plan_role": "easy endurance today; quality tomorrow",
+      "subjective_condition": "normal"
+    },
+    "question": "Kapasiteten er 180 Low XSS, men rådet sier 75. Bør jeg fylle opp til 180 i dag for å få mest ut av treningen? Begrunn anbefalingen.",
+    "checks": [
+      "Capacity not target or proven tolerable dose",
+      "Keep 75 as advice context, no automatic 180 prescription"
+    ]
+  },
+  {
+    "id": "positive_low_recovery",
+    "data": {
+      "source_time_local": "2026-10-17T09:00:00+02:00",
+      "recovery": {
+        "recovery_hours": {
+          "low": 3,
+          "high": -2,
+          "peak": -4
+        }
+      },
+      "planned_at": "2026-10-17T09:30:00+02:00",
+      "planned_session": "30 minutes easy recovery cycling",
+      "recent_training": "hard ride yesterday",
+      "sleep": "normal duration and quality",
+      "subjective_condition": "normal, no illness or unusual soreness"
+    },
+    "question": "Xert er ikke fresh på Low. Må jeg droppe den rolige halvtimen? Vurder grunnlaget og eventuelle forbehold.",
+    "checks": [
+      "No automatic ban from positive Low",
+      "Combine context without guaranteeing readiness or declaring recovery complete"
+    ]
+  },
+  {
+    "id": "multiple_workouts",
+    "data": {
+      "now": "2026-10-17T08:00:00+02:00",
+      "timezone": "Europe/Oslo",
+      "planned_events": [
+        {
+          "at": "2026-10-18T09:00:00+02:00",
+          "xss": {
+            "low": 60,
+            "high": 0,
+            "peak": 0
+          }
+        },
+        {
+          "at": "2026-10-18T17:00:00+02:00",
+          "xss": {
+            "low": 40,
+            "high": 3,
+            "peak": 0.5
+          }
+        }
+      ],
+      "target_at": "2026-10-19T08:00:00+02:00",
+      "available_resources": "Only the supplied MCP definitions and skill; local Xert model module and current state are not available."
+    },
+    "question": "Jeg vil beregne effekten av begge planlagte øktene på Training Load og signatur neste morgen, slik Xert Planner modellerer dem. Vis hvilke verktøykall du ville brukt, og hva du kan eller ikke kan beregne med tilgangen her.",
+    "checks": [
+      "No fictitious simulate_calendar_sequence MCP or unsupported flags",
+      "No repeated independent live projections presented as accumulated state",
+      "Aggregate same-day Planner dose at last event OR explain local simulation unavailable",
+      "No fabricated numerical result"
+    ]
+  }
+]

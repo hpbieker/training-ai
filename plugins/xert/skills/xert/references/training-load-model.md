@@ -118,7 +118,7 @@ To gain a requested signature amount at a chosen horizon:
 
 Use the implementation rather than calculating this manually:
 
-Call MCP `project_load_model` with `target_at`, `workout_after_hours`, and the
+Call MCP `project_load_model` with `target_at`, `workout_at`, and the
 desired `build_tp`, `build_hie`, and `build_pp` values.
 
 The returned `single_impulse_xss_at_workout_time` values are system-equivalent
@@ -127,9 +127,13 @@ needs; they do not prove that one physiologically feasible workout can realize
 that exact combination. Use Xert Calculate or strain calculations to test an
 actual workout structure.
 
+Pass the absolute workout start, not an offset from now or a previously fetched
+state. The service resolves its delay against the fresh source snapshot and
+returns `source_state_as_of`, `workout_at`, and `target_at`.
+
 For a known planned dose:
 
-Call MCP `project_load_model` with `target_at`, `workout_after_hours`, and the
+Call MCP `project_load_model` with `target_at`, `workout_at`, and the
 known `low_xss`, `high_xss`, and `peak_xss` dose.
 
 For several workouts in a checkout containing `plugins/xert/xert_load_model.py`,
