@@ -42,6 +42,10 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("show")
+    subparsers.add_parser(
+        "context",
+        help="Print only the current progression fields used for recommendations.",
+    )
 
     pending_parser = subparsers.add_parser(
         "pending",
@@ -73,6 +77,16 @@ def main() -> None:
     if args.command == "show":
         print(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True))
         return
+    if args.command == "context":
+        print(
+            json.dumps(
+                plan_state_context(state),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return
     if args.command == "pending":
         print(
             json.dumps(
@@ -87,7 +101,14 @@ def main() -> None:
     event = args.classification_json
     updated = apply_activity_classification(state, event)
     write_plan_state(args.state, updated)
-    print(json.dumps(updated, ensure_ascii=False, indent=2, sort_keys=True))
+    print(
+        json.dumps(
+            plan_state_context(updated),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+    )
 
 
 def parse_classification_json(raw: str) -> dict[str, Any]:
@@ -419,6 +440,18 @@ def recommendation_plan_context(
             "role_mismatch_reason in --plan-selection-json with the deliberate plan-level reason."
         )
     return {
+        **plan_state_context(state),
+        "expected_intensity_goal": expected_goal,
+        "requested_intensity_goal": intensity_goal,
+        "goal_matches_state": matches,
+        "mismatch_reason": None if matches else mismatch_reason.strip(),
+    }
+
+
+def plan_state_context(state: dict[str, Any]) -> dict[str, Any]:
+    """Return the compact current state needed to choose a plan role."""
+    validate_plan_state(state)
+    return {
         "schema": SCHEMA,
         "active_plan": deepcopy(state["active_plan"]),
         "state_updated_at": state["updated_at"],
@@ -436,10 +469,6 @@ def recommendation_plan_context(
             "aerobic_days_since_quality"
         ],
         "progression": deepcopy(state["progression"]),
-        "expected_intensity_goal": expected_goal,
-        "requested_intensity_goal": intensity_goal,
-        "goal_matches_state": matches,
-        "mismatch_reason": None if matches else mismatch_reason.strip(),
     }
 
 

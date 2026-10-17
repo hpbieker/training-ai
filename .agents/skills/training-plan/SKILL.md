@@ -47,21 +47,39 @@ Discover candidate plans under `config/plans/`, choose the active or most
 relevant one from metadata and content, and state any assumption when multiple
 plans compete.
 
-Treat a new message thread as the normal case. Read `config/plan-state.json`
-before deciding today's role, then run:
+Treat a new message thread as the normal case. Before deciding today's role,
+print the compact, validated progression context and check for unprocessed
+activities:
 
 ```bash
+python3 -B scripts/plan_state.py context
 python3 -B scripts/plan_state.py pending
 ```
 
-If it returns activities, inspect and classify every activity in chronological
-order and apply each reviewed classification with `scripts/plan_state.py
-apply --classification-json '<normalized-json>'`. The JSON object contains the
-activity identity, timestamps, planned/completed roles, boolean
-`quality_completed`, progression effect, reason, evidence array, and optional
-`progression_update`. Do not skip an older pending activity to apply a newer one. The state
-owns the current queue; chat history and automation memory are explanatory
-context only.
+Use `context` as the only `plan-state.json` content brought into the LLM
+context. Do not `cat` the raw file or use `plan_state.py show` during a daily
+recommendation; `show` is for an explicit full-state audit. `context` includes
+the active plan, processing cursor, current queue/spacing, and per-role
+progression, while omitting the historical `activity_events` log.
+
+If `pending` returns activities, inspect and classify every activity in
+chronological order and apply each reviewed classification with
+`scripts/plan_state.py apply --classification-json '<normalized-json>'`. The
+command writes the complete updated state but prints only its compact context.
+The JSON object contains the activity identity, timestamps, planned/completed
+roles, boolean `quality_completed`, progression effect, reason, evidence array,
+and optional `progression_update`. Do not skip an older pending activity to
+apply a newer one. The state owns the current queue; chat history and
+automation memory are explanatory context only. Re-run `context` after
+applying pending activities before choosing today's plan role.
+
+When updating progression, distinguish the established achieved dose from the
+latest execution and any temporary consolidation prescription. A reduced or
+incomplete session does not erase a previously completed dose. Record the reason
+for a temporary reduction and the recovery review needed in `last_result` and
+`next_step`; lower the established anchor only
+when the evidence supports a lasting change. A hold on progression can mean
+repeating the achieved dose, rather than repeating the latest reduced session.
 
 Decide today's plan role from the updated state. If the explicit
 `intensity_goal` differs from the state's `next_role`, give

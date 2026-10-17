@@ -83,10 +83,11 @@ calendar evidence, not an automatic choice of `planned_at`; select its start
 only when the same placement calculation supports it.
 
 Discover active files under `config/plans/` through the repo-local
-`training-plan` skill and read `config/plan-state.json` before choosing
-`intensity_goal` inside `--plan-selection-json`. Run `python3 -B scripts/plan_state.py pending`; inspect,
-classify, and apply every newer activity chronologically before using the
-state. Decide the day's plan role and translate it explicitly to `recovery`,
+`training-plan` skill. For plan state, run `python3 -B scripts/plan_state.py
+context` and `python3 -B scripts/plan_state.py pending`; do not print or read
+the raw `config/plan-state.json` into LLM context. If pending activities are
+returned, inspect, classify, and apply every one chronologically, then refresh
+the compact context. Decide the day's plan role and translate it explicitly to `recovery`,
 `vt1`, `vt2`, `vo2max`, `sprint`, or `mixed`. `mixed` is valid only when the
 selected plan truly calls for mixed work; it is not a fallback for missing plan
 selection. Plan files remain LLM-readable and must not be parsed by helper
@@ -201,6 +202,13 @@ If Intervals.icu contains a sickness event today or yesterday, follow
 - Use readiness to set the intensity ceiling. Within that ceiling, use the
   resolved goal and progression history to select the concrete domain; recent
   same-family hard work can reduce the selection to VT1.
+- Before selecting a quality dose, distinguish the achieved progression anchor
+  from the latest reduced execution. Check whether the reason for a temporary
+  reduction still applies today. Do not carry that reduction forward without
+  current justification.
+  A progression hold permits reassessing repetition of the achieved dose; it
+  does not by itself require the most recent reduced dose. Preserve adverse
+  recent responses as recovery evidence when reassessing the dose.
 - Evaluate the marginal physiological value of the proposed dose in the context
   of recently completed training and its observed response. Never reduce the
   packet's primary dose based on the duration or demands of a completed workout;
