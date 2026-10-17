@@ -4447,6 +4447,7 @@ def compact_quality(quality: dict[str, Any]) -> dict[str, Any]:
         field: {
             "present": int(stats["present"]),
             "missing": int(stats["missing"]),
+            "invalid": int(stats.get("invalid", 0)),
             "longest_gap": int(stats["longest_gap"]),
             "meaningful_gap": bool(stats["meaningful_gap"]),
             "usable": stats.get("usable"),
@@ -4455,7 +4456,7 @@ def compact_quality(quality: dict[str, Any]) -> dict[str, Any]:
             "missing_fraction": stats.get("missing_fraction"),
         }
         for field, stats in quality.items()
-        if stats.get("meaningful_gap") or not stats.get("has_values")
+        if stats.get("meaningful_gap") or stats.get("invalid") or not stats.get("has_values")
     }
 
 

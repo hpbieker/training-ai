@@ -89,8 +89,8 @@ def quality(rows, field, clock=None):
         reasons.append('insufficient_time_coverage')
     if longest_gap >= MAX_GAP_SECONDS:
         reasons.append('long_gap')
-    if invalid:
-        reasons.append('invalid_values')
+    # Invalid measurements already contribute to missing time and gap length.
+    # Keep their count as evidence without independently rejecting the series.
     result.update(valid_seconds=valid_seconds, duration_seconds=duration,
                   missing_fraction=missing, longest_gap_seconds=longest_gap,
                   start_s=times[0], end_s=times[0]+duration,
@@ -165,7 +165,20 @@ def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
     for field in fields:
         q1, q2 = quality(early, field), quality(late, field)
         a, b = field_summary(early, field), field_summary(late, field)
-        item = dict(status='usable' if a and b else 'unavailable', early_quality=q1, late_quality=q2)
+        series_quality = quality(rows, field, clock)
+        item = dict(status='usable' if a and b else 'unavailable', early_quality=q1, late_quality=q2,
+                    series_quality=series_quality,
+                    quality_scope='supplied activity or block; comparison uses selected windows only')
+        if a and b and not series_quality['usable']:
+            item['quality_note'] = (
+                'The supplied series does not meet quality requirements, but both selected '
+                'windows do. Window changes remain usable; they do not validate the whole series.'
+            )
+        elif not (a and b):
+            item['quality_note'] = (
+                'At least one selected window does not meet quality requirements; '
+                'no change is reported, regardless of whole-series coverage.'
+            )
         if a and b:
             item.update(early_avg=a['avg'], late_avg=b['avg'], delta=b['avg']-a['avg'])
             if field in DELTA_UNITS:

@@ -105,6 +105,7 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(a['late'], b['late'])
         self.assertEqual(a['fields']['heartrate']['delta'], 10)
         self.assertEqual(a['fields']['heartrate'], b['fields']['heartrate'] | {
+            'series_quality': a['fields']['heartrate']['series_quality'],
             'early_quality': a['fields']['heartrate']['early_quality'],
             'late_quality': a['fields']['heartrate']['late_quality']})
         self.assertEqual(quality(ride(), 'heartrate')['valid_seconds'], 1200)
@@ -120,6 +121,43 @@ class EvidenceTests(unittest.TestCase):
         self.assertGreaterEqual(q['longest_gap_seconds'], 60)
         self.assertFalse(q['usable'])
         self.assertIsNone(field_summary(rows, 'heartrate'))
+
+    def test_isolated_invalid_measurement_is_missing_not_a_series_veto(self):
+        from activity_inspect import compact_quality
+        for invalid in ['nan', 'inf', '-1', '0', 'bad']:
+            rows = ride()
+            rows[150]['heartrate'] = invalid
+            q = quality(rows, 'heartrate')
+            self.assertTrue(q['usable'])
+            self.assertEqual(q['invalid'], 1)
+            self.assertEqual(q['missing'], 1)
+            self.assertEqual(q['longest_gap_seconds'], 1)
+            self.assertEqual(field_summary(rows, 'heartrate')['count'], 1199)
+            self.assertEqual(compact_quality({'heartrate': q})['heartrate']['invalid'], 1)
+            self.assertEqual(matched_windows(rows, ['heartrate'])['fields']['heartrate']['status'], 'usable')
+
+    def test_invalid_measurements_still_fail_gap_and_coverage_limits(self):
+        for indices, reason in [(range(300, 330), 'long_gap'),
+                                (range(0, 1200, 10), 'insufficient_time_coverage')]:
+            rows = ride()
+            for i in indices:
+                rows[i]['heartrate'] = 'nan'
+            q = quality(rows, 'heartrate')
+            self.assertFalse(q['usable'])
+            self.assertIn(reason, q['reasons'])
+            self.assertIsNone(field_summary(rows, 'heartrate'))
+
+    def test_valid_windows_explain_unusable_series(self):
+        rows = ride()
+        for row in rows[300:411]:
+            row['heartrate'] = 'nan'
+        evidence = matched_windows(rows, ['heartrate'])['fields']['heartrate']
+        self.assertEqual(evidence['status'], 'usable')
+        self.assertFalse(evidence['series_quality']['usable'])
+        self.assertTrue(evidence['early_quality']['usable'])
+        self.assertTrue(evidence['late_quality']['usable'])
+        self.assertIn('both selected windows do', evidence['quality_note'])
+        self.assertEqual(evidence['delta'], 10)
 
     def test_invalid_sensor_does_not_discard_valid_power(self):
         rows = ride()
