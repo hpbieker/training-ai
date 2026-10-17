@@ -141,6 +141,10 @@ def main() -> None:
         help="Write a terse analysis-ready JSON view with total, work blocks, and recoveries",
     )
     parser.add_argument(
+        "--debug-beta", action="store_true",
+        help="Include unvalidated beta diagnostics in --brief output",
+    )
+    parser.add_argument(
         "--no-intervals",
         action="store_true",
         help="Omit saved Intervals.icu interval summaries from the output",
@@ -165,6 +169,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.brief and args.compact:
         parser.error("--brief and --compact are alternative output shapes; choose one")
+    if args.debug_beta and not args.brief:
+        parser.error("--debug-beta requires --brief")
     try:
         inspections = [inspect_activity(activity_ref, args) for activity_ref in args.activities]
     except FileNotFoundError as exc:
@@ -303,7 +309,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
         result["_indoor_vt1_disabled"] = args.no_auto_indoor_vt1
         result["_vt1_watts"] = args.vt1_watts
         result["_vt2_watts"] = args.vt2_watts
-        result = brief_result(result)
+        result = brief_result(result, debug_beta=getattr(args, "debug_beta", False))
     elif args.compact:
         result = compact_result(result, fields)
 
@@ -444,7 +450,7 @@ def compact_summary_block(block: dict[str, Any], fields: list[str]) -> dict[str,
     }
 
 
-def brief_result(result: dict[str, Any]) -> dict[str, Any]:
+def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[str, Any]:
     """Return a terse result intended as the first-pass chat analysis input."""
 
     rows = result.get("_rows") or []
@@ -482,11 +488,6 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
         work_block_count=len(work_blocks),
     )
     hard_block = hardest_block(work_blocks)
-    beta_stability = beta_stability_debug(result["activity"], work_blocks, recoveries)
-    beta_vo2 = beta_vo2_debug(result["activity"], rows, saved_work_intervals, vo2_recoveries)
-    for experimental in (beta_stability, beta_vo2):
-        if experimental:
-            experimental["interpretation_limit"] = "Unvalidated development heuristics; not physiological cost, threshold, or progression evidence."
     long_pauses = detect_pause_segments(rows, min_seconds=60)
     include_outdoor_vt1 = should_include_outdoor_vt1(
         result["activity"],
@@ -525,15 +526,23 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
             for index, block in enumerate(work_blocks, start=1)
         ],
         "recoveries": recoveries,
-        "beta_stability": beta_stability,
-        "beta_vo2": beta_vo2,
-        "beta_summary": beta_summary(result["activity"], beta_stability, beta_vo2),
         "steady_vt1_segment": (
             brief_work_block(result["steady_vt1_segment"], index=1)
             if "steady_vt1_segment" in result
             else None
         ),
     }
+    if debug_beta:
+        beta_stability = beta_stability_debug(result["activity"], work_blocks, recoveries)
+        beta_vo2 = beta_vo2_debug(result["activity"], rows, saved_work_intervals, vo2_recoveries)
+        for experimental in (beta_stability, beta_vo2):
+            if experimental:
+                experimental["interpretation_limit"] = "Unvalidated development heuristics; not physiological cost, threshold, or progression evidence."
+        brief.update(
+            beta_stability=beta_stability,
+            beta_vo2=beta_vo2,
+            beta_summary=beta_summary(result["activity"], beta_stability, beta_vo2),
+        )
     if post_work_blocks:
         brief["post_work_blocks"] = post_work_blocks
     vt1_watts = result.get("_vt1_watts")
@@ -571,7 +580,6 @@ def brief_result(result: dict[str, Any]) -> dict[str, Any]:
         work_blocks,
         recoveries,
         vt2_watts=result.get("_vt2_watts"),
-        beta_stability=beta_stability,
     )
     if vt2_quality_result:
         brief["vt2_quality"] = vt2_quality_result
@@ -821,11 +829,10 @@ def vt2_quality(
     recoveries: list[dict[str, Any]],
     *,
     vt2_watts: Any,
-    beta_stability: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Return VT2/threshold-control diagnostics without touching VT1 scoring."""
 
-    candidates = vt2_candidate_blocks(activity, work_blocks, vt2_watts, beta_stability)
+    candidates = vt2_candidate_blocks(activity, work_blocks, vt2_watts)
     if not candidates:
         return None
 
@@ -939,22 +946,14 @@ def vt2_candidate_blocks(
     activity: dict[str, Any],
     work_blocks: list[dict[str, Any]],
     vt2_watts: Any,
-    beta_stability: dict[str, Any],
 ) -> list[tuple[int, dict[str, Any]]]:
     name = str(activity.get("name") or "").lower().replace("₂", "2")
-    assessments = beta_stability.get("blocks") or []
-    beta_by_index = {
-        int(assessment.get("n")): assessment
-        for assessment in assessments
-        if isinstance(assessment.get("n"), int)
-    }
     candidates: list[tuple[int, dict[str, Any]]] = []
     for index, block in enumerate(work_blocks, start=1):
         summary = block.get("summary") or {}
         watts = stat(summary, "watts", "avg", digits=1)
         duration = block.get("duration_seconds") or 0
-        assessment = beta_by_index.get(index) or {}
-        zone = str(assessment.get("intended_zone") or "")
+        zone = beta_intensity_detection(name, watts)["zone"]
         if vt2_candidate_power(watts, vt2_watts, activity_name=name, zone=zone, duration=duration):
             candidates.append((index, block))
     return candidates

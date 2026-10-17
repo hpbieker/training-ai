@@ -41,6 +41,7 @@ ANALYSIS_OPTION_FIELDS = {
     "no_auto_indoor_vt1",
     "fields",
     "include_intervals",
+    "debug_beta",
     "garmin_json",
 }
 
@@ -71,6 +72,8 @@ def parse_analysis_options_json(raw: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(
             "analysis-option mode is unsupported"
         )
+    if payload.get("debug_beta") and payload.get("shape", "brief") != "brief":
+        raise argparse.ArgumentTypeError("debug_beta requires brief shape")
     numeric_fields = {
         "vt1_watts", "vt2_watts", "target", "threshold", "tolerance",
         "auto_min_power", "auto_tolerance",
@@ -83,7 +86,7 @@ def parse_analysis_options_json(raw: str) -> dict[str, Any]:
             )
     boolean_fields = {
         "auto_blocks", "steady_vt1", "no_auto_outdoor_vt1",
-        "no_auto_indoor_vt1", "include_intervals",
+        "no_auto_indoor_vt1", "include_intervals", "debug_beta",
     }
     for field in boolean_fields & payload.keys():
         if not isinstance(payload[field], bool):
@@ -246,6 +249,7 @@ def build_inspect_args(options: dict[str, Any]) -> list[str]:
         inspect_args.append("--no-intervals")
     for flag, enabled in (
         ("--steady-vt1", options.get("steady_vt1")),
+        ("--debug-beta", options.get("debug_beta")),
         ("--no-auto-outdoor-vt1", options.get("no_auto_outdoor_vt1")),
         ("--no-auto-indoor-vt1", options.get("no_auto_indoor_vt1")),
     ):

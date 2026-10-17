@@ -14,6 +14,31 @@ def ride(step=1, duration=1200):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_beta_diagnostics_require_explicit_opt_in(self):
+        from unittest.mock import patch
+        from activity_inspect import brief_result
+        rows = ride()
+        block = summarize_block(rows, start_index=0, end_index=len(rows), label='work')
+        source = {
+            'activity': {'name': 'VT2 test', 'type': 'Ride'},
+            'streams': {'rows': len(rows), 'data_quality': {}},
+            'total': {'summary': summarize_rows(rows), 'drift': {},
+                      'relative_to_power_drift': {}},
+            'detected_power_blocks': [block], '_rows': rows, '_vt2_watts': 290,
+        }
+        with patch('activity_inspect.beta_stability_debug') as stability, \
+             patch('activity_inspect.beta_vo2_debug') as vo2:
+            normal = brief_result(source)
+            stability.assert_not_called()
+            vo2.assert_not_called()
+        debug = brief_result(source, debug_beta=True)
+        beta_keys = {'beta_stability', 'beta_vo2', 'beta_summary'}
+        self.assertFalse(beta_keys & normal.keys())
+        self.assertTrue(beta_keys <= debug.keys())
+        self.assertEqual(normal, {k: v for k, v in debug.items() if k not in beta_keys})
+        self.assertIn('vt2_quality', normal)
+        self.assertIn('interpretation_limit', debug['beta_stability'])
+
     def test_block_boundary_shift_reuses_activity_windows(self):
         rows = ride(duration=1800)
         # A clipped transition used to reinitialize the running power baseline.

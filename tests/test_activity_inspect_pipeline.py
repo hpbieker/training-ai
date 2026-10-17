@@ -15,6 +15,16 @@ from activity_inspect_pipeline import (
 
 
 class ActivityInspectPipelineArgumentsTests(unittest.TestCase):
+    def test_beta_debug_is_opt_in_and_requires_brief(self):
+        normal = parse_analysis_options_json('{}')
+        debug = parse_analysis_options_json('{"debug_beta":true}')
+        self.assertNotIn('--debug-beta', build_inspect_args(normal))
+        self.assertIn('--debug-beta', build_inspect_args(debug))
+        for payload in ['{"debug_beta":true,"shape":"full"}',
+                        '{"debug_beta":"yes"}']:
+            with self.assertRaises(argparse.ArgumentTypeError):
+                parse_analysis_options_json(payload)
+
     def test_explicit_analysis_options_are_forwarded(self):
         options = parse_analysis_options_json(
             json.dumps(
