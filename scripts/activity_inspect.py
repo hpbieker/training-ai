@@ -9,6 +9,7 @@ instead of ad hoc one-off snippets or oversized terminal output.
 from __future__ import annotations
 
 import argparse
+import hashlib
 from datetime import datetime, timezone
 import json
 import math
@@ -36,6 +37,7 @@ from analysis import (
 
 
 MAX_RECOVERY_INTERVAL = 10
+ANALYSIS_FORMAT_VERSION = 1
 
 DEFAULT_FIELDS = [
     "watts",
@@ -212,6 +214,7 @@ def main() -> None:
 
 def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[SavedActivity, dict[str, Any]]:
     activity = resolve_activity_ref(activity_ref, artifacts_dir=args.artifacts_dir)
+    provenance = analysis_provenance(activity, args)
     requested_fields = [field.strip() for field in args.fields.split(",") if field.strip()]
     rows = timed_rows(activity.streams)
     activity.streams[:] = rows
@@ -321,7 +324,29 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
     elif args.compact:
         result = compact_result(result, fields)
 
+    result["provenance"] = provenance
     return activity, result
+
+
+def analysis_provenance(activity: SavedActivity, args: argparse.Namespace) -> dict[str, Any]:
+    """Fingerprint raw inputs, effective options and the local calculation code."""
+    inputs = [activity.activity_dir / "activity.json", activity.activity_dir / "streams.csv"]
+    if getattr(args, "garmin_json", None) is not None:
+        inputs.append(Path(args.garmin_json))
+    scripts = [Path(__file__).resolve().parent / name for name in
+               ("activity_inspect.py", "analysis.py", "physiological_evidence.py")]
+    def fingerprints(paths):
+        return [{"path": str(p.resolve()), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+                for p in paths]
+    return {
+        "format_version": ANALYSIS_FORMAT_VERSION,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generator": "activity_inspect.py",
+        "inputs": fingerprints(inputs),
+        "scripts": fingerprints(scripts),
+        "options": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()
+                    if k not in {"activities", "activity", "artifacts_dir", "output", "stdout"}},
+    }
 
 
 def activity_metadata(activity) -> dict[str, Any]:
@@ -529,6 +554,8 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
             else None
         ),
         "block_source": block_source,
+        "work_block_overview": [work_block_overview(block, index=index)
+                                for index, block in enumerate(work_blocks, start=1)],
         "source_work_intervals": [brief_source_work_interval(block, index=index)
                                   for index, block in enumerate(saved_work_intervals, start=1)],
         "source_work_intervals_status": "available" if saved_work_intervals else "not_included_or_absent",
@@ -4275,7 +4302,10 @@ def hr_recovery_after_block(
     low_row = min((row for row in window if value(row, "heartrate") is not None), key=lambda row: value(row, "heartrate"))
     return {
         "status": "observed", "interpretation": "HR decline only; not whole-body recovery",
+        "statistics_scope": "fixed_post_work_window",
+        "drop_definition": "last_work_sample_to_minimum_within_window; not an endpoint HR difference",
         "window_s": window_seconds, "start_s": boundary,
+        "end_s_exclusive": boundary + window_seconds,
         "minimum_at_s": value(low_row, "time"),
         "start_hr": rounded(start_hr, digits=0), "low_hr": rounded(summary["min"], digits=0),
         "drop_bpm": rounded(start_hr - summary["min"], digits=0),
@@ -4303,6 +4333,48 @@ def brief_source_work_interval(block: dict[str, Any], *, index: int) -> dict[str
     result = brief_work_block(block, index=index)
     return {key: val for key, val in result.items()
             if key not in {'comparison', 'change_scope'} and 'drift' not in key}
+
+
+def work_block_overview(block: dict[str, Any], *, index: int) -> dict[str, Any]:
+    """Keep each block's means and matched-window changes together without recomputing."""
+    brief = brief_work_block(block, index=index)
+    comparison = block.get("comparison") or {}
+    fields = comparison.get("fields") or {}
+    metrics = []
+    for field, mean_key, unit in [
+        ("watts", "watts_avg", "W"),
+        ("heartrate", "hr_avg", "bpm"),
+        ("respiration", "br_avg", "breaths/min"),
+        ("tidal_volume_min", "ve_avg", "source_estimate"),
+        ("smo2", "smo2_avg", "%"),
+    ]:
+        evidence = fields.get(field) or {}
+        usable = comparison.get("status") == "matched" and evidence.get("status") == "usable"
+        metrics.append({
+            "field": field, "unit": unit,
+            "block_mean": brief.get(mean_key),
+            "window_status": evidence.get("status", "unavailable"),
+            "early_window_mean": rounded(evidence.get("early_avg"), digits=2) if usable else None,
+            "late_window_mean": rounded(evidence.get("late_avg"), digits=2) if usable else None,
+            "late_minus_early": rounded(evidence.get("delta"), digits=2) if usable else None,
+            "change_unit": "percentage_points" if field == "smo2" else unit,
+            "quality_note": evidence.get("quality_note"),
+            "reasons": evidence.get("reasons", []),
+        })
+    return {
+        "work_block_number": index,
+        "detail_path": f"work_blocks[{index - 1}]",
+        "block_statistics_scope": brief["statistics_scope"],
+        "block_start_s": brief.get("start_s"),
+        "block_end_s_exclusive": brief.get("end_s_exclusive"),
+        "block_duration_s": brief.get("duration_s"),
+        "comparison_status": comparison.get("status", "unavailable"),
+        "comparison_reasons": comparison.get("reasons", []),
+        "early_window": {k: (comparison.get("early") or {}).get(k) for k in ("start_s", "end_s")},
+        "late_window": {k: (comparison.get("late") or {}).get(k) for k in ("start_s", "end_s")},
+        "window_end_convention": "exclusive",
+        "metrics": metrics,
+    }
 
 
 def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
@@ -4456,6 +4528,16 @@ def brief_recovery(
     moxy = moxy_recovery or {}
     return drop_none(
         {
+            "statistics_scope": "whole_recovery_block",
+            "start_s": block.get("start_time"),
+            "end_s_exclusive": (block["start_time"] + block["duration_seconds"]
+                                if isinstance(block.get("start_time"), (int, float))
+                                and isinstance(block.get("duration_seconds"), (int, float)) else None),
+            "hr_drop_scope": "start_to_minimum_over_whole_recovery_block",
+            "hr_drop_interpretation": (
+                "HR fall across this recovery block, not a fixed-60-second measurement "
+                "or evidence of whole-body recovery. The minimum may occur before the block ends."
+            ),
             "n": index,
             "after_work_block": after_work_block,
             "duration_s": rounded(block.get("duration_seconds"), digits=0),

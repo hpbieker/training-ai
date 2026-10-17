@@ -112,7 +112,31 @@ assess this session without claiming an individual development trend.
   for explicitly requested development/debugging. Do not use `beta_summary`,
   `beta_stability`, or `beta_vo2` as the basis of a coaching verdict or progression.
 
+## Current Analysis And Source Precedence
+
+Use the current inspection generated for this task as the source of calculated
+values. Use raw activity metadata and streams to check source facts or recompute
+a disputed value. Do not combine its windows or means with an older derived
+`analysis.json`, cached report, or beta output found beside the raw files.
+
+Generated inspections include `provenance`: format version, generation time,
+input and calculation-script SHA-256 hashes, and effective options. To reuse a
+cached inspection, verify that its inputs, scripts and relevant options match
+this task. A timestamp or format version alone does not establish freshness.
+If provenance is absent or mismatched, regenerate with the current helper;
+if regeneration is unavailable, label the cached calculations unverified and
+do not silently use them to replace current evidence. For supplied isolated
+test packages, use the packaged scripts and inputs within the allowed scope.
+
 ## Reporting The Scope Of Measurements
+
+Start numeric interpretation with `work_block_overview`: each numbered entry
+keeps its block mean, early/late window boundaries, window means and change
+on the same record. Keep the block number attached when citing a value.
+`block_mean` describes the analysis block; it is not the early window value.
+Use `detail_path` to inspect the matching `work_blocks` entry for full quality
+and comparison context. Null values remain unavailable, not zero. Source WORK
+boundaries still determine recorded work duration separately from analysis blocks.
 
 Use `statistics_scope` to distinguish whole-activity statistics, source WORK
 intervals, and detected analysis segments. `change_scope` and the nested
@@ -127,6 +151,14 @@ and the prescription when assessing completed work. A shorter detected stable
 segment does not establish an interrupted or shortened prescribed interval.
 Absent source intervals leave those boundaries unverified; do not substitute
 detected segment duration as proof of full completion or a shortfall.
+
+Recovery summaries use their own time scope. `hr_drop_start_to_min` is the
+fall from the start to the minimum over the entire recovery block; use its
+`start_s`, `end_s_exclusive`, and `duration_s`, and never call it a 60-second
+fall. A `fixed_post_work_window` instead reports the fall from the last work
+sample to the minimum within `window_s`; it is not necessarily the difference
+at the exact window endpoint. Neither metric establishes whole-body recovery
+or unusually fast recovery without suitable comparison context.
 
 ## Measurement Eligibility And Comparison Windows
 

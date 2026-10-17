@@ -7,6 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import shutil
 import sys
 from datetime import datetime, timezone
 
@@ -15,6 +16,25 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def snapshot_case(directory, source, skill):
+    """Copy an allowlisted raw dataset and local tools, never derived analyses."""
+    activity = directory / 'activity'
+    activity.mkdir()
+    for name in ('activity.json', 'streams.csv'):
+        shutil.copyfile(source / name, activity / name)
+    local_skill = directory / '.agents/skills/training-analysis'
+    shutil.copytree(skill, local_skill, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+    scripts = directory / 'scripts'
+    scripts.mkdir()
+    for name in ('activity_inspect.py', 'analysis.py', 'physiological_evidence.py'):
+        shutil.copyfile(ROOT / 'scripts' / name, scripts / name)
+    config = directory / 'config'
+    config.mkdir()
+    for name in ('coaching-preferences.md', 'practical-context.md'):
+        shutil.copyfile(ROOT / 'config' / name, config / name)
+    return activity, local_skill, scripts
 
 
 def main():
@@ -55,11 +75,12 @@ def main():
         for case in cases:
             directory = output / case['id']
             directory.mkdir()
-            activity = ROOT / 'outputs/intervals/activities' / case['activity']
+            source = ROOT / 'outputs/intervals/activities' / case['activity']
+            activity, local_skill, scripts = snapshot_case(directory, source, skill)
             evidence = directory / 'inspection.json'
-            command = [sys.executable, '-B', str(ROOT / 'scripts/activity_inspect.py'),
+            command = [sys.executable, '-B', str(scripts / 'activity_inspect.py'),
                        str(activity), '--brief', *case['options'], '--output', str(evidence)]
-            run = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=180)
+            run = subprocess.run(command, cwd=directory, text=True, capture_output=True, timeout=180)
             (directory / 'inspection.log').write_text(run.stdout + run.stderr)
             if run.returncode:
                 raise RuntimeError(f"Inspection failed for {case['id']}; see inspection.log")
@@ -67,19 +88,24 @@ def main():
             if any(key.startswith('beta_') for key in result):
                 raise RuntimeError('Standard evaluation evidence unexpectedly contains beta diagnostics')
             prompt = (
-                f'Bruk training-analysis-skillen i {skill / "SKILL.md"} til å analysere denne økten.\n\n'
+                f'Bruk training-analysis-skillen i {local_skill / "SKILL.md"} til å analysere denne økten.\n\n'
                 f'Lagret aktivitet: {activity}\nForberedt scriptanalyse: {evidence}\n\n'
                 f'{case["context"]}\n\n'
                 'Gi en kort, begrunnet vurdering av gjennomføring, fysiologisk respons og '
                 'hva økten betyr for videre trening. Les relevante skillreferanser og kontroller '
                 'rådata når det trengs. Den eksplisitte testkonteksten gjelder foran personlig '
                 'konfigurasjon; ikke fyll inn forhold som er oppgitt som ukjente. '
+                f'Les kun testpakken under {directory}; ikke oppsøk originalrepoet, '
+                'andre testpakker eller tidligere avledede analyser. Bruk inspection.json '
+                'som gjeldende beregningsgrunnlag og activity/streams.csv til rådatakontroll. '
                 'Dette er en lokal evaluering: ikke hent nye kildedata, endre plan-state eller '
                 'skriv til eksterne tjenester. Skriv eventuelle analysefiler bare i en midlertidig mappe. '
                 'Ikke les evalueringsrubrikken eller cases.json. Svar på norsk.\n'
             )
             (directory / 'prompt.txt').write_text(prompt)
             manifest['cases'].append({'id': case['id'], 'command': command,
+                                      'snapshot_files': {str(p.relative_to(directory)): digest(p)
+                                                         for p in directory.rglob('*') if p.is_file()},
                                       'evidence_sha256': digest(evidence),
                                       'prompt_sha256': digest(directory / 'prompt.txt'),
                                       'preparation': 'passed', 'model_evaluation': 'not_run'})

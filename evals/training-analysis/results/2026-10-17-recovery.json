@@ -1,0 +1,783 @@
+{
+  "date": "2026-10-17",
+  "revision": "recovery-scope",
+  "reasoning_effort": "medium",
+  "method": "Manual semantic review by the orchestrating assistant, unblinded; same five cases and two repeats per model. Recovery prohibition added to rubric before this run. Coverage scores are separate from factual precision.",
+  "raw_artifact_root": "outputs/training-analysis-eval/2026-10-17-recovery",
+  "input_manifest_sha256": "a67f096190f72a1dfddca37792c7148061f0e49a6799954b9a7228ecfaf92fa1",
+  "hashes_verified_unchanged": true,
+  "targeted_recovery_result": {
+    "relevant_answers": 8,
+    "quantified_hr_drop_answers": 0,
+    "qualitative_hr_drop_answers": 1,
+    "incorrect_60_second_claims": 0,
+    "conclusion": "No recurrence, but insufficient exposure to demonstrate corrected numeric interpretation."
+  },
+  "reviews": [
+    {
+      "model": "gpt-6-sol",
+      "case": "long_endurance",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 1,
+        "physiological_synthesis": 2,
+        "evidence_limits": 1,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the approximately 150-minute main work separately from the approximately 165-minute whole session.",
+          "met": false
+        },
+        {
+          "criterion": "Explain the respiratory series gap versus usable selected comparison windows.",
+          "met": false
+        },
+        {
+          "criterion": "Integrate the observed response without equating stable ERG power with ease.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": false,
+      "review_notes": [
+        "Omits whole-session duration and respiratory gap; selected-window interpretation remains supported."
+      ],
+      "evidence_quotes": [
+        "Økten ga en solid, kontrollert langvarig belastning ved VT1-ankeret på 215 W: omtrent 150 minutter sammenhengende arbeid på i snitt 214 W. I bekreftet ERG-modus viser dette at belastningen ble levert jevnt, men sier ikke i seg selv hvor lett den føltes. Øktnavnet angir «150 min», mens foreskrevet varighet ikke er bekreftet.",
+        "Ved sammenlignbar effekt tidlig og sent steg pulsen bare fra 117 til 120 slag/min. Pustefrekvensen økte litt, mens rapportert ventilasjon falt. Lokal SmO₂ sank fra omtrent 47 til 36 %, også som en gradvis tendens i rådata. Det tyder på økt lokal belastning underveis, uten tydelig systemisk forverring. CORE-målingen steg rundt 0,6 °C, men ukjent kjøling og matinntak gjør årsaken til endringene usikker.",
+        "Dette er en gjennomført VT1-nær utholdenhetsøkt og et nyttig grunnlag for videre varighetsarbeid. Den ene økten dokumenterer ikke økt kapasitet eller grunnlag for å heve VT1-ankeret. Restbelastning og behovet før neste harde økt må vurderes ut fra hvordan du faktisk følte deg og hentet deg inn; RPE er ikke oppgitt."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-long_endurance-1.txt",
+      "answer_sha256": "fd89d1c881173e8953e96960da3822245b58c92d47514326ab6e5c60db9ad54d",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-long_endurance-1.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "long_endurance",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 1,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the approximately 150-minute main work separately from the approximately 165-minute whole session.",
+          "met": true
+        },
+        {
+          "criterion": "Explain the respiratory series gap versus usable selected comparison windows.",
+          "met": false
+        },
+        {
+          "criterion": "Integrate the observed response without equating stable ERG power with ease.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": false,
+      "review_notes": [
+        "Correct work/session distinction; omits respiratory gap."
+      ],
+      "evidence_quotes": [
+        "Økten ga et solid langt VT1-stimulus: **165 minutter totalt**, med omtrent **150 minutter sammenhengende arbeid rundt 215 W** i bekreftet ERG-modus. Arbeidsdelen hadde 215 W i snitt, og ingen vedvarende 30-sekunders perioder over 225 W. Tittelen «VT1 150 min» stemmer dermed godt med det som ble kjørt, men foreskrevet varighet er ukjent, så jeg kan ikke fastslå om hele den planlagte dosen ble fullført.",
+        "Ved tilnærmet lik effekt tidlig og sent steg pulsen moderat fra 117 til 120 slag/min og pustefrekvensen fra 40 til 42 pust/min. Lokal muskeloksygenering falt fra 46,6 til 35,9 %, mens rapportert minuttventilasjon sank. Det tyder på **noe økt lokal belastning sent i økten**, uten tydelig stor systemisk drift. Temperaturmålingen steg også, men kjøling og matinntak er ukjent; dataene kan ikke vise hva som forårsaket endringene eller om 215 W fortsatt lå ved samme fysiologiske grense mot slutten.",
+        "Dette støtter videre arbeid med lang, kontrollert utholdenhet rundt dagens VT1-anker. Én økt gir ikke grunnlag for å heve ankeret. RPE og responsen etter økten er ukjent, så restbelastning og tidspunkt for neste harde økt må vurderes ut fra hvordan du faktisk hentet deg inn."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-long_endurance-2.txt",
+      "answer_sha256": "4fa367ccae37f0cf98551a8af441e521be1a8d4bb5c4b85d7da3c2ead39beace",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-long_endurance-2.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "threshold_erg",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify two approximately 30-minute work bouts and the intervening recovery.",
+          "met": true
+        },
+        {
+          "criterion": "Separate delivered power and duration from physiological response, and assess the meaningful within-bout pattern.",
+          "met": true
+        },
+        {
+          "criterion": "Treat recovery consequences as provisional without athlete feel or subsequent evidence.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Correct source work durations and between/within-bout response. No quantified recovery claim."
+      ],
+      "evidence_quotes": [
+        "**Økten oppfylte formålet.** Rådata viser to WORK-drag på 29:57 og 29:55, begge med 295 W i snitt, og 5:04 lett sykling på cirka 122 W mellom. Det er i praksis den planlagte dosen ved VT2-ankeret. Den stabile effekten viser levert belastning i ERG, men sier ikke alene hvor lett den føltes. [Aktivitetsdata](/Users/hanspetterbieker/Documents/Privat/Trening/training-ai/outputs/intervals/activities/2026-10-15_i197632268/streams.csv)",
+        "**Responsen ble tydelig tyngre uten effekttap.** Ved samme effekt steg snittpulsen fra 151 til 158 slag/min og pustefrekvensen fra 52 til 56 pust/min fra første til andre drag. I siste drag steg både puls og rapportert ventilasjon videre i sammenlignbare vinduer. Lokal SmO₂ var lavere i andre drag, men tråkkfrekvensen var også om lag 3,5 rpm lavere, så forskjellen kan ikke tilskrives økt fysiologisk kostnad alene. CORE-estimatet steg og flatet ut rundt 38,3–38,4 °C; det påviser ikke at varme begrenset økten. [Forberedt analyse](/private/tmp/training-analysis-eval-recovery/threshold_erg/inspection.json)",
+        "Dette er **en godt gjennomført, krevende VT2-økt**, med tegn til økende akutt belastning mot slutten. Den støtter at 295 W var gjennomførbart i dette formatet, men gir ikke grunnlag alene for å heve ankeret eller øke neste kvalitetsøkt. RPE og senere restitusjon er ukjent, så restbelastningen må stå åpen; la den avgjøre når neste harde økt passer."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_erg-1.txt",
+      "answer_sha256": "48e90ff1cb467dea6fe6e4259e413662f6d915c4e44374ccda5de5db82635cfd",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_erg-1.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "threshold_erg",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify two approximately 30-minute work bouts and the intervening recovery.",
+          "met": true
+        },
+        {
+          "criterion": "Separate delivered power and duration from physiological response, and assess the meaningful within-bout pattern.",
+          "met": true
+        },
+        {
+          "criterion": "Treat recovery consequences as provisional without athlete feel or subsequent evidence.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Correct work duration and preserved recovery uncertainty. No quantified recovery claim."
+      ],
+      "evidence_quotes": [
+        "**Økten oppfylte planen.** Rådata viser 29:57 og 29:55 arbeid ved cirka 295 W, med 5:04 lett sykling på cirka 122 W mellom. Effekten holdt seg gjennom begge dragene. I ERG viser det at belastningen ble levert, men sier ikke alene hvor lett den føltes.",
+        "Ved tilnærmet lik effekt steg pulsen omtrent 8 slag/min innen hvert drag. I det andre draget økte også pustefrekvensen tydelig, mens lokal SmO₂ var omtrent stabil innen draget. Det tyder på økende fysiologisk respons ved 295 W, uten tegn til at du mistet evnen til å fullføre. Temperaturmålingen steg, men dataene kan ikke fastslå at varme var årsaken.",
+        "Dette var en gjennomført VT2-økt med 60 minutter arbeid på det oppgitte ankeret. Den gir grunnlag for å beholde 295 W som treningsmål foreløpig, ikke for å heve det etter én økt. La neste harde økt avhenge av faktisk restitusjon; RPE og senere restitusjon er ukjent, så samlet belastning etter økten kan ikke vurderes sikkert."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_erg-2.txt",
+      "answer_sha256": "a25758b9ac861ff71fe840f70f3aebadd3f0bde1ff1343a6fb1622a2054297fb",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_erg-2.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "short_intervals",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 1,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify 16 short work bouts arranged in two sets and inspect recovery architecture.",
+          "met": false
+        },
+        {
+          "criterion": "Use set-level response and repeatability rather than demanding steady-state drift from each minute.",
+          "met": true
+        },
+        {
+          "criterion": "Distinguish a plausible severe-interval stimulus from measured VO2max attainment.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": false,
+      "review_notes": [
+        "Reports two sets and 16 bouts but omits timing of recovery architecture."
+      ],
+      "evidence_quotes": [
+        "Økten ble gjennomført som **16 korte arbeidsdrag i to serier**, til sammen 15 min 34 sek arbeid. Dragene var jevne, 376–382 W i snitt, uten tydelig effektfall mot slutten. Det støtter at den registrerte intervallstrukturen ble fullført godt. Uten eksplisitt forskrift eller bekreftet ERG-status kan jeg ikke vurdere måloppnåelse eller hvor mye av jevnheten som skyldtes egen regulering.",
+        "Responsen bygget seg opp gjennom dragene: pulsen ved slutten av arbeidsdragene steg fra 158 til 168, pusten ble raskere, og lokal muskeloksygenmetning falt under arbeid og steg igjen i pausene. Det er forenlig med en krevende intervallbelastning. Øktnavnet og målingene alene viser likevel ikke at VO₂maks ble nådd; fysiologiske ankere mangler.",
+        "**For videre trening:** Dette er et godt dokumentert, gjentakbart intervallarbeid, men én økt gir ikke grunnlag for å øke dosen. Belastningen som sitter igjen etter økten er ukjent uten RPE eller opplysninger om hvordan du følte deg og restituerte. La den responsen styre når neste harde økt passer."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-short_intervals-1.txt",
+      "answer_sha256": "cc9746783c009b4739d79eb8758bad15d992fe66aef8ac899c321e8a6ddf53c4",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-short_intervals-1.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "short_intervals",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify 16 short work bouts arranged in two sets and inspect recovery architecture.",
+          "met": true
+        },
+        {
+          "criterion": "Use set-level response and repeatability rather than demanding steady-state drift from each minute.",
+          "met": true
+        },
+        {
+          "criterion": "Distinguish a plausible severe-interval stimulus from measured VO2max attainment.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Identifies two sets and six-minute separation; interprets within-set response. Short-pause duration omitted."
+      ],
+      "evidence_quotes": [
+        "**Vurdering:** Økten ser godt gjennomført ut som en serie korte, harde intervaller. Aktivitetsdataene viser 16 arbeidsdrag på 56–61 sekunder, samlet 15 min 34 sek arbeid, fordelt på to serier med omtrent seks minutter mellom. Snitteffekten var svært jevn: 378 W i første serie og 380 W i andre. Det er ingen tydelig effektsvikt mot slutten. Navnet antyder «2 × 8 × 60 sek», men uten en eksplisitt forskrift kan jeg ikke fastslå måloppnåelse mot en planlagt wattverdi.",
+        "**Fysiologisk respons:** Ved omtrent samme arbeid steg pulsen ved slutten av dragene fra 158 til 165 i første serie og fra 159 til 168 i andre. Pusten økte gjennom seriene, mens målt muskeloksygen falt under dragene og steg igjen i pausene. Dette er en tydelig, akkumulert respons på arbeidsmønsteret. Den registrerte kjernetemperaturen steg og flatet ut rundt 38,1 °C; dataene gir ikke grunnlag for å kalle varme en begrensning. Uten fysiologiske ankere eller direkte oksygenopptaksmåling kan økten heller ikke bekrefte at VO₂maks ble nådd.",
+        "**Videre trening:** Økten ga trolig en relevant høyintensiv belastning, og den stabile effekten taler for at dosen var gjennomførbar denne dagen. Legg opp til lett trening eller hvile før neste harde økt, og vurder den ut fra hvordan beina og den generelle formen faktisk kjennes. RPE og senere restitusjon er ukjent, så økten alene gir ikke grunnlag for å øke neste intervalldose."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-short_intervals-2.txt",
+      "answer_sha256": "8523cedc376fb8c4092c570e06565fa767b8b2f516725b81acf7ee4b92d9c2b8",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-short_intervals-2.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "variable_outdoor",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe variable work, coasting/recovery and sustained portions rather than one uniform exposure.",
+          "met": true
+        },
+        {
+          "criterion": "Explain that no suitable matched stable windows were selected and limit drift conclusions accordingly.",
+          "met": true
+        },
+        {
+          "criterion": "Give a useful descriptive verdict despite unavailable comparisons.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Correct whole-session HR and explicit 60-second power scope; preserves unavailable drift comparison."
+      ],
+      "evidence_quotes": [
+        "**Vurdering:** Dette var en kontrollert, variabel utetur som ga en aerob utholdenhetsbelastning rundt og hovedsakelig under VT1-ankeret på 215 W. Uten oppgitt øktplan kan jeg ikke avgjøre om den oppfylte et foreskrevet mål.",
+        "Du syklet 82,8 minutter, med 78,8 minutter tråkketid og 203 W i snitt mens du tråkket. En 60 minutters sammenhengende del hadde 205 W i tråkkesnitt. Bare 1,5 % av tråkketiden lå over 225 W målt som 60 sekunders snitteffekt; en kort bakke mot slutten ga det tydeligste utslaget. Pulsen var 119 i snitt og 136 på det høyeste. Muskeloksygenet falt lokalt i den siste bakken, men dataene gir ingen sammenlignbare, stabile effektvinduer som kan fastslå fysiologisk drift gjennom turen. Den målte kjernetemperaturen nådde 38,13 °C, uten grunnlag for å tilskrive responsen varme.",
+        "Økten teller derfor som god utholdenhetstid, med noen korte høyere belastninger. Den gir ikke alene grunnlag for å flytte VT1-ankeret eller konkludere om utvikling. Videre trening kan bygge på denne som en moderat utholdenhetsøkt, men faktisk restitusjonsbehov er ukjent siden RPE, ernæring og responsen etter økten ikke er oppgitt."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-variable_outdoor-1.txt",
+      "answer_sha256": "d1c44f25e8cb0d681d6edb74dea3878b360a9d0bd0df35ac9a4d6ea726f43d1b",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-variable_outdoor-1.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "variable_outdoor",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe variable work, coasting/recovery and sustained portions rather than one uniform exposure.",
+          "met": true
+        },
+        {
+          "criterion": "Explain that no suitable matched stable windows were selected and limit drift conclusions accordingly.",
+          "met": true
+        },
+        {
+          "criterion": "Give a useful descriptive verdict despite unavailable comparisons.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Correct block-specific HR and sustained-power scope; no unsupported drift claim."
+      ],
+      "evidence_quotes": [
+        "**Vurdering:** Økten på 83 minutter fremstår som en kontrollert utetur med hovedvekt på aerob utholdenhet rundt og under VT1-ankeret på 215 W. De to lengste registrerte delene var på omtrent 32 minutter hver, med 203 og 205 W i snitt. Bare 1,2 minutter av tråkketiden hadde 60-sekunders snitteffekt over 225 W; de tydeligste overskridelsene var korte, blant annet i en sen bakke. Siden foreskrevet struktur ikke er oppgitt, kan jeg ikke vurdere måloppnåelse mot en planlagt økt.",
+        "Den fysiologiske responsen virker forholdsmessig: pulsen var i snitt 120 og 124 slag/min i de to lange delene, mens pustefrekvensen økte svakt og rapportert ventilasjon var omtrent lik. Muskeloksygenet var noe lavere sent, og CORE-estimatet steg til 38,13 °C. Den variable effekten gir ingen gode, stabile vinduer for å fastslå drift ved lik belastning; temperaturtallet alene viser heller ikke at varme begrenset økten.",
+        "Dette gir et solid utholdenhetsstimulus uten tegn i dataene til langvarig arbeid klart over VT1. La opplevd anstrengelse og hvordan beina kjennes etterpå styre neste økt. RPE, ernæring og senere restitusjon er ukjent, så økten alene gir ikke grunnlag for å øke treningsbelastningen."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-variable_outdoor-2.txt",
+      "answer_sha256": "a1f542208ebdc2c809488636c01256b572b54393d5a6be3cd44079f1d1df3648",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-variable_outdoor-2.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "threshold_missing_context",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the two sustained work bouts from observations.",
+          "met": true
+        },
+        {
+          "criterion": "Keep intensity classification and target attainment unresolved while still interpreting observable response cautiously.",
+          "met": true
+        },
+        {
+          "criterion": "State what cannot be concluded without prescription, anchor or personal comparison.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Preserves unknown anchor and prescription; observed structure compared with title without treating title as verified prescription."
+      ],
+      "evidence_quotes": [
+        "**Vurdering:** Økten ble gjennomført som to arbeidsdrag på 29:57 og 29:55, begge med 295 W i snitt, adskilt av omtrent fem minutter på 122 W. Effekten holdt seg stabil gjennom begge dragene. Tittelen «VT2 2×30 min» stemmer med den observerte strukturen, men uten VT2-anker eller foreskrevet effekt kan jeg ikke fastslå at intensiteten traff VT2 eller et bestemt mål.",
+        "Ved tilnærmet lik effekt steg pulsen gjennom begge dragene, med omtrent 8 slag/min fra tidlig til sent sammenligningsvindu. I andre drag steg også pustefrekvensen tydelig, mens lokal muskeloksygenmetning var omtrent uendret mellom de tilsvarende vinduene. Det tyder på økende systemisk belastning uten fall i levert effekt; målingene fastslår ikke årsaken eller hvor tungt økten føltes.",
+        "Dette var en solid, langvarig kvalitetsbelastning. Prioriter restitusjon før neste harde økt, og bruk ikke denne ene økten som grunnlag for å øke målwatt. RPE, etterfølgende restitusjon og sammenlignbare tidligere økter mangler, så faktisk restbelastning og utvikling over tid er ukjent. Vurderingen bygger på [lagret aktivitet](/Users/hanspetterbieker/Documents/Privat/Trening/training-ai/outputs/intervals/activities/2026-10-15_i197632268/activity.json) og [målestrømmene](/Users/hanspetterbieker/Documents/Privat/Trening/training-ai/outputs/intervals/activities/2026-10-15_i197632268/streams.csv)."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_missing_context-1.txt",
+      "answer_sha256": "ce4656b782c16aebf3254539790f42096415e7b87a50b7a5548e05e7a2203ec4",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_missing_context-1.jsonl"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "threshold_missing_context",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the two sustained work bouts from observations.",
+          "met": true
+        },
+        {
+          "criterion": "Keep intensity classification and target attainment unresolved while still interpreting observable response cautiously.",
+          "met": true
+        },
+        {
+          "criterion": "State what cannot be concluded without prescription, anchor or personal comparison.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Correct second-bout matched HR 155 to 162 and BR 51 to 63; intensity unresolved."
+      ],
+      "evidence_quotes": [
+        "Økten ble gjennomført som to arbeidsdrag på omtrent 30 minutter, begge med **295 W i snitt**, med fem minutters roligere sykling mellom. Det viser stabil levert effekt gjennom hele arbeidsdelen. Siden foreskrevet effekt, VT2-anker og ERG-status er ukjent, kan jeg ikke fastslå om økten traff planlagt effekt eller faktisk lå ved VT2.",
+        "Responsen økte mens effekten holdt seg stabil. I sammenlignbare vinduer i andre drag steg pulsen fra omtrent 155 til 162 slag/min og pustefrekvensen fra 51 til 63 pust/min. Første drag viste også stigende puls og pustefrekvens, mens lokal muskeloksygenmetning falt. Dette tyder på økende akutt belastning uten tydelig effekttap. Den stigende temperaturmålingen gir kontekst, men målingene alene viser ikke hvorfor responsen steg.",
+        "Økten ga en solid dose langvarig arbeid ved 295 W. **Videre progresjon eller høyere effekt bør ikke avgjøres fra denne økten alene**: RPE, restitusjonen etterpå og sammenlignbare tidligere økter mangler. La opplevd belastning og restitusjon styre når neste harde økt passer."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_missing_context-2.txt",
+      "answer_sha256": "d27affb5882d795b9610b6d8cc535a36d875d037cf4ddeacfe293c0b371836cf",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-sol-threshold_missing_context-2.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "long_endurance",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 1,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the approximately 150-minute main work separately from the approximately 165-minute whole session.",
+          "met": true
+        },
+        {
+          "criterion": "Explain the respiratory series gap versus usable selected comparison windows.",
+          "met": true
+        },
+        {
+          "criterion": "Integrate the observed response without equating stable ERG power with ease.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Explains gap and usable windows. Adds an unnecessary less-than-150-minute distinction despite approximately 150 minutes of work and unknown prescription."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** Dette ser ut som en godt kontrollert, lang innendørs aerob økt nær det oppgitte VT1-ankeret på 215 W. Effekten og pulsen tyder på en håndterbar respons gjennom den jevne arbeidsdelen, men økten varer ikke helt 150 minutter på det nivået. Siden foreskrevet varighet ikke er oppgitt, kan jeg ikke fastslå om den foreskrevne dosen ble fullført.",
+        "- **Gjennomføring:** Etter oppvarmingen viser analysen én sammenhengende arbeidsdel på omtrent 150 minutter, med 214 W i snitt mot 215 W-ankeret. I to sammenlignbare vinduer var effekten 215,3 og 214,2 W, og kadensen rundt 98–100 rpm. Med bekreftet ERG er dette godt kontrollert levert belastning. Aktiviteten varer totalt 165 minutter; arbeidsdelen starter etter omtrent 12 minutter, så den dokumenterer ikke 150 minutter ved ankeret pluss oppvarming og nedkjøring.",
+        "- **Fysiologisk respons:** I de matchede 120-sekundersvinduene sent i arbeidsdelen økte pulsen fra 117 til 120 bpm, mens pustefrekvensen steg fra 39,9 til 42,4 pust/min. Den lokale SmO₂-målingen falt med 10,7 prosentpoeng mellom vinduene. Dette peker på en viss økning i intern og lokal respons etter langvarig arbeid, men signalene alene viser ikke at VT1 ble overskredet eller at belastningen var for høy. Pustestrømmen har et langt datagap ellers i økten, selv om de to sammenligningsvinduene er brukbare. SmO₂ beskriver bare vevet under sensoren. Oppgitt RPE, kjøling og matinntak mangler, så opplevd belastning og mulige bidrag fra disse forholdene kan ikke vurderes.",
+        "- **Videre trening:** Økten støtter bruk av omtrent 215 W som et praktisk VT1-anker for tilsvarende jevn ERG-trening. Den moderate pulsøkningen er forenlig med at belastningen var bærekraftig gjennom denne økten, mens endringen i pust og SmO₂ gir grunn til å følge med på responsen ved tilsvarende varighet. Det finnes ikke grunnlag her for å heve ankeret eller konkludere med framgang; det krever sammenlignbare økter og kjent kontekst."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-long_endurance-1.txt",
+      "answer_sha256": "c405bdba92ceb480f7404b511b63d294a73dcff97c746438ccf6bc79f85eb319",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-long_endurance-1.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "long_endurance",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 1,
+        "physiological_synthesis": 2,
+        "evidence_limits": 1,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the approximately 150-minute main work separately from the approximately 165-minute whole session.",
+          "met": false
+        },
+        {
+          "criterion": "Explain the respiratory series gap versus usable selected comparison windows.",
+          "met": false
+        },
+        {
+          "criterion": "Integrate the observed response without equating stable ERG power with ease.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": false,
+      "review_notes": [
+        "Omits 165-minute whole-session duration; mentions respiratory gap without clearly distinguishing usable windows. Late-window HR rounded as 119 rather than approximately 120."
+      ],
+      "evidence_quotes": [
+        "Økten var en lang, kontrollert belastning rundt det oppgitte VT1-ankeret på **215 W**. Den viser god evne til å holde arbeidet jevnt over tid, men fordi foreskrevet varighet ikke er oppgitt, kan jeg ikke fastslå om økten fullførte hele planen.",
+        "Hovedarbeidet var omtrent **150 minutter** med snitteffekt på **214 W**. I sammenlignbare vinduer tidlig og sent lå effekten nesten likt (215 mot 214 W), med kadensen rundt 98–100 rpm. Pulsen steg bare rundt 2 slag/min, fra 117 til 119. Det tyder på en forholdsvis kontrollert systemisk respons ved denne belastningen. Samtidig steg pustefrekvensen med omtrent 2,4 pust/min, mens Moxy SmO₂ falt rundt 10,7 prosentpoeng. Det beskriver en endring i pustemønster og lokal oksygenering, men fastslår ikke alene at VT1 ble overskredet eller at den lokale responsen var problematisk.",
+        "CORE-estimatet steg omtrent 0,6 °C, men manglende opplysninger om kjøling, matinntak og opplevd anstrengelse gjør det vanskelig å tolke hva som bidro til endringene sent i økten. Pustestrømmen har også et lengre datagap, og VT/VE er kildeestimat snarere enn verifiserte fysiske målinger.",
+        "**For videre trening:** Dette støtter at 215 W kan brukes som et relevant VT1-anker for lang, jevn trening, men én økt uten sammenlignbar historikk dokumenterer ikke framgang eller varig toleranse. Bruk den som et utgangspunkt for videre rolige langturer; vurder om intensiteten fortsatt kjennes kontrollert sent i økten, og sammenlign senere økter under mer kjente forhold for kjøling og matinntak."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-long_endurance-2.txt",
+      "answer_sha256": "447b75bdf87267e53d2d3808b95840f4993d1200a271a0ba0f8d36c62d129687",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-long_endurance-2.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "threshold_erg",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify two approximately 30-minute work bouts and the intervening recovery.",
+          "met": true
+        },
+        {
+          "criterion": "Separate delivered power and duration from physiological response, and assess the meaningful within-bout pattern.",
+          "met": true
+        },
+        {
+          "criterion": "Treat recovery consequences as provisional without athlete feel or subsequent evidence.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Explicitly separates source work boundaries from detected regions. Qualitative HR-drop caveat only; does not demonstrate numeric recovery-period interpretation."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** Økten ser ut til å ha truffet hensikten godt: to nær 30 minutter lange, jevne drag på omtrent 295 W med fem minutter lett sykling mellom. Det er solid gjennomføring av en stor dose ved det oppgitte VT2-ankeret. Responsen var tydelig krevende, men effekten holdt seg stabil.",
+        "Kildens WORK-intervaller er 29:57 og 29:55, med gjennomsnitt på 294 W. Deteksjonen av stabile analysevinduer gir omtrent 29:35 og 29:35; disse kortere vinduene betyr ikke at dragene ble avbrutt. Effekten lå tett på målet i begge drag, og kadensen var omtrent 96 rpm i snitt. Mellomdraget var 5:04 ved rundt 122 W, altså nær planlagt lett sykling.",
+        "Pulsen steg som ventet gjennom arbeidsperiodene: snittet var 151 bpm i første drag og 158 i det andre, med topp på 163. I sammenlignbare vinduer sent i andre drag var pulsen omtrent 8 bpm høyere enn tidlig, mens effekten fortsatt var rundt 295 W. Pustefrekvensen og den kildemålte ventilasjonen steg også; estimert tidevolum falt noe i første drag. Dette tyder på økende indre belastning ved samme effekt, ikke på mekanisk svikt. SmO₂ var lav, men stabil i den sene delen av andre drag; uten sammenlignbare økter kan ikke nivået alene si hvor hardt eller begrensende det var.",
+        "CORE-temperaturen steg gjennom første drag og flatet mer ut i det andre. Det gir termisk kontekst, men dokumenterer ikke at varme begrenset økten. RPE og senere restitusjon er ukjent, så faktisk opplevd anstrengelse og restitusjonskostnad kan ikke fastslås. De korte pulsfallene i pausene er heller ikke bevis på full fysiologisk restitusjon.",
+        "**Betydning for videre trening:** Dette støtter at 295 W kan brukes som et praktisk anker for videre terskelarbeid, og at du kan gjennomføre nær 60 minutter samlet arbeid der med god effektkontroll. Én økt viser ikke i seg selv at VT2 eller kapasiteten har flyttet seg. Hold derfor ankeret foreløpig og se etter gjentatt gjennomføring med tilsvarende kontroll og kjent RPE/restitusjon før du øker belastningen."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_erg-1.txt",
+      "answer_sha256": "aea892f00017180a1ea35447db78a9d65feda4a775d34bd35ab5526311e6d5a8",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_erg-1.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "threshold_erg",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 1,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify two approximately 30-minute work bouts and the intervening recovery.",
+          "met": true
+        },
+        {
+          "criterion": "Separate delivered power and duration from physiological response, and assess the meaningful within-bout pattern.",
+          "met": true
+        },
+        {
+          "criterion": "Treat recovery consequences as provisional without athlete feel or subsequent evidence.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Attributes first-bout HR windows 148 to 156 to the second bout, whose windows are 155 to 162. No recovery number."
+      ],
+      "evidence_quotes": [
+        "**Vurdering:** Økten ser ut til å ha oppfylt hovedformålet: begge 30-minuttersdragene ble gjennomført svært jevnt rundt 295 W, med omtrent fem minutter lett sykling imellom. Det er en solid dose arbeid ved det oppgitte VT2-ankeret, men ERG gjør jevn effekt til et mål på levert belastning, ikke på hvor lett eller kontrollert det føltes.",
+        "- **Gjennomføring:** Kildens intervaller viser 29:57 og 29:55 arbeid, begge med 295 W i snitt. Kadensen var rundt 97 rpm i første drag og 96 rpm i det andre. Effektmålet ble dermed truffet godt uten tydelig effektfall.\n- **Respons:** Pulsen steg gjennom begge dragene. I sammenlignbare vinduer i det andre draget økte den fra omtrent 148 til 156 bpm, mens effekten holdt seg rundt 295 W. Pusten ble også raskere; samtidig falt det estimerte tidevolumet noe. Tyme Wear-ventilasjon og volum er kildeestimat, ikke laboratoriemålinger. SmO₂ var lavere i drag to som helhet, men stabil i de valgte vinduene; det peker ikke alene ut en lokal begrensning. CORE-temperaturen gir termisk kontekst, men dataene fastslår ikke at varme begrenset økten.\n- **Betydning videre:** Dette viser at du kunne holde den foreskrevne effekten i nær en time samlet, med moderat puls- og pustedrift. Det er nyttig støtte for å fortsette terskelarbeid rundt dette nivået, men én økt fastslår ikke at VT2-ankeret har flyttet seg eller at terskeleffekten bør økes. RPE og senere restitusjon er ukjent, så hvor kostbar økten var og om progresjon bør skje nå, kan ikke avgjøres her."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_erg-2.txt",
+      "answer_sha256": "74e8d7fb91d060000ba11f23f3e81050ece992c870e8c068ed37ab5dc497179c",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_erg-2.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "short_intervals",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 1,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify 16 short work bouts arranged in two sets and inspect recovery architecture.",
+          "met": true
+        },
+        {
+          "criterion": "Use set-level response and repeatability rather than demanding steady-state drift from each minute.",
+          "met": true
+        },
+        {
+          "criterion": "Distinguish a plausible severe-interval stimulus from measured VO2max attainment.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Identifies sets and six-minute separation; describes within-set response. Says acute response uncertain due to missing anchor despite observable response; distinction could be clearer."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** Rådataene viser 16 arbeidsdrag på omtrent ett minutt, fordelt i to sett à åtte, med rundt seks minutters rolig mellomrom. Effekten var jevn, ca. 376–382 W i snitt per drag, uten tydelig svekkelse mot slutten. Det støtter god mekanisk gjennomføring av den registrerte strukturen, men uten eksplisitt forskrift kan jeg ikke bekrefte at hele økten ble utført som foreskrevet.",
+        "Pulsen steg gjennom settene, med 168 bpm på siste drag. Pustefrekvensen og ventilasjonen var også høyere i de senere dragene. Det passer med opphopning av respons gjennom korte drag, der puls og pust ikke rekker å stabilisere seg mellom innsatsene. SmO₂ falt under arbeid og steg i pausene; dette beskriver lokal muskelrespons, men sier alene ikke hvor hardt økten var for hele kroppen. Sammenligningsvinduene var utilstrekkelige, og uten fysiologiske ankere kan responsen ikke klassifiseres mot en individuell intensitetssone eller bekrefte VO₂maks-intensitet. Temperaturmålingen er kontekst, ikke grunnlag for å konkludere med varmebelastning.",
+        "**Betydning videre:** Økten ser ut til å ha gitt en betydelig dose korte, harde drag, men hvor godt den traff hensikten er uavklart. Akutt respons: *usikker på grunn av manglende ankere og forskrift*; restitusjonskostnad: *ukjent*, siden RPE og etterfølgende restitusjon ikke er oppgitt. Behandle den derfor som en hard økt, men ikke bruk den alene til å endre terskel eller progresjon."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-short_intervals-1.txt",
+      "answer_sha256": "281b65fe3bca23bb10902ae744aa559857ebf7fe1cd2279f0765b5c86a5dd437",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-short_intervals-1.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "short_intervals",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 1,
+        "evidence_limits": 1,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Identify 16 short work bouts arranged in two sets and inspect recovery architecture.",
+          "met": true
+        },
+        {
+          "criterion": "Use set-level response and repeatability rather than demanding steady-state drift from each minute.",
+          "met": true
+        },
+        {
+          "criterion": "Distinguish a plausible severe-interval stimulus from measured VO2max attainment.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Reports active pauses and set separation; then calls response controlled from stable power, conflating mechanical delivery with physiological control."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** De registrerte arbeidsdragene viser en godt opprettholdt innsats: 16 drag på omtrent ett minutt med snitteffekt på 376–382 W, korte aktive pauser og et avbrekk på drøyt seks minutter mellom drag 8 og 9. Det ligner strukturen i «2×8×60 sek», men uten kjent forskrift kan jeg ikke slå fast at økten fulgte planen fullt ut eller at intensiteten var VO₂maks.",
+        "Pulsen steg gjennom økten og nådde 168 bpm i siste drag. Pustefrekvensen økte også, mens effekten holdt seg jevn. Det passer med en økende, forventet respons på gjentatt hardt arbeid, uten tydelig mekanisk svikt. SmO₂ falt under dragene og steg i pausene; den lokale målingen kan beskrive dette mønsteret, men verdiene alene fastslår verken intensitetssone eller begrensende faktor. Pust- og temperaturverdier er dessuten måleestimater, ikke direkte mål på gassutveksling eller kjernetemperatur.",
+        "**Betydning for videre trening:** Økten ser ut til å ha gitt et betydelig stimulus fra korte, gjentatte harde drag. Responsen virker kontrollert ut fra stabil effekt, men faktisk restitusjonskostnad er ukjent uten RPE, symptomer eller senere restitusjonsdata. Bruk derfor ikke denne ene økten til å konkludere om formutvikling eller endre treningsankere; legg inn tilstrekkelig ro før neste harde økt."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-short_intervals-2.txt",
+      "answer_sha256": "c236be007be26cb1013b5a23fbccffcd26004f04e96da1e8e8fbc3c867af0c7d",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-short_intervals-2.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "variable_outdoor",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 1,
+        "evidence_limits": 1,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe variable work, coasting/recovery and sustained portions rather than one uniform exposure.",
+          "met": true
+        },
+        {
+          "criterion": "Explain that no suitable matched stable windows were selected and limit drift conclusions accordingly.",
+          "met": true
+        },
+        {
+          "criterion": "Give a useful descriptive verdict despite unavailable comparisons.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Correct whole-session HR. Reports 1.5% above 225 W without saying this is 60-second rolling power; instantaneous fraction is about 22%."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** Dette ser ut som en kontrollert, hovedsakelig aerob utetur nær det oppgitte VT1-ankeret på 215 W, med enkelte terreng- og fartsrykk. Fordi foreskrevet struktur ikke er oppgitt, kan jeg ikke avgjøre om økten fullførte en bestemt planlagt dose.",
+        "- **Gjennomføring:** Turen varte 82,8 minutter, med 193 W i snitt. I den lengste sammenhengende 60-minutters VT1-blokken var tråkkesnittet 205 W, omtrent 95 % av ankeret. Bare 1,5 % av tråkktiden lå over 225 W, og tiden over 245 W var rundt 0,4 minutter. Det støtter god kontroll for en variabel utetur; korte topper opp til 353 W passer med terreng/akselerasjoner og gjør ikke snittkraften til et mål på jevn belastning.",
+        "- **Fysiologisk respons:** Snittpulsen var 119, makspulsen 136. I de to lengste registrerte arbeidsperiodene steg snittpulsen fra 120 til 124 samtidig som kraften steg fra 203 til 205 W; pustefrekvensen var henholdsvis 42,6 og 43,5. Dette er forenlig med en moderat respons og litt høyere belastning senere, men periodene er ikke sammenlignbare nok til å fastslå drift. SmO₂ falt under arbeid og steg i den siste perioden med lavere kraft; alene sier dette ikke at økten var for hard eller at en grense ble passert. CORE rapporterte opptil 38,13 °C, men uten pålitelig fuktighets-/miljøserie eller opplevd varme gir det ikke grunnlag for å tilskrive responsen varmebelastning.",
+        "- **Betydning for videre trening:** Økten gir nyttig aerob tid nær VT1 og viser at du holdt overskridelsene begrenset til tross for uteturens variasjon. Den støtter å fortsette med tilsvarende kontrollert VT1-arbeid; én enkelt tur dokumenterer ikke framgang eller endret terskel. RPE, ernæring og restitusjon etter økten er ukjent, så subjektiv belastning og faktisk restitusjonskostnad kan ikke vurderes."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-variable_outdoor-1.txt",
+      "answer_sha256": "ad29b032d7018b0991859bb8ee3622806674622d56080813305d7bb21bc10c99",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-variable_outdoor-1.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "variable_outdoor",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 1,
+        "evidence_limits": 1,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe variable work, coasting/recovery and sustained portions rather than one uniform exposure.",
+          "met": true
+        },
+        {
+          "criterion": "Explain that no suitable matched stable windows were selected and limit drift conclusions accordingly.",
+          "met": true
+        },
+        {
+          "criterion": "Give a useful descriptive verdict despite unavailable comparisons.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Correct whole-session HR and rolling-power scope. Broad temperature-data-missing statement overlooks available CORE stream; environmental and core channels should be distinguished."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** Dette var en kontrollert, variabel utetur med mye sammenhengende arbeid nær VT1-ankeret på 215 W. Den ser ut til å ha gitt et solid aerobt stimulus, men uten foreskrevet struktur kan jeg ikke slå fast om den oppfylte en bestemt intervallplan.",
+        "Du syklet 82,8 minutter, med 193 W i snitt og 202 W vektet snitt. I den lengste arbeidsperioden varte arbeidet 32 minutter på 204 W i snitt. Pacinganalysen klassifiserer turen som kontrollert rundt VT1: 60-sekunders effekt var over 225 W i 1,5 % av tråkketiden. Samtidig var belastningen variabel, med korte topper og ni registrerte klatringer, så snittet beskriver ikke hele belastningsmønsteret.",
+        "**Fysiologisk respons:** Pulsen var 119 i snitt og 136 på det høyeste. Den steg mellom de to lange arbeidsperiodene (120 til 123 i snitt), men periodene er ikke sammenlignbare nok til å fastslå drift: analysen fant ingen stabile, matchede vinduer. SmO₂ falt til 16,8 % lokalt; det kan beskrive høy lokal ekstraksjon i målt muskel, men er ikke alene tegn på at hele kroppen var overbelastet. Pustestrømmer var tilgjengelige, men uten sammenlignbare vinduer bør de ikke brukes til å konkludere om økende fysiologisk kostnad. RPE og ernæring er ukjent, og temperatur-/fuktighetsdataene mangler.",
+        "**Betydning videre:** Økten støtter videre aerob trening rundt dette arbeidsområdet, men én tur viser ikke en utvikling i terskel eller utholdenhet. Bruk responsen som et grovt holdepunkt, ikke som grunnlag for å øke intensiteten; vurder hvordan kroppen kjentes og restituerte før neste kvalitetsøkt."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-variable_outdoor-2.txt",
+      "answer_sha256": "acfe5d05673b3d5817f59de4db6fef5d2b79f586db17f06c162b101898d19178",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-variable_outdoor-2.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "threshold_missing_context",
+      "repeat": 1,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 2,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the two sustained work bouts from observations.",
+          "met": true
+        },
+        {
+          "criterion": "Keep intensity classification and target attainment unresolved while still interpreting observable response cautiously.",
+          "met": true
+        },
+        {
+          "criterion": "State what cannot be concluded without prescription, anchor or personal comparison.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Unknown intensity and prescription retained; no quantified recovery claim."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** Økten ser mekanisk godt gjennomført ut: to sammenhengende arbeidsdrag på omtrent 30 minutter, begge med snitteffekt rundt 295 W. Effekten var svært stabil også i sammenlignbare vinduer sent i dragene. Det støtter at arbeidet ble holdt jevnt, men uten kjent foreskrevet effekt kan jeg ikke vurdere måloppnåelse. VT2-intensiteten er også uavklart fordi VT2-ankeret er ukjent.",
+        "Den fysiologiske responsen økte med varigheten: snittpulsen var 151 bpm i første drag og 158 bpm i andre, og pulsen steg innen begge drag ved sammenlignbar effekt. Pusten økte også, mens estimert tidalvolum falt i første drag; ventilasjonen endret seg mindre. Strømmene hadde full dekning, men Tyme Wear-volum- og ventilasjonsverdier er relative estimater, ikke laboratoriemålinger. SmO₂ var lavere i andre drag og nådde 13,2 %, men dette er en lokal muskelmåling og sier ikke alene at økten var for hard. CORE-estimatet steg gjennom økten; uten kjent kjøling og utøverrapport gir det termisk kontekst, ikke grunnlag for å si at varme begrenset prestasjonen.",
+        "Dette var dermed en betydelig, langvarig kvalitetsbelastning med stabil effekt og økende pulsrespons. Dataene alene viser ikke om dosen traff terskelmålet, hvor krevende den føltes, eller om kapasiteten er forbedret sammenlignet med tidligere. For videre trening tilsier det å la restitusjonen etter denne belastningen telle og vurdere eventuell progresjon først når økten kan sammenholdes med kjent terskel, foreskrevet effekt og sammenlignbare økter."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_missing_context-1.txt",
+      "answer_sha256": "1740312a72f9de6cfcb8d5bb9d37f459be52323557317e071bbfa43471b551a8",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_missing_context-1.jsonl"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "threshold_missing_context",
+      "repeat": 2,
+      "scores": {
+        "actual_task_and_work": 2,
+        "physiological_synthesis": 1,
+        "evidence_limits": 2,
+        "practical_conclusion": 2
+      },
+      "required_findings": [
+        {
+          "criterion": "Describe the two sustained work bouts from observations.",
+          "met": true
+        },
+        {
+          "criterion": "Keep intensity classification and target attainment unresolved while still interpreting observable response cautiously.",
+          "met": true
+        },
+        {
+          "criterion": "State what cannot be concluded without prescription, anchor or personal comparison.",
+          "met": true
+        }
+      ],
+      "prohibited_findings": [],
+      "rubric_pass": true,
+      "review_notes": [
+        "Explicitly attributes first-bout HR 148 to 156 and BR 51 to 56 to the second bout; correct second-bout values are HR 155 to 162 and BR 51 to 63. Unknown intensity retained."
+      ],
+      "evidence_quotes": [
+        "**Kort vurdering:** Økten inneholdt to jevne arbeidsdrag på omtrent 30 minutter, begge rundt 294–295 W, med cirka fem minutters rolig sykling mellom. Den mekaniske gjennomføringen var stabil. Om dette traff foreskrevet effekt eller VT2, og dermed om økten oppfylte den planlagte intensiteten, kan ikke avgjøres her: effektmål og VT2-anker er ukjent.",
+        "I det andre draget holdt effekten seg rundt 295 W og tråkkfrekvensen var sammenlignbar mellom tidlige og sene målevinduer. Samtidig steg pulsen fra omtrent 148 til 156 slag/min og pustefrekvensen fra 51 til 56 pust/min. Det viser en økende systemisk respons under jevnt arbeid, men fastslår ikke intensitetssone eller årsak. Pustefrekvens, estimert tidevolum og ventilasjon er beslektede mål fra samme målekjede; ventilasjonsverdiene er innbyrdes rimelig konsistente, men ikke et direkte mål på gassutveksling.",
+        "Lokal SmO₂ lå lavt mot slutten av arbeidsdragene, men kan ikke alene klassifisere intensiteten eller påvise en begrensning. Temperaturmålingene gir heller ikke grunnlag for å tilskrive responsen varme. **Samlet:** en jevnt utført, lang og krevende arbeidsdose med stigende puls og pust underveis. Den gir et relevant treningsstimulus, men uten kjent VT2-anker, foreskrevet effekt, RPE eller sammenlignbare økter kan verken måloppnåelse, relativ kostnad eller framgang fastslås. Vurdering av restitusjon og progresjon må derfor forbli åpen."
+      ],
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_missing_context-2.txt",
+      "answer_sha256": "0093bbc32590c779d0c45aba68466bcd62213eac47130e1c75bb1097d8430194",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-recovery/runs/gpt-6-luna-threshold_missing_context-2.jsonl"
+    }
+  ]
+}

@@ -1,0 +1,181 @@
+{
+  "date": "2026-10-17",
+  "method": "Eight fresh read-only CLI sessions, two repeats per model/case, medium effort. Explicitly requests whole-pause, fixed-window minimum and endpoint difference. Manual unblinded review against independent raw-sample arithmetic. Models not given expected.json.",
+  "scope": "Targeted extraction with prepared evidence, not free-form coaching reliability or a causal pre/post test.",
+  "expected": {
+    "real_erg": [
+      {
+        "pause_number": 1,
+        "start_s": 2525.0,
+        "end_s_exclusive": 2829.0,
+        "whole_pause_drop": 53.0,
+        "whole_pause_start_hr": 157.0,
+        "whole_pause_min_hr": 104.0,
+        "fixed_window_drop": 28.0,
+        "last_work_hr": 157.0,
+        "fixed_window_min_hr": 129.0,
+        "endpoint_hr": 129.0,
+        "endpoint_drop": 28.0,
+        "endpoint_s": 2585.0
+      },
+      {
+        "pause_number": 2,
+        "start_s": 4624.0,
+        "end_s_exclusive": 4926.0,
+        "whole_pause_drop": 57.0,
+        "whole_pause_start_hr": 162.0,
+        "whole_pause_min_hr": 105.0,
+        "fixed_window_drop": 27.0,
+        "last_work_hr": 162.0,
+        "fixed_window_min_hr": 135.0,
+        "endpoint_hr": 134.0,
+        "endpoint_drop": 28.0,
+        "endpoint_s": 4684.0
+      }
+    ],
+    "synthetic_rebound": [
+      {
+        "pause_number": 1,
+        "start_s": 600.0,
+        "end_s_exclusive": 900.0,
+        "whole_pause_drop": 40.0,
+        "whole_pause_start_hr": 140.0,
+        "whole_pause_min_hr": 100.0,
+        "fixed_window_drop": 20.0,
+        "last_work_hr": 160.0,
+        "fixed_window_min_hr": 140.0,
+        "endpoint_hr": 150.0,
+        "endpoint_drop": 10.0,
+        "endpoint_s": 660.0
+      }
+    ]
+  },
+  "input_manifest_sha256": "6e9d4a5338df4e302a3d207012a9ac086be2b0a82151c56f79a0eadc904463f7",
+  "input_skill_script_hashes_verified_unchanged": true,
+  "reviews": [
+    {
+      "model": "gpt-6-luna",
+      "case": "real_erg",
+      "repeat": 1,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": true,
+      "notes": [
+        "Describes the minute as 60 samples; valid for this 1 Hz fixture only, not a general definition."
+      ],
+      "answer": "| Pause | Pausestart → laveste puls i hele pausen | Siste arbeidssample → laveste puls i første 60 s | Siste arbeidssample → puls ved 60 s |\n|---|---|---|---|\n| 1 (2525–2829 s; 304 s) | 157 → 104 bpm: **53 bpm fall**. Minimum i hele pausen. | 157 → 129 bpm: **28 bpm fall**. Minimum i vinduet 2525–2584 s, ved 2583 s. | 157 → 129 bpm: **28 bpm fall**. Målt ved 2585 s, 60 s etter pausestart. |\n| 2 (4624–4926 s; 302 s) | 162 → 105 bpm: **57 bpm fall**. Minimum i hele pausen. | 162 → 135 bpm: **27 bpm fall**. Minimum i vinduet 4624–4683 s, ved 4683 s. | 162 → 134 bpm: **28 bpm fall**. Målt ved 4684 s, 60 s etter pausestart. |\n\nMinuttet er avgrenset som 60 samples fra pausestart; verdien ved nøyaktig 60 sekunder er neste sample. I første pause var minimum lik sluttverdien, mens i andre var pulsen ved 60 sekunder 1 bpm lavere enn vinduminimumet. Dette viser et tydelig pulsfall i begge pauser, men puls alene beskriver ikke full restitusjon.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-real_erg-1.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-real_erg-1.jsonl",
+      "answer_sha256": "cf7f057f9523fa467e412e272966f1696230a6054e7e317be03c089fbb23599d"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "real_erg",
+      "repeat": 2,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": false,
+      "notes": [
+        "Invents whole-pause minimum times 2641/4830 s; raw HR there is 116/109. Actual minima 104/105 occur at 2795-2798 and 4888-4899 s. Requested drop magnitudes and window definitions are correct."
+      ],
+      "answer": "| Pause | Fra start til minimum gjennom hele pausen | Fra siste arbeidssample til minimum innen 60 s | Fra siste arbeidssample til puls ved 60 s |\n|---|---|---|---|\n| 1 (2525–2828 s) | 157 → 104 bpm; **−53 bpm** (minimum ved 2641 s) | 157 → 129 bpm; **−28 bpm** (minimum ved 2583 s, 58 s etter start) | 157 → 129 bpm; **−28 bpm** (ved 2585 s, nøyaktig 60 s etter start) |\n| 2 (4624–4925 s) | 162 → 105 bpm; **−57 bpm** (minimum ved 4830 s) | 162 → 135 bpm; **−27 bpm** (minimum ved 4683 s, 59 s etter start) | 162 → 134 bpm; **−28 bpm** (ved 4684 s, nøyaktig 60 s etter start) |\n\nBegge 60-sekundersvinduer har komplette målinger. Minimumet i vinduet og pulsen ved vinduets slutt er egne mål: de er like i pause 1, men pause 2 slutter ett slag lavere enn vindusminimumet. Samlet viser målingene et pulsfall på 27–28 slag første minutt og 53–57 slag gjennom pausene; dette beskriver pulsresponsen, men alene fastslår det ikke full restitusjon.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-real_erg-2.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-real_erg-2.jsonl",
+      "answer_sha256": "f4b56b022e4dc5b097e3fe8efeaf39522ca59d5168f54e79f680e44f28b17595"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "synthetic_rebound",
+      "repeat": 1,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": true,
+      "notes": [],
+      "answer": "| Mål | Startpuls | Slutt-/minimumspuls | Pulsfall | Tidsavgrensning |\n|---|---:|---:|---:|---|\n| Fra pausestart til minimum i hele pausen | 140 bpm | Minimum 100 bpm | 40 bpm | 600–899 s; minimum ved 661 s |\n| Fra siste arbeidssample til minimum de første 60 s | 160 bpm | Minimum 140 bpm | 20 bpm | Siste arbeidssample ved 599 s; minimum i pausevinduet 600–659 s, ved 600 s |\n| Fra siste arbeidssample til puls 60 s etter pausestart | 160 bpm | 150 bpm | 10 bpm | Siste arbeidssample ved 599 s; verdi ved 660 s |\n\nMinimumet i det første 60-sekundersvinduet er altså 140 bpm, mens pulsen ved vinduets slutt er 150 bpm. Dataene viser et tidlig fall, deretter en rebound før 60 sekunder, og et senere minimum på 100 bpm; dette beskriver pulsforløpet i pausen, men alene fastslår det ikke generell eller full restitusjon.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-synthetic_rebound-1.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-synthetic_rebound-1.jsonl",
+      "answer_sha256": "10c0783a248b8d67b3e730b05476fb4f755c010db1d2c94d33bec6182387d0b7"
+    },
+    {
+      "model": "gpt-6-luna",
+      "case": "synthetic_rebound",
+      "repeat": 2,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": true,
+      "notes": [],
+      "answer": "| Pause | Pulsfall fra pausestart til minimum i hele pausen | Fra siste arbeidssample til minimum innen første 60 s | Fra siste arbeidssample til puls ved 60 s |\n|---|---|---|---|\n| 1 (600–899 s) | 140 → 100 bpm; **40 bpm** fall. Minimum ved 661 s, innen pausen. | 160 → 140 bpm; **20 bpm** fall. Vindu 600–659 s; minimum var 140 bpm ved 600 s. | 160 → 150 bpm; **10 bpm** fall. Ved 660 s var pulsen 150 bpm. |\n\nFørste 60 sekunders minimum er altså ikke det samme som pulsen ved vinduets slutt: pulsen steg fra 140 til 150 bpm i løpet av vinduet. Den nådde 100 bpm senere, ved 661 s, og holdt seg der resten av pausen.\n\nDette viser et tydelig tidlig pulsfall, men også en kort rebound; puls alene sier ikke at hele kroppen er restituert.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-synthetic_rebound-2.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-luna-synthetic_rebound-2.jsonl",
+      "answer_sha256": "5f91be247764f06598f70dc9d79153634dcdb3cb647c4c521c491a476f5f1219"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "real_erg",
+      "repeat": 1,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": true,
+      "notes": [],
+      "answer": "| Pause | Måling og tidsavgrensning (sekunder fra øktstart) | Puls, start → slutt/minimum | Pulsfall |\n|---|---|---:|---:|\n| 1 | Pausestart 2525 → minimum i hele pausen [2525, 2829), ved 2795–2798 | 157 → 104 | 53 slag/min |\n| 1 | Siste arbeidssample 2524 → minimum i første 60 sekunder [2525, 2585), først ved 2583 | 157 → 129 | 28 slag/min |\n| 1 | Siste arbeidssample 2524 → verdien nøyaktig 60 sekunder etter pausestart, ved 2585 | 157 → 129 | 28 slag/min |\n| 2 | Pausestart 4624 → minimum i hele pausen [4624, 4926), ved 4888–4899 | 162 → 105 | 57 slag/min |\n| 2 | Siste arbeidssample 4623 → minimum i første 60 sekunder [4624, 4684), ved 4683 | 162 → 135 | 27 slag/min |\n| 2 | Siste arbeidssample 4623 → verdien nøyaktig 60 sekunder etter pausestart, ved 4684 | 162 → 134 | 28 slag/min |\n\nPulsen falt tydelig i begge pausene, men pulsfall alene sier ikke hvor fullstendig kroppen restituerte seg.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-real_erg-1.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-real_erg-1.jsonl",
+      "answer_sha256": "16ad3d8e371b5d3b5dfc7208704bb1fa6f3c40db60e4c06b8bf313aae6667206"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "real_erg",
+      "repeat": 2,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": true,
+      "notes": [],
+      "answer": "Tidene nedenfor er sekunder fra pausestart. «Siste arbeidssample» er målingen ett sekund før pausen.\n\n| Pause | Måling | Start → slutt/minimum | Pulsfall | Tidsavgrensning |\n|---|---|---:|---:|---|\n| 1 | Laveste puls i hele pausen | 157 → 104 | 53 slag/min | 0–<304 s; minimum ved 270–273 s |\n| 1 | Laveste puls i første 60 s | 157 → 129 | 28 slag/min | −1 til <60 s; minimum ved 58–59 s |\n| 1 | Puls akkurat etter 60 s | 157 → 129 | 28 slag/min | −1 til 60 s |\n| 2 | Laveste puls i hele pausen | 162 → 105 | 57 slag/min | 0–<302 s; minimum ved 264–275 s |\n| 2 | Laveste puls i første 60 s | 162 → 135 | 27 slag/min | −1 til <60 s; minimum ved 59 s |\n| 2 | Puls akkurat etter 60 s | 162 → 134 | 28 slag/min | −1 til 60 s |\n\nPulsen falt tydelig i begge pausene, men pulsfall alene viser ikke hvor fullstendig kroppen var restituert.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-real_erg-2.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-real_erg-2.jsonl",
+      "answer_sha256": "99db7536e4430bd88924b9b6eecdfe4acbc58521a248e8a077214900075c97cb"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "synthetic_rebound",
+      "repeat": 1,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": true,
+      "notes": [],
+      "answer": "| Pause 1: måling | Tidsavgrensning | Start → slutt/minimum | Pulsfall |\n|---|---|---:|---:|\n| Pausestart til laveste puls i hele pausen | 600–899 s; minimum ved 661 s | 140 → 100 slag/min | 40 slag/min |\n| Siste arbeidssample til laveste puls i de første 60 s | Arbeid ved 599 s; vindu 600–659 s, minimum ved 600 s | 160 → 140 slag/min | 20 slag/min |\n| Siste arbeidssample til pulsen akkurat 60 s etter pausestart | Arbeid ved 599 s; sluttverdi ved 660 s | 160 → 150 slag/min | 10 slag/min |\n\nPulsen stiger igjen etter det tidlige minimumet, så fallet til minimum og fallet målt ved 60 sekunder beskriver ulikt pulsforløp og sier ikke alene hvor fullstendig restitusjonen er.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-synthetic_rebound-1.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-synthetic_rebound-1.jsonl",
+      "answer_sha256": "bfc9ccbe6cad157e584dc6ecaae8c7b16b0074cbb13383ef48797a647b61e926"
+    },
+    {
+      "model": "gpt-6-sol",
+      "case": "synthetic_rebound",
+      "repeat": 2,
+      "all_three_drop_magnitudes_correct": true,
+      "measurement_scope_correct": true,
+      "start_and_end_or_minimum_hr_correct": true,
+      "recovery_caveat_appropriate": true,
+      "additional_timestamps_correct": true,
+      "notes": [],
+      "answer": "| Pause | Måling og tidsavgrensning | Start → slutt/minimum | Pulsfall |\n|---|---|---:|---:|\n| 1 | Pausestart til laveste puls i hele pausen, 600–<900 s (minimum fra 661 s) | 140 → 100 | 40 slag/min |\n| 1 | Siste arbeidssample til minimum i de første 60 sekundene, 599 s → minimum ved 600 s i vinduet 600–<660 s | 160 → 140 | 20 slag/min |\n| 1 | Siste arbeidssample til pulsen **akkurat 60 sekunder** etter pausestart, 599 → 660 s | 160 → 150 | 10 slag/min |\n\nPulsen stiger igjen før 60-sekunderspunktet, så vinduets minimum beskriver et større pulsfall enn verdien ved vinduets slutt; dette viser pulsresponsen i pausen, men sier ikke alene hvor fullstendig restitusjonen var.",
+      "answer_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-synthetic_rebound-2.txt",
+      "transcript_path": "outputs/training-analysis-eval/2026-10-17-targeted/runs/gpt-6-sol-synthetic_rebound-2.jsonl",
+      "answer_sha256": "6eb8e7d3903f5fd90e5181eb3c288cf9ce6d81ed01e0a705e7a583ebdf2c1b25"
+    }
+  ]
+}

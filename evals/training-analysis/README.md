@@ -16,14 +16,19 @@ python3 -B scripts/prepare_training_analysis_eval.py --output-dir /private/tmp/t
 The command reads local artifacts and runs activity_inspect into a **new** output
 directory. It never contacts source services or updates plan state. Missing
 artifacts fail preparation; do not silently substitute another activity.
-Each case gets a prompt and helper evidence. The manifest records source and
-skill hashes, commands and output hashes. Source snapshots are local dependencies;
-copy them with the manifest when moving the evaluation to another machine.
+Each case gets a prompt, freshly generated helper evidence, and a local snapshot
+of only activity.json and streams.csv, plus the skill, calculation scripts and
+two relevant context files. Legacy analysis.json files and reports are excluded.
+The manifest records the original source hashes and every case snapshot file.
+Keep the complete package with the manifest; embedded paths require regeneration
+if moved. This is input isolation and an explicit read-scope instruction, not an
+OS-level filesystem access boundary.
 
 ## Run the actual model evaluation
 
-Use a fresh session for each case and model. Give it only the generated prompt,
-the referenced skill and source artifacts, and the generated inspection.json.
+Use a fresh session for each case and model. Give it only the generated prompt and its case directory, including the copied
+skill, raw artifacts and generated inspection.json. Do not grant additional
+source-directory context or point it back to the original repository.
 Do not provide cases.json, this rubric, earlier answers, or this conversation.
 Allow read-only local inspection and temporary outputs; do not allow live-source
 fetches, plan-state changes or remote writes. The prompt makes this restriction
@@ -68,3 +73,28 @@ two fresh runs each on Sol and Luna at medium reasoning effort. See the
 [findings and limitations](results/2026-10-17.md) and the
 [per-answer review record](results/2026-10-17.json). These are exploratory
 behavioral results, not a controlled measurement of the articles' contribution.
+
+A post-fix twenty-run evaluation is recorded in the
+[follow-up findings](results/2026-10-17-postfix.md) and
+[per-answer review](results/2026-10-17-postfix.json). The targeted errors did not
+recur in that sample; recovery-metric scope and some response summaries still
+need care.
+
+The next [recovery-scope rerun](results/2026-10-17-recovery.md) completed twenty
+more sessions. No 60-second error recurred, but no relevant answer quantified
+HR recovery, so numeric interpretation remains unproven. See its
+[per-answer review](results/2026-10-17-recovery.json).
+
+A subsequent [targeted recovery test](results/2026-10-17-targeted.md) explicitly
+requested all three HR differences. All eight answers got the requested values
+and scopes right; one added incorrect minimum timestamps.
+
+The [work-block overview rerun](results/2026-10-17-overview.md) tested the two
+threshold cases in eight fresh sessions. Cross-bout swaps did not recur, but
+one answer still misstated matched-window values and read a legacy analysis.
+
+The final [isolated-package control](results/2026-10-17-isolated.md) completed
+eight sessions with correct reported block/window attribution and no observed
+application-data reads outside the case packages. One respiratory-unit wording
+error remained. The recommendation is to stop repeated broad tuning and use
+the skill on ordinary sessions.

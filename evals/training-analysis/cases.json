@@ -40,7 +40,8 @@
       "prohibited": [
         "Infer spare capacity or ease from stable ERG watts or an execution score.",
         "Use beta cost labels as physiological evidence.",
-        "Claim a new threshold or demonstrated adaptation."
+        "Claim a new threshold or demonstrated adaptation.",
+        "Report whole-recovery-block start-to-minimum HR decline as a fixed-60-second measurement, or a window minimum as the exact end-of-window HR."
       ]
     },
     {
@@ -96,7 +97,8 @@
       "prohibited": [
         "Recover an anchor or prescription from personal configuration despite the explicit unknown test context.",
         "Use observed average power or the activity name as the target.",
-        "Claim improvement, ease or residual cost from absent evidence."
+        "Claim improvement, ease or residual cost from absent evidence.",
+        "Report whole-recovery-block start-to-minimum HR decline as a fixed-60-second measurement, or a window minimum as the exact end-of-window HR."
       ]
     }
   ]

@@ -14,6 +14,32 @@ def ride(step=1, duration=1200):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_work_overview_keeps_each_blocks_windows_and_missing_fields(self):
+        from activity_inspect import work_block_overview
+        rows = ride(duration=1800)
+        for row in rows:
+            t = int(row['time'])
+            row['heartrate'] = str(120 + t / 100 if t < 900 else 150 + (t - 900) / 50)
+            if t >= 900:
+                row.pop('respiration')
+        blocks = [summarize_block(rows, start_index=a, end_index=b, label='work')
+                  for a, b in [(0, 900), (900, 1800)]]
+        views = [work_block_overview(b, index=i) for i, b in enumerate(blocks, 1)]
+        for i, (block, view) in enumerate(zip(blocks, views)):
+            self.assertEqual(view['work_block_number'], i + 1)
+            self.assertEqual(view['detail_path'], f'work_blocks[{i}]')
+            self.assertEqual(view['early_window']['start_s'], block['comparison']['early']['start_s'])
+            hr = next(m for m in view['metrics'] if m['field'] == 'heartrate')
+            self.assertEqual(hr['late_window_mean'], round(block['comparison']['fields']['heartrate']['late_avg'], 2))
+            self.assertNotEqual(hr['block_mean'], hr['late_window_mean'])
+        self.assertLess(views[0]['late_window']['end_s'], views[1]['early_window']['start_s'])
+        absent = next(m for m in views[1]['metrics'] if m['field'] == 'respiration')
+        self.assertEqual(absent['window_status'], 'unavailable')
+        self.assertIsNone(absent['block_mean'])
+        self.assertIsNone(absent['late_minus_early'])
+        short = summarize_block(rows, start_index=0, end_index=60, label='short')
+        self.assertTrue(all(m['late_minus_early'] is None for m in work_block_overview(short, index=1)['metrics']))
+
     def test_brief_preserves_source_work_and_detected_segment_scopes(self):
         from activity_inspect import brief_result
         rows = ride(duration=900)
@@ -304,6 +330,25 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(result['window_s'], 60)
             self.assertEqual(result['start_s'], 600)
             self.assertNotIn('recovery_score',result)
+
+    def test_whole_pause_hr_drop_is_distinct_from_fixed_window(self):
+        from activity_inspect import brief_recovery
+        for step in [1, 5]:
+            rows = ride(step, duration=900)
+            for row in rows:
+                t = int(row['time'])
+                row['heartrate'] = str(160 if t < 600 else (140 if t < 630 else (150 if t < 660 else 100)))
+            pause = summarize_block(rows, start_index=600//step, end_index=len(rows), label='RECOVERY')
+            report = brief_recovery(pause, index=1, after_work_block=1, moxy_recovery=None)
+            fixed = hr_recovery_after_block(rows, {'end_index':600//step})
+            self.assertEqual(report['statistics_scope'], 'whole_recovery_block')
+            self.assertEqual(report['hr_drop_scope'], 'start_to_minimum_over_whole_recovery_block')
+            self.assertEqual((report['start_s'], report['end_s_exclusive'], report['duration_s']), (600, 900, 300))
+            self.assertEqual(report['hr_drop_start_to_min'], 40)
+            self.assertEqual(fixed['statistics_scope'], 'fixed_post_work_window')
+            self.assertEqual((fixed['start_s'], fixed['end_s_exclusive'], fixed['window_s']), (600, 660, 60))
+            self.assertEqual(fixed['drop_bpm'], 20)
+            self.assertIn('not an endpoint HR difference', fixed['drop_definition'])
 
     def test_hot_indoor_session_is_not_automatically_costly(self):
         result = indoor_vt1_assessment(vt1_watts=215, rolling_60=[], moving_rows=ride(),
