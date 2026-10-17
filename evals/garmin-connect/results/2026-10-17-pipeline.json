@@ -1,0 +1,151 @@
+{
+  "date": "2026-10-17",
+  "method": "Eight fresh read-only sessions, two synthetic cases through actual readiness_snapshot CLI, two repeats per model at medium effort. Manual unblinded semantic review.",
+  "snapshot_hashes_unchanged": true,
+  "criteria": {
+    "missing_sync": [
+      "Unavailable observations do not become negative evidence",
+      "Missing sleep after sync alone does not justify reduction"
+    ],
+    "future_day": [
+      "Calculated remainder is 4 hours",
+      "No projection of wellness into tomorrow",
+      "Countdown is conditional, not automatic permission/veto"
+    ]
+  },
+  "limitations": [
+    "Synthetic source payloads, not live MCP retrieval or device-sync verification.",
+    "Prompt in missing-sync case now explicitly asks about continued missing sleep after sync; not a controlled comparison with prior prompts.",
+    "Small unblinded sample, no statistical reliability claim."
+  ],
+  "reviews": [
+    {
+      "run": "gpt-6-luna-future_day-1",
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Garmin viser 18 timers Recovery Time kl. 18 lørdag 17. oktober. Ved intervallstart kl. 08 søndag er det beregnet **4 timer igjen**, forutsatt ingen trening imellom og ingen justering fra Garmin-modellen. Dette er et anslag på tid til modellert full restitusjon før neste harde økt, ikke et påbud om å vente med all aktivitet.\n\nAndre Garmin-signaler som kan vurderes kl. 08, når de er registrert for søndagen, er nattlig HRV, søvn og søvnscore, hvilepuls og Body Battery ved oppvåkning. De er ikke observert ennå i testpakken. Lørdagens HRV, søvn og readiness-score (80) beskriver ikke søndagsformen, så de kan ikke brukes som morgenmålinger.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-luna-future_day-1.txt",
+      "answer_sha256": "7acca94d2dbe5b6e104d5e2c17103a9cf987569402aa6ca324a54dc35cec010a",
+      "commands": [
+        "/bin/zsh -lc 'cat garmin-skill/SKILL.md && cat training-skill/references/daily-recommendations.md && cat snapshot.json && cat time-context.json'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "run": "gpt-6-luna-future_day-2",
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Garmin viste **18 timer Recovery Time kl. 18 i dag**. Med 14 timer til øktstart og ingen trening i mellomtiden blir anslaget **4 timer kl. 08 i morgen**. Det er Garmins estimat for når du kan være klar for neste harde økt, ikke et påbud om å vente med all aktivitet.\n\nAndre nyttige Garmin-signaler kan være **morgenens søvn, HRV, hvilepuls og Body Battery ved oppvåkning**. De er ikke observert for morgendagen ennå; dagens målinger og Training Readiness-score kan ikke brukes som morgendagens signaler. Hvis nye målinger er tilgjengelige, bør de være fra måldagen, komplette og ferske. Recovery Time alene avgjør derfor ikke om intervallene bør gjennomføres.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-luna-future_day-2.txt",
+      "answer_sha256": "da22ccfee0afe1d36fec4cdf6b6afd96ca3b23fb4c66535077cc571d9162560d",
+      "commands": [
+        "/bin/zsh -lc 'cat garmin-skill/SKILL.md training-skill/references/daily-recommendations.md snapshot.json time-context.json'",
+        "/bin/zsh -lc \"rg -n -C 3 'Recovery Time|future-day|target local day|Garmin signal|Training Readiness|unavailable|downgrade' training-skill/references/daily-recommendations.md garmin-skill/references/training-effect-and-stamina-models.md snapshot.json\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "run": "gpt-6-luna-missing_sync-1",
+      "targeted_pass": true,
+      "notes": [
+        "Local helper validity/sync inference sometimes attributed to Garmin; targeted missing-data conclusion is correct."
+      ],
+      "answer": "Garmin gir ikke et pålitelig grunnlag for å avgjøre om 90 minutter rolig sykling kl. 10 er riktig. Søvn står som 0, men synkroniseringen sist skjedde kl. 21 norsk tid i går, så søvndata for natten mangler. Hvilepulsen 57 er over sjudagerssnittet på 48, men Garmin markerer morgenmålingen som ufullstendig. HRV «LOW» gjelder 16. oktober, ikke i dag. Ingen av disse signalene kan derfor brukes som en fersk grunn til å redusere økten.\n\nSynk Garmin nå og sjekk om søvn og morgenmålinger kommer inn. Hvis de fortsatt mangler, er de ukjente — ikke tegn på dårlig restitusjon. Siden du føler deg normal, tilsier Garmin-dataene alene verken å avlyse eller å bekrefte 90 minutter; de gir grunn til forsiktighet med å trekke konklusjoner, ikke til å endre økten på egen hånd.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-luna-missing_sync-1.txt",
+      "answer_sha256": "fb02481f00500b18a1c942a9ff2a303a7c5aad141d531b755ffca834da190809",
+      "commands": [
+        "/bin/zsh -lc 'cat garmin-skill/SKILL.md && cat training-skill/references/daily-recommendations.md && cat snapshot.json && cat time-context.json && cat garmin.json'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "run": "gpt-6-luna-missing_sync-2",
+      "targeted_pass": true,
+      "notes": [
+        "Local helper validity/sync inference sometimes attributed to Garmin; targeted missing-data conclusion is correct."
+      ],
+      "answer": "Garmin-grunnlaget støtter ikke en sikker anbefaling om 90 minutter rolig sykling kl. 10. Søvn står som 0, men er markert ufullstendig; hvilepulsen er 57 mot et sjudagerssnitt på 48. Samtidig viser synkstatus at hvilepulsen ikke er ferdig synkronisert, og søvn, HRV og øvrige aktuelle Garmin-signaler er utilgjengelige for vurderingen. De skal derfor ikke telles som bevis på dårlig restitusjon. Du føler deg normal, men det mangler nok ferske data til å underbygge akkurat denne dosen.\n\nSynk Garmin nå og vurder dataene på nytt før økten. Hvis søvndata fortsatt mangler etter synk, forblir søvn ukjent; det gir ikke i seg selv grunn til å redusere treningen, men heller ikke grunnlag for å stole på en Garmin-basert vurdering. Hvis hvilepulsen fortsatt er tydelig forhøyet når den er ferdig synkronisert, ta det med i vurderingen sammen med dagsformen.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-luna-missing_sync-2.txt",
+      "answer_sha256": "6bf11b035650ee7fe00c8954f98fd152c86761a47686c6f5c680a7a565d7c6be",
+      "commands": [
+        "/bin/zsh -lc 'cat garmin-skill/SKILL.md && cat training-skill/references/daily-recommendations.md && cat snapshot.json && cat time-context.json'"
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "run": "gpt-6-sol-future_day-1",
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Garmins **Recovery Time er beregnet til 4 timer ved øktstart søndag kl. 08**, forutsatt ingen trening i mellomtiden. Beregningen bygger på 18 timer registrert lørdag kl. 18 og 14 timer fram til øktstart. Recovery Time anslår tid til modellert full restitusjon før neste harde økt; fire timer igjen er et relevant forbehold ved intervaller, ikke et automatisk forbud.\n\nVed øktstart kan **nye målinger fra søndag** gi bedre grunnlag: nattens søvn og HRV, morgenens hvilepuls og Body Battery, samt en oppdatert Garmin Training Readiness som samlet kontekst. Lørdagens søvnscore 85, balanserte HRV og Training Readiness 80 kan ikke regnes som søndagsmålinger. Søndagens signaler finnes ennå ikke i testpakken, så Garmin-grunnlaget alene avgjør ikke om intervallene bør gjennomføres.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-sol-future_day-1.txt",
+      "answer_sha256": "2ce8ab2886ca9d0a37c2793d0231b9582aa4af816bc6bca73689e9eadeee2ca2",
+      "commands": [
+        "/bin/zsh -lc 'cat \"time-context.json\"'",
+        "/bin/zsh -lc 'cat \"garmin-skill/SKILL.md\"'",
+        "/bin/zsh -lc 'cat \"training-skill/references/daily-recommendations.md\"'",
+        "/bin/zsh -lc 'cat \"snapshot.json\"'",
+        "/bin/zsh -lc \"rg -n -i -C 3 'recovery time|training readiness|future|timestamp' garmin-skill/references/field-semantics.md\"",
+        "/bin/zsh -lc \"rg -n -i -A 28 -B 4 'For Garmin timer arithmetic|For a future|not observed yet|same-day' training-skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"rg -n -i -A 28 -B 3 '\"'^## Recovery Time|''^### Recovery Time'\"' garmin-skill/references/training-effect-and-stamina-models.md\"",
+        "/bin/zsh -lc \"rg -n -i -A 38 -B 3 '\"'^## Training Readiness|''^### Training Readiness'\"' garmin-skill/references/readiness-and-vo2max-models.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "run": "gpt-6-sol-future_day-2",
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Garmins **Recovery Time er beregnet til 4 timer ved øktstart søndag 18. oktober kl. 08**. Snapshotet viser 18 timer kl. 18 lørdag; fremskrivingen forutsetter, som oppgitt, ingen trening i mellomtiden. Tallet anslår tid til modellert full restitusjon før neste harde økt. Det gir grunn til varsomhet med intervaller, men er ikke alene et forbud.\n\nVed øktstart kan **nattens søvn og HRV, morgenens hvilepuls og Body Battery**, samt ferske målinger av Body Battery og stress, gi bedre grunnlag dersom klokken har synkronisert. Lørdagens Training Readiness på 80, søvnscore på 85 og HRV på 65 er ikke observasjoner for søndag og kan ikke brukes som morgendagens signaler. Kroppsfølelse og nylig treningsbelastning mangler i testpakken, så Garmin-grunnlaget alene avgjør ikke om intervallene bør gjennomføres.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-sol-future_day-2.txt",
+      "answer_sha256": "47b972a5b572cb6c43310a31fb105aaf2924c5d85b35ab29e6d78f1ae919e57f",
+      "commands": [
+        "/bin/zsh -lc 'cat time-context.json'",
+        "/bin/zsh -lc 'cat garmin-skill/SKILL.md'",
+        "/bin/zsh -lc 'cat snapshot.json'",
+        "/bin/zsh -lc 'cat training-skill/references/daily-recommendations.md'",
+        "/bin/zsh -lc \"rg -n -C 4 'Garmin timer arithmetic|Recovery Time|future|target local day' training-skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"rg -n -C 6 'Training Readiness|training readiness' garmin-skill/references/readiness-and-vo2max-models.md\"",
+        "/bin/zsh -lc \"rg -n -C 10 'Recovery Time|recovery time' garmin-skill/references/training-effect-and-stamina-models.md\"",
+        "/bin/zsh -lc \"rg -n -C 8 'Recovery Time|recovery_time|Training Readiness|future-day|future day|HRV|sleep' garmin-skill/references/field-semantics.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "run": "gpt-6-sol-missing_sync-1",
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Kl. 07.15 er Garmin-grunnlaget for økten kl. 10 ufullstendig. Siste synk var kvelden før. Registrert **0 søvn** er ikke dokumentasjon på en søvnløs natt, HRV-tallet gjelder dagen før, og hvilepulsen **57 mot 48** i sjudagerssnitt kan ikke brukes som et sikkert varselsignal før morgensynken er fullført.\n\n**Synk klokken nå og vurder eventuelle komplette målinger på nytt.** Slik dataene står, gir Garmin ingen begrunnet grunn til å avlyse eller korte ned 90 minutter rolig sykling, særlig når du føler deg normal. Garmin-dataene alene kan heller ikke bekrefte at akkurat 90 minutter passer med den øvrige belastningen din, som ikke er oppgitt.\n\nHvis søvndata fortsatt mangler etter synk, er de fortsatt *ukjente* — det endrer ikke rådet i seg selv. En faktisk bekreftet dårlig natt eller endret dagsform ville gitt et annet grunnlag for vurderingen.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-sol-missing_sync-1.txt",
+      "answer_sha256": "99d3e17abba6828e1711163b425a562846a650198f56cd6ffda37fd5ada48dc7",
+      "commands": [
+        "/bin/zsh -lc 'cat garmin-skill/SKILL.md'",
+        "/bin/zsh -lc 'cat snapshot.json'",
+        "/bin/zsh -lc 'cat training-skill/references/daily-recommendations.md'",
+        "/bin/zsh -lc 'cat time-context.json'",
+        "/bin/zsh -lc \"rg -n -C 4 'sleep|resting|sync|HRV|hrv|fresh|missing|zero' garmin-skill/references/field-semantics.md\"",
+        "/bin/zsh -lc \"rg -n -C 4 'sleep|restingHeartRate|lastSync|lastNightAvg' garmin.json\"",
+        "/bin/zsh -lc \"rg -n -C 4 'sleep|resting|sync|HRV|hrv|fresh|missing|zero' garmin-skill/references/wellness-and-energy-models.md garmin-skill/references/readiness-and-vo2max-models.md training-skill/references/daily-recommendations.md\""
+      ],
+      "failed_tool_commands": 0
+    },
+    {
+      "run": "gpt-6-sol-missing_sync-2",
+      "targeted_pass": true,
+      "notes": [],
+      "answer": "Kl. 07.15 er Garmin-grunnlaget for turen kl. 10 ufullstendig. Siste synk var kvelden før. Registrert søvn på **0** er derfor ikke dokumentasjon på at du ikke sov, og hvilepulsen på **57 mot 48** i sjudagerssnitt kan ikke brukes som et sikkert varselsignal før morgensynken er fullført. Også HRV-tallet gjelder dagen før.\n\n**Synk klokken nå**, og vurder eventuelle komplette søvn-, HRV- og hvilepulsdata sammen med hvordan du føler deg. Når du føler deg normal, gir disse Garmin-dataene alene ingen grunn til å avlyse eller korte ned **90 minutter rolig sykling**. De er heller ikke nok til å bekrefte at akkurat 90 minutter passer, siden belastning og øvrig treningskontekst mangler.\n\nHvis søvndata fortsatt mangler etter synk, er de fortsatt **ukjente**, ikke et negativt funn. Det endrer ikke rådet i seg selv: hold turen rolig dersom du fortsatt føler deg normal, og juster eller avbryt hvis kroppen kjennes uvanlig underveis.",
+      "answer_path": "outputs/garmin-skill-eval/2026-10-17-pipeline/runs/gpt-6-sol-missing_sync-2.txt",
+      "answer_sha256": "878ef5e5ec7f40ddab32c6c811269020acf3884c857f2858d58012d91cdef47b",
+      "commands": [
+        "/bin/zsh -lc 'cat snapshot.json'",
+        "/bin/zsh -lc 'cat training-skill/references/daily-recommendations.md'",
+        "/bin/zsh -lc 'cat garmin-skill/SKILL.md'",
+        "/bin/zsh -lc 'cat time-context.json'",
+        "/bin/zsh -lc \"rg -n -C 5 'sleep|Body Battery|sync|missing' garmin-skill/references/wellness-and-energy-models.md\"",
+        "/bin/zsh -lc \"rg -n -C 5 'sync|sleep|resting|HRV|fresh|zero|0' garmin-skill/references/field-semantics.md\"",
+        "/bin/zsh -lc \"rg -n -C 5 'Readiness Composition|sync attempt|unavailable|Garmin signal' training-skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"rg -n -C 5 'Training Readiness|HRV|resting|sleep|missing|sync' garmin-skill/references/readiness-and-vo2max-models.md\""
+      ],
+      "failed_tool_commands": 0
+    }
+  ]
+}

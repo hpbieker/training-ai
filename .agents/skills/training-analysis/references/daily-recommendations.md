@@ -528,6 +528,18 @@ normal recommendation.
   not write that the session improved VO2max, threshold, tempo, speed, or
   anaerobic capacity as an observed fact; later performance and progression
   evidence are required to establish adaptation.
+- Use `recommendation_inputs.wellness.garmin_decision_evidence` and
+  `garmin_signal_status` to distinguish available observations from missing data.
+  Do not restore excluded raw values as negative signals. A sync attempt that
+  still leaves sleep unavailable does not itself justify reducing training.
+  Observed values still need comparison and context; availability is not an
+  adverse finding or confirmation of good recovery.
+- For Garmin timer arithmetic, use the readiness helper's
+  `garmin_recovery_readiness.recovery_time_projection`. It keeps observation
+  time and hours together with `planned.target_at`, elapsed hours, remaining
+  hours and availability. Use `planned.remaining_hours` directly when status
+  is `projected`; do not redo the countdown or substitute the now-value.
+  If no valid projection is available, retain the uncertainty.
 - When presenting Garmin Recovery Time, state that it estimates time to modeled
   full recovery for the next hard workout. Do not present it as required rest
   before all activity, and do not infer a Recovery Time value from Training

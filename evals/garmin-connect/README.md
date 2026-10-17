@@ -17,3 +17,8 @@ The first run used two repetitions per case on Sol and Luna at medium effort:
 Raw fixtures, prompts and transcripts are archived locally under
 `outputs/garmin-skill-eval/2026-10-17/` (Git-ignored). The preparation and runner
 scripts are included there for reproducibility; their absolute paths are local.
+
+The [readiness pipeline follow-up](results/2026-10-17-pipeline.md) passes
+synthetic Garmin source payloads through the actual readiness CLI before model
+interpretation. All eight targeted answers preserved missing-data uncertainty
+and/or used the correct projected recovery timer. See the report for limits.

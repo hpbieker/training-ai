@@ -17,6 +17,7 @@ from scripts.readiness_snapshot import (
     latest_xert_advice,
     intervals_wellness_context,
     project_garmin_recovery_hours,
+    garmin_recovery_projection,
     parse_source_inputs_json,
     parse_time_context_json,
     recommendation_inputs,
@@ -155,6 +156,12 @@ class XertAdviceContractTests(unittest.TestCase):
 
 
 class TimeContextContractTests(unittest.TestCase):
+    def test_future_target_date_allows_now_on_previous_day(self):
+        parsed = parse_time_context_json(json.dumps({"date":"2026-10-18", "local_timezone":"Europe/Oslo",
+            "now":"2026-10-17T20:00:00+02:00", "planned_at":"2026-10-18T08:00:00+02:00"}))
+        self.assertEqual(parsed["now"].day, 17)
+        self.assertEqual(parsed["planned_at"].day, 18)
+
     def test_full_time_context_is_normalized(self):
         parsed = parse_time_context_json(
             '{"date":"2026-07-31","local_timezone":"Europe/Lisbon",'
@@ -436,8 +443,63 @@ class GarminSignalValidationTests(unittest.TestCase):
 
         recovery = result["garmin_recovery_readiness"]
         self.assertEqual(recovery["projected_recovery_time_hours_now"], 36.5)
-        self.assertEqual(recovery["projected_recovery_time_hours_at_planned"], 18.1)
+        self.assertEqual(recovery["projected_recovery_time_hours_at_planned"], 18.2)
         self.assertIn("no intervening training", recovery["recovery_projection_assumption"])
+
+    def test_projection_exposes_observation_and_direct_planned_arithmetic(self):
+        result = garmin_recovery_projection(18, "2026-10-17T18:00:00+02:00",
+            now=datetime.fromisoformat("2026-10-17T20:00:00+02:00"),
+            planned_at=datetime.fromisoformat("2026-10-18T08:00:00+02:00"))
+        self.assertEqual(result["now"]["remaining_hours"], 16)
+        self.assertEqual(result["planned"]["elapsed_hours"], 14)
+        self.assertEqual(result["planned"]["remaining_hours"], 4)
+        self.assertEqual(result["observed_hours"], 18)
+        self.assertEqual(result["provenance"]["source"], "local_readiness_helper")
+        self.assertEqual(result["provenance"]["reported_fields"], ["observed_at", "observed_hours"])
+        self.assertEqual(result["provenance"]["derived_fields"], ["now", "planned"])
+
+    def test_projection_uses_elapsed_utc_time_across_dst(self):
+        zone = ZoneInfo("Europe/Oslo")
+        result = garmin_recovery_projection(18, "2026-10-24T18:00:00+02:00",
+            now=datetime(2026, 10, 24, 20, tzinfo=zone),
+            planned_at=datetime(2026, 10, 25, 8, tzinfo=zone))
+        self.assertEqual(result["planned"]["elapsed_hours"], 15)
+        self.assertEqual(result["planned"]["remaining_hours"], 3)
+
+    def test_projection_does_not_reverse_a_clamped_timer(self):
+        result = garmin_recovery_projection(4, "2026-10-17T08:00:00Z",
+            now=datetime.fromisoformat("2026-10-17T18:00:00Z"),
+            planned_at=datetime.fromisoformat("2026-10-17T10:00:00Z"))
+        self.assertEqual(result["now"]["remaining_hours"], 0)
+        self.assertEqual(result["planned"]["remaining_hours"], 2)
+        for timestamp in [None, "invalid", "2026-10-17T20:00:00Z"]:
+            unknown = garmin_recovery_projection(4, timestamp,
+                now=datetime.fromisoformat("2026-10-17T18:00:00Z"),
+                planned_at=datetime.fromisoformat("2026-10-18T08:00:00Z"))
+            self.assertEqual(unknown["planned"]["status"], "unavailable")
+            self.assertIsNone(unknown["planned"]["remaining_hours"])
+
+    def test_missing_signals_never_become_negative_after_sync_attempt(self):
+        for hour in [7, 9]:
+            result = validate_garmin_wellness_signals(day="2026-10-17",
+                now=datetime(2026, 10, 17, hour, tzinfo=ZoneInfo("Europe/Oslo")),
+                freshness={}, values={"sleep_time_seconds":0,"resting_hr":57},
+                source_context={"sleep_calendar_date":"2026-10-17", "heart_rate_calendar_date":"2026-10-17"},
+                local_timezone=ZoneInfo("Europe/Oslo"))
+            self.assertIsNone(result["resting_hr"])
+            self.assertEqual(result["garmin_decision_evidence"]["observed_signals"], [])
+            self.assertEqual(result["garmin_decision_evidence"]["provenance"]["source"], "local_readiness_helper")
+            self.assertIn("garmin_sync_recommended", result["garmin_decision_evidence"]["provenance"]["derived_fields"])
+            for signal in result["garmin_signal_status"].values():
+                self.assertFalse(signal["usable_for_assessment"])
+                self.assertEqual(signal["assessment_source"], "local_readiness_helper")
+                self.assertNotIn("usable_for_downgrade", signal)
+            self.assertTrue(all(v["evidence_role"] == "no_readiness_evidence" for v in result["garmin_signal_status"].values()))
+        future = validate_garmin_wellness_signals(day="2026-10-18",
+            now=datetime.fromisoformat("2026-10-17T20:00:00+02:00"),freshness={},values={},source_context={},
+            local_timezone=ZoneInfo("Europe/Oslo"))
+        self.assertFalse(future["garmin_sync_recommended"])
+        self.assertEqual(future["garmin_decision_evidence"]["availability"], "not_observed_yet")
 
     def test_garmin_recovery_projection_stops_at_zero(self):
         self.assertEqual(project_garmin_recovery_hours(4, 10), 0.0)

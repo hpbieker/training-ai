@@ -24,6 +24,11 @@ model references, not to this field contract.
   elapsed timer at zero hours. For a future-day recommendation, use the latest
   available real Garmin day as the Recovery Time source; do not request the
   empty future day and conclude that Recovery Time is unavailable.
+- When the caller supplies a calculated projection, preserve its observation
+  time, initial hours, target time, elapsed hours and remaining hours together.
+  Use the calculated remainder rather than doing a second mental countdown.
+  An unavailable projection is unknown, not zero; request calculation from
+  timestamped source values when a numeric remainder matters.
 
 For interpretation, read [the model reference](readiness-and-vo2max-models.md#training-readiness).
 

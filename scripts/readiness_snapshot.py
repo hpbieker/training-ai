@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 from datetime import date, datetime, timedelta, timezone
@@ -91,7 +92,8 @@ def parse_time_context_json(raw: str) -> dict[str, Any]:
                 f"time-context {field} UTC offset does not match "
                 f"{payload['local_timezone']} at that instant"
             )
-        if localized.date() != context_date:
+        is_target_time = field == "planned_at" or (field == "now" and payload.get("planned_at") is None)
+        if is_target_time and localized.date() != context_date:
             raise argparse.ArgumentTypeError(
                 f"time-context {field} must fall on time-context date"
             )
@@ -1547,24 +1549,17 @@ def recommendation_inputs(
     normalized_readiness = bool(readiness_drivers)
     recovery_driver = readiness_drivers.get("recovery_time") or {}
 
-    readiness_age_hours = hours_since_garmin_timestamp(
-        training_readiness.get("observed_at") or training_readiness.get("timestamp"),
-        now=now,
-    )
     garmin_recovery_hours = (
         recovery_driver.get("hours")
         if normalized_readiness
         else training_readiness.get("recovery_time_hours")
     )
-    projected_recovery_now = project_garmin_recovery_hours(
+    recovery_projection = garmin_recovery_projection(
         garmin_recovery_hours,
-        readiness_age_hours,
+        training_readiness.get("observed_at") or training_readiness.get("timestamp"),
+        now=now, planned_at=planned_at,
     )
-    hours_until_planned = (
-        round((planned_at - now).total_seconds() / 3600, 1)
-        if planned_at is not None
-        else None
-    )
+    projected_recovery_now = recovery_projection["now"]["remaining_hours"]
     wellness = validate_garmin_wellness_signals(
         day=(planned_at.date() if planned_at is not None else now.date()).isoformat(),
         now=now,
@@ -1675,10 +1670,8 @@ def recommendation_inputs(
                 else training_readiness.get("recoveryTimeFactorFeedback")
             ),
             "projected_recovery_time_hours_now": projected_recovery_now,
-            "projected_recovery_time_hours_at_planned": project_garmin_recovery_hours(
-                projected_recovery_now,
-                hours_until_planned,
-            ),
+            "projected_recovery_time_hours_at_planned": recovery_projection["planned"]["remaining_hours"],
+            "recovery_time_projection": recovery_projection,
             "recovery_projection_assumption": (
                 "Simple elapsed-time projection from the timestamped Garmin "
                 "Recovery Time; assumes no intervening training."
@@ -2212,13 +2205,36 @@ def validate_garmin_wellness_signals(
         result["body_battery_most_recent"] = None
         result["body_battery_latest"] = None
 
+    future_day = date.fromisoformat(day) > now.astimezone(local_timezone).date()
+    if future_day:
+        for entry in status.values():
+            if not entry["usable_for_assessment"]:
+                entry["reason"] = "target_day_not_observed_yet"
     result["garmin_signal_status"] = status
-    result["garmin_sync_recommended"] = any(
-        not entry.get("usable_for_downgrade") for entry in status.values()
+    result["garmin_sync_recommended"] = not future_day and any(
+        not entry.get("usable_for_assessment") for entry in status.values()
     )
+    result["garmin_decision_evidence"] = {
+        "provenance": {
+            "source": "local_readiness_helper",
+            "input_source": "Garmin Connect",
+            "derived_fields": ["garmin_signal_status", "garmin_sync_recommended"],
+            "meaning": "Signal validity and sync advice are local assessments, not Garmin-reported conclusions or confirmed device-sync state.",
+        },
+        "target_date": day,
+        "observed_signals": [key for key, entry in status.items() if entry["usable_for_assessment"]],
+        "unavailable_signals": [key for key, entry in status.items() if not entry["usable_for_assessment"]],
+        "availability": "not_observed_yet" if future_day else "evaluated",
+        "interpretation": (
+            "Unavailable signals provide no evidence of poor or good recovery. "
+            "Still missing after sync remains unknown, not a reason by itself to reduce training. "
+            "Observed signals require comparison and context; availability is not an adverse finding."
+        ),
+    }
     result["garmin_signal_rule"] = (
-        "A Garmin signal may downgrade training only when it belongs to the "
+        "A Garmin signal is usable for assessment only when it belongs to the "
         "target local day, is complete, and is fresh enough for its signal type. "
+        "Validity does not indicate good or poor recovery; interpret the value in context. "
         "Unavailable or stale signals are excluded rather than scored negatively."
     )
     return result
@@ -2231,8 +2247,10 @@ def garmin_signal_status(
     observed_date: str | None,
 ) -> dict[str, Any]:
     return {
-        "usable_for_downgrade": valid,
+        "usable_for_assessment": valid,
+        "assessment_source": "local_readiness_helper",
         "status": "observed" if valid else "unavailable",
+        "evidence_role": "requires_interpretation" if valid else "no_readiness_evidence",
         "reason": reason,
         "observed_date": observed_date,
     }
@@ -2428,6 +2446,45 @@ def project_hours(current_hours: Any, hours_until: Any) -> float | None:
     if current is None or delta is None:
         return None
     return round(current - delta, 1)
+
+
+def garmin_recovery_projection(hours, observed_at, *, now, planned_at):
+    """Project each target directly in UTC; retain the full arithmetic context."""
+    observed = parse_garmin_utc_datetime(observed_at)
+    initial = number(hours)
+    valid = (initial is not None and math.isfinite(initial) and initial >= 0
+             and observed is not None and observed <= now)
+
+    def at(target):
+        result = {"target_at": target.isoformat() if target else None,
+                  "elapsed_hours": None, "remaining_hours": None,
+                  "status": "unavailable"}
+        if target is None:
+            result["reason"] = "target_time_not_supplied"
+        elif not valid:
+            result["reason"] = "missing_invalid_or_future_observation"
+        elif target < observed:
+            result["reason"] = "observation_after_target"
+        else:
+            elapsed = (target.astimezone(timezone.utc) - observed.astimezone(timezone.utc)).total_seconds() / 3600
+            result.update(status="projected", elapsed_hours=round(elapsed, 4),
+                          remaining_hours=round(max(0.0, initial - elapsed), 1))
+        return result
+
+    return {
+        "provenance": {
+            "source": "local_readiness_helper",
+            "input_source": "Garmin Connect Recovery Time",
+            "reported_fields": ["observed_at", "observed_hours"],
+            "derived_fields": ["now", "planned"],
+            "meaning": "Observation values come from Garmin; elapsed time and remaining hours are locally calculated estimates, not updated Garmin readings.",
+        },
+        "observed_at": observed.isoformat() if observed else None,
+        "observed_hours": initial if initial is not None and math.isfinite(initial) else None,
+        "now": at(now), "planned": at(planned_at),
+        "assumption": "No intervening training or Garmin model adjustment; a countdown estimate, not permission or a veto.",
+        "formula": "max(0, observed_hours - elapsed_hours); elapsed time computed in UTC",
+    }
 
 
 def project_garmin_recovery_hours(
