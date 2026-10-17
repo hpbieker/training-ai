@@ -63,6 +63,8 @@ Do not mix that experiment with testing a different script version.
 
 ## Current validation status
 
-The suite can prepare and verify its local evidence packages. No independent
-model answers or Sol/Luna scores are included in this repository. Behavioral
-quality remains unmeasured until those runs and reviews are completed.
+The first 20-run evaluation was completed on 17 October 2026: five cases,
+two fresh runs each on Sol and Luna at medium reasoning effort. See the
+[findings and limitations](results/2026-10-17.md) and the
+[per-answer review record](results/2026-10-17.json). These are exploratory
+behavioral results, not a controlled measurement of the articles' contribution.

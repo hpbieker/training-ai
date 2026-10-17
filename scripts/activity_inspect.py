@@ -529,8 +529,18 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
             else None
         ),
         "block_source": block_source,
+        "source_work_intervals": [brief_source_work_interval(block, index=index)
+                                  for index, block in enumerate(saved_work_intervals, start=1)],
+        "source_work_intervals_status": "available" if saved_work_intervals else "not_included_or_absent",
+        "work_duration_basis": (
+            "Source WORK intervals describe source-recorded work boundaries, not a verified prescription. "
+            "Detected segments select analysis regions; their shorter duration does not establish "
+            "an interrupted or shortened prescribed interval."
+        ),
         "work_blocks": [
-            brief_work_block(block, index=index)
+            {**brief_work_block(block, index=index),
+             "overlapping_source_interval_indices": [source.get("index") for source in saved_work_intervals
+                 if blocks_overlap(block, source)]}
             for index, block in enumerate(work_blocks, start=1)
         ],
         "recoveries": recoveries,
@@ -4117,6 +4127,8 @@ def brief_total(block: dict[str, Any]) -> dict[str, Any]:
     relative_drift = block.get("relative_to_power_drift") or {}
     return drop_none(
         {
+            "statistics_scope": "whole_activity",
+            "change_scope": "selected_comparison_windows_only",
             "watts_avg": stat(summary, "watts", "avg", digits=0),
             "watts_max": stat(summary, "watts", "max", digits=0),
             "hr_avg": stat(summary, "heartrate", "avg", digits=0),
@@ -4278,6 +4290,21 @@ def row_time(rows: list[dict[str, str]], index: int) -> float | None:
     return parsed if parsed is not None else float(index)
 
 
+def blocks_overlap(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    bounds = [left.get('start_index'), left.get('end_index'),
+              right.get('start_index'), right.get('end_index')]
+    return (all(isinstance(bound, int) for bound in bounds)
+            and max(bounds[0], bounds[2]) < min(bounds[1], bounds[3]))
+
+
+def brief_source_work_interval(block: dict[str, Any], *, index: int) -> dict[str, Any]:
+    # Source interval summaries are deliberately separate from analysis-window
+    # changes. Do not duplicate the large comparison evidence here.
+    result = brief_work_block(block, index=index)
+    return {key: val for key, val in result.items()
+            if key not in {'comparison', 'change_scope'} and 'drift' not in key}
+
+
 def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
     summary = block.get("summary") or {}
     drift = block.get("drift") or {}
@@ -4287,6 +4314,13 @@ def brief_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any]:
     hr_avg = stat(summary, "heartrate", "avg", digits=1)
     return drop_none(
         {
+            "statistics_scope": (("source_work_interval" if block.get("type") == "WORK" else "source_interval")
+                                 if source == "intervals_icu" else "detected_analysis_segment"),
+            "change_scope": "selected_comparison_windows_only",
+            "start_s": block.get("start_time"),
+            "end_s_exclusive": (block["start_time"] + block["duration_seconds"]
+                                if isinstance(block.get("start_time"), (int, float))
+                                and isinstance(block.get("duration_seconds"), (int, float)) else None),
             "n": index,
             "label": brief_block_label(block, index=index),
             "source": source,

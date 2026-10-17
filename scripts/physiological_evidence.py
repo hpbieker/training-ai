@@ -122,6 +122,7 @@ def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
                   policy=dict(transition_seconds=transition_seconds, window_seconds=window_seconds,
                               max_power_cv=0.10, power_tolerance=power_tolerance,
                               cadence_tolerance=cadence_tolerance),
+                  statistics_scope='selected_comparison_windows_only',
                   alignment='source_elapsed_time; device lag unverified',
                   interpretation='descriptive matched-work change, not physiological cost')
     clock = timeline(rows)

@@ -112,6 +112,22 @@ assess this session without claiming an individual development trend.
   for explicitly requested development/debugging. Do not use `beta_summary`,
   `beta_stability`, or `beta_vo2` as the basis of a coaching verdict or progression.
 
+## Reporting The Scope Of Measurements
+
+Use `statistics_scope` to distinguish whole-activity statistics, source WORK
+intervals, and detected analysis segments. `change_scope` and the nested
+`comparison` refer to selected windows only. Keep each average, maximum and
+change attached to its actual period; a block mean is neither a session mean
+nor a peak. State the period in the answer when otherwise ambiguous.
+
+`source_work_intervals` preserves source-recorded boundaries separately from
+`work_blocks`; `overlapping_source_interval_indices` connects detected segments
+to source intervals without claiming they are identical. Use source boundaries
+and the prescription when assessing completed work. A shorter detected stable
+segment does not establish an interrupted or shortened prescribed interval.
+Absent source intervals leave those boundaries unverified; do not substitute
+detected segment duration as proof of full completion or a shortfall.
+
 ## Measurement Eligibility And Comparison Windows
 
 Read each field's `data_quality` and each `comparison` before interpreting a

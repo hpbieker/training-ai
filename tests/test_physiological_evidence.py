@@ -14,6 +14,41 @@ def ride(step=1, duration=1200):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_brief_preserves_source_work_and_detected_segment_scopes(self):
+        from activity_inspect import brief_result
+        rows = ride(duration=900)
+        source = summarize_block(rows, start_index=60, end_index=780, label='WORK',
+                                 detection={'source': 'intervals_icu'})
+        source.update(type='WORK', index=2)
+        detected = summarize_block(rows, start_index=90, end_index=750, label='stable')
+        result = {
+            'activity': {'name': 'test', 'type': 'Ride'},
+            'streams': {'rows': len(rows), 'data_quality': {}},
+            'total': {'summary': summarize_rows(rows), 'drift': {}, 'relative_to_power_drift': {}},
+            'intervals': [source], 'auto_power_blocks': [detected], '_rows': rows,
+        }
+        report = brief_result(result)
+        original = report['source_work_intervals'][0]
+        selected = report['work_blocks'][0]
+        self.assertEqual(original['statistics_scope'], 'source_work_interval')
+        self.assertEqual((original['start_s'], original['end_s_exclusive'], original['duration_s']), (60, 780, 720))
+        self.assertEqual(selected['statistics_scope'], 'detected_analysis_segment')
+        self.assertEqual((selected['start_s'], selected['end_s_exclusive'], selected['duration_s']), (90, 750, 660))
+        self.assertEqual(selected['overlapping_source_interval_indices'], [2])
+        self.assertEqual(report['total']['statistics_scope'], 'whole_activity')
+        self.assertEqual(selected['change_scope'], 'selected_comparison_windows_only')
+        self.assertEqual(selected['comparison']['statistics_scope'], 'selected_comparison_windows_only')
+        self.assertNotIn('comparison', original)
+        self.assertNotIn('hr_drift', original)
+        result.pop('intervals')
+        no_source = brief_result(result)
+        self.assertEqual(no_source['source_work_intervals_status'], 'not_included_or_absent')
+        self.assertEqual(no_source['source_work_intervals'], [])
+        self.assertEqual(no_source['work_blocks'][0]['overlapping_source_interval_indices'], [])
+        result['intervals'] = [source]
+        result.pop('auto_power_blocks')
+        self.assertEqual(brief_result(result)['work_blocks'][0]['statistics_scope'], 'source_work_interval')
+
     def test_prescribed_power_is_independent_of_vt2_anchor(self):
         from activity_inspect import vt2_quality
         rows = ride()

@@ -280,6 +280,17 @@ appropriate during recovery or long low-intensity work. Judge proportionality
 to the intended domain, completed dose, personal matched response, and
 subsequent recovery evidence.
 
+## Check The Conclusion Against The Evidence
+
+Before finalizing, check that the verdict preserves unresolved intensity and
+prescription. If the anchor or other evidence needed for a domain classification
+is unavailable, do not later call the work threshold-near, VT2, or VO2max-intensity
+based on its title or absolute watts alone. Describe completed power, duration,
+and observed response instead; distinguish intended stimulus from established
+intensity. Apply the same consistency check to target attainment, residual cost,
+and adaptation: the conclusion must not resolve an unknown that the analysis
+left unresolved.
+
 ## Reporting Contract
 
 For a normal request such as `analyser dagens økt`, lead with a direct one- or
