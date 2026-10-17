@@ -138,19 +138,24 @@ not a measured change in VO2max itself.
 
 Separate two meanings in the same series:
 
-1. the first stable value, normally available after Garmin begins scoring at
-   roughly 6-20 minutes, is the best available session-start condition context;
+1. the early reported level, normally available after Garmin begins scoring at
+   roughly 6-20 minutes, provides early-session model context;
 2. the later trend describes whether internal cost is changing relative to
    external performance as the session progresses.
 
 The compact summary should preserve:
 
 - coverage and median reporting interval;
-- median of the first reported minute as `early_stable`;
+- median of the first reported minute as `early_stable` (a local summary
+  convention, not Garmin's definition of physiological stability);
 - start, end, first-to-last change, average, minimum, and maximum;
 - first, middle, and final thirds of the reported samples;
 - the largest peak-to-later-trough drop;
 - elapsed time, power, heart rate, and temperature at extrema when available.
+
+The `early_stable` field name does not demonstrate that work or physiology was
+stable during that minute. Check its coverage and work/recovery context before
+using it as a starting reference; do not equate it with pre-exercise readiness.
 
 Interpret the early level separately from the within-session slope. Align later
 changes with work and recovery blocks before attributing fatigue. Check device
@@ -210,7 +215,8 @@ Operational rules:
 - do not add timers from multiple activities; Garmin re-evaluates the state;
 - project a timestamped timer forward only under the explicit assumption of no
   intervening training and floor it at zero;
-- use it to gate the next hard workout, not all movement;
+- use it as one input when assessing the next hard workout, not an automatic
+  veto or permission to train when the timer reaches zero;
 - combine it with direct wellness signals, athlete feel, recent stimulus, and
   plan role.
 

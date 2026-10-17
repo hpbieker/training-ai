@@ -69,8 +69,11 @@ For source provenance and evidence strength, see [`sources.md`](sources.md).
 - For a second-session decision, inspect sustained post-workout stress rather
   than only daily average stress. Sustained high stress suggests incomplete
   settling after the first session.
-- For post-workout heart rate, prefer the lowest sustained five-minute average
-  over latest HR or a broad average, which are movement- and timing-sensitive.
+- For post-workout heart rate, the local analysis convention prefers the lowest
+  sustained five-minute average over latest HR or a broad average to reduce
+  sensitivity to brief movement. This is a summary choice, not a Garmin-defined
+  recovery metric or a validated cutoff. Preserve the selected period and its
+  coverage; it does not describe the entire post-workout period.
 - End the immediate post-workout window at sleep onset. After sleep, use the
   new morning's resting HR, HRV, sleep, and Body Battery as the stronger context.
 
@@ -86,8 +89,11 @@ For source provenance and evidence strength, see [`sources.md`](sources.md).
   requires evidence of a completed morning sync from valid sleep or HRV.
 - Once validated, sleep, overnight HRV, resting HR, and Body Battery at wake
   remain valid daily context. Continuously changing Body Battery, stress, and
-  heart-rate points require a current-day timestamp and are stale as now-state
-  after 90 minutes.
+  heart-rate points require a current-day timestamp. The local readiness
+  workflow treats points older than 90 minutes as stale for now-state use.
+  This is an operational freshness limit, not a Garmin expiry rule or a
+  physiological transition. Preserve the actual observation time; crossing
+  the limit makes current state uncertain, not automatically worse.
 - For a recommendation evaluated after its planned time, cap continuously
   changing series and timestamped readiness records at
   `min(now, planned_at)`. Completed sleep, overnight HRV, resting HR, and Body
@@ -241,8 +247,10 @@ For source provenance and evidence strength, see [`sources.md`](sources.md).
   the session's value or recovery demand.
 - Heat, humidity, altitude, illness, and incomplete recovery can elevate heart
   rate or respiration and therefore modeled EPOC/Training Effect at the same
-  external workload. Treat an unexpectedly high value as physiological cost
-  that requires context, not automatically as a more successful adaptation.
+  external workload. Treat an unexpectedly high value as possible increased
+  modeled load that requires investigation alongside workload, sensor quality,
+  and athlete context. It does not by itself establish greater actual recovery
+  demand or a more successful adaptation.
 - Training Effect can underrepresent local muscular fatigue, soreness,
   neuromuscular cost, and strength-oriented work. Do not use a low value to
   prove that the athlete is fresh or that a long easy session was unproductive.

@@ -104,13 +104,10 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   artifact contains Garmin's `external_id`. Creating that artifact belongs to
   the caller.
 
-The MCP tools return structured content and do not own persistence. When a repo
-helper needs Garmin data, persist the normalized MCP result explicitly and pass
-that file as a source override:
-
-```bash
-python3 -B scripts/readiness_snapshot.py --date <YYYY-MM-DD> --local-timezone <IANA-timezone> --garmin-json /tmp/garmin-day.json
-```
+The MCP tools return structured content and do not own persistence. When a caller
+needs a saved input, persist the normalized MCP result with its timestamps and
+source context. The caller's workflow owns downstream helper commands and input
+contracts; in training-ai, use the training-analysis skill for that integration.
 
 Authentication is managed outside the repo with
 `/opt/homebrew/bin/gccli auth login`. The plugin prefers that binary and falls
