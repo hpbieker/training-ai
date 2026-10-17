@@ -962,16 +962,41 @@ class PlanningContextTests(unittest.TestCase):
         self.assertEqual(context["calendar"]["cleanup_buffer_minutes"], 15.0)
         resolved = calendar_context_with_slack(
             context["calendar"],
-            planned_at=datetime.fromisoformat("2026-07-31T13:35:00+01:00"),
-            available_windows=[
+            sessions=[
                 {
-                    "start": datetime.fromisoformat("2026-07-31T13:35:00+01:00"),
-                    "end": datetime.fromisoformat("2026-07-31T14:30:00+01:00"),
+                    "start": "2026-07-31T13:35:00+01:00",
+                    "end": "2026-07-31T14:30:00+01:00",
                 }
             ],
         )
+        self.assertEqual(resolved["cleanup_ends_at"], "2026-07-31T14:45:00+01:00")
         self.assertEqual(resolved["practical_stop_slack_minutes"], 15.0)
         self.assertEqual(resolved["hard_stop_slack_minutes"], 215.0)
+
+    def test_calendar_without_scheduled_sessions_has_unknown_slack(self):
+        resolved = calendar_context_with_slack({
+            "cleanup_buffer_minutes": 15,
+            "hard_stop": {"subject": "Departure", "at": "2026-07-31T15:00:00+01:00"},
+        })
+        self.assertIsNone(resolved["cleanup_ends_at"])
+        self.assertIsNone(resolved["practical_stop_slack_minutes"])
+        self.assertIsNone(resolved["hard_stop_slack_minutes"])
+
+    def test_calendar_inferred_stop_uses_last_session_and_cleanup(self):
+        calendar = {
+            "cleanup_buffer_minutes": 15,
+            "events": [
+                {"subject": "Departure", "classification": "fixed_blocker",
+                 "start": "2026-07-31T15:00:00+01:00"},
+            ],
+        }
+        resolved = calendar_context_with_slack(calendar, sessions=[
+            {"end": "2026-07-31T14:30:00+01:00"},
+            {"end": "2026-07-31T10:00:00+01:00"},
+        ])
+        self.assertEqual(resolved["hard_stop"]["subject"], "Departure")
+        self.assertEqual(resolved["hard_stop_slack_minutes"], 15.0)
+        self.assertNotIn("hard_stop", calendar)
 
     def test_accepts_no_available_cycling_modality(self):
         context = parse_planning_context_json(

@@ -132,17 +132,22 @@ For a known planned dose:
 Call MCP `project_load_model` with `target_at`, `workout_after_hours`, and the
 known `low_xss`, `high_xss`, and `peak_xss` dose.
 
-For several workouts, use `simulate_calendar_sequence`. Planner forecasts
+For several workouts in a checkout containing `plugins/xert/xert_load_model.py`,
+use its local `simulate_calendar_sequence` function from repo analysis code.
+This function is not exposed as an MCP tool. If the module is unavailable,
+report that limitation rather than substituting repeated live single-impulse
+calls, which each restart from live state. Planner forecasts
 aggregate multiple planned events on one local day and apply the combined XSS
 at the last event time. Use independent impulses for completed activities or
 an explicitly hypothetical sequence.
 
 Daily linear Low-XSS ramps are not exposed by the narrow MCP projection tool;
-use the model module directly from repo analysis code when that specialized
-simulation is required.
+use the local module's `linear_daily_xss_distribution` function when that
+specialized simulation is required. History validation also belongs to the
+local analysis workflow, not MCP `project_load_model`.
 
 The default start dose is the daily Low XSS that maintains the current Low TL.
-`--start-low-xss` can override it. The solver weights every daily impulse by
+The function argument `start_xss` can override it. The solver weights every daily impulse by
 its remaining decay before the target and solves the final dose of the linear
 ramp. This mode projects Low TL and marginal TP only; it does not yet project
 the repeated ramp's RL or final freshness/status. Do not silently assume either

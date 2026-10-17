@@ -5411,8 +5411,6 @@ def build_llm_context(
             or weather_time_window(home_weather),
             "calendar": calendar_context_with_slack(
                 calendar_context,
-                planned_at=planned_at,
-                available_windows=available_windows,
                 sessions=(decision.get("target_resolution") or {}).get("split", {}).get("sessions") or [],
             ),
         },
@@ -5471,10 +5469,9 @@ def build_llm_context(
 def calendar_context_with_slack(
     calendar_context: dict[str, Any],
     *,
-    planned_at: datetime,
-    available_windows: list[dict[str, datetime]],
     sessions: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    """Measure stop margins from scheduled session ends, including cleanup."""
     result = dict(calendar_context)
     session_ends = [
         datetime.fromisoformat(session["end"])
@@ -5510,7 +5507,7 @@ def calendar_context_with_slack(
         ("practical_stop", "practical_stop_slack_minutes"),
         ("hard_stop", "hard_stop_slack_minutes"),
     ):
-        stop = calendar_context.get(field)
+        stop = result.get(field)
         if not stop:
             result[output_field] = None
             continue

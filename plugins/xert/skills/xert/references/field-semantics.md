@@ -15,9 +15,12 @@ locally validated behavior, read [sources.md](sources.md).
   time by subtracting elapsed time and assuming no intervening training.
 - Express recovery in hours. Zero is Xert's fresh threshold; negative values
   are on the fresh side of that threshold.
-- Treat positive low-system recovery hours as the first gate against more
-  cycling load. Use high and peak recovery hours to judge readiness for work
-  over threshold power (TP).
+- Positive low-system recovery hours mean the Low system has not reached
+  Xert's modeled fresh boundary. Treat this as load/recovery context when
+  choosing dose and intensity, not an automatic ban on cycling. Likewise,
+  high and peak recovery hours describe modeled readiness for work above TP.
+  The caller combines these with the session's purpose, recent training,
+  current physiological signals, and subjective condition before deciding.
 - Do not use per-activity `summary.progression.rl` as current Recovery Load.
 - `recovery_offset` is the current Recovery Demands model input. A larger value
   is more conservative and lengthens modeled recovery; a smaller value permits
@@ -176,8 +179,8 @@ Interpretation and authority rules:
 Controlled Planner probes show that `/recommended-training` sums the XSS from
 all planned exercises on a local calendar day, then applies that combined
 impulse at the time of the last exercise. Model Planner forecasts with
-`simulate_calendar_sequence(..., same_day_policy="aggregate_last")` (the
-default). Use `same_day_policy="all"` only for completed activities or an
+the local `xert_load_model.simulate_calendar_sequence` function with
+`same_day_policy="aggregate_last"` (the default). This is not an MCP tool. Use `same_day_policy="all"` only for completed activities or an
 explicit hypothetical sequence.
 
 ### Controlled build-response probe
