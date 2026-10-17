@@ -913,7 +913,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": "string",
                     "enum": ["summary", "full"],
                     "default": "summary",
-                    "description": "summary returns normalized state; full returns both source payloads.",
+                    "description": "summary returns normalized state, not raw model parameters; full returns both source payloads including model parameters. project_load_model fetches its own inputs.",
                 },
             },
             "additionalProperties": False,
@@ -1254,7 +1254,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     },
     "project_load_model": {
         "name": "project_load_model",
-        "description": "Project Xert Training Load, Recovery Load, Form, readiness, and marginal Fitness Signature response for a planned XSS impulse.",
+        "description": "Project planned XSS and a no-training baseline from the same fetched Xert inputs. Top-level fields describe the planned dose; no_training_projection describes the baseline. Fetches its own model parameters; no prior get_training_state call is needed.",
         "inputSchema": {"type": "object", "properties": {
             "target_at": {"type": "string", "format": "date-time", "description": "ISO projection target."},
             "workout_at": {"type": "string", "format": "date-time", "description": "Absolute ISO workout start. Must lie between the fetched Xert source-state time and target_at; use an explicit UTC offset."},

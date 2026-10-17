@@ -617,6 +617,45 @@ class XertMcpDispatchTests(unittest.TestCase):
 
 
 class XertServiceTests(unittest.TestCase):
+    def test_projection_compares_dose_and_baseline_without_refetching(self):
+        model = {
+            "at_state": {"start_date": "2026-10-17T08:00:00Z",
+                         "tl": {"ftp": 100, "hie": 1, "pp": 0.2},
+                         "rl": {"ftp": 90, "hie": 0.8, "pp": 0.15}},
+            "ir_params": {
+                "ftp": {"tau1": 60, "tau2": 5, "k1": 0.4},
+                "hie": {"tau1": 22, "tau2": 12, "k1": 0.75},
+                "pp": {"tau1": 22, "tau2": 12, "k1": 50},
+            },
+            "recovery_offset": 0.2,
+        }
+        for dose in [0, 100]:
+            with self.subTest(dose=dose):
+                service = self._service(SERVICE.XertCredentials(username="user", password="secret"))
+                with (
+                    patch.object(SERVICE, "_request_json", return_value={
+                        "signature": {"ftp": 296, "hie": 14, "pp": 775},
+                    }) as fetch_signature,
+                    patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value=model) as fetch_model,
+                ):
+                    result = service.project_load_model(
+                        workout_at="2026-10-18T17:00:00+02:00",
+                        target_at="2026-10-19T08:00:00+02:00", low_xss=dose,
+                    )
+                fetch_signature.assert_called_once()
+                fetch_model.assert_called_once()
+                baseline = result["no_training_projection"]
+                self.assertEqual(result["state_sync"], baseline["state_sync"])
+                self.assertEqual(result["horizon_days"], baseline["horizon_days"])
+                self.assertEqual(result["systems"]["high"], baseline["systems"]["high"])
+                if dose:
+                    self.assertGreater(result["totals"]["training_load"], baseline["totals"]["training_load"])
+                    self.assertGreater(result["signature_projection"]["ftp"], baseline["signature_projection"]["ftp"])
+                else:
+                    self.assertEqual(result["systems"], baseline["systems"])
+                    self.assertEqual(result["signature_projection"], baseline["signature_projection"])
+                json.dumps(result)
+
     def test_projection_anchors_absolute_workout_to_fetched_source_state(self):
         service = self._service(SERVICE.XertCredentials(username="user", password="secret"))
         with (
@@ -653,7 +692,7 @@ class XertServiceTests(unittest.TestCase):
             calculate.assert_not_called()
             for workout_at in ["2026-10-17T08:00:00Z", "2026-10-17T09:00:00Z"]:
                 service.project_load_model(workout_at=workout_at, target_at="2026-10-17T09:00:00Z")
-            self.assertEqual(calculate.call_count, 2)
+            self.assertEqual(calculate.call_count, 4)
 
     @staticmethod
     def _service(credentials):

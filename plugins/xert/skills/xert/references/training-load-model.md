@@ -136,6 +136,15 @@ For a known planned dose:
 Call MCP `project_load_model` with `target_at`, `workout_at`, and the
 known `low_xss`, `high_xss`, and `peak_xss` dose.
 
+The same response includes `no_training_projection`, calculated from the same
+fetched signature, TL/RL, parameters and Recovery Demand at the same target.
+Compare its projected TL/RL and signature with the top-level planned-dose
+values to isolate the modeled dose effect. `signature.change` describes change
+from current state, not the difference from no training. Do not fetch a second
+zero-dose projection for this comparison. The service retrieves its own model
+parameters; no preliminary `get_training_state` call is required. For separate
+parameter inspection use `view="full"`, not the normalized `summary` view.
+
 For several workouts in a checkout containing `plugins/xert/xert_load_model.py`,
 use its local `simulate_calendar_sequence` function from repo analysis code.
 This function is not exposed as an MCP tool. If the module is unavailable,

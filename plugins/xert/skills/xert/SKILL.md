@@ -66,7 +66,12 @@ convert XSS to minutes using a mixed-activity historical rate.
 
 `project_load_model` requires absolute `workout_at` and `target_at` timestamps
 for a single XSS impulse. It computes the delay from its fetched source state;
-do not supply a wall-clock offset.
+do not supply a wall-clock offset. One call returns the planned dose at the
+top level and `no_training_projection` from the same fetched inputs. Use these
+for comparisons instead of making separate zero-dose and planned-dose calls.
+It fetches its own model parameters; a prior state call is unnecessary.
+`get_training_state(view="summary")` provides normalized state, not raw model
+parameters; use `view="full"` only when inspecting those parameters.
 Multi-workout simulation, daily ramps and history validation belong to local
 analysis code described in the [load reference](references/training-load-model.md);
 `simulate_calendar_sequence` is not an MCP tool. Do not pass CLI flags to MCP.

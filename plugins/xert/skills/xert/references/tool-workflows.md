@@ -57,7 +57,9 @@ Prefer the Xert MCP tools when they are available:
   normalized Fitness Signature, Training Load, Recovery Load, form, recovery
   hours, exact `fresh_at.low` and `fresh_at.all` timestamps, training status,
   and target XSS. Use `view=full` only when both source
-  payloads or model parameters are required. It does not project a future state,
+  payloads or model parameters are required. Summary does not expose the raw
+  model parameters. `project_load_model` fetches those itself, so a separate
+  state read is not required merely to run a projection. It does not project a future state,
   fetch planned-time advice, or add activity-specific readiness context.
 - `get_training_advice` returns Xert advice. Omit `at` for current advice from
   `/my-fitness`; supply an ISO date-time for planned-time advice from
@@ -133,6 +135,9 @@ Prefer the Xert MCP tools when they are available:
   Require source state <= workout start <= target, using explicit UTC offsets
   or `Z`. Do not calculate a delay from wall-clock now. The result preserves
   `source_state_as_of`, `workout_at`, and `target_at` for verification.
+  Compare the top-level planned-dose result with `no_training_projection` from
+  that same call. Both use the same fetched inputs; separate calls may observe
+  different Xert states.
   For required system-equivalent XSS, supply `build_tp` (watts), `build_hie`
   (kJ), and/or `build_pp` (watts). These are desired marginal gains, not
   absolute signature targets or workout prescriptions.

@@ -522,6 +522,14 @@ class XertService:
             raise ValueError("require Xert state <= workout_at <= target_at")
         horizon_days = (target - source_at).total_seconds() / 86400
         workout_after_days = (workout - source_at).total_seconds() / 86400
+        no_training = deepcopy(calculate_load_projection(
+            at_state=at_state,
+            ir_params=model["ir_params"],
+            current_signature=training_info["signature"],
+            planned_xss={"low": 0.0, "high": 0.0, "peak": 0.0},
+            horizon_days=horizon_days,
+            workout_after_days=workout_after_days,
+        ))
         payload = calculate_load_projection(
             at_state=at_state,
             ir_params=model["ir_params"],
@@ -530,6 +538,12 @@ class XertService:
             horizon_days=horizon_days,
             workout_after_days=workout_after_days,
             desired_signature_gain={"ftp": build_tp, "hie": build_hie, "pp": build_pp},
+        )
+        payload["no_training_projection"] = no_training
+        payload["comparison_basis"] = (
+            "Top-level planned-dose projection and no_training_projection use the same "
+            "fetched signature, load state, model parameters, recovery demand and target time. "
+            "Compare their projected values; signature.change alone is relative to current state."
         )
         payload["source_state_as_of"] = source_at.isoformat()
         payload["workout_at"] = workout.isoformat()
