@@ -213,7 +213,8 @@ def main() -> None:
 def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[SavedActivity, dict[str, Any]]:
     activity = resolve_activity_ref(activity_ref, artifacts_dir=args.artifacts_dir)
     requested_fields = [field.strip() for field in args.fields.split(",") if field.strip()]
-    rows = activity.streams
+    rows = timed_rows(activity.streams)
+    activity.streams[:] = rows
     add_environmental_derivatives(rows)
     fields = usable_analysis_fields(activity, requested_fields)
     window_context = prepare_windows(rows)
@@ -1325,6 +1326,42 @@ def has_gps_like_stream(rows: list[dict[str, str]]) -> bool:
     return False
 
 
+class TimedSample(dict):
+    """Internal row copy retaining source coverage when subsets are filtered."""
+
+    def __init__(self, row, seconds):
+        super().__init__(row)
+        self.covered_seconds = seconds
+
+
+def timed_rows(rows):
+    # Prepare on the complete stream, before removing pauses or coasting.
+    if not rows or all(isinstance(row, TimedSample) for row in rows):
+        return rows
+    clock = timeline(rows)
+    weights = clock[1] if clock else [0.0] * len(rows)
+    return [TimedSample(row, weight) for row, weight in zip(rows, weights)]
+
+
+def covered_seconds(rows):
+    return sum(row.covered_seconds for row in timed_rows(rows))
+
+
+def weighted_values(rows, field):
+    return [(sample, row.covered_seconds) for row in timed_rows(rows)
+            if (sample := value(row, field)) is not None and row.covered_seconds > 0]
+
+
+def weighted_mean(pairs):
+    seconds = sum(w for _, w in pairs)
+    return sum(v * w for v, w in pairs) / seconds if seconds else None
+
+
+def weighted_pct(pairs, predicate):
+    seconds = sum(w for _, w in pairs)
+    return rounded(100 * sum(w for v, w in pairs if predicate(v)) / seconds, digits=1) if seconds else None
+
+
 def indoor_vt1_quality(
     rows: list[dict[str, str]],
     *,
@@ -1335,6 +1372,11 @@ def indoor_vt1_quality(
     window_context=None,
 ) -> dict[str, Any]:
     """Return indoor VT1 quality diagnostics for steady trainer work."""
+
+    source_rows = rows
+    rows = timed_rows(rows)
+    if window_context is None or rows is not source_rows:
+        window_context = prepare_windows(rows)
 
     pause_ranges = [
         (int(pause.get("start_s") or 0), int(pause.get("end_s") or 0))
@@ -1387,9 +1429,9 @@ def indoor_vt1_quality(
             "auto_triggered": auto_triggered,
             "analysis_window": analysis_window,
             "duration": {
-                "moving_min": rounded(len(analysis_moving_rows) / 60, digits=1),
-                "pedaling_min": rounded(len(pedaling_rows) / 60, digits=1),
-                "vt1_stability_min": rounded(len(vt1_stability_rows) / 60, digits=1),
+                "moving_min": rounded(covered_seconds(analysis_moving_rows) / 60, digits=1),
+                "pedaling_min": rounded(covered_seconds(pedaling_rows) / 60, digits=1),
+                "vt1_stability_min": rounded(covered_seconds(vt1_stability_rows) / 60, digits=1),
             },
             "power_control": indoor_power_control(pedaling_rows, vt1_watts),
             "rolling_power_cap_compliance": {
@@ -1434,7 +1476,7 @@ def indoor_vt1_analysis_rows(
         "source": "full_moving_window_fallback",
         "start_s": rounded(row_time_value(moving_rows[0]), digits=0) if moving_rows else None,
         "end_s": rounded(row_time_value(moving_rows[-1]), digits=0) if moving_rows else None,
-        "duration_min": rounded(len(moving_rows) / 60, digits=1),
+        "duration_min": rounded(covered_seconds(moving_rows) / 60, digits=1),
         "meaning": "No usable WORK interval or steady VT1 segment was found.",
     }
 
@@ -1460,7 +1502,7 @@ def indoor_vt1_rows_from_work_blocks(
     if end <= start:
         return None
     selected = rows[start:end]
-    pedaling_min = len([row for row in selected if outdoor_pedaling_row(row)]) / 60
+    pedaling_min = covered_seconds([row for row in selected if outdoor_pedaling_row(row)]) / 60
     if pedaling_min < 20:
         return None
     return selected, {
@@ -1468,7 +1510,7 @@ def indoor_vt1_rows_from_work_blocks(
         "work_interval_count": len(candidates),
         "start_s": rounded(row_time(rows, start), digits=0),
         "end_s": rounded(row_time(rows, end - 1), digits=0),
-        "duration_min": rounded(len(selected) / 60, digits=1),
+        "duration_min": rounded(covered_seconds(selected) / 60, digits=1),
         "meaning": "Indoor VT1 metrics are computed from matching WORK interval rows.",
     }
 
@@ -1496,6 +1538,8 @@ def detect_indoor_vt1_power_segment(
     max_gap_seconds: int = 30,
     min_duration_seconds: int = 20 * 60,
 ) -> tuple[list[dict[str, str]], dict[str, Any]] | None:
+    if not timeline(rows):
+        return None
     moving_ids = {id(row) for row in moving_rows}
     lower = vt1_watts - tolerance_watts
     upper = vt1_watts + tolerance_watts
@@ -1503,8 +1547,16 @@ def detect_indoor_vt1_power_segment(
     start: int | None = None
     last_good: int | None = None
     gap = 0
+    weights = [r.covered_seconds for r in timed_rows(rows)]
 
     for index, row in enumerate(rows):
+        if index and row_time_value(row) > row_time_value(rows[index-1]) + weights[index-1]:
+            if start is not None and last_good is not None:
+                candidate = (sum(weights[start:last_good+1]), start, last_good)
+                if best is None or candidate[0] > best[0]:
+                    best = candidate
+            start = last_good = None
+            gap = 0
         watts = value(row, "watts")
         good = (
             id(row) in moving_ids
@@ -1520,11 +1572,11 @@ def detect_indoor_vt1_power_segment(
             continue
         if start is None:
             continue
-        gap += 1
+        gap += weights[index]
         if gap <= max_gap_seconds:
             continue
         if last_good is not None:
-            candidate = (last_good - start + 1, start, last_good)
+            candidate = (sum(weights[start:last_good+1]), start, last_good)
             if best is None or candidate[0] > best[0]:
                 best = candidate
         start = None
@@ -1532,7 +1584,7 @@ def detect_indoor_vt1_power_segment(
         gap = 0
 
     if start is not None and last_good is not None:
-        candidate = (last_good - start + 1, start, last_good)
+        candidate = (sum(weights[start:last_good+1]), start, last_good)
         if best is None or candidate[0] > best[0]:
             best = candidate
 
@@ -1547,7 +1599,7 @@ def detect_indoor_vt1_power_segment(
         "max_gap_seconds": max_gap_seconds,
         "start_s": rounded(row_time(rows, start_index), digits=0),
         "end_s": rounded(row_time(rows, end_index), digits=0),
-        "duration_min": rounded(len(selected) / 60, digits=1),
+        "duration_min": rounded(covered_seconds(selected) / 60, digits=1),
         "meaning": "Indoor VT1 metrics are computed from the longest steady power segment near the VT1 target.",
     }
 
@@ -1571,19 +1623,15 @@ def indoor_vt1_caps(vt1_watts: float) -> list[int]:
 
 
 def indoor_power_control(rows: list[dict[str, str]], vt1_watts: float) -> dict[str, Any]:
-    watts = [sample for row in rows if (sample := value(row, "watts")) is not None]
-    if not watts:
+    pairs = weighted_values(rows, 'watts')
+    if not pairs:
         return {}
-    within_10 = sum(1 for sample in watts if abs(sample - vt1_watts) <= 10)
-    below_10 = sum(1 for sample in watts if sample < vt1_watts - 10)
-    above_10 = sum(1 for sample in watts if sample > vt1_watts + 10)
-    above_20 = sum(1 for sample in watts if sample > vt1_watts + 20)
     return {
-        "avg_w": rounded(sum(watts) / len(watts), digits=0),
-        "pct_within_vt1_10w": rounded(within_10 / len(watts) * 100, digits=1),
-        "pct_below_vt1_minus_10w": rounded(below_10 / len(watts) * 100, digits=1),
-        "pct_above_vt1_plus_10w": rounded(above_10 / len(watts) * 100, digits=1),
-        "pct_above_vt1_plus_20w": rounded(above_20 / len(watts) * 100, digits=1),
+        "avg_w": rounded(weighted_mean(pairs), digits=0),
+        "pct_within_vt1_10w": weighted_pct(pairs, lambda w: abs(w-vt1_watts) <= 10),
+        "pct_below_vt1_minus_10w": weighted_pct(pairs, lambda w: w < vt1_watts-10),
+        "pct_above_vt1_plus_10w": weighted_pct(pairs, lambda w: w > vt1_watts+10),
+        "pct_above_vt1_plus_20w": weighted_pct(pairs, lambda w: w > vt1_watts+20),
     }
 
 
@@ -1708,6 +1756,8 @@ def outdoor_vt1_pacing(
 ) -> dict[str, Any]:
     """Return outdoor VT1/endurance pacing diagnostics for variable terrain."""
 
+    rows = timed_rows(rows)
+
     pause_ranges = [
         (int(pause.get("start_s") or 0), int(pause.get("end_s") or 0))
         for pause in pauses
@@ -1773,8 +1823,8 @@ def outdoor_vt1_pacing(
             "caps_watts": caps,
             "auto_triggered": auto_triggered,
             "duration": {
-                "moving_min": rounded(len(moving_rows) / 60, digits=1),
-                "pedaling_min": rounded(len(pedaling_rows) / 60, digits=1),
+                "moving_min": rounded(covered_seconds(moving_rows) / 60, digits=1),
+                "pedaling_min": rounded(covered_seconds(pedaling_rows) / 60, digits=1),
             },
             "pedaling_normalized": outdoor_pedaling_normalized(moving_rows, pedaling_rows, vt1_watts),
             "rolling_power_cap_compliance": rolling_compliance,
@@ -1871,7 +1921,7 @@ def outdoor_best_continuous_vt1_blocks(
     by_duration = []
     for duration_min in durations_min:
         duration_seconds = duration_min * 60
-        if len(moving_rows) < duration_seconds:
+        if covered_seconds(moving_rows) < duration_seconds:
             continue
         best = best_continuous_vt1_block_for_duration(
             rows,
@@ -1903,8 +1953,16 @@ def best_continuous_vt1_block_for_duration(
 ) -> dict[str, Any] | None:
     candidates: list[tuple[float, int, int]] = []
     step = max(1, step_seconds)
-    for start_index in range(0, len(moving_rows) - duration_seconds + 1, step):
-        window_rows = moving_rows[start_index: start_index + duration_seconds]
+    next_start = float('-inf')
+    for start_row in moving_rows:
+        start_time = row_time_value(start_row)
+        if start_time is None or start_time < next_start:
+            continue
+        next_start = start_time + step
+        window_rows = [r for r in moving_rows
+                       if start_time <= row_time_value(r) < start_time + duration_seconds]
+        if covered_seconds(window_rows) < duration_seconds:
+            continue
         if not window_rows:
             continue
         start = row_time_value(window_rows[0])
@@ -1954,9 +2012,9 @@ def outdoor_vt1_block_prescore(
     cap10_pct = rolling_time_over(rolling_60, pedaling_rows, cap10).get("pct") or 0
     cap30_min = rolling_time_over(rolling_60, moving_rows, cap30).get("min") or 0
     cap50_min = rolling_time_over(rolling_60, moving_rows, cap50).get("min") or 0
-    pedaling_pct = len(pedaling_rows) / len(moving_rows) * 100 if moving_rows else 0
+    pedaling_pct = covered_seconds(pedaling_rows) / covered_seconds(moving_rows) * 100 if covered_seconds(moving_rows) else 0
     watts = [sample for row in pedaling_rows if (sample := value(row, "watts")) is not None]
-    avg_w = sum(watts) / len(watts) if watts else 0
+    avg_w = weighted_mean(weighted_values(pedaling_rows, "watts")) or 0
     avg_penalty = abs(avg_w - vt1_watts) * 0.3
     cap_penalty = cap10_pct * 0.45 + cap30_min * 2.0 + cap50_min * 4.0
     continuity_bonus = min(10.0, pedaling_pct / 10)
@@ -1971,7 +2029,7 @@ def outdoor_vt1_block_quality(
     duration_seconds: int,
 ) -> dict[str, Any] | None:
     pedaling_rows = [row for row in moving_rows if outdoor_pedaling_row(row)]
-    if len(pedaling_rows) < duration_seconds * 0.75:
+    if covered_seconds(pedaling_rows) < duration_seconds * 0.75:
         return None
     rolling_60 = rolling_power_by_time(rows, 60, [])
     caps = outdoor_vt1_caps(vt1_watts)
@@ -2060,7 +2118,7 @@ def outdoor_power_bin_physiology(
         ("vt1_plus_10_to_30", vt1_watts + 10, vt1_watts + 30),
         ("above_vt1_plus_30", vt1_watts + 30, None),
     ]
-    total = len(pedaling_rows)
+    total = covered_seconds(pedaling_rows)
     result = []
     for label, low, high in bins:
         segment = [
@@ -2079,8 +2137,8 @@ def outdoor_power_bin_physiology(
                         rounded(low, digits=0) if low is not None else None,
                         rounded(high, digits=0) if high is not None else None,
                     ],
-                    "pedaling_min": rounded(len(segment) / 60, digits=1),
-                    "pct_pedaling": rounded(len(segment) / total * 100, digits=1) if total else None,
+                    "pedaling_min": rounded(covered_seconds(segment) / 60, digits=1),
+                    "pct_pedaling": rounded(covered_seconds(segment) / total * 100, digits=1) if total else None,
                     **stats,
                 }
             )
@@ -2192,7 +2250,7 @@ def outdoor_smo2_response(
     pedaling_rows: list[dict[str, str]],
     vt1_watts: float,
 ) -> dict[str, Any] | None:
-    if sum(1 for row in pedaling_rows if value(row, "smo2") is not None) < 10 * 60:
+    if sum(w for _, w in weighted_values(pedaling_rows, "smo2")) < 10 * 60:
         return None
     low = vt1_watts - 20
     high = vt1_watts + 10
@@ -2203,22 +2261,21 @@ def outdoor_smo2_response(
         and low <= watts <= high
         and value(row, "smo2") is not None
     ]
-    if len(matched) < 10 * 60:
+    if covered_seconds(matched) < 10 * 60:
         return None
     early, late = split_rows_by_elapsed_time(matched, parts=2)
     early_smo2 = average_field(early, "smo2")
     late_smo2 = average_field(late, "smo2")
     all_smo2 = [sample for row in pedaling_rows if (sample := value(row, "smo2")) is not None]
-    low_smo2 = sum(1 for sample in all_smo2 if sample < 20)
     return drop_none(
         {
             "power_window_watts": [round(low), round(high)],
-            "matched_min": rounded(len(matched) / 60, digits=1),
+            "matched_min": rounded(covered_seconds(matched) / 60, digits=1),
             "early_avg_smo2": rounded(early_smo2, digits=1),
             "late_avg_smo2": rounded(late_smo2, digits=1),
             "smo2_delta": numeric_delta(early_smo2, late_smo2),
             "min_smo2": rounded(min(all_smo2), digits=1) if all_smo2 else None,
-            "pct_pedaling_below_20_smo2": rounded(low_smo2 / len(all_smo2) * 100, digits=1)
+            "pct_pedaling_below_20_smo2": weighted_pct(weighted_values(pedaling_rows, "smo2"), lambda v: v < 20)
             if all_smo2
             else None,
         }
@@ -2275,7 +2332,7 @@ def spike_aftereffect(
     before = rows_in_elapsed_range(rows, max(0, start - 180), start - 1)
     during = rows_in_elapsed_range(rows, start, end)
     after = rows_in_elapsed_range(rows, end + 1, end + 300)
-    if len(during) < 20 or len(after) < 60:
+    if covered_seconds(during) < 20 or covered_seconds(after) < 60:
         return None
     before_stats = outdoor_segment_stats(before)
     during_stats = outdoor_segment_stats(during)
@@ -2300,8 +2357,8 @@ def spike_aftereffect(
         {
             "start_s": start,
             "end_s": end,
-            "duration_s": end - start + 1,
-            "duration_min": rounded((end - start + 1) / 60, digits=1),
+            "duration_s": covered_seconds(during),
+            "duration_min": rounded(covered_seconds(during) / 60, digits=1),
             "avg_w": during_stats.get("avg_w"),
             "response_score": rounded(score, digits=1),
             "after_ve_per_w_delta_pct": rounded(ve_delta, digits=1),
@@ -2322,7 +2379,7 @@ def detect_traffic_stop_segments(
     stops: list[dict[str, Any]] = []
     start: int | None = None
     last: int | None = None
-    for row in rows:
+    for row in timed_rows(rows):
         time = row_time_value(row)
         if time is None:
             continue
@@ -2330,7 +2387,7 @@ def detect_traffic_stop_segments(
         if stopped:
             if start is None:
                 start = time
-            last = time
+            last = time + row.covered_seconds - 1
             continue
         if start is not None and last is not None:
             append_traffic_stop(stops, rows, start, last, min_seconds, max_seconds)
@@ -2451,10 +2508,10 @@ def outdoor_pedaling_normalized(
     pedaling_rows: list[dict[str, str]],
     vt1_watts: float,
 ) -> dict[str, Any]:
-    moving_count = len(moving_rows)
-    pedaling_count = len(pedaling_rows)
+    moving_count = covered_seconds(moving_rows)
+    pedaling_count = covered_seconds(pedaling_rows)
     coasting_count = max(0, moving_count - pedaling_count)
-    watts = [sample for row in pedaling_rows if (sample := value(row, "watts")) is not None]
+    pairs = weighted_values(pedaling_rows, "watts")
     low = vt1_watts - 20
     high = vt1_watts + 10
     target_low = vt1_watts - 10
@@ -2462,7 +2519,7 @@ def outdoor_pedaling_normalized(
 
     return drop_none(
         {
-            "pedaling_avg_w": rounded(sum(watts) / len(watts), digits=0) if watts else None,
+            "pedaling_avg_w": rounded(weighted_mean(pairs), digits=0) if pairs else None,
             "pedaling_time_pct_of_moving": (
                 rounded(pedaling_count / moving_count * 100, digits=1) if moving_count else None
             ),
@@ -2471,31 +2528,13 @@ def outdoor_pedaling_normalized(
                 rounded(coasting_count / moving_count * 100, digits=1) if moving_count else None
             ),
             "endurance_window_watts": [round(low), round(high)],
-            "pct_in_endurance_window": pct_watts_between(watts, low, high),
+            "pct_in_endurance_window": weighted_pct(pairs, lambda w: low <= w <= high),
             "target_window_watts": [round(target_low), round(target_high)],
-            "pct_in_target_window": pct_watts_between(watts, target_low, target_high),
-            "pct_below_endurance_window": pct_watts_below(watts, low),
-            "pct_above_target_window": pct_watts_above(watts, target_high),
+            "pct_in_target_window": weighted_pct(pairs, lambda w: target_low <= w <= target_high),
+            "pct_below_endurance_window": weighted_pct(pairs, lambda w: w < low),
+            "pct_above_target_window": weighted_pct(pairs, lambda w: w > target_high),
         }
     )
-
-
-def pct_watts_between(watts: list[float], low: float, high: float) -> float | int | None:
-    if not watts:
-        return None
-    return rounded(sum(1 for sample in watts if low <= sample <= high) / len(watts) * 100, digits=1)
-
-
-def pct_watts_below(watts: list[float], low: float) -> float | int | None:
-    if not watts:
-        return None
-    return rounded(sum(1 for sample in watts if sample < low) / len(watts) * 100, digits=1)
-
-
-def pct_watts_above(watts: list[float], high: float) -> float | int | None:
-    if not watts:
-        return None
-    return rounded(sum(1 for sample in watts if sample > high) / len(watts) * 100, digits=1)
 
 
 def matched_power_drift(
@@ -2526,8 +2565,8 @@ def outdoor_vt1_quality_scores(
     vt1_watts: float,
     matched_drift: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    pedaling_min = len(pedaling_rows) / 60
-    moving_min = len(moving_rows) / 60
+    pedaling_min = covered_seconds(pedaling_rows) / 60
+    moving_min = covered_seconds(moving_rows) / 60
     cap10 = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 10), "pct")
     cap30 = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 30), "min")
     cap50 = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 50), "min")
@@ -2577,9 +2616,9 @@ def outdoor_endurance_characterization(
 ) -> dict[str, Any]:
     """Classify outdoor endurance rides separately from strict VT1 execution."""
 
-    pedaling_min = len(pedaling_rows) / 60
-    moving_min = len(moving_rows) / 60
-    climb_min = sum((climb["end_s"] - climb["start_s"] + 1) for climb in climbs) / 60
+    pedaling_min = covered_seconds(pedaling_rows) / 60
+    moving_min = covered_seconds(moving_rows) / 60
+    climb_min = sum(climb["duration_s"] for climb in climbs) / 60
     cap10_pct = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 10), "pct")
     cap30_min = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 30), "min")
     cap50_min = rolling_cap_metric(rolling_60_compliance, round(vt1_watts + 50), "min")
@@ -2677,30 +2716,25 @@ def row_time_value(row: dict[str, str]) -> int | None:
     return int(parsed) if isinstance(parsed, (int, float)) else None
 
 
-def rolling_power_by_time(
-    rows: list[dict[str, str]],
-    window_seconds: int,
-    pauses: list[tuple[int, int]],
-) -> dict[int, float | None]:
-    queue: list[tuple[int, float]] = []
-    running_sum = 0.0
-    rolled: dict[int, float | None] = {}
-    min_samples = max(5, window_seconds // 2)
-    for row in rows:
+def rolling_power_by_time(rows, window_seconds, pauses):
+    queue = []
+    rolled = {}
+    for row in timed_rows(rows):
         time = row_time_value(row)
         if time is None:
             continue
-        watts = value(row, "watts")
+        end = time + row.covered_seconds
+        watts = value(row, 'watts')
         if not outdoor_moving_row(row, pauses):
             queue.clear()
-            running_sum = 0.0
         elif watts is not None:
-            queue.append((time, watts))
-            running_sum += watts
-        while queue and queue[0][0] < time - window_seconds + 1:
-            _, old = queue.pop(0)
-            running_sum -= old
-        rolled[time] = running_sum / len(queue) if len(queue) >= min_samples else None
+            queue.append((time, end, watts))
+        cutoff = end - window_seconds
+        while queue and queue[0][1] <= cutoff:
+            queue.pop(0)
+        pairs = [(w, max(0, stop - max(start, cutoff))) for start, stop, w in queue]
+        duration = sum(weight for _, weight in pairs)
+        rolled[time] = weighted_mean(pairs) if duration >= window_seconds / 2 else None
     return rolled
 
 
@@ -2731,60 +2765,39 @@ def rolling_cap_summary(
     }
 
 
-def rolling_time_over(
-    series: dict[int, float | None],
-    rows: list[dict[str, str]],
-    cap: int,
-) -> dict[str, Any]:
-    times = [row_time_value(row) for row in rows]
-    values = [series.get(time) for time in times if time is not None and series.get(time) is not None]
-    count = sum(1 for sample in values if isinstance(sample, (int, float)) and sample >= cap)
-    return {
-        "min": rounded(count / 60, digits=1),
-        "pct": rounded(count / len(values) * 100, digits=1) if values else None,
-    }
+def rolling_time_over(series, rows, cap):
+    pairs = [(series[row_time_value(row)], row.covered_seconds) for row in timed_rows(rows)
+             if isinstance(series.get(row_time_value(row)), (int, float))]
+    seconds = sum(w for sample, w in pairs if sample >= cap)
+    return {"min": rounded(seconds / 60, digits=1),
+            "pct": weighted_pct(pairs, lambda sample: sample >= cap)}
 
 
-def rolling_bouts_over(
-    series: dict[int, float | None],
-    rows: list[dict[str, str]],
-    cap: int,
-    pauses: list[tuple[int, int]],
-    *,
-    min_seconds: int = 20,
-    max_gap_seconds: int = 10,
-) -> list[tuple[int, int]]:
-    bouts: list[tuple[int, int]] = []
-    start: int | None = None
-    last: int | None = None
-    gap = 0
-    for row in rows:
+def rolling_bouts_over(series, rows, cap, pauses, *, min_seconds=20, max_gap_seconds=10):
+    bouts = []
+    start = last_end = previous_end = None
+    for row in timed_rows(rows):
         time = row_time_value(row)
         if time is None:
             continue
+        if previous_end is not None and time > previous_end:
+            if start is not None and last_end - start >= min_seconds:
+                bouts.append((start, last_end - 1))
+            start = last_end = None
+        end = time + row.covered_seconds
         sample = series.get(time)
-        over = (
-            outdoor_moving_row(row, pauses)
-            and isinstance(sample, (int, float))
-            and sample >= cap
-        )
+        over = outdoor_moving_row(row, pauses) and isinstance(sample, (int, float)) and sample >= cap
         if over:
             if start is None:
                 start = time
-            last = time
-            gap = 0
-            continue
-        if start is None:
-            continue
-        gap += 1
-        if gap > max_gap_seconds:
-            if last is not None and last - start + 1 >= min_seconds:
-                bouts.append((start, last))
-            start = None
-            last = None
-            gap = 0
-    if start is not None and last is not None and last - start + 1 >= min_seconds:
-        bouts.append((start, last))
+            last_end = end
+        elif start is not None and end - last_end > max_gap_seconds:
+            if last_end - start >= min_seconds:
+                bouts.append((start, last_end - 1))
+            start = last_end = None
+        previous_end = end
+    if start is not None and last_end - start >= min_seconds:
+        bouts.append((start, last_end - 1))
     return bouts
 
 
@@ -2830,7 +2843,7 @@ def detect_outdoor_climbs(
             continue
         if start is None:
             continue
-        gap += 1
+        gap = time - last if last is not None else 0
         if gap > max_gap_seconds:
             append_outdoor_climb(
                 climbs,
@@ -2925,8 +2938,8 @@ def outdoor_range_stats(rows: list[dict[str, str]], start: int, end: int) -> dic
         {
             "start_s": start,
             "end_s": end,
-            "duration_s": end - start + 1,
-            "duration_min": rounded((end - start + 1) / 60, digits=1),
+            "duration_s": covered_seconds(segment),
+            "duration_min": rounded(covered_seconds(segment) / 60, digits=1),
             "distance_km": rounded(distance_m / 1000, digits=2) if distance_m is not None else None,
             "net_alt_m": rounded(net_altitude, digits=1),
             "pos_gain_m": rounded(positive_gain, digits=1),
@@ -2944,8 +2957,8 @@ def outdoor_segment_stats(segment: list[dict[str, str]]) -> dict[str, Any]:
     br = average_field(pedaling, "respiration")
     return drop_none(
         {
-            "moving_min": rounded(len(segment) / 60, digits=1),
-            "pedaling_min": rounded(len(pedaling) / 60, digits=1),
+            "moving_min": rounded(covered_seconds(segment) / 60, digits=1),
+            "pedaling_min": rounded(covered_seconds(pedaling) / 60, digits=1),
             "avg_w": rounded(watts, digits=0),
             "avg_hr": rounded(hr, digits=0),
             "w_per_hr": rounded(watts / hr, digits=3) if watts and hr else None,
@@ -2988,15 +3001,15 @@ def time_after_moving_seconds(
 ) -> int:
     count = 0
     last = start
-    for row in rows:
+    for row in timed_rows(rows):
         time = row_time_value(row)
         if time is None or time < start:
             continue
         last = time
         if outdoor_moving_row(row, pauses):
-            count += 1
+            count += row.covered_seconds
         if count >= seconds:
-            return time
+            return int(time + row.covered_seconds - (count - seconds))
     return last
 
 
@@ -3070,7 +3083,9 @@ def last_numeric(rows: list[dict[str, str]], field: str) -> float | None:
 
 def average_field(rows: list[dict[str, str]], field: str) -> float | None:
     stats = field_summary(rows, field)
-    return stats["avg"] if stats else None
+    if not stats:
+        return None
+    return weighted_mean(weighted_values(rows, field))
 
 
 def add_environmental_derivatives(rows: list[dict[str, str]]) -> None:
