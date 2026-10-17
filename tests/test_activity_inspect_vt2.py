@@ -13,8 +13,30 @@ from activity_inspect import (  # noqa: E402
     default_output_path,
     thermal_evidence_assessment,
     vt2_session_quality,
+    vt2_candidate_blocks,
+    vt2_quality,
     vt2_execution_verdict,
 )
+
+
+class Vt2AnchorTests(unittest.TestCase):
+    def test_candidate_selection_uses_supplied_anchor(self):
+        blocks = [{'summary': {'watts': {'avg': watts}}, 'duration_seconds': 600}
+                  for watts in [190, 290, 390]]
+        self.assertEqual([i for i, _ in vt2_candidate_blocks(blocks, 190)], [1])
+        self.assertEqual([i for i, _ in vt2_candidate_blocks(blocks, 390)], [3])
+        self.assertEqual(vt2_candidate_blocks(blocks, None), [])
+
+    def test_name_cannot_override_anchor(self):
+        block = {'summary': {'watts': {'avg': 290}}, 'duration_seconds': 600}
+        self.assertIsNone(vt2_quality({'name': 'VT2 intervals'}, [], [block], [], vt2_watts=390))
+
+    def test_missing_or_invalid_anchor_keeps_intent_separate(self):
+        for anchor in [None, 0, -1, True, float('nan'), float('inf')]:
+            result = vt2_quality({'name': 'VT₂ intervals'}, [], [], [], vt2_watts=anchor)
+            self.assertEqual(result['intended_session_from_name'], 'vt2')
+            self.assertEqual(result['intensity_classification'], 'unresolved')
+            self.assertEqual(result['blocks'], [])
 
 
 class EnvironmentalDerivativeTests(unittest.TestCase):

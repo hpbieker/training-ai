@@ -122,7 +122,7 @@ def main() -> None:
         type=float,
         help=(
             "Working VT2 anchor for VT2 quality diagnostics. If omitted, brief output "
-            "still evaluates blocks that look VT2-like from activity name or power."
+            "reports unresolved intensity; the activity name only describes intent."
         ),
     )
     parser.add_argument(
@@ -832,7 +832,18 @@ def vt2_quality(
 ) -> dict[str, Any] | None:
     """Return VT2/threshold-control diagnostics without touching VT1 scoring."""
 
-    candidates = vt2_candidate_blocks(activity, work_blocks, vt2_watts)
+    name = str(activity.get("name") or "").lower().replace("₂", "2")
+    intended_session = "vt2" if "vt2" in name else "unspecified"
+    if not valid_vt2_anchor(vt2_watts):
+        return {
+            "status": "unresolved",
+            "reason": "missing_or_invalid_vt2_anchor",
+            "intended_session_from_name": intended_session,
+            "intensity_classification": "unresolved",
+            "blocks": [],
+            "meaning": "The activity name describes intent; supply a valid VT2 anchor to assess observed intensity.",
+        }
+    candidates = vt2_candidate_blocks(work_blocks, vt2_watts)
     if not candidates:
         return None
 
@@ -841,7 +852,7 @@ def vt2_quality(
             rows,
             block,
             index=index,
-            target_watts=vt2_target_watts(block, vt2_watts),
+            target_watts=float(vt2_watts),
             anchor_watts=vt2_watts,
         )
         for index, block in candidates
@@ -856,6 +867,8 @@ def vt2_quality(
     return drop_none(
         {
             "status": "experimental",
+            "intended_session_from_name": intended_session,
+            "intensity_classification": "within_anchor_candidate_band",
             "meaning": (
                 "Mechanical execution diagnostics and descriptive physiological evidence. "
                 "No physiological cost, recovery, or combined score is assigned."
@@ -942,49 +955,35 @@ def minimum_numeric(items: list[dict[str, Any]], key: str) -> float | int | None
     return rounded(min(values), digits=1) if values else None
 
 
+def valid_vt2_anchor(vt2_watts: Any) -> bool:
+    return (isinstance(vt2_watts, (int, float)) and not isinstance(vt2_watts, bool)
+            and math.isfinite(vt2_watts) and vt2_watts > 0)
+
+
 def vt2_candidate_blocks(
-    activity: dict[str, Any],
     work_blocks: list[dict[str, Any]],
     vt2_watts: Any,
 ) -> list[tuple[int, dict[str, Any]]]:
-    name = str(activity.get("name") or "").lower().replace("₂", "2")
     candidates: list[tuple[int, dict[str, Any]]] = []
     for index, block in enumerate(work_blocks, start=1):
         summary = block.get("summary") or {}
         watts = stat(summary, "watts", "avg", digits=1)
         duration = block.get("duration_seconds") or 0
-        zone = beta_intensity_detection(name, watts)["zone"]
-        if vt2_candidate_power(watts, vt2_watts, activity_name=name, zone=zone, duration=duration):
+        if vt2_candidate_power(watts, vt2_watts, duration=duration):
             candidates.append((index, block))
     return candidates
 
 
-def vt2_candidate_power(
-    watts: Any,
-    vt2_watts: Any,
-    *,
-    activity_name: str,
-    zone: str,
-    duration: Any,
-) -> bool:
+def vt2_candidate_power(watts: Any, vt2_watts: Any, *, duration: Any) -> bool:
+    if not valid_vt2_anchor(vt2_watts):
+        return False
     if not isinstance(watts, (int, float)) or not isinstance(duration, (int, float)):
         return False
-    if duration < 5 * 60:
+    if not math.isfinite(watts) or not math.isfinite(duration) or duration < 5 * 60:
         return False
-    if zone in {"vt2", "vt2_like"}:
-        return True
-    if "vt2" in activity_name and watts >= 250:
-        return True
-    if isinstance(vt2_watts, (int, float)):
-        return vt2_watts - 35 <= watts <= vt2_watts + 25
-    return 260 <= watts <= 320
-
-
-def vt2_target_watts(block: dict[str, Any], vt2_watts: Any) -> float | None:
-    if isinstance(vt2_watts, (int, float)):
-        return float(vt2_watts)
-    watts = stat(block.get("summary") or {}, "watts", "avg", digits=1)
-    return float(watts) if isinstance(watts, (int, float)) else None
+    # Candidate-selection tolerance around the supplied anchor, not a measured
+    # physiological zone boundary. Activity names cannot override this check.
+    return vt2_watts - 35 <= watts <= vt2_watts + 25
 
 
 def vt2_block_quality(
