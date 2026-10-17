@@ -26,9 +26,21 @@ live access, field semantics, and remote write safety.
 
 ## Choose The Workflow
 
+Choose the workflow that answers the user's request. Combine analysis and a
+new training recommendation only when both are requested; a brief consequence
+for subsequent training within an activity analysis does not require a complete
+daily recommendation.
+
 ### Activity or workout analysis
 
-Read [references/activity-analysis.md](references/activity-analysis.md).
+Read [references/activity-analysis.md](references/activity-analysis.md) to
+assess a completed session's execution, physiological response, and meaning.
+
+### Activity comparison
+
+Read [references/activity-analysis.md](references/activity-analysis.md) for
+each selected activity. Establish which sessions or work blocks are comparable,
+then assess the observed differences and their uncertainty.
 
 ### Molecular stimulus analysis
 
@@ -82,49 +94,43 @@ result, then attach it through the Strava media workflow.
 
 ## Output
 
+### Shared rules
+
 - Answer in chat unless the user explicitly requests a report file.
-- For normal interactive recommendations, use separate unique private
-  `--output-dir` directories under `/private/tmp` for each candidate and the
-  final run. Write temporary source snapshots and intermediate data using
-  ordinary file I/O rather than `apply_patch`, so they do not generate Codex
-  file-change cards. Write persistent artifacts under `outputs/` only when
-  explicitly requested or required by an automation or later analysis. Do not
-  link JSON packets in a normal recommendation.
-- If the final recommendation differs from the helper script's recommendation,
-  briefly explain the deviation and its reason.
-- Lead with one clear recommendation. Include timing, duration, warm-up,
-  watts/intensity, route or setup, practical fueling, and the decisive reasons.
-- Every training recommendation must also include a separate
-  `Capacity before the next workout` section. Resolve the next day's planned workout role
-  and exact practical start time, then report how much training can be performed
-  at the current recommendation's planned start while still reaching Xert's
-  fresh boundary for that next workout. Show the limiting Low/High/Peak XSS
-  capacity, convert the relevant limit through the actual proposed workout
-  structure to minutes and watts, and distinguish this maximum from the
-  recommended dose. Read the detailed workflow in
-  [references/daily-recommendations.md](references/daily-recommendations.md).
-- Every training recommendation must present these three items explicitly and
-  separately, even when the recommendation packet already supplies the final
-  selection:
-  1. `Physiological scope`: the readiness ceiling—what intensity current
-     physiology and recovery allow, independent of what the plan calls for.
-  2. `Training need`: the intensity direction indicated by the resolved
-     goal, progression history, and recent same-family stimulus/load.
-  3. `Final recommendation`: the selected intensity domain and concrete dose after
-     combining the first two dimensions with logistics, weather, and body feel.
-  Translate these three canonical labels and `Capacity before the next workout`
-  into the user's language. Use the same translated wording consistently, keep
-  the three layers in this order, and present capacity as a separate section.
-  Do not collapse the first two into justification for the third or report only
-  the final recommendation. State clearly when physiology allows harder
-  training than the plan selects. Explain why the resulting domain (for example
-  rest, recovery, VT1, VT2, or VO2max) is preferable to the next harder and
-  easier alternatives. Do not infer VT1 rather than VT2 from a predominantly
-  low-XSS target split; both can generate predominantly low XSS.
-- Include only modalities available at the resolved location. When indoor and
-  outdoor cycling are both available, give concrete versions of both and state
-  which wins.
 - Label each training-load value with its source and metric; never treat values
   from different sources as interchangeable.
-- State missing or stale inputs and how they reduce confidence before upgrading
-  intensity.
+- State missing or stale inputs when they materially limit the conclusion.
+- Use the output rules for the selected workflow below. Route recommendations,
+  molecular explanations, and workout cards follow their own workflow above.
+
+### Completed-activity analysis
+
+Lead with a concise verdict on the actual session and whether it fulfilled its
+purpose. Explain mechanical execution, integrated physiological response, and
+what the findings mean for recovery and progression. Keep observed responses
+separate from modeled stimulus and inferred adaptation. Use the detailed
+[analysis reporting contract](references/physiological-response-synthesis.md#reporting-contract).
+
+### Activity comparison
+
+Lead with the main supported difference. Identify the compared sessions or work
+blocks, explain their comparability and material confounders, and distinguish
+execution differences from physiological response differences. State what the
+comparison supports about development and what remains uncertain; a difference
+between sessions does not by itself establish adaptation.
+
+### Readiness question
+
+Answer the specific readiness question using the relevant evidence and its
+limitations. Use the readiness guidance in
+[references/daily-recommendations.md](references/daily-recommendations.md).
+Apply the full recommendation output contract when the user also requests a
+concrete session decision.
+
+### Training recommendation
+
+Follow the
+[Final Answer Contract](references/daily-recommendations.md#final-answer-contract),
+including the separate physiological scope, training need, final recommendation,
+and capacity before the next workout. Recommendation-specific timing, dose,
+fueling, alternatives, and artifact handling belong to that workflow.

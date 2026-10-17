@@ -461,6 +461,16 @@ Use an existing suitable workout as-is when it fits; modify power, duration, or
 repetitions only for a concrete readiness, time, load, or specificity reason.
 Do not add warm-up outside a workout whose total already includes it.
 
+## Recommendation Artifacts
+
+For normal interactive recommendations, use separate unique private
+`--output-dir` directories under `/private/tmp` for each candidate and the final
+run. Write temporary source snapshots and intermediate data using ordinary file
+I/O rather than `apply_patch`, so they do not generate Codex file-change cards.
+Write persistent artifacts under `outputs/` only when explicitly requested or
+required by an automation or later analysis. Do not link JSON packets in a
+normal recommendation.
+
 ## Final Answer Contract
 
 - A complete recommendation requires a successful `recommend_training.py`
@@ -476,7 +486,14 @@ Do not add warm-up outside a workout whose total already includes it.
   subtract them again. Do not schedule an `unscheduled_remainder` without a real
   available window. If new information justifies a different recommendation,
   label it as a coaching override and state which packet input did not cover it.
-- Start with the recommended session and best time.
+- Start with the recommended session and best time. Include duration, warm-up,
+  watts/intensity, route or setup, and practical fueling. Include only modalities
+  available at the resolved location.
+- Include a separate `Capacity before the next workout` section, translated into
+  the user's language, following the capacity workflow above. Show the next
+  workout role and exact start, limiting Low/High/Peak XSS capacity, and its
+  conversion through the proposed structure to duration and watts. Keep this
+  maximum distinct from the recommended dose.
 - Present all three layers below as separate, named parts of every
   recommendation; reporting only the final session is not sufficient:
   - `Physiological scope`: report the readiness ceiling from
