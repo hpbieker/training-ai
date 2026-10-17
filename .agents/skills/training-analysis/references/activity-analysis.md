@@ -7,13 +7,16 @@ classification. Use the following reading order for both single-session
 analysis and activity comparisons:
 
 1. Start here to identify the actual session structure and available evidence.
-2. Read the relevant specialist references below before interpreting their
-   measurements or drawing conclusions about the corresponding session demands.
-3. Read [physiological-response-synthesis.md](physiological-response-synthesis.md)
-   before forming an integrated physiological verdict. It owns expected
-   domain responses, evidence dependence, competing explanations, and the final
-   synthesis and reporting contract. Apply it to the qualified specialist
-   findings rather than presenting separate sensor verdicts as the conclusion.
+2. Before interpreting physiological signals, read the
+   [expected-response framework](physiological-response-synthesis.md#establish-the-expected-response)
+   and [evidence-dependence rules](physiological-response-synthesis.md#group-dependent-evidence).
+   These establish the domain-specific expectations and how to weigh agreement
+   or disagreement between measurements.
+3. Read the relevant specialist references below to qualify measurement quality,
+   interpretation limits, and the corresponding session demands.
+4. Apply [the synthesis](physiological-response-synthesis.md#synthesize-the-verdict)
+   to the qualified findings, using its shared interpretation rules and reporting
+   contract. Form one integrated verdict rather than separate sensor verdicts.
 
 | When relevant | Reference and responsibility |
 | --- | --- |

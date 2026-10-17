@@ -227,9 +227,27 @@ a general measure of the most complete physiological recovery.
   from adaptation demonstrated by later performance or repeated observations.
   Lower HR or ventilation alone does not establish a new threshold.
 
+## Conclusions With Missing Evidence
+
+Limit the affected conclusion rather than treating missing data as an adverse
+finding or discarding the usable evidence:
+
+| Missing evidence | What can still be assessed | What remains unresolved |
+| --- | --- | --- |
+| RPE or athlete feel | Mechanical execution and quality-controlled sensor response | Subjective effort and local discomfort; do not assume the session felt easy |
+| Environment or fueling context | Observed drift and within-session changes | Their cause may remain unclear; do not attribute them to heat, dehydration, or fuel depletion without corroboration |
+| Comparable earlier sessions | Today's execution and response relative to the intended task | Individual improvement or deterioration over time cannot be established from this session alone |
+| Subsequent recovery observations | Acute response, available end-session feel, and an explicitly provisional recovery expectation | Actual subsequent recovery and lasting residual cost; keep expected recovery needs separate from observed recovery |
+
+Ask for missing context only when it could materially change the verdict or
+training consequence. Otherwise give the supported assessment and name the
+specific limit. Do not fill the gap with a model label or assume normality.
+
 ## Synthesize The Verdict
 
-Use this sequence:
+Use this sequence as assessment steps, not mandatory sections in the answer.
+Keep the user-facing response proportional to the question and follow the
+[reporting contract](#reporting-contract) below:
 
 1. **Actual session:** state what work was completed, independent of the title
    and modeled labels.
@@ -264,21 +282,24 @@ subsequent recovery evidence.
 
 ## Reporting Contract
 
-For a normal request such as `analyser dagens økt`, report:
+For a normal request such as `analyser dagens økt`, lead with a direct one- or
+two-sentence verdict naming the actual session, whether it fulfilled its purpose,
+and what can be said about its cost. Support it with only the decisive execution
+and integrated physiological findings, material deviations, and uncertainties.
+A routine session can receive a short answer; expand when the evidence is
+complex or the user requests detail.
 
-1. a direct one- or two-sentence verdict naming the actual session and whether
-   it fulfilled its purpose at an appropriate cost;
-2. mechanical execution and completed structure;
-3. the integrated physiological response, not a sensor-by-sensor inventory;
-4. what was expected, what materially differed, and the leading alternative
-   explanations;
-5. observed response separately from Garmin/Xert or other modeled stimulus and
-   recovery outputs;
-6. plan-role completion and the consequence for progression and subsequent
-   training;
-7. one targeted question only when missing feel, symptoms, setup, or intake can
-   materially change the verdict.
+- Combine related findings into readable prose rather than a sensor inventory
+  or a section for every assessment step.
+- Keep observed response distinct from modeled stimulus and recovery outputs
+  whenever those outputs are included.
+- Include plan-role completion and the supported consequence for progression or
+  subsequent training when applicable; preserve any explicit classification
+  required by the active plan workflow.
+- Ask a targeted question only when missing feel, symptoms, setup, or intake
+  could materially change the verdict.
 
-When evidence is limited, give the best supported descriptive verdict and name
-the uncertainty. Do not fill absent physiological evidence with a source-model
-label or a generic zone interpretation.
+When evidence is limited, apply
+[the missing-evidence limits](#conclusions-with-missing-evidence) and give the
+best supported descriptive verdict. Do not fill absent physiological evidence
+with a source-model label or a generic zone interpretation.
