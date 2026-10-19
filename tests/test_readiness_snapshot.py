@@ -30,6 +30,38 @@ from scripts.readiness_snapshot import (
 
 
 class AvailabilityNotesTests(unittest.TestCase):
+    def test_copying_xert_file_does_not_refresh_observation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            for payload, expected in [
+                ({"state": {"as_of": "2026-08-01T06:00:00Z", "recovery_hours": {"low": 4}},
+                  "source_time_local": "2026-08-08T12:00:00+02:00"}, "2026-08-01T08:00:00+02:00"),
+                ({"state": {"recovery_hours": {"low": 4}}}, None),
+                ({"training_state": {"state": {"as_of": "2026-08-01T06:00:00Z"}},
+                  "training_advice": {"advice": {"training_advice_as_of": "2026-08-08T10:00:00Z"}}},
+                 "2026-08-01T08:00:00+02:00"),
+            ]:
+                path.write_text(json.dumps(payload))
+                result = latest_xert_advice(
+                    now=datetime.fromisoformat("2026-08-08T12:00:00+02:00"),
+                    planned_at=None, local_timezone=ZoneInfo("Europe/Oslo"),
+                    xert_input=load_xert_input(str(path), local_timezone=ZoneInfo("Europe/Oslo")),
+                )
+                self.assertEqual(result["source_time_local"], expected)
+
+    def test_rolling_mean_rejects_gaps_and_recovers_after_gap(self):
+        for mode in ["min", "max"]:
+            self.assertIsNone(rolling_window_extreme([(0, 60), (840000, 60)], minutes=15, mode=mode))
+            # A long hole invalidates the apparent full span, even with a burst
+            # of points at each end.
+            self.assertIsNone(rolling_window_extreme(
+                [(0, 60), (120000, 60), (720000, 60), (840000, 60)], minutes=15, mode=mode))
+            result = rolling_window_extreme(
+                [(0, 10)] + [(i * 120000, 60) for i in range(10, 18)], minutes=15, mode=mode)
+            self.assertEqual(result["avg"], 60)
+            self.assertGreaterEqual(result["coverage_fraction"], .8)
+            self.assertEqual(result["count"], 7)
+
     def test_stale_note_distinguishes_dynamic_and_completed_daily_signals(self):
         notes = availability_notes(
             "2026-07-31",
