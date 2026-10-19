@@ -1,0 +1,15 @@
+{
+  ".agents/skills/training-analysis/SKILL.md": "a36859c44ecdf863f6ec9f33efafb16adda7998f4e655bb433f910601f9224d6",
+  ".agents/skills/training-analysis/references/muscle-oxygen.md": "9fa8c4ca21871518289f5452ae94bd6c8f8d21bd5f59f869bee1be0ac5f3c7ea",
+  ".agents/skills/training-analysis/references/physiological-response-synthesis.md": "05cfba1185d247c9181ad5fa3827c9f4106b595c2d1cd1bc16d2bd75f07e9a2f",
+  ".agents/skills/training-analysis/references/thermal-sensing.md": "e902a3ecc398f0c171a03855dba7a4b1d73d0ef5ff10ecd9c8d82431e38793a1",
+  ".agents/skills/training-analysis/references/sources.md": "3211f2c96b50c95ae0f0e37b8b6f1d3e6da77bf83eb04eac1c35f3b75ea60d28",
+  ".agents/skills/training-analysis/references/daily-recommendations.md": "9c4c66d3e324609a16755afe1dee60110f0f7565996db58107d40f114374c80d",
+  ".agents/skills/training-analysis/references/activity-analysis.md": "a1ae554fb561026c783e9bdf005c9336b2e9987a5277afbe33e429d4ada28e81",
+  ".agents/skills/training-analysis/references/respiration.md": "81b0c7f843e19e48086bced6b46b584c490380f6494eb72326fce2c580682198",
+  ".agents/skills/training-analysis/references/illness-and-return.md": "b8ec0c3ddef674007f3a462f190bdd5bc3c7c2960b5a24d22eb78776565f0441",
+  ".agents/skills/training-analysis/references/calendar-conflict-resolution.md": "5dd0e2ac94384a21ab2741ab78c943182c6b27cf86dd739d0cc0c36563a29958",
+  ".agents/skills/training-analysis/references/outdoor-routes.md": "5cd2243c7f15cd5b404f0e2c1280032e7a6855e802b9347f213b8a3c0455d2a8",
+  ".agents/skills/training-analysis/references/cycling-endurance-physiology.md": "3a9f7154402f326419ee8d8b72a69630fbb51f92dec15e8d0cffa5dc18b8cc49",
+  "scripts/run_training_dialog_eval.py": "25991f57007f9354a24374292de7eaef890542ee779d6edb7f2738beb5c638e5"
+}

@@ -1,0 +1,77 @@
+{
+  "latest_activity_lookup": {
+    "start_date": "2026-10-11",
+    "end_date": "2026-10-18",
+    "includeFields": [],
+    "count": 1,
+    "activities": [
+      {
+        "path": "bipvnxm9mu5j89rc",
+        "name": "Moss-Horten",
+        "start_local": "2026-10-18T09:47:52"
+      }
+    ],
+    "source_count": 9,
+    "matched_count": 9,
+    "filters": [],
+    "sort": [
+      {
+        "field": "start_local",
+        "direction": "desc"
+      }
+    ],
+    "limit": 1
+  },
+  "summary": {
+    "path": "bipvnxm9mu5j89rc",
+    "name": "Moss-Horten",
+    "start_local": "2026-10-18T09:47:52",
+    "xss": {
+      "total": 313.28881884826313,
+      "low": 303.92231710317117,
+      "high": 7.068760700580935,
+      "peak": 2.2977410445121613
+    },
+    "difficulty": 67.37272806988771
+  },
+  "period_complete": true,
+  "detail_is_error": false,
+  "detail_summary": {
+    "source": "xert_plugin",
+    "path": "bipvnxm9mu5j89rc",
+    "name": "Moss-Horten",
+    "map_url": "https://www.xertonline.com/assets/images/user/58062/map_bipvnxm9mu5j89rc.png",
+    "start_local": "2026-10-18T09:47:52",
+    "distance_km": 166.96669,
+    "elapsed_minutes": 384.5,
+    "xss": {
+      "total": 313.28881884826313,
+      "low": 303.92231710317117,
+      "high": 7.068760700580935,
+      "peak": 2.2977410445121613
+    },
+    "xep_watts": 231.9084806589063,
+    "focus": "Rouleur",
+    "specificity": "Polar",
+    "difficulty": 67.37272806988771,
+    "difficulty_rating": "Moderate",
+    "freshness": null,
+    "signature": {
+      "pp": 767.8100729019659,
+      "ftp": 300.48457898818464,
+      "atc": 14039.98567887323,
+      "ltp": 265.3846147910016
+    },
+    "duration_s": 23069,
+    "distance_m": 166966.69,
+    "avg_power": 155.39997399107025,
+    "max_power": 627,
+    "avg_heart_rate": 129.08611267174012,
+    "max_heart_rate": 165,
+    "avg_cadence": 60.1316918808791,
+    "max_cadence": 119
+  },
+  "session_samples": 23071,
+  "session_source": "xert_authenticated_web",
+  "full_and_session_saved": true
+}

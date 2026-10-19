@@ -1,0 +1,210 @@
+{
+  "review_method": "Independent prose review of anonymized C1-C16 and follow-up fields; model identities and prior result mappings not inspected. Case rubric applied literally; numeric citation audit separate. Case context and current packet/inspection used as evidence.",
+  "dimensions": [
+    "task_work",
+    "physiological_synthesis",
+    "evidence_limits",
+    "practical_conclusion"
+  ],
+  "answers": {
+    "C1": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Correct moving time and test intent; limited exposure, variable matching, cadence difference and breathing versus ventilation integrated. CORE plateau verified in inspection chronology. Residual cost remains unknown; no invented prescription."
+      ]
+    },
+    "C2": {
+      "scores": [
+        1,
+        2,
+        2,
+        2
+      ],
+      "pass": false,
+      "findings": [
+        "Strong physiology and focused follow-up, with correct early PC, non-final comparison and pause-versus-sensor distinction. Required total-versus-moving-time distinction incomplete: reports moving time and an unquantified recording interruption, but never states or distinguishes total elapsed duration."
+      ]
+    },
+    "C3": {
+      "scores": [
+        2,
+        1,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Explicit moving/total time and substantial gap. Group purpose respected, qualified matched response and non-final window position retained. Focused question and conservative next quality decision. Breathing interpretation is thinner because ventilation and depth are omitted, but no rising ventilation claim is made."
+      ]
+    },
+    "C4": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Independent group verdict without invented anchors; interruptions and variable mechanical task acknowledged. Both selected windows correctly described as after substantial work. Faster/shallow breathing distinguished from lower ventilation; subjective cost unknown and useful conditional next-session advice."
+      ]
+    },
+    "C5": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Hard experience and substantial late respiratory fatigue central; comparatively good legs preserved. Variable workload, non-final comparison, early PC, intake uncertainty and unknown recovery explicit. Recovery-first consequence has no invented duration."
+      ]
+    },
+    "C6": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Strong report preserved including little feeling easy, pronounced late breathing fatigue and okay legs. Correct variable-window timing, ventilation distinction, early PC and no causal diagnosis. Ernæring named among unresolved interpretation factors; subsequent recovery remains unknown and advice is recovery-first."
+      ]
+    },
+    "C7": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Correct moving time and aerobic test intent, bounded exposure, explicit matched time windows above anchor, cadence limitation and breathing-versus-ventilation distinction. CORE plateau supported by chronology. No invented residual cost or historical improvement."
+      ]
+    },
+    "C8": {
+      "scores": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "pass": false,
+      "findings": [
+        "Substantial middle paragraph is Finnish despite explicit Norwegian response instruction: report and physiology are not delivered consistently in requested language. Otherwise recognizes broadly hard ride, okay legs and strong late respiratory tiredness, unknown fueling/recovery and descriptive non-final windows. Physiology omits depth/ventilation. Failure is language/task compliance, not a prohibited physiological diagnosis."
+      ]
+    },
+    "C9": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Correct independent group assessment, unknown anchors, two late window start times, variable effect/cadence, pauses and absent SmO2. Explicit distinction between faster breathing and lower ventilation, no absolute-volume validation claim. Practical recovery-conditioned guidance."
+      ]
+    },
+    "C10": {
+      "scores": [
+        1,
+        2,
+        2,
+        2
+      ],
+      "pass": false,
+      "findings": [
+        "Good physiology, early PC, non-final window times, substantial pause and focused follow-up. Required time distinction incomplete: moving duration and long recording interruption stated, but total elapsed duration not reported or otherwise distinguished."
+      ]
+    },
+    "C11": {
+      "scores": [
+        2,
+        1,
+        2,
+        1
+      ],
+      "pass": true,
+      "findings": [
+        "Aerobic test intent, moving time and limited high exposure correctly framed. Qualifies variable matched response and unknown recovery; no invented development. Omits opposing ventilation/depth trend and offers little concrete next-session consequence, so physiology and practical dimensions are partial."
+      ]
+    },
+    "C12": {
+      "scores": [
+        2,
+        1,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Moving time and test intent correct; small higher-intensity exposure supported. Qualified variable comparison and cadence confound retained. Omits lower ventilation/depth but does not claim greater ventilation; focused question tied to next load, no invented recovery or progression."
+      ]
+    },
+    "C13": {
+      "scores": [
+        2,
+        1,
+        1,
+        1
+      ],
+      "pass": false,
+      "findings": [
+        "Useful group dose verdict without anchors and a focused question. Required recording-interruption context entirely absent from late-session interpretation. Matched response is thin, omitting depth/ventilation and cadence, though no causal diagnosis is made."
+      ]
+    },
+    "C14": {
+      "scores": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "pass": false,
+      "findings": [
+        "Incomplete one-sentence answer with gross work-unit/value error (3.6 kJ instead of approximately 3634 kJ). No physiological response, interruption handling, uncertainty or practical consequence."
+      ]
+    },
+    "C15": {
+      "scores": [
+        2,
+        1,
+        1,
+        2
+      ],
+      "pass": false,
+      "findings": [
+        "Strong report, okay legs, variable workload and recovery-first consequence present. Required intake uncertainty is absent: no mention that food/fluid intake is unknown. Matching remains descriptive and gap acknowledged, but late selected window is not explicitly separated from actual finish and ventilation/depth omitted; no direct causal diagnosis."
+      ]
+    },
+    "C16": {
+      "scores": [
+        2,
+        1,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Correct moving/total time, substantial gap and variable group intent. Focused question and preserved unknown cost. Qualified non-final matched response avoids causal diagnosis. Exposure wording drops the 60-second averaging detail and physiology omits depth/ventilation, reducing precision without asserting a contrary ventilation result."
+      ]
+    }
+  },
+  "pass_count": 10,
+  "answer_count": 16,
+  "notes": [
+    "C2 and C10 fail the explicit group_unknown requirement to distinguish moving and total elapsed duration, despite otherwise strong responses.",
+    "C8 language failure is separately identified as prompt compliance, not a new physiology prohibition.",
+    "Review does not verify claims about which tools a model actually executed; statements that raw data confirmed findings were judged against available evidence."
+  ]
+}

@@ -1,0 +1,1423 @@
+{
+  "created_at": "2026-10-18T16:53:55.361586+00:00",
+  "input_manifest_sha256": "35e9b4dc2fae523057155f266f2071c9117f3826c5c70f4106e060c0d2ed3ddc",
+  "reasoning_effort": "medium",
+  "review_status": "independently_reviewed",
+  "runs": [
+    {
+      "model": "gpt-6.1-sol",
+      "case": "ultra",
+      "repeat": 1,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/ultra",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-ultra-1.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-ultra-1.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-ultra-1.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 78.6,
+      "answer_sha256": "c868d67f6bc27ffd25aac421457ed4cfdfd1da4809585ff10d16b93f7bdacc30",
+      "usage_events": [
+        {
+          "input_tokens": 416136,
+          "cached_input_tokens": 367104,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2834,
+          "reasoning_output_tokens": 163
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 9,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Vätternrundan ble gjennomført som en svært lang, variabel utholdenhetsbelastning: 8,5 timer i bevegelse og 8,7 timer registrert totalt, med 4584 kJ mekanisk arbeid. Den offisielle tiden i beskrivelsen er en separat tidskilde. Effekten var lavere gjennom midtpartiet, men steg mot avslutningen; dette viser bevart evne til å øke arbeidet sent, uten å bevise optimal disponering. Ukjente historiske terskler gjør presis intensitetsklassifisering usikker.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "8,5"
+              },
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "8,7"
+              },
+              {
+                "fact_id": "ride.work",
+                "scope": "observed_recording",
+                "unit": "kJ",
+                "display": "4584"
+              }
+            ]
+          },
+          {
+            "text": "I sammenlignbare, men variable perioder rundt 6,0 og 8,1 timer etter start falt gjennomsnittseffekten fra 163 til 158 W, mens pustefrekvensen steg fra 45 til 51 pust/min og pulsen økte litt. Rådata bekrefter verdiene og sensordekningen. Den rapporterte ventilasjonen økte hovedsakelig gjennom raskere pust, mens estimert kjernetemperatur var svakt lavere. Dette er forenlig med økende fysiologisk belastning etter mye arbeid, men periodene er begge sent i turen og dokumenterer verken en terskelforskyvning eller årsaken til endringen. Pustemålingenes tilpasning, kroppsstilling og forsinkelse er uavklart.",
+            "claims": [
+              {
+                "fact_id": "window.0.start_s",
+                "scope": "variable_window_0",
+                "unit": "h",
+                "display": "6,0"
+              },
+              {
+                "fact_id": "window.1.start_s",
+                "scope": "variable_window_1",
+                "unit": "h",
+                "display": "8,1"
+              },
+              {
+                "fact_id": "window.0.watts",
+                "scope": "variable_window_0",
+                "unit": "W",
+                "display": "163"
+              },
+              {
+                "fact_id": "window.1.watts",
+                "scope": "variable_window_1",
+                "unit": "W",
+                "display": "158"
+              },
+              {
+                "fact_id": "window.0.respiration",
+                "scope": "variable_window_0",
+                "unit": "breaths/min",
+                "display": "45"
+              },
+              {
+                "fact_id": "window.1.respiration",
+                "scope": "variable_window_1",
+                "unit": "breaths/min",
+                "display": "51"
+              }
+            ]
+          },
+          {
+            "text": "Økten ga sannsynligvis en betydelig aerob utholdenhetsstimulus og langvarig muskulær belastning. Xert-oppsummeringen beskriver modellberegnet belastning og substratbruk, ikke målt forbrenning eller opplevd anstrengelse. Faktisk restitusjonskostnad er ukjent; dataene dokumenterer heller ikke forbedret utholdenhet. Prioriter derfor hvile eller lett aktivitet etter økten, og gjenoppta hard trening når allmenntilstand, bein og respons under lett sykling er normale. Det er ikke grunnlag for å øke terskler eller treningsdose fra denne gjennomføringen alene.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan var tretthet og stølhet de påfølgende dagene?"
+      },
+      "answer_text": "Vätternrundan ble gjennomført som en svært lang, variabel utholdenhetsbelastning: 8,5 timer i bevegelse og 8,7 timer registrert totalt, med 4584 kJ mekanisk arbeid. Den offisielle tiden i beskrivelsen er en separat tidskilde. Effekten var lavere gjennom midtpartiet, men steg mot avslutningen; dette viser bevart evne til å øke arbeidet sent, uten å bevise optimal disponering. Ukjente historiske terskler gjør presis intensitetsklassifisering usikker.\n\nI sammenlignbare, men variable perioder rundt 6,0 og 8,1 timer etter start falt gjennomsnittseffekten fra 163 til 158 W, mens pustefrekvensen steg fra 45 til 51 pust/min og pulsen økte litt. Rådata bekrefter verdiene og sensordekningen. Den rapporterte ventilasjonen økte hovedsakelig gjennom raskere pust, mens estimert kjernetemperatur var svakt lavere. Dette er forenlig med økende fysiologisk belastning etter mye arbeid, men periodene er begge sent i turen og dokumenterer verken en terskelforskyvning eller årsaken til endringen. Pustemålingenes tilpasning, kroppsstilling og forsinkelse er uavklart.\n\nØkten ga sannsynligvis en betydelig aerob utholdenhetsstimulus og langvarig muskulær belastning. Xert-oppsummeringen beskriver modellberegnet belastning og substratbruk, ikke målt forbrenning eller opplevd anstrengelse. Faktisk restitusjonskostnad er ukjent; dataene dokumenterer heller ikke forbedret utholdenhet. Prioriter derfor hvile eller lett aktivitet etter økten, og gjenoppta hard trening når allmenntilstand, bein og respons under lett sykling er normale. Det er ikke grunnlag for å øke terskler eller treningsdose fra denne gjennomføringen alene.\n\nHvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan var tretthet og stølhet de påfølgende dagene?",
+      "blind_id": "D4",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!*rubric*'\"' -g '\"'!inspection.json'\"' -g '\"'!streams.csv'\"' .agents/skills/training-analysis activity config\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc 'ls -la activity'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md .agents/skills/training-analysis/references/cycling-endurance-physiology.md config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc \"rg --files -g '*packet*' -g '*inspection*' -g '*streams*' -g '\"'!cases.json'\"' -g '\"'!*rubric*'\"'\"",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat activity/activity.json'",
+        "/bin/zsh -lc \"sed -n '1,78p' .agents/skills/training-analysis/references/cycling-endurance-physiology.md; sed -n '348,430p' .agents/skills/training-analysis/references/physiological-response-synthesis.md\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(list(x)); print(\\\"ACTIVITY\\\",json.dumps(x.get(\\\"activity\\\"))); print(\\\"OVERVIEW\\\",json.dumps(x.get(\\\"analysis_overview\\\"))); print(\\\"OUTDOOR KEYS\\\",list(x.get(\\\"outdoor_evidence\\\",{}))); print(\\\"PROVENANCE\\\",json.dumps(x.get(\\\"provenance\\\")))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"TOTAL\\\",json.dumps(x[\\\"total\\\"])); print(\\\"SEGMENTS\\\",json.dumps(x[\\\"outdoor_evidence\\\"][\\\"segments\\\"])); print(\\\"MATCH\\\",json.dumps(x[\\\"outdoor_evidence\\\"][\\\"variable_work_comparison\\\"]))'\"",
+        "/bin/zsh -lc \"head -n 3 activity/streams.csv; sed -n '325,385p' .agents/skills/training-analysis/references/physiological-response-synthesis.md\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,json,statistics,hashlib; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); ts=[float(a[\\\"time\\\"]) for a in r]; print(\\\"clock\\\",len(r),min(ts),max(ts),\\\"gaps\\\",[(a,b) for a,b in zip(ts,ts[1:]) if b-a>1]); fs=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"core_temperature\\\"]; \nfor lo,hi in [(21609,21909),(29109,29409)]:\n s=[a for a in r if lo<=float(a[\\\"time\\\"])<hi]; print(\\\"window\\\",lo,hi,{f:{\\\"n\\\":sum(a[f]\"'!=\"\" for a in s),\"mean\":round(statistics.mean(float(a[f]) for a in s if a[f]!=\"\"),3)} for f in fs}); ratios=[float(a[\"tidal_volume_min\"])/(float(a[\"respiration\"])*float(a[\"tidal_volume\"])/100) for a in s if all(a[f] and float(a[f])>0 for f in [\"tidal_volume_min\",\"respiration\",\"tidal_volume\"])]; print(\"VE consistency median ratio\",statistics.median(ratios))\nx=json.load(open(\"inspection.json\")); print(\"hash match\",hashlib.sha256(open(\"inspection.json\",\"rb\").read()).hexdigest()==json.load(open(\"analysis-packet.json\"))[\"inspection_sha256\"]); print(\"input hashes\",[hashlib.sha256(open(a[\"path\"],\"rb\").read()).hexdigest()==a[\"sha256\"] for a in x[\"provenance\"][\"inputs\"]])'\"'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,json,statistics,hashlib; rows=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); r=[a for a in rows if a[\\\"time\\\"]]; ts=[float(a[\\\"time\\\"]) for a in r]; print(\\\"clock\\\",len(rows),len(r),min(ts),max(ts),\\\"gaps\\\",[(a,b) for a,b in zip(ts,ts[1:]) if b-a>1]); fs=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"core_temperature\\\"];\nfor lo,hi in [(21609,21909),(29109,29409)]:\n s=[a for a in r if lo<=float(a[\\\"time\\\"])<hi]; print(\\\"window\\\",lo,hi,{f:{\\\"n\\\":sum(a[f]\"'!=\"\" for a in s),\"mean\":round(statistics.mean(float(a[f]) for a in s if a[f]!=\"\"),3)} for f in fs}); ratios=[float(a[\"tidal_volume_min\"])/(float(a[\"respiration\"])*float(a[\"tidal_volume\"])/100) for a in s if all(a[f] and float(a[f])>0 for f in [\"tidal_volume_min\",\"respiration\",\"tidal_volume\"])]; print(\"VE consistency median ratio\",statistics.median(ratios))\nx=json.load(open(\"inspection.json\")); print(\"hash match\",hashlib.sha256(open(\"inspection.json\",\"rb\").read()).hexdigest()==json.load(open(\"analysis-packet.json\"))[\"inspection_sha256\"]); print(\"input hashes\",[hashlib.sha256(open(a[\"path\"],\"rb\").read()).hexdigest()==a[\"sha256\"] for a in x[\"provenance\"][\"inputs\"]])'\"'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-ultra-1.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 9,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "ultra",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Ultra-duration and mechanical work establish major load without conflating official and recorded time.",
+          "Explicitly says both comparison periods are late, not early-to-late durability proof; appropriate sensor-fit/lag/posture caveats.",
+          "Xert substrate output explicitly modeled, not measured metabolism.",
+          "Proportionate recovery advice with no fixed recovery period or unwarranted progression."
+        ],
+        "failures": []
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "ultra",
+      "repeat": 2,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/ultra",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-ultra-2.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-ultra-2.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-ultra-2.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 61.1,
+      "answer_sha256": "decf5f5ace9f5afbb49860ccea7728809a30ff2222df92e826975d60a9e6ccb5",
+      "usage_events": [
+        {
+          "input_tokens": 412043,
+          "cached_input_tokens": 318592,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2528,
+          "reasoning_output_tokens": 83
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 10,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Vätternrundan ble gjennomført som en lang, variabel utholdenhetsbelastning med 8,5 timer i bevegelse og 8,7 timer registrert totalt. Det gir en betydelig aerob treningsdose. Effekten avtok underveis, men tok seg opp igjen mot avslutningen; dette viser ikke et entydig sammenbrudd i gjennomføringen. Uten kjent disponeringsmål eller historiske terskelankere kan gjennomføringen ikke vurderes som optimal eller klassifiseres som ren VT1-trening.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "8,5"
+              },
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "8,7"
+              }
+            ]
+          },
+          {
+            "text": "I sammenlignbare, men variable arbeidsvinduer etter omtrent 6,0 og 8,1 timer steg pulsen fra 126 til 130 slag/min og pustefrekvensen fra 45 til 51 pust/min, mens effekten falt fra 163 til 158 W ved omtrent samme tråkkfrekvens. Rådata bekrefter sammenligningen. Det støtter økende indre belastning sent i rittet, men er ingen standardisert utholdenhetstest. Ventilasjonsestimatet steg hovedsakelig gjennom raskere pust, mens estimert kjernetemperatur var omtrent stabil. Dette fastslår verken varmebegrensning, energimangel eller terskelpassering; sittestilling, vind og feltkjøring er også uavklart.",
+            "claims": [
+              {
+                "fact_id": "window.0.start_s",
+                "scope": "variable_window_0",
+                "unit": "h",
+                "display": "6,0"
+              },
+              {
+                "fact_id": "window.1.start_s",
+                "scope": "variable_window_1",
+                "unit": "h",
+                "display": "8,1"
+              },
+              {
+                "fact_id": "window.0.heartrate",
+                "scope": "variable_window_0",
+                "unit": "bpm",
+                "display": "126"
+              },
+              {
+                "fact_id": "window.1.heartrate",
+                "scope": "variable_window_1",
+                "unit": "bpm",
+                "display": "130"
+              },
+              {
+                "fact_id": "window.0.respiration",
+                "scope": "variable_window_0",
+                "unit": "breaths/min",
+                "display": "45"
+              },
+              {
+                "fact_id": "window.1.respiration",
+                "scope": "variable_window_1",
+                "unit": "breaths/min",
+                "display": "51"
+              },
+              {
+                "fact_id": "window.0.watts",
+                "scope": "variable_window_0",
+                "unit": "W",
+                "display": "163"
+              },
+              {
+                "fact_id": "window.1.watts",
+                "scope": "variable_window_1",
+                "unit": "W",
+                "display": "158"
+              }
+            ]
+          },
+          {
+            "text": "Økten ga sannsynligvis et stort stimulus for aerob utholdenhet og toleranse for langvarig arbeid, men dokumenterer ikke forbedret kapasitet alene. Xert-oppsummeringen er modellberegnet og beskriver verken faktisk matinntak eller opplevd anstrengelse. Prioriter foreløpig hvile eller lett aktivitet, og gjenoppta hard trening når bein, allmenntilstand og respons på lett sykling er normalisert. Faktisk restitusjonsbehov er ukjent uten opplevelse og etterforløp.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan var tretthet og stølhet de påfølgende dagene?"
+      },
+      "answer_text": "Vätternrundan ble gjennomført som en lang, variabel utholdenhetsbelastning med 8,5 timer i bevegelse og 8,7 timer registrert totalt. Det gir en betydelig aerob treningsdose. Effekten avtok underveis, men tok seg opp igjen mot avslutningen; dette viser ikke et entydig sammenbrudd i gjennomføringen. Uten kjent disponeringsmål eller historiske terskelankere kan gjennomføringen ikke vurderes som optimal eller klassifiseres som ren VT1-trening.\n\nI sammenlignbare, men variable arbeidsvinduer etter omtrent 6,0 og 8,1 timer steg pulsen fra 126 til 130 slag/min og pustefrekvensen fra 45 til 51 pust/min, mens effekten falt fra 163 til 158 W ved omtrent samme tråkkfrekvens. Rådata bekrefter sammenligningen. Det støtter økende indre belastning sent i rittet, men er ingen standardisert utholdenhetstest. Ventilasjonsestimatet steg hovedsakelig gjennom raskere pust, mens estimert kjernetemperatur var omtrent stabil. Dette fastslår verken varmebegrensning, energimangel eller terskelpassering; sittestilling, vind og feltkjøring er også uavklart.\n\nØkten ga sannsynligvis et stort stimulus for aerob utholdenhet og toleranse for langvarig arbeid, men dokumenterer ikke forbedret kapasitet alene. Xert-oppsummeringen er modellberegnet og beskriver verken faktisk matinntak eller opplevd anstrengelse. Prioriter foreløpig hvile eller lett aktivitet, og gjenoppta hard trening når bein, allmenntilstand og respons på lett sykling er normalisert. Faktisk restitusjonsbehov er ukjent uten opplevelse og etterforløp.\n\nHvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan var tretthet og stølhet de påfølgende dagene?",
+      "blind_id": "D2",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc 'rg --files /private/tmp/outdoor-sol-diverse-20261018/ultra/activity /private/tmp/outdoor-sol-diverse-20261018/ultra/.agents/skills/training-analysis /private/tmp/outdoor-sol-diverse-20261018/ultra/config'",
+        "/bin/zsh -lc 'cat /private/tmp/outdoor-sol-diverse-20261018/ultra/.agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"rg --files -g '*packet*' -g '*inspection*' -g '\"'!cases.json'\"' -g '\"'!**/rubric*'\"' -g '\"'!**/evaluation*'\"' .\"",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc \"sed -n '1,85p' .agents/skills/training-analysis/references/cycling-endurance-physiology.md; sed -n '/## Reporting Contract/,\"'$p'\"' .agents/skills/training-analysis/references/physiological-response-synthesis.md\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"KEYS\\\",list(x)); [(print(k,json.dumps(x.get(k),ensure_ascii=False) if k not in [\\\"outdoor_evidence\\\"] else list(x[k]))) for k in [\\\"activity\\\",\\\"analysis_overview\\\",\\\"outdoor_evidence\\\"]]; y=json.load(open(\\\"activity/activity.json\\\")); print(\\\"SOURCE\\\",json.dumps(y,ensure_ascii=False)[:22000])'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"TOTAL\\\",json.dumps(x[\\\"total\\\"],ensure_ascii=False)[:14500]); o=x[\\\"outdoor_evidence\\\"];print(\\\"SEGMENTS\\\",json.dumps(o[\\\"segments\\\"],ensure_ascii=False)[:14000]);print(\\\"MATCH\\\",json.dumps(o[\\\"variable_work_comparison\\\"],ensure_ascii=False)[:18000])'\"",
+        "/bin/zsh -lc \"head -n 3 activity/streams.csv; rg -n 'answer|claims|display|scope' scripts/analysis_packet.py\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); print(\\\"clock\\\",len(r),r[-1][\\\"time\\\"],max(float(b[\\\"time\\\"])-float(a[\\\"time\\\"]) for a,b in zip(r,r[1:]))); fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"core_temperature\\\"]; \nfor a,b in [(21609,21909),(29109,29409)]:\n w=[z for z in r if a<=float(z[\\\"time\\\"])<b]; print(a,b,{k:(len([z for z in w if z[k]]),round(statistics.mean(float(z[k]) for z in w if z[k]),3),len(set(z[k] for z in w if z[k]))) for k in fields}); q=[float(z[\\\"tidal_volume_min\\\"])/(float(z[\\\"respiration\\\"])*float(z[\\\"tidal_volume\\\"])/100) for z in w if all(z[k] and float(z[k])>0 for k in [\\\"tidal_volume_min\\\",\\\"respiration\\\",\\\"tidal_volume\\\"])]; print(\\\"VE_ratio_median\\\",statistics.median(q))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics; r=[z for z in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if z[\\\"time\\\"]]; print(\\\"clock\\\",len(r),r[-1][\\\"time\\\"],max(float(b[\\\"time\\\"])-float(a[\\\"time\\\"]) for a,b in zip(r,r[1:]))); fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"core_temperature\\\"];\nfor a,b in [(21609,21909),(29109,29409)]:\n w=[z for z in r if a<=float(z[\\\"time\\\"])<b]; print(a,b,{k:(len([z for z in w if z[k]]),round(statistics.mean(float(z[k]) for z in w if z[k]),3),len(set(z[k] for z in w if z[k]))) for k in fields}); q=[float(z[\\\"tidal_volume_min\\\"])/(float(z[\\\"respiration\\\"])*float(z[\\\"tidal_volume\\\"])/100) for z in w if all(z[k] and float(z[k])>0 for k in [\\\"tidal_volume_min\\\",\\\"respiration\\\",\\\"tidal_volume\\\"])]; print(\\\"VE_ratio_median\\\",statistics.median(q))'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-ultra-2.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 10,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "ultra",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Recognizes ultra-duration load, distinguishes8.5h moving and8.7h elapsed; does not confuse official event time, which is unused.",
+          "Correctly locates comparison at6.0/8.1h, uses matched variable mechanics with qualified HR/BR/VE rise and stable core estimate.",
+          "Separates Xert modeled summary from intake/feel and avoids diagnosing depletion/heat or threshold crossing.",
+          "Recovery guidance conditional on actual state rather than fixed invented recovery duration."
+        ],
+        "failures": []
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "hill_repeats",
+      "repeat": 1,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/hill_repeats",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-hill_repeats-1.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-hill_repeats-1.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-hill_repeats-1.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 73.7,
+      "answer_sha256": "6c4af1f0d789ea1599e07858f7e6383957435589400a641261c7960e307759c8",
+      "usage_events": [
+        {
+          "input_tokens": 398597,
+          "cached_input_tokens": 344320,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2518,
+          "reasoning_output_tokens": 453
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 2,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Økten kombinerte gjentatte kraftige pådrag i bakkene med lengre, jevnere arbeid i Sørkedalen. De sene pådragene viser ingen tydelig systematisk effektkollaps. Kildens arbeidssegmenter deler opp stigningene og kan ikke telles som hele bakkedrag. Uten dokumentert forskrift kan måloppnåelse ikke bekreftes. Turen omfattet 162,6 minutter i bevegelse og 165,3 minutter totalt; et kort opptaksopphold med nesten uendret distanse er forenlig med en pause.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "162,6"
+              },
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "165,3"
+              }
+            ]
+          },
+          {
+            "text": "Pulsen steg gjennom pådragene og falt under avlastning, slik man forventer ved vekslende belastning. I sammenlignbare, men variable vinduer i Sørkedalen var senere puls litt høyere samtidig som effekten var høyere, pustefrekvensen lavere og tråkkfrekvensen omtrent lik. Dette gir ikke et entydig bilde av økende fysiologisk belastning ved samme arbeid. Temperaturanslaget var relativt stabilt senere i turen. Verken varmebegrensning, terskelintensitet eller oppnådd VO2max kan fastslås.",
+            "claims": []
+          },
+          {
+            "text": "Økten ga sannsynligvis en betydelig aerob stimulans, med ekstra muskulær belastning fra pådragene. Bevart effekt viser gjennomføringsevne, men dokumenterer ikke lav restitusjonskostnad eller formframgang. Velg foreløpig rolig trening eller hvile etterpå, og vent med å øke intervalldosen til bein og allmennfølelse tilsier at belastningen er absorbert.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan kjentes pust og bein mot slutten, og var økten kontrollert eller nær grensen for hva du kunne gjennomføre?"
+      },
+      "answer_text": "Økten kombinerte gjentatte kraftige pådrag i bakkene med lengre, jevnere arbeid i Sørkedalen. De sene pådragene viser ingen tydelig systematisk effektkollaps. Kildens arbeidssegmenter deler opp stigningene og kan ikke telles som hele bakkedrag. Uten dokumentert forskrift kan måloppnåelse ikke bekreftes. Turen omfattet 162,6 minutter i bevegelse og 165,3 minutter totalt; et kort opptaksopphold med nesten uendret distanse er forenlig med en pause.\n\nPulsen steg gjennom pådragene og falt under avlastning, slik man forventer ved vekslende belastning. I sammenlignbare, men variable vinduer i Sørkedalen var senere puls litt høyere samtidig som effekten var høyere, pustefrekvensen lavere og tråkkfrekvensen omtrent lik. Dette gir ikke et entydig bilde av økende fysiologisk belastning ved samme arbeid. Temperaturanslaget var relativt stabilt senere i turen. Verken varmebegrensning, terskelintensitet eller oppnådd VO2max kan fastslås.\n\nØkten ga sannsynligvis en betydelig aerob stimulans, med ekstra muskulær belastning fra pådragene. Bevart effekt viser gjennomføringsevne, men dokumenterer ikke lav restitusjonskostnad eller formframgang. Velg foreløpig rolig trening eller hvile etterpå, og vent med å øke intervalldosen til bein og allmennfølelse tilsier at belastningen er absorbert.\n\nHvordan kjentes pust og bein mot slutten, og var økten kontrollert eller nær grensen for hva du kunne gjennomføre?",
+      "blind_id": "D3",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc 'ls -la /private/tmp/outdoor-sol-diverse-20261018/hill_repeats/activity'",
+        "/bin/zsh -lc 'cat /private/tmp/outdoor-sol-diverse-20261018/hill_repeats/.agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!activity/**'\"' -g '\"'!**/SKILL.md'\"' -g '\"'!**/references/**'\"'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"\\\\n\\\".join(str((k,list(v) if isinstance(v,dict) else len(v) if isinstance(v,list) else v)) for k,v in x.items()))'\"",
+        "/bin/zsh -lc 'head -c 1700 activity/streams.csv'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(json.dumps({k:x[k] for k in [\\\"streams\\\",\\\"source_work_intervals\\\",\\\"vt2_quality\\\",\\\"analysis_overview\\\"]},ensure_ascii=False,indent=2))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(json.dumps(x[\\\"work_blocks\\\"][0],indent=2)); print(\\\"BLOCKS\\\"); print(json.dumps([{k:b.get(k) for k in [\\\"label\\\",\\\"start_s\\\",\\\"end_s_exclusive\\\",\\\"duration_s\\\",\\\"watts_avg\\\",\\\"hr_avg\\\",\\\"hr_max\\\",\\\"br_avg\\\",\\\"core_temp_max\\\"]} for b in x[\\\"work_blocks\\\"]],indent=2))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(json.dumps(x[\\\"outdoor_evidence\\\"][\\\"segments\\\"],indent=2)[:18000]); print(\\\"POST\\\",json.dumps([{k:v for k,v in b.items() if k not in [\\\"data_quality\\\",\\\"comparison\\\"]} for b in x[\\\"post_work_blocks\\\"]],indent=2)[:4000]); c=x[\\\"outdoor_evidence\\\"][\\\"variable_work_comparison\\\"]; print(\\\"MATCH\\\",json.dumps({k:v for k,v in c.items() if k\"'!=\"selected_windows\"},indent=2)[:4000])'\"'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics as s; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); fields=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"cadence\\\",\\\"altitude\\\"]; print(\\\"minute power hr br cadence altitude-range\\\");\nfor t in range(0,9900,180):\n a=[x for x in r if t<=float(x[\\\"time\\\"])<t+180]; print(t,[(f,round(s.mean(float(x[f]) for x in a if x[f]),1)) for f in fields],(min(float(x[\\\"altitude\\\"]) for x in a),max(float(x[\\\"altitude\\\"]) for x in a)))\nprint(\\\"gap\\\",[(a[\\\"time\\\"],b[\\\"time\\\"],a[\\\"distance\\\"],b[\\\"distance\\\"]) for a,b in zip(r,r[1:]) if float(b[\\\"time\\\"])-float(a[\\\"time\\\"])>2])'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics as s; r=[x for x in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if x[\\\"time\\\"]]; fields=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"cadence\\\",\\\"altitude\\\"]; print(\\\"start_s, mean W HR BR cadence altitude, alt range\\\");\nfor t in range(0,9900,180):\n a=[x for x in r if t<=float(x[\\\"time\\\"])<t+180]; print(t,[round(s.mean(float(x[f]) for x in a if x[f]),1) for f in fields],(min(float(x[\\\"altitude\\\"]) for x in a),max(float(x[\\\"altitude\\\"]) for x in a)))\nprint(\\\"gap\\\",[(a[\\\"time\\\"],b[\\\"time\\\"],a[\\\"distance\\\"],b[\\\"distance\\\"]) for a,b in zip(r,r[1:]) if float(b[\\\"time\\\"])-float(a[\\\"time\\\"])>2])'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-hill_repeats-1.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 2,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "hill_repeats",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Clearly distinguishes repeated climbs from source WORK fragments; no prescribed interval-count claim.",
+          "Moving and elapsed both reported; near-stationary gap described as consistent with pause, not proven cause.",
+          "Correct variable-pair HR/power/BR interpretation; no VO2max or heat/threshold inference.",
+          "Next training is conditional and focused experience question preserves unknown feel."
+        ],
+        "failures": []
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "hill_repeats",
+      "repeat": 2,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/hill_repeats",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-hill_repeats-2.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-hill_repeats-2.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-hill_repeats-2.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 71.9,
+      "answer_sha256": "7bad34ff2824dcb2344eb7ae111ed5d975f16c7fbe68b273cd160790da2f2c27",
+      "usage_events": [
+        {
+          "input_tokens": 375652,
+          "cached_input_tokens": 324352,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1979,
+          "reasoning_output_tokens": 95
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 6,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Dette var en omfattende kombinasjonsøkt med gjentatte korte kraftinnsatser i bakkedelen og jevnere sykling etterpå. Bevegelsestiden var 162,6 min, med 2117 kJ registrert mekanisk arbeid. Kraftinnsatsene holdt seg forholdsvis godt gjennom bakkedelen, uten entydig effektkollaps. Ukjente arbeidsmål og pauseforskrifter gjør at nøyaktig måloppnåelse ikke kan vurderes.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "162,6"
+              },
+              {
+                "fact_id": "ride.work",
+                "scope": "observed_recording",
+                "unit": "kJ",
+                "display": "2117"
+              }
+            ]
+          },
+          {
+            "text": "Pulsen steg under kraftinnsatsene og falt i avlastningene, slik intervallstrukturen tilsier. I sammenlignbare, men variable arbeidsvinduer etter bakkedelen økte effekten fra 242 til 253 W og pulsen fra 134 til 139 slag/min, mens pustefrekvensen sank. Dette gir ikke et samlet bilde av økende fysiologisk belastning ved samme arbeid. Temperaturanslaget var relativt stabilt i denne delen; varmebegrensning er ikke dokumentert. Uten terskelankere kan intensitetsområdet ikke fastslås.",
+            "claims": [
+              {
+                "fact_id": "window.0.watts",
+                "scope": "variable_window_0",
+                "unit": "W",
+                "display": "242"
+              },
+              {
+                "fact_id": "window.1.watts",
+                "scope": "variable_window_1",
+                "unit": "W",
+                "display": "253"
+              },
+              {
+                "fact_id": "window.0.heartrate",
+                "scope": "variable_window_0",
+                "unit": "bpm",
+                "display": "134"
+              },
+              {
+                "fact_id": "window.1.heartrate",
+                "scope": "variable_window_1",
+                "unit": "bpm",
+                "display": "139"
+              }
+            ]
+          },
+          {
+            "text": "Økten ga sannsynligvis en betydelig aerob treningsstimulans kombinert med gjentatt høy mekanisk belastning i bakkene. Gjennomføringen alene dokumenterer verken framgang eller lav restitusjonskostnad. La neste økt være rolig eller ta hvile etter dagsformen, og vent med å øke intervalldosen til opplevd belastning og restitusjon er avklart.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan opplevdes pusten og beina mot slutten, og var du uvanlig sliten eller støl dagen etter?"
+      },
+      "answer_text": "Dette var en omfattende kombinasjonsøkt med gjentatte korte kraftinnsatser i bakkedelen og jevnere sykling etterpå. Bevegelsestiden var 162,6 min, med 2117 kJ registrert mekanisk arbeid. Kraftinnsatsene holdt seg forholdsvis godt gjennom bakkedelen, uten entydig effektkollaps. Ukjente arbeidsmål og pauseforskrifter gjør at nøyaktig måloppnåelse ikke kan vurderes.\n\nPulsen steg under kraftinnsatsene og falt i avlastningene, slik intervallstrukturen tilsier. I sammenlignbare, men variable arbeidsvinduer etter bakkedelen økte effekten fra 242 til 253 W og pulsen fra 134 til 139 slag/min, mens pustefrekvensen sank. Dette gir ikke et samlet bilde av økende fysiologisk belastning ved samme arbeid. Temperaturanslaget var relativt stabilt i denne delen; varmebegrensning er ikke dokumentert. Uten terskelankere kan intensitetsområdet ikke fastslås.\n\nØkten ga sannsynligvis en betydelig aerob treningsstimulans kombinert med gjentatt høy mekanisk belastning i bakkene. Gjennomføringen alene dokumenterer verken framgang eller lav restitusjonskostnad. La neste økt være rolig eller ta hvile etter dagsformen, og vent med å øke intervalldosen til opplevd belastning og restitusjon er avklart.\n\nHvordan opplevdes pusten og beina mot slutten, og var du uvanlig sliten eller støl dagen etter?",
+      "blind_id": "D1",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!*rubric*'\"' -g '\"'!inspection.json'\"' -g '\"'!streams.csv'\"'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md .agents/skills/training-analysis/references/thermal-sensing.md .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print([(k,type(v).__name__,len(v) if hasattr(v,\\\"__len__\\\") else \\\"\\\") for k,v in x.items()]); print(json.dumps({k:x.get(k) for k in [\\\"activity\\\",\\\"analysis_overview\\\",\\\"work_block_overview\\\",\\\"source_work_intervals\\\"]},ensure_ascii=False))'\"",
+        "/bin/zsh -lc 'head -n 3 activity/streams.csv'",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"intervals\\\"); print([(v[\\\"n\\\"],v[\\\"start_s\\\"],v[\\\"duration_s\\\"],v[\\\"watts_avg\\\"],v[\\\"hr_avg\\\"],v[\\\"br_avg\\\"]) for v in x[\\\"source_work_intervals\\\"]]); print(\\\"outdoor keys\\\",list(x[\\\"outdoor_evidence\\\"])); print(\\\"segments\\\",json.dumps(x[\\\"outdoor_evidence\\\"].get(\\\"segments\\\"),ensure_ascii=False)[:12500]); print(\\\"total keys\\\",list(x[\\\"total\\\"])); print(\\\"stream\\\",json.dumps(x[\\\"streams\\\"])[:4000]); print(\\\"work block keys\\\",list(x[\\\"work_blocks\\\"][0]))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,json,statistics; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); fields=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"cadence\\\",\\\"altitude\\\"]; print(\\\"5min summaries time,power,HR,BR,cadence,alt endpoints\\\");\nfor a in range(0,9900,300):\n s=[v for v in r if a<=float(v[\\\"time\\\"])<a+300]; vals=lambda f:[float(v[f]) for v in s if v[f]]; print(a,[(f,round(statistics.mean(vals(f)),1)) for f in fields[:-1]],(s[0][\\\"altitude\\\"],s[-1][\\\"altitude\\\"]))\nx=json.load(open(\\\"inspection.json\\\")); c=x[\\\"outdoor_evidence\\\"][\\\"variable_work_comparison\\\"]; print(\\\"comparison keys\\\",list(c)); print(json.dumps(c,ensure_ascii=False)[-6500:])'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,json,statistics; r=[v for v in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if v[\\\"time\\\"]]; fields=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"cadence\\\"]; print(\\\"5min summaries\\\");\nfor a in range(0,9900,300):\n s=[v for v in r if a<=float(v[\\\"time\\\"])<a+300]; vals=lambda f:[float(v[f]) for v in s if v[f]]; print(a,[(f,round(statistics.mean(vals(f)),1)) for f in fields],(s[0][\\\"altitude\\\"],s[-1][\\\"altitude\\\"]))\nx=json.load(open(\\\"inspection.json\\\")); c=x[\\\"outdoor_evidence\\\"][\\\"variable_work_comparison\\\"]; print(\\\"comparison\\\",json.dumps(c,ensure_ascii=False)[-6500:])'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-hill_repeats-2.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 6,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "hill_repeats",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Identifies repeated short climbing efforts and steadier later cycling, avoids treating title as verified six prescribed intervals.",
+          "Uses variable-window power/HR/BR comparison in correct direction, does not claim equal workload or thermal limitation.",
+          "Recorded moving162.6min reported; elapsed165.3min and81s recording gap omitted, but small difference is not material to this particular conclusion.",
+          "Proportionate conditional easy/rest next step and focused experience/recovery question."
+        ],
+        "failures": []
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "equipment",
+      "repeat": 1,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/equipment",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-equipment-1.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-equipment-1.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-equipment-1.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 57.8,
+      "answer_sha256": "8c8cc0bdbb8d97d528a8dfe66e0e62d26e436d39eb82c0dc7ffe970b5f23252e",
+      "usage_events": [
+        {
+          "input_tokens": 271288,
+          "cached_input_tokens": 234496,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 1978,
+          "reasoning_output_tokens": 17
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 4,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Økten ser ut til å ha oppfylt formålet som utstyrssjekk før Vätternrundan: beskrivelsen oppgir at en feil ble funnet og rettet etter bytte av kjede og slange. Du syklet i 12,3 minutter, med 16,0 minutter totalt. Rådata viser et tydelig stopp og videre sykling etterpå, men bekrefter ikke hva feilen var eller at utstyret vil fungere problemfritt på langturen.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "12,3"
+              },
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "16,0"
+              }
+            ]
+          },
+          {
+            "text": "Belastningen var variabel, med en sammenhengende periode på 5,0 minutter med 211 W i snitt etter stoppet, etterfulgt av rulling uten tråkk. Pulsen og pustemålingene steg under belastningen og falt da tråkkingen opphørte. Det er forenlig med en forventet akutt respons, men uten historiske terskelankere og sammenlignbare arbeidsperioder kan intensitetsdomene eller fysiologisk drift ikke fastslås. Pustevolumene er sensorestimater, og den korte temperaturregistreringen gir ikke grunnlag for å konkludere om varmebelastning.",
+            "claims": [
+              {
+                "fact_id": "effort.best_5m_power.duration",
+                "scope": "continuous_300s",
+                "unit": "min",
+                "display": "5,0"
+              },
+              {
+                "fact_id": "effort.best_5m_power",
+                "scope": "continuous_300s",
+                "unit": "W",
+                "display": "211"
+              }
+            ]
+          },
+          {
+            "text": "Den korte varigheten og begrensede arbeidsmengden tilsier et lite samlet treningsstimulus, uten grunnlag for å hevde bedre form eller langturberedskap. Økten alene tilsier ingen større endring i videre trening eller økning av treningsmålene. Fortsett som planlagt dersom kroppen kjennes normal og utstyret fungerer; opplevd belastning og senere restitusjon er ukjent, så restitusjonsbehovet er foreløpig uavklart.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan kjentes pust og bein under prøveturen og etterpå – uanstrengt, eller uventet tungt eller smertefullt?"
+      },
+      "answer_text": "Økten ser ut til å ha oppfylt formålet som utstyrssjekk før Vätternrundan: beskrivelsen oppgir at en feil ble funnet og rettet etter bytte av kjede og slange. Du syklet i 12,3 minutter, med 16,0 minutter totalt. Rådata viser et tydelig stopp og videre sykling etterpå, men bekrefter ikke hva feilen var eller at utstyret vil fungere problemfritt på langturen.\n\nBelastningen var variabel, med en sammenhengende periode på 5,0 minutter med 211 W i snitt etter stoppet, etterfulgt av rulling uten tråkk. Pulsen og pustemålingene steg under belastningen og falt da tråkkingen opphørte. Det er forenlig med en forventet akutt respons, men uten historiske terskelankere og sammenlignbare arbeidsperioder kan intensitetsdomene eller fysiologisk drift ikke fastslås. Pustevolumene er sensorestimater, og den korte temperaturregistreringen gir ikke grunnlag for å konkludere om varmebelastning.\n\nDen korte varigheten og begrensede arbeidsmengden tilsier et lite samlet treningsstimulus, uten grunnlag for å hevde bedre form eller langturberedskap. Økten alene tilsier ingen større endring i videre trening eller økning av treningsmålene. Fortsett som planlagt dersom kroppen kjennes normal og utstyret fungerer; opplevd belastning og senere restitusjon er ukjent, så restitusjonsbehovet er foreløpig uavklart.\n\nHvordan kjentes pust og bein under prøveturen og etterpå – uanstrengt, eller uventet tungt eller smertefullt?",
+      "blind_id": "D7",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc \"rg --files /private/tmp/outdoor-sol-diverse-20261018/equipment -g '\"'!cases.json'\"' -g '\"'!**/*rubric*'\"'\"",
+        "/bin/zsh -lc 'cat /private/tmp/outdoor-sol-diverse-20261018/equipment/.agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'head -n 5 activity/streams.csv'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); print(\\\"ROOT KEYS\\\",list(p)); [(print(k,json.dumps(p[k],ensure_ascii=False)[:20000])) for k in [\\\"activity\\\",\\\"analysis_overview\\\",\\\"key_efforts\\\",\\\"outdoor_evidence\\\",\\\"sensor_summary\\\",\\\"data_quality\\\"] if k in p]'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md .agents/skills/training-analysis/references/thermal-sensing.md .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); print(\\\"streams\\\",json.dumps(p[\\\"streams\\\"])); print(\\\"total\\\",json.dumps(p[\\\"total\\\"],ensure_ascii=False)[:23000]); print(\\\"pauses\\\",p[\\\"long_pauses\\\"]); a=json.load(open(\\\"activity/activity.json\\\")); print(\\\"metadata\\\",json.dumps({k:v for k,v in a.items() if k in [\\\"description\\\",\\\"name\\\",\\\"icu_athlete_settings\\\",\\\"moving_time\\\",\\\"elapsed_time\\\"]},ensure_ascii=False))'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); print(\\\"rows\\\",len(r)); fs=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"core_temperature\\\",\\\"distance\\\",\\\"velocity_smooth\\\"]; \nfor lo,hi in [(0,298),(298,501),(501,825),(825,960)]:\n s=[x for x in r if lo<=float(x[\\\"time\\\"])<hi]; print(lo,hi,{f:(round(statistics.mean(float(x[f]) for x in s if x[f]),2),s[0][f],s[-1][f]) for f in fs})\nrat=[float(x[\\\"tidal_volume_min\\\"])/(float(x[\\\"respiration\\\"])*float(x[\\\"tidal_volume\\\"])/100) for x in r if all(x[f] and float(x[f])>0 for f in [\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\"])]; print(\\\"VE scaling ratio median\\\",statistics.median(rat))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics; r=[x for x in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if x[\\\"time\\\"]]; fs=[\\\"watts\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume_min\\\",\\\"core_temperature\\\",\\\"distance\\\",\\\"velocity_smooth\\\"];\nfor lo,hi in [(0,298),(298,501),(501,825),(825,960)]:\n s=[x for x in r if lo<=float(x[\\\"time\\\"])<hi]; print(lo,hi,{f:(round(statistics.mean(float(x[f]) for x in s if x[f]),2),s[0][f],s[-1][f]) for f in fs})\nrat=[float(x[\\\"tidal_volume_min\\\"])/(float(x[\\\"respiration\\\"])*float(x[\\\"tidal_volume\\\"])/100) for x in r if all(x[f] and float(x[f])>0 for f in [\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\"])]; print(\\\"VE scaling ratio median\\\",statistics.median(rat))'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-equipment-1.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 4,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "equipment",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Purpose and documented correction used without claiming perfect future reliability.",
+          "Describes stop then5min211W effort and coasting, consistent with raw stream.",
+          "Sensor estimates and short thermal record qualified; no long-ride recovery prescription.",
+          "Conditional continue-as-planned advice is proportionate; experience remains unknown."
+        ],
+        "failures": []
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "equipment",
+      "repeat": 2,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/equipment",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-equipment-2.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-equipment-2.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-equipment-2.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 63.8,
+      "answer_sha256": "b034e411bc54b8e631c1af840ecf713a288752da66608fc8e359921e90ccb466",
+      "usage_events": [
+        {
+          "input_tokens": 305085,
+          "cached_input_tokens": 263168,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2161,
+          "reasoning_output_tokens": 49
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 5,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Økten ser ut til å ha oppfylt formålet som utstyrssjekk: Ifølge beskrivelsen ble en feil funnet og rettet etter bytte av kjede og slange. Du syklet i 12,3 minutter over totalt 16,0 minutter. Rådata viser et tydelig opphold med tilnærmet stillstand, uten opptaksgap; årsaken til oppholdet er ikke dokumentert. Gjennomføringen bør vurderes som funksjonstest før Vätternrundan, ikke som en mislykket sammenhengende treningsøkt.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "12,3"
+              },
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "16,0"
+              }
+            ]
+          },
+          {
+            "text": "Belastningen var kort og variert, med tråkk, frirulling og stopp. Beste sammenhengende periode på 5,0 minutter hadde snitteffekt 211 W. Puls og pustefrekvens steg under belastning og falt under avlastning, forenlig med en respons på arbeidsendringene. Ventilasjonsestimatet fulgte samme hovedmønster, men er ikke laboratoriemålt ventilasjon. Uten terskelankere og sammenlignbare arbeidsvinduer kan økten verken plasseres sikkert i en intensitetssone eller brukes til å vurdere drift og formutvikling.",
+            "claims": [
+              {
+                "fact_id": "effort.best_5m_power.duration",
+                "scope": "continuous_300s",
+                "unit": "min",
+                "display": "5,0"
+              },
+              {
+                "fact_id": "effort.best_5m_power",
+                "scope": "continuous_300s",
+                "unit": "W",
+                "display": "211"
+              }
+            ]
+          },
+          {
+            "text": "Den korte varigheten og det samlede mekaniske arbeidet på 94,2 kJ tilsier et begrenset treningsbidrag; hovedverdien var å avdekke utstyrsfeilen. Økten dokumenterer ikke kapasitet til langvarig sykling eller behov for treningsprogresjon. Den gir alene liten grunn til å endre videre trening, men dette er foreløpig siden opplevd anstrengelse og senere restitusjon er ukjent. Bekreft at utstyret fungerer etter rettingen før langtur.",
+            "claims": [
+              {
+                "fact_id": "ride.work",
+                "scope": "observed_recording",
+                "unit": "kJ",
+                "display": "94,2"
+              }
+            ]
+          }
+        ],
+        "follow_up_question": "Hvordan kjentes pust og bein underveis og etterpå – var belastningen som forventet, eller opplevde du uvanlig tunghet eller ubehag?"
+      },
+      "answer_text": "Økten ser ut til å ha oppfylt formålet som utstyrssjekk: Ifølge beskrivelsen ble en feil funnet og rettet etter bytte av kjede og slange. Du syklet i 12,3 minutter over totalt 16,0 minutter. Rådata viser et tydelig opphold med tilnærmet stillstand, uten opptaksgap; årsaken til oppholdet er ikke dokumentert. Gjennomføringen bør vurderes som funksjonstest før Vätternrundan, ikke som en mislykket sammenhengende treningsøkt.\n\nBelastningen var kort og variert, med tråkk, frirulling og stopp. Beste sammenhengende periode på 5,0 minutter hadde snitteffekt 211 W. Puls og pustefrekvens steg under belastning og falt under avlastning, forenlig med en respons på arbeidsendringene. Ventilasjonsestimatet fulgte samme hovedmønster, men er ikke laboratoriemålt ventilasjon. Uten terskelankere og sammenlignbare arbeidsvinduer kan økten verken plasseres sikkert i en intensitetssone eller brukes til å vurdere drift og formutvikling.\n\nDen korte varigheten og det samlede mekaniske arbeidet på 94,2 kJ tilsier et begrenset treningsbidrag; hovedverdien var å avdekke utstyrsfeilen. Økten dokumenterer ikke kapasitet til langvarig sykling eller behov for treningsprogresjon. Den gir alene liten grunn til å endre videre trening, men dette er foreløpig siden opplevd anstrengelse og senere restitusjon er ukjent. Bekreft at utstyret fungerer etter rettingen før langtur.\n\nHvordan kjentes pust og bein underveis og etterpå – var belastningen som forventet, eller opplevde du uvanlig tunghet eller ubehag?",
+      "blind_id": "D6",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!*rubric*'\"' .\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc 'head -n 4 activity/streams.csv'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); print([(k,list(v) if isinstance(v,dict) else type(v).__name__) for k,v in p.items()]); print(json.dumps({k:p.get(k) for k in [\\\"activity\\\",\\\"analysis_overview\\\",\\\"data_quality\\\"]},ensure_ascii=False))'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); print(json.dumps({k:p[k] for k in [\\\"total\\\",\\\"streams\\\",\\\"outdoor_evidence\\\",\\\"key_efforts\\\"]},ensure_ascii=False)); a=json.load(open(\\\"activity/activity.json\\\")); print(\\\"METADATA\\\",json.dumps({k:v for k,v in a.items() if any(s in k.lower() for s in [\\\"description\\\",\\\"name\\\",\\\"feel\\\",\\\"rpe\\\",\\\"cadence\\\"])},ensure_ascii=False))'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics as s; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); f=lambda a,k:[float(x[k]) for x in a if x.get(k,\\\"\\\")\"'!=\"\"]; print(\"clock_steps\",sorted(set(float(b[\"time\"])-float(a[\"time\"]) for a,b in zip(r,r[1:])))); print(\"minute_bins: time power hr br ve core speed\"); [(print(t,*[round(s.mean(f([x for x in r if t<=float(x[\"time\"])<t+60],k)),2) for k in [\"watts\",\"heartrate\",\"respiration\",\"tidal_volume_min\",\"core_temperature\",\"velocity_smooth\"]])) for t in range(0,960,60)]; a=[x for x in r if 298<=float(x[\"time\"])<501]; print(\"middle stationary\", {k:(min(f(a,k)),max(f(a,k))) for k in [\"watts\",\"distance\",\"velocity_smooth\",\"heartrate\"]}); ratios=[float(x[\"tidal_volume_min\"])/(float(x[\"respiration\"])*float(x[\"tidal_volume\"])/100) for x in r if float(x[\"respiration\"])*float(x[\"tidal_volume\"])>0];print(\"VE consistency ratio median\",s.median(ratios))'\"'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics as s; r=[x for x in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if x.get(\\\"time\\\")]; f=lambda a,k:[float(x[k]) for x in a if x.get(k,\\\"\\\")\"'!=\"\"]; print(\"clock_steps\",sorted(set(float(b[\"time\"])-float(a[\"time\"]) for a,b in zip(r,r[1:])))); print(\"minute_bins: time power hr br ve core speed\"); [(print(t,*[round(s.mean(f([x for x in r if t<=float(x[\"time\"])<t+60],k)),2) for k in [\"watts\",\"heartrate\",\"respiration\",\"tidal_volume_min\",\"core_temperature\",\"velocity_smooth\"]])) for t in range(0,960,60)]; a=[x for x in r if 298<=float(x[\"time\"])<501]; print(\"middle stationary\", {k:(min(f(a,k)),max(f(a,k))) for k in [\"watts\",\"distance\",\"velocity_smooth\",\"heartrate\"]}); ratios=[float(x[\"tidal_volume_min\"])/(float(x[\"respiration\"])*float(x[\"tidal_volume\"])/100) for x in r if x.get(\"respiration\") and x.get(\"tidal_volume\") and float(x[\"respiration\"])*float(x[\"tidal_volume\"])>0];print(\"VE consistency ratio median\",s.median(ratios))'\"'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-equipment-2.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 5,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "equipment",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Correctly judges documented equipment-check purpose and distinguishes stationary recorded time from recording gaps.",
+          "Short variable work and coupled HR/breathing response are described with sensor and historical-anchor limits.",
+          "Limited training consequence proportional to12.3min/94.2kJ; asks about unexpected symptoms rather than assuming readiness."
+        ],
+        "failures": []
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "mountain",
+      "repeat": 1,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/mountain",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-mountain-1.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-mountain-1.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-mountain-1.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 54.3,
+      "answer_sha256": "adad2a33cef35221e52cfcda7bdfd137bf53e6689fe44aec25f5b1116a7a75eb",
+      "usage_events": [
+        {
+          "input_tokens": 380557,
+          "cached_input_tokens": 335744,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2073,
+          "reasoning_output_tokens": 58
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 6,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Dette var en omfattende, variert langtur med 5,4 timer i bevegelse og 5,9 timer totalt. Opptakshull ved nesten uendret distanse støtter at registreringen var pauset underveis. Belastningen gir et betydelig utholdenhetsstimulus, men ukjent formål og manglende terskelankere gjør at måloppnåelse og intensitetsfordeling ikke kan vurderes sikkert.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "5,4"
+              },
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "5,9"
+              }
+            ]
+          },
+          {
+            "text": "I mekanisk lignende, variable partier tidlig og senere var effekten henholdsvis 224 og 227 W. Pustefrekvensen økte fra 35,1 til 46,7 pust/min, mens pulsen bare økte svakt. Rådata bekrefter forskjellen, som tyder på større respiratorisk respons senere ved lignende ytre arbeid. Sammenligningen gjelder ikke avslutningen og er ingen stabil belastningstest; pustefrekvensen var lavere igjen etterpå. Høyere registrert temperatur og opparbeidet arbeid er mulige bidrag, men dataene skiller ikke varme, ernæring, endret pustemønster og målepåvirkning.",
+            "claims": [
+              {
+                "fact_id": "window.0.watts",
+                "scope": "variable_window_0",
+                "unit": "W",
+                "display": "224"
+              },
+              {
+                "fact_id": "window.1.watts",
+                "scope": "variable_window_1",
+                "unit": "W",
+                "display": "227"
+              },
+              {
+                "fact_id": "window.0.respiration",
+                "scope": "variable_window_0",
+                "unit": "breaths/min",
+                "display": "35,1"
+              },
+              {
+                "fact_id": "window.1.respiration",
+                "scope": "variable_window_1",
+                "unit": "breaths/min",
+                "display": "46,7"
+              }
+            ]
+          },
+          {
+            "text": "Effekten ble opprettholdt i senere lengre partier, så turen viser ikke et tydelig sammenbrudd i gjennomføringen. Den dokumenterer likevel verken forbedret utholdenhet eller lav restitusjonskostnad. Prioriter foreløpig hvile eller lett trening, og legg neste harde økt når bein og allmenntilstand kjennes normale; varigheten tilsier restitusjonsrom, mens opplevelse og senere restitusjon må avgjøre behovet.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan kjentes kroppen dagen etter?"
+      },
+      "answer_text": "Dette var en omfattende, variert langtur med 5,4 timer i bevegelse og 5,9 timer totalt. Opptakshull ved nesten uendret distanse støtter at registreringen var pauset underveis. Belastningen gir et betydelig utholdenhetsstimulus, men ukjent formål og manglende terskelankere gjør at måloppnåelse og intensitetsfordeling ikke kan vurderes sikkert.\n\nI mekanisk lignende, variable partier tidlig og senere var effekten henholdsvis 224 og 227 W. Pustefrekvensen økte fra 35,1 til 46,7 pust/min, mens pulsen bare økte svakt. Rådata bekrefter forskjellen, som tyder på større respiratorisk respons senere ved lignende ytre arbeid. Sammenligningen gjelder ikke avslutningen og er ingen stabil belastningstest; pustefrekvensen var lavere igjen etterpå. Høyere registrert temperatur og opparbeidet arbeid er mulige bidrag, men dataene skiller ikke varme, ernæring, endret pustemønster og målepåvirkning.\n\nEffekten ble opprettholdt i senere lengre partier, så turen viser ikke et tydelig sammenbrudd i gjennomføringen. Den dokumenterer likevel verken forbedret utholdenhet eller lav restitusjonskostnad. Prioriter foreløpig hvile eller lett trening, og legg neste harde økt når bein og allmenntilstand kjennes normale; varigheten tilsier restitusjonsrom, mens opplevelse og senere restitusjon må avgjøre behovet.\n\nHvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan kjentes kroppen dagen etter?",
+      "blind_id": "D8",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc 'ls -la /private/tmp/outdoor-sol-diverse-20261018/mountain/activity'",
+        "/bin/zsh -lc 'cat /private/tmp/outdoor-sol-diverse-20261018/mountain/.agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!*rubric*'\"' -g '\"'!activity.json'\"' -g '\"'!streams.csv'\"'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); print(list(p)); print(\\\"activity\\\",json.dumps(p.get(\\\"activity\\\"))); print(\\\"overview\\\",json.dumps(p.get(\\\"analysis_overview\\\"))); print(\\\"outdoor keys\\\",list(p.get(\\\"outdoor_evidence\\\",{})))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); o=p[\\\"outdoor_evidence\\\"]; print(\\\"comparison\\\",json.dumps(o[\\\"variable_work_comparison\\\"])); print(\\\"segments\\\",json.dumps(o[\\\"segments\\\"])); print(\\\"total keys\\\",list(p[\\\"total\\\"])); print(\\\"streams\\\",json.dumps(p[\\\"streams\\\"]))'\"",
+        "/bin/zsh -lc 'head -n 3 activity/streams.csv'",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"temp\\\"]; windows=[(3977,4277),(14787,15087),(17181,18981),(18981,20781)]; [(print(a,b,\\\"rows\\\",len(w),{f:{\\\"mean\\\":round(statistics.mean(v),2),\\\"min\\\":min(v),\\\"max\\\":max(v)} for f in fields if (v:=[float(x[f]) for x in w if x[f]])})) for a,b in windows if (w:=[x for x in r if a<=float(x[\\\"time\\\"])<b])]; print(\\\"gaps\\\",[(r[i-1][\\\"time\\\"],r[i][\\\"time\\\"],round(float(r[i][\\\"distance\\\"])-float(r[i-1][\\\"distance\\\"]),1)) for i in range(1,len(r)) if float(r[i][\\\"time\\\"])-float(r[i-1][\\\"time\\\"])>10])'\"",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics; allrows=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); r=[x for x in allrows if x[\\\"time\\\"]]; print(\\\"rows without clock\\\",len(allrows)-len(r)); fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"temp\\\"]; windows=[(3977,4277),(14787,15087),(17181,18981),(18981,20781)]; [(print(a,b,\\\"rows\\\",len(w),{f:{\\\"mean\\\":round(statistics.mean(v),2),\\\"min\\\":min(v),\\\"max\\\":max(v)} for f in fields if (v:=[float(x[f]) for x in w if x[f]])})) for a,b in windows if (w:=[x for x in r if a<=float(x[\\\"time\\\"])<b])]; print(\\\"gaps\\\",[(r[i-1][\\\"time\\\"],r[i][\\\"time\\\"],round(float(r[i][\\\"distance\\\"])-float(r[i-1][\\\"distance\\\"]),1)) for i in range(1,len(r)) if float(r[i][\\\"time\\\"])-float(r[i-1][\\\"time\\\"])>10])'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-mountain-1.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 6,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "mountain",
+        "scores": [
+          1,
+          2,
+          1,
+          2
+        ],
+        "pass": false,
+        "findings": [
+          "Reports moving/elapsed and qualified recording-pause interpretation.",
+          "Explicitly says selected comparison is not finish and BR subsequently lower; avoids equal-metabolic-load or threshold diagnosis.",
+          "Conditional next-training guidance and focused experience question."
+        ],
+        "failures": [
+          "Omits substantial climbing/terrain (3085m) despite case-specific workload requirement.",
+          "Discusses higher recorded temperature and possible heat contribution without identifying absent core-temperature data or device/ambient nature of available temperature."
+        ]
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "mountain",
+      "repeat": 2,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/mountain",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-mountain-2.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-mountain-2.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-mountain-2.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 60.2,
+      "answer_sha256": "aa5dc7652e7bcb28b4466fa2320ba12b0a6c44dcb4627faa032eeaf2618906c6",
+      "usage_events": [
+        {
+          "input_tokens": 382833,
+          "cached_input_tokens": 334336,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2047,
+          "reasoning_output_tokens": 35
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 9,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Dette var en lang og variert utholdenhetsøkt med 5,4 timer i bevegelse over 5,9 timer totalt, inkludert pauser i registreringen. Registrert mekanisk arbeid var 3930 kJ. Det gir en betydelig utholdenhetsdose, men ukjent formål og manglende terskelankere gjør at måloppnåelse og intensitetsdomene ikke kan fastslås.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "5,4"
+              },
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "h",
+                "display": "5,9"
+              },
+              {
+                "fact_id": "ride.work",
+                "scope": "observed_recording",
+                "unit": "kJ",
+                "display": "3930"
+              }
+            ]
+          },
+          {
+            "text": "I sammenlignbare, men variable arbeidsvinduer tidlig og senere i turen var effekten henholdsvis 224 og 227 W. Pustefrekvensen steg fra 35,1 til 46,7 pust/min, mens pulsen steg mer beskjedent fra 130 til 134 slag/min. Rådata bekrefter god dekning i vinduene. Dette viser økt pustefrekvens ved lignende ytre arbeid, men temperaturregistreringen var også høyere senere. Vindusparet dokumenterer verken jevn forverring gjennom turen eller en bestemt årsak; pustefrekvensen var lavere igjen mot slutten.",
+            "claims": [
+              {
+                "fact_id": "window.0.watts",
+                "scope": "variable_window_0",
+                "unit": "W",
+                "display": "224"
+              },
+              {
+                "fact_id": "window.1.watts",
+                "scope": "variable_window_1",
+                "unit": "W",
+                "display": "227"
+              },
+              {
+                "fact_id": "window.0.respiration",
+                "scope": "variable_window_0",
+                "unit": "breaths/min",
+                "display": "35,1"
+              },
+              {
+                "fact_id": "window.1.respiration",
+                "scope": "variable_window_1",
+                "unit": "breaths/min",
+                "display": "46,7"
+              },
+              {
+                "fact_id": "window.0.heartrate",
+                "scope": "variable_window_0",
+                "unit": "bpm",
+                "display": "130"
+              },
+              {
+                "fact_id": "window.1.heartrate",
+                "scope": "variable_window_1",
+                "unit": "bpm",
+                "display": "134"
+              }
+            ]
+          },
+          {
+            "text": "Du opprettholdt betydelig arbeid mot slutten uten tydelig sammenbrudd i effekten. Økten ga sannsynligvis et stort aerobt stimulus, men faktisk restitusjonsbehov er ukjent. Prioriter foreløpig hvile eller lett trening, og la normal bein- og allmennfølelse samt respons under lett sykling avgjøre neste harde økt. Dataene alene begrunner verken økte terskelankere eller en konklusjon om varmebelastning, væskemangel eller energitømming.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan kjentes kroppen dagen etter?"
+      },
+      "answer_text": "Dette var en lang og variert utholdenhetsøkt med 5,4 timer i bevegelse over 5,9 timer totalt, inkludert pauser i registreringen. Registrert mekanisk arbeid var 3930 kJ. Det gir en betydelig utholdenhetsdose, men ukjent formål og manglende terskelankere gjør at måloppnåelse og intensitetsdomene ikke kan fastslås.\n\nI sammenlignbare, men variable arbeidsvinduer tidlig og senere i turen var effekten henholdsvis 224 og 227 W. Pustefrekvensen steg fra 35,1 til 46,7 pust/min, mens pulsen steg mer beskjedent fra 130 til 134 slag/min. Rådata bekrefter god dekning i vinduene. Dette viser økt pustefrekvens ved lignende ytre arbeid, men temperaturregistreringen var også høyere senere. Vindusparet dokumenterer verken jevn forverring gjennom turen eller en bestemt årsak; pustefrekvensen var lavere igjen mot slutten.\n\nDu opprettholdt betydelig arbeid mot slutten uten tydelig sammenbrudd i effekten. Økten ga sannsynligvis et stort aerobt stimulus, men faktisk restitusjonsbehov er ukjent. Prioriter foreløpig hvile eller lett trening, og la normal bein- og allmennfølelse samt respons under lett sykling avgjøre neste harde økt. Dataene alene begrunner verken økte terskelankere eller en konklusjon om varmebelastning, væskemangel eller energitømming.\n\nHvordan opplevdes pust, bein og samlet anstrengelse mot slutten, og hvordan kjentes kroppen dagen etter?",
+      "blind_id": "D5",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc 'ls -la /private/tmp/outdoor-sol-diverse-20261018/mountain/activity'",
+        "/bin/zsh -lc 'cat /private/tmp/outdoor-sol-diverse-20261018/mountain/.agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!**/*rubric*'\"' -g '\"'!activity/activity.json'\"' -g '\"'!activity/streams.csv'\"'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"KEYS\\\",list(x)); print(\\\"ACTIVITY\\\",json.dumps(x.get(\\\"activity\\\"))); print(\\\"OVERVIEW\\\",json.dumps(x.get(\\\"analysis_overview\\\"))); print(\\\"OUTDOOR KEYS\\\", list(x.get(\\\"outdoor_evidence\\\",{})))'\"",
+        "/bin/zsh -lc 'head -n 3 activity/streams.csv'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"TOTAL KEYS\\\",list(x[\\\"total\\\"])); print(\\\"TOTAL\\\",json.dumps(x[\\\"total\\\"],ensure_ascii=False)[:22000]); print(\\\"OUTDOOR\\\",json.dumps(x[\\\"outdoor_evidence\\\"],ensure_ascii=False)[:26000])'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics,json; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")));\nfor a,b in [(3977,4277),(14787,15087),(18981,21083)]:\n s=[v for v in r if a<=float(v[\\\"time\\\"])<b]; print(a,b,\\\"rows\\\",len(s));\n for k in [\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"temp\\\"]:\n  z=[float(v[k]) for v in s if v[k]]; print(k,\\\"valid\\\",len(z),\\\"mean\\\",round(statistics.mean(z),3),\\\"range\\\",(min(z),max(z)))\nprint(\\\"GAPS\\\",[(p[\\\"time\\\"],q[\\\"time\\\"],p[\\\"distance\\\"],q[\\\"distance\\\"]) for p,q in zip(r,r[1:]) if float(q[\\\"time\\\"])-float(p[\\\"time\\\"])>10]); x=json.load(open(\\\"inspection.json\\\")); print(\\\"EFFORTS\\\",json.dumps(x[\\\"key_efforts\\\"]))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics,json; r=[v for v in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if v[\\\"time\\\"]];\nfor a,b in [(3977,4277),(14787,15087),(18981,21083)]:\n s=[v for v in r if a<=float(v[\\\"time\\\"])<b]; print(a,b,\\\"rows\\\",len(s));\n for k in [\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"temp\\\"]:\n  z=[float(v[k]) for v in s if v[k]]; print(k,\\\"valid\\\",len(z),\\\"mean\\\",round(statistics.mean(z),3),\\\"range\\\",(min(z),max(z)))\nprint(\\\"GAPS\\\",[(p[\\\"time\\\"],q[\\\"time\\\"],p[\\\"distance\\\"],q[\\\"distance\\\"]) for p,q in zip(r,r[1:]) if float(q[\\\"time\\\"])-float(p[\\\"time\\\"])>10]); x=json.load(open(\\\"inspection.json\\\")); print(\\\"EFFORTS\\\",json.dumps(x[\\\"key_efforts\\\"]))'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-mountain-2.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 9,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "mountain",
+        "scores": [
+          1,
+          2,
+          1,
+          2
+        ],
+        "pass": false,
+        "findings": [
+          "Moving versus elapsed and recording interruptions handled; long duration and3930kJ correctly identify major demand.",
+          "Qualified BR/HR variable-window response without causal heat/depletion claim; correctly notes later BR is lower.",
+          "Conditional recovery guidance and material experience question."
+        ],
+        "failures": [
+          "Omits substantial climbing/terrain (3085m) from workload verdict, contrary to case-specific requirement.",
+          "Uses higher temperature registration in physiological discussion without stating core-temperature stream is absent or identifying device/ambient temperature; required source distinction missing."
+        ]
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "named_vt1",
+      "repeat": 1,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/named_vt1",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-named_vt1-1.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-named_vt1-1.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-named_vt1-1.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 92.1,
+      "answer_sha256": "c160448701e0a1da0d98bb997f40cec433d77835ede1ad8ac3a987b998b5ace0",
+      "usage_events": [
+        {
+          "input_tokens": 341213,
+          "cached_input_tokens": 289920,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2161,
+          "reasoning_output_tokens": 32
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 1,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Du gjennomførte 82,9 minutter med lange arbeidsdeler som beholdt omtrent samme gjennomsnittseffekt, men med variasjon underveis. Det viser opprettholdt ytre arbeid gjennom hoveddelen. Om økten oppfylte VT1-formålet, kan ikke bekreftes uten et dokumentert terskelanker og en separat forskrift.",
+            "claims": [
+              {
+                "fact_id": "ride.elapsed",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "82,9"
+              }
+            ]
+          },
+          {
+            "text": "I den senere lange arbeidsdelen var pulsen og pustefrekvensen høyere, mens lokal muskeloksygenering var lavere. Det estimerte pustedybdesignalet falt, slik at ventilasjonsestimatet var omtrent uendret. CORE-estimatet steg og flatet deretter ut. Dette beskriver en endret respons underveis, men uten sammenlignbare arbeidsvinduer kan forskjellene ikke fastslås som fysiologisk drift eller terskelpassering. Dataene påviser heller ikke varmebegrensning eller dehydrering.",
+            "claims": []
+          },
+          {
+            "text": "Økten ga sannsynligvis et utholdenhetsstimulus, men dokumenterer verken økt kapasitet eller at belastningen var lett. Opplevd anstrengelse og senere restitusjon er ukjent. Behold derfor intensiteten ved neste tilsvarende økt fremfor å øke på grunnlag av denne gjennomføringen; velg lettere videre trening dersom pust eller bein var uventet belastet.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan opplevdes pust og bein mot slutten sammenlignet med starten av hoveddelen, og kunne du snakke uanstrengt i hele setninger?"
+      },
+      "answer_text": "Du gjennomførte 82,9 minutter med lange arbeidsdeler som beholdt omtrent samme gjennomsnittseffekt, men med variasjon underveis. Det viser opprettholdt ytre arbeid gjennom hoveddelen. Om økten oppfylte VT1-formålet, kan ikke bekreftes uten et dokumentert terskelanker og en separat forskrift.\n\nI den senere lange arbeidsdelen var pulsen og pustefrekvensen høyere, mens lokal muskeloksygenering var lavere. Det estimerte pustedybdesignalet falt, slik at ventilasjonsestimatet var omtrent uendret. CORE-estimatet steg og flatet deretter ut. Dette beskriver en endret respons underveis, men uten sammenlignbare arbeidsvinduer kan forskjellene ikke fastslås som fysiologisk drift eller terskelpassering. Dataene påviser heller ikke varmebegrensning eller dehydrering.\n\nØkten ga sannsynligvis et utholdenhetsstimulus, men dokumenterer verken økt kapasitet eller at belastningen var lett. Opplevd anstrengelse og senere restitusjon er ukjent. Behold derfor intensiteten ved neste tilsvarende økt fremfor å øke på grunnlag av denne gjennomføringen; velg lettere videre trening dersom pust eller bein var uventet belastet.\n\nHvordan opplevdes pust og bein mot slutten sammenlignet med starten av hoveddelen, og kunne du snakke uanstrengt i hele setninger?",
+      "blind_id": "D9",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!*rubric*'\"' -g '\"'!inspection.json'\"'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc 'head -n 4 activity/streams.csv'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"\\\\n\\\".join(str((k,list(v) if isinstance(v,dict) else \\\"list[%d]\\\"%len(v) if isinstance(v,list) else v)) for k,v in x.items()))'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md .agents/skills/training-analysis/references/muscle-oxygen.md .agents/skills/training-analysis/references/thermal-sensing.md .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); ks=[\\\"analysis_overview\\\",\\\"streams\\\",\\\"total\\\",\\\"source_work_intervals\\\",\\\"work_block_overview\\\",\\\"outdoor_evidence\\\"]; print(json.dumps({k:x[k] for k in ks},ensure_ascii=False,indent=2))'\"",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/muscle-oxygen.md .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; x=json.load(open(\\\"inspection.json\\\")); print(\\\"SOURCE\\\"); print(json.dumps([{k:v for k,v in b.items() if k\"'!=\"data_quality\"} for b in x[\"source_work_intervals\"]],indent=2)); print(\"SEGMENTS\"); print(json.dumps(x[\"outdoor_evidence\"],indent=2)); print(\"BLOCK OVERVIEW\"); print(json.dumps(x[\"work_block_overview\"],indent=2)); print(\"PROVENANCE\"); print(json.dumps(x[\"provenance\"],indent=2))'\"'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics as s; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"smo2\\\",\\\"thb\\\",\\\"core_temperature\\\",\\\"skin_temperature\\\"]; print(\\\"time endpoints\\\",r[0][\\\"time\\\"],r[-1][\\\"time\\\"]); print(\\\"coverage\\\",{k:sum(z[k]\"'!=\"\" for z in r) for k in fields});\nfor a,b in [(554,2502),(2502,4429),(4429,4977)]:\n q=[z for z in r if a<=float(z[\"time\"])<b]; print(a,b,{k:round(s.mean(float(z[k]) for z in q if z[k]!=\"\"),3) for k in fields}); print(\"power sd/coast\",round(s.pstdev(float(z[\"watts\"]) for z in q),2),sum(float(z[\"watts\"])==0 for z in q));\ne=[float(z[\"tidal_volume_min\"])-float(z[\"respiration\"])*float(z[\"tidal_volume\"])/100 for z in r if all(z[k]!=\"\" for k in [\"tidal_volume_min\",\"respiration\",\"tidal_volume\"])]; print(\"VE arithmetic median abs error\",s.median(abs(z) for z in e)); print(\"time gaps\",sum(float(b[\"time\"])-float(a[\"time\"])!=1 for a,b in zip(r,r[1:])))'\"'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics as s,hashlib,json; r=[z for z in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if z[\\\"time\\\"]]; fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"smo2\\\",\\\"thb\\\",\\\"core_temperature\\\"]; print(\\\"time endpoints\\\",r[0][\\\"time\\\"],r[-1][\\\"time\\\"]);\nfor a,b in [(554,2502),(2502,4429),(4848,4977)]:\n q=[z for z in r if a<=float(z[\\\"time\\\"])<b]; print(a,b,{k:round(s.mean(float(z[k]) for z in q if z[k]\"'!=\"\"),3) for k in fields}); print(\"power sd/coast\",round(s.pstdev(float(z[\"watts\"]) for z in q),2),sum(float(z[\"watts\"])==0 for z in q));\ne=[float(z[\"tidal_volume_min\"])-float(z[\"respiration\"])*float(z[\"tidal_volume\"])/100 for z in r]; print(\"VE arithmetic median abs error\",s.median(abs(z) for z in e)); print(\"time gaps\",sum(float(b[\"time\"])-float(a[\"time\"])!=1 for a,b in zip(r,r[1:]))); x=json.load(open(\"inspection.json\")); print(\"provenance matches\",all(hashlib.sha256(open(z[\"path\"],\"rb\").read()).hexdigest()==z[\"sha256\"] for z in x[\"provenance\"][\"inputs\"]+x[\"provenance\"][\"scripts\"]))'\"'\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-named_vt1-1.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 1,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "named_vt1",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Reports82.9min cycling as whole ride and explicitly declines confirmed VT1 completion without historical anchor/prescription; does not assert65min verified VT1.",
+          "Correctly describes similar202W main-block means with HR/BR rise, VT/SmO2 decrease and near-unchanged VE; independently checked raw data.",
+          "Explicit absence of stable comparable windows prevents drift/threshold/heat diagnosis; describes source main blocks without treating them as prescribed intervals.",
+          "Conditional maintain rather than progress advice and material athlete-experience follow-up."
+        ],
+        "failures": []
+      }
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "case": "named_vt1",
+      "repeat": 2,
+      "command": [
+        "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+        "exec",
+        "--ignore-user-config",
+        "--ephemeral",
+        "--skip-git-repo-check",
+        "--sandbox",
+        "read-only",
+        "--model",
+        "gpt-6.1-sol",
+        "-c",
+        "model_reasoning_effort=\"medium\"",
+        "--cd",
+        "/private/tmp/outdoor-sol-diverse-20261018/named_vt1",
+        "--json",
+        "--output-last-message",
+        "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-named_vt1-2.txt",
+        "-"
+      ],
+      "answer": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-named_vt1-2.txt",
+      "events": "/private/tmp/outdoor-sol-diverse-runs-20261018/gpt-6.1-sol-named_vt1-2.jsonl",
+      "exit_code": 0,
+      "status": "completed",
+      "seconds": 64.0,
+      "answer_sha256": "2ec622f2b7eb6308fddcd435056e4464851f922c5fbefeee7eaa69ceca5ccd7b",
+      "usage_events": [
+        {
+          "input_tokens": 344543,
+          "cached_input_tokens": 296064,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 2130,
+          "reasoning_output_tokens": 67
+        }
+      ],
+      "numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 1,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "inputs_unchanged": true,
+      "answer_json": {
+        "statements": [
+          {
+            "text": "Du gjennomførte 82,9 minutter sykling med hoveddeler som hadde omtrent lik snitteffekt, men løpende effektvariasjon. Dette gir et utholdenhetsstimulus, men uten dokumentert VT1-anker og forskrift kan økten ikke bekreftes som gjennomført under VT1 eller vurderes presist mot et effektmål.",
+            "claims": [
+              {
+                "fact_id": "ride.moving",
+                "scope": "whole_ride",
+                "unit": "min",
+                "display": "82,9"
+              }
+            ]
+          },
+          {
+            "text": "I den senere hoveddelen var pulsen høyere, pustefrekvensen høyere og estimert pustedybde lavere, mens sensorrapportert minuttventilasjon var omtrent uendret. Lokal SmO2 var lavere, og CORE-estimert temperatur steg før den flatet ut. Dette viser endret respons underveis uten tydelig effektsvikt i hoveddelene. Sammenlignbare stabile vinduer mangler, så mønsteret dokumenterer verken terskelpassering, svekket utholdenhet eller varmebegrensning.",
+            "claims": []
+          },
+          {
+            "text": "Økten gir grunnlag for å videreføre utholdenhetstreningen, men ikke for å heve terskelankere eller øke belastningen ut fra denne turen alene. Restitusjonskostnaden er ukjent uten opplevelse og senere respons. Behold foreløpig belastningen; velg lettere trening dersom pust eller bein føltes uvanlig belastet eller trettheten vedvarer.",
+            "claims": []
+          }
+        ],
+        "follow_up_question": "Hvordan opplevde du pust og bein mot slutten, og var du uvanlig sliten etterpå eller dagen etter?"
+      },
+      "answer_text": "Du gjennomførte 82,9 minutter sykling med hoveddeler som hadde omtrent lik snitteffekt, men løpende effektvariasjon. Dette gir et utholdenhetsstimulus, men uten dokumentert VT1-anker og forskrift kan økten ikke bekreftes som gjennomført under VT1 eller vurderes presist mot et effektmål.\n\nI den senere hoveddelen var pulsen høyere, pustefrekvensen høyere og estimert pustedybde lavere, mens sensorrapportert minuttventilasjon var omtrent uendret. Lokal SmO2 var lavere, og CORE-estimert temperatur steg før den flatet ut. Dette viser endret respons underveis uten tydelig effektsvikt i hoveddelene. Sammenlignbare stabile vinduer mangler, så mønsteret dokumenterer verken terskelpassering, svekket utholdenhet eller varmebegrensning.\n\nØkten gir grunnlag for å videreføre utholdenhetstreningen, men ikke for å heve terskelankere eller øke belastningen ut fra denne turen alene. Restitusjonskostnaden er ukjent uten opplevelse og senere respons. Behold foreløpig belastningen; velg lettere trening dersom pust eller bein føltes uvanlig belastet eller trettheten vedvarer.\n\nHvordan opplevde du pust og bein mot slutten, og var du uvanlig sliten etterpå eller dagen etter?",
+      "blind_id": "D10",
+      "reviewed_commands": [
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/SKILL.md'",
+        "/bin/zsh -lc 'cat activity/analysis-packet.json'",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc 'ls -la /private/tmp/outdoor-sol-diverse-20261018/named_vt1/activity'",
+        "/bin/zsh -lc 'cat /private/tmp/outdoor-sol-diverse-20261018/named_vt1/.agents/skills/training-analysis/references/activity-analysis.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc \"rg --files -g '\"'!cases.json'\"' -g '\"'!activity/streams.csv'\"' -g '\"'!activity/activity.json'\"' -g '\"'!**/eval*'\"'\"",
+        "/bin/zsh -lc 'cat analysis-packet.json'",
+        "/bin/zsh -lc 'cat config/coaching-preferences.md config/practical-context.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); print(\\\"KEYS\\\",list(p)); print(\\\"\\\\n\\\".join(k+\\\" \\\"+json.dumps(p[k],ensure_ascii=False) for k in [\\\"activity\\\",\\\"analysis_overview\\\",\\\"statistics_scope\\\",\\\"outdoor_vt1_pacing\\\",\\\"provenance\\\"] if k in p))'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import json; p=json.load(open(\\\"inspection.json\\\")); print(\\\"streams\\\",json.dumps(p[\\\"streams\\\"])); print(\\\"total\\\",json.dumps(p[\\\"total\\\"],ensure_ascii=False)); o=p[\\\"outdoor_evidence\\\"]; print(\\\"outdoor keys\\\",list(o)); print(\\\"segments\\\",json.dumps(o.get(\\\"segments\\\"),ensure_ascii=False)); print(\\\"comparison\\\",json.dumps(o.get(\\\"variable_work_comparison\\\"),ensure_ascii=False)); print(\\\"source_work_intervals\\\",json.dumps(p[\\\"source_work_intervals\\\"]))'\"",
+        "/bin/zsh -lc 'head -n 4 activity/streams.csv'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/thermal-sensing.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/muscle-oxygen.md'",
+        "/bin/zsh -lc 'cat .agents/skills/training-analysis/references/respiration.md'",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics,json; r=list(csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\"))); print(\\\"clock\\\",len(r),r[0][\\\"time\\\"],r[-1][\\\"time\\\"]); fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"smo2\\\",\\\"thb\\\",\\\"core_temperature\\\"]; bounds=[(554,2502),(2502,4429)]; [(print(a,b,{f:round(statistics.mean(float(x[f]) for x in r if a<=float(x[\\\"time\\\"])<b and x[f]),3) for f in fields})) for a,b in bounds]; z=[abs(float(x[\\\"tidal_volume_min\\\"])-float(x[\\\"respiration\\\"])*float(x[\\\"tidal_volume\\\"])/100) for x in r if all(x[f] for f in [\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\"])]; print(\\\"VE arithmetic median absolute difference\\\",statistics.median(z)); print(\\\"power variability\\\",[(a,b,round(statistics.pstdev(float(x[\\\"watts\\\"]) for x in r if a<=float(x[\\\"time\\\"])<b),2)) for a,b in bounds])'\"",
+        "/bin/zsh -lc \"python3 -B -c 'import csv,statistics; r=[x for x in csv.DictReader(open(\\\"activity/streams.csv\\\",encoding=\\\"utf-8-sig\\\")) if x.get(\\\"time\\\")]; print(\\\"clock\\\",len(r),r[0][\\\"time\\\"],r[-1][\\\"time\\\"]); fields=[\\\"watts\\\",\\\"cadence\\\",\\\"heartrate\\\",\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\",\\\"smo2\\\",\\\"thb\\\",\\\"core_temperature\\\"]; bounds=[(554,2502),(2502,4429)]; [(print(a,b,{f:round(statistics.mean(float(x[f]) for x in r if a<=float(x[\\\"time\\\"])<b and x[f]),3) for f in fields})) for a,b in bounds]; z=[abs(float(x[\\\"tidal_volume_min\\\"])-float(x[\\\"respiration\\\"])*float(x[\\\"tidal_volume\\\"])/100) for x in r if all(x[f] for f in [\\\"respiration\\\",\\\"tidal_volume\\\",\\\"tidal_volume_min\\\"])]; print(\\\"VE arithmetic median absolute difference\\\",statistics.median(z)); print(\\\"power standard deviation\\\",[(a,b,round(statistics.pstdev(float(x[\\\"watts\\\"]) for x in r if a<=float(x[\\\"time\\\"])<b),2)) for a,b in bounds])'\"",
+        "/bin/zsh -lc \"sed -n '1,100p' .agents/skills/training-analysis/references/muscle-oxygen.md\""
+      ],
+      "archived_answer": "outputs/training-analysis-eval/2026-10-18-outdoor/sol-diverse-runs/gpt-6.1-sol-named_vt1-2.txt",
+      "final_numeric_validation": {
+        "passed": true,
+        "errors": [],
+        "checked_claims": 1,
+        "boundary": "Declared numeric citations only. Does not prove prose semantics, completeness, or physiology."
+      },
+      "review": {
+        "case": "named_vt1",
+        "scores": [
+          2,
+          2,
+          2,
+          2
+        ],
+        "pass": true,
+        "findings": [
+          "Reports82.9min cycling as whole ride and explicitly declines confirmed VT1 completion without historical anchor/prescription; does not assert65min verified VT1.",
+          "Correctly describes similar202W main-block means with HR/BR rise, VT/SmO2 decrease and near-unchanged VE; independently checked raw data.",
+          "Explicit absence of stable comparable windows prevents drift/threshold/heat diagnosis; describes source main blocks without treating them as prescribed intervals.",
+          "Conditional maintain rather than progress advice and material athlete-experience follow-up."
+        ],
+        "failures": []
+      }
+    }
+  ],
+  "review_method": "Separate reviewer used anonymized run IDs, predefined criteria and raw/frozen evidence; no prior model result reports read. Numeric checks separate. Reviewer knew cases and workflow; not revision-blind.",
+  "summary": {
+    "attempts": 10,
+    "semantic_pass": 8,
+    "numeric_pass": 10,
+    "all_inputs_unchanged": true
+  }
+}

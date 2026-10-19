@@ -1,0 +1,183 @@
+{
+  "S1": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Integrates large measured workload and explicitly easy subjective report without equating ease with recovery.",
+      "Qualified variable-window response includes start-up and mechanical confounding; does not diagnose heat limitation.",
+      "Moving/elapsed difference only 20s and no gaps, so elapsed omission is not material.",
+      "Conditional next-session advice, no progression; unknown historical anchors and intake preserved."
+    ]
+  },
+  "S2": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Explicitly preserves synthetic easy context with substantial duration/work; no unsupported intensity domain.",
+      "Uses matched variable window HR/respiration with start-up, cadence and power limits; measured pattern matches evidence.",
+      "No material time difference or gaps to explain.",
+      "Recovery remains unknown; conditional quality readiness and no automatic dose increase."
+    ]
+  },
+  "S3": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Correctly assesses group endurance rather than failed strict VT1.",
+      "States moving and elapsed duration and 58.1min recording gap; does not equate gap with all stopped time.",
+      "Integrates variable mechanical comparison, respiratory pattern, missing late SmO2, early PC fall and non-final later window.",
+      "Focused question covers missing felt burden and recovery; conditional easy/rest before VT2, no progression."
+    ]
+  },
+  "S4": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Group purpose and intensity exposure correctly scoped.",
+      "Moving/elapsed durations explicit; gap distinguished from total stopped time.",
+      "HR/respiratory synthesis qualified by variable work, pause crossing, non-final window and missing late SmO2. PC omitted, which is allowed.",
+      "Targeted question and conditional next-training advice without assumed recovery duration or progression."
+    ]
+  },
+  "S5": {
+    "scores": [
+      1,
+      2,
+      1,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Useful duration/session assessment with distinct moving and elapsed duration; actual distance and terrain omitted, making answer less ride-specific.",
+      "Correctly states physiological response unavailable; no fabricated power, work, zones or comparison.",
+      "Minor qualification: listed >=30s recording gaps sum3145s vs metadata stopped difference3197s, but all raw gaps sum3247s. Statement that gaps do not explain all stillstand is overly categorical across these distinct timing measures; avoid implying reconciliation.",
+      "Conditional next-session advice and focused subjective question; no fabricated cause or progression."
+    ]
+  },
+  "S6": {
+    "scores": [
+      1,
+      2,
+      1,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Useful duration/session assessment with distinct moving and elapsed duration; actual distance and terrain omitted, making answer less ride-specific.",
+      "Correctly states physiological response unavailable; no fabricated power, work, zones or comparison.",
+      "Minor qualification: listed >=30s recording gaps sum3145s vs metadata stopped difference3197s, but all raw gaps sum3247s. Statement that gaps do not explain all stillstand is overly categorical across these distinct timing measures; avoid implying reconciliation.",
+      "Conditional next-session advice and focused subjective question; no fabricated cause or progression."
+    ]
+  },
+  "S7": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Makes easy-intent/hard-pust mismatch central and preserves relatively okay legs.",
+      "Chronological power and physiological changes interpreted as response to changing work, not matched drift; no comparable windows claimed.",
+      "Acknowledges sensor limits and unknown historical anchors; no respiratory diagnosis or inferred cause.",
+      "Conditional rest/easy and defer hard training until normal feeling; material follow-up about post-ride resolution.",
+      "51s elapsed/moving difference is immaterial and no recording gaps exist."
+    ]
+  },
+  "S8": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Easy purpose versus hard early breathing central, legs preserved as okay; no low-power override.",
+      "Load-dependent physiological changes distinguished from matched drift; absent comparability and sensor scale limitations acknowledged.",
+      "No historical anchors, numeric RPE, intake or cause invented.",
+      "Cautious conditional next-session advice with focused question on resolution of breathing burden."
+    ]
+  },
+  "S9": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Distinct moving/elapsed duration and recording interruptions, no bridging of five-minute effort.",
+      "Measured late stronger workload and qualified HR/respiratory/local SmO2 response match chronology.",
+      "No comparable windows acknowledged; no drift, limitation or cause asserted.",
+      "Unknown purpose, historical anchors and recovery preserved; useful conditional training consequence and focused subjective question."
+    ]
+  },
+  "S10": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Moving/elapsed durations and recording gaps versus recorded stops explicit; correctly rejects continuous whole-span work.",
+      "1400.8kJ observed work and273W continuous five-minute effort before long gap supported.",
+      "Qualified load-dependent HR/respiration/SmO2 changes; no matched drift claim or invented physiological cause.",
+      "Unknown purpose and recovery preserved; conditional next training and material subjective question."
+    ]
+  },
+  "S11": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Explicit moving/elapsed durations and recording interruptions; no leftover stationary-time inference or continuous whole-span claim.",
+      "Late continuous effort and load-dependent HR/respiratory/local SmO2 response consistent with frozen evidence.",
+      "Unavailable matched windows, unknown intent and anchors retained; no drift or threshold-domain claim.",
+      "Unknown felt and recovery burden preserved; practical conditional quality readiness and targeted question about efforts versus finish."
+    ]
+  },
+  "S12": {
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Moving/elapsed durations and paused-recording interpretation explicit without equating gaps with stationary duration.",
+      "Continuous five-minute effort and qualified load-dependent response match evidence; usable portions preserved despite interruptions.",
+      "No matched same-load comparison, physiological limitation or late deterioration asserted; unknown purpose preserved.",
+      "Conditional next-session implication and focused question without fabricated recovery duration or progression."
+    ]
+  }
+}

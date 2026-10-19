@@ -1,0 +1,27 @@
+--- a/.agents/skills/training-analysis/references/activity-analysis.md
++++ b/.agents/skills/training-analysis/references/activity-analysis.md
+@@ -356,6 +356,9 @@
+   confidence with every assessment. Do not translate `context_present` into
+   wording such as "heat inflated Training Effect".
+ - Numeric difficulty should accompany a text difficulty rating when present.
++  Preserve the source scale: do not append a denominator, percent sign or
++  normalized score unless the source explicitly defines it. Xert Difficulty
++  reported as 57 remains 57, not 57/100.
+ - Ask how the session felt when useful, but not when feel/RPE is already known.
+ - Save subjective feel/RPE remotely only when the user asks, using the owning
+   source skill's write workflow.
+--- a/.agents/skills/training-analysis/references/thermal-sensing.md
++++ b/.agents/skills/training-analysis/references/thermal-sensing.md
+@@ -97,6 +97,12 @@
+ such as a meaningful temperature trend, relevant environmental or cooling
+ conditions, rising physiological cost at matched power, and athlete-reported
+ heat strain. State the supporting observations and important confounders.
++Warmth reported alongside rising pulse or breathing does not by itself
++establish heat as the likely cause. Check whether timing and comparable work
++support heat beyond accumulated work, cadence, posture and other plausible
++contributors. If those alternatives remain indistinguishable, describe heat
++as a possible contributor, not a probable cause; a later caveat does not
++qualify an earlier causal claim.
+ 
+ ### `heat_limited`
+ 

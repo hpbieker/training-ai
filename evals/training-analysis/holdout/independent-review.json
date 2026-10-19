@@ -1,0 +1,125 @@
+{
+  "review_type": "Independent four-case holdout dialogue review",
+  "scope": "Judged against pre-locked evals/training-analysis/holdout/cases.json. Read H1-H4 answers/commands and raw activity/stream sources. No skill diff or previous result reports read for these cases. Same-thread/input immutability and frozen skill/helper state accepted as coordinator-verified. Numerical checks are bounded spot checks, not exhaustive reanalysis.",
+  "results": [
+    {
+      "review_id": "H1",
+      "case": "low_average_group",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Uses documented group context, distinguishes low average from substantial late effort, does not impose strict VT1/recovery intent, and leaves actual subjective burden/recovery unknown. Material whole-ride and post-ride question. Correct activity and fresh workflow.",
+        "minor_improvements": [
+          "Saying the ride should count as more than recovery is supported by the hard finish, but should remain a dose description rather than an assumed intended role.",
+          "Local sensor response need not take as much space as the practical interpretation."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "meaningful_update": true,
+        "reason": "Positive report correctly supports a successful social ride and good acute tolerability. Easy periods remain distinct from hard accelerations. No forced failed-session verdict or prolonged-rest prescription. Normal next-session condition is retained, rather than claiming proven next-day recovery.",
+        "minor_improvements": [
+          "Could explicitly distinguish normal immediately after from unreported next-day recovery; the normal-dagsform condition already handles the practical uncertainty."
+        ]
+      }
+    },
+    {
+      "review_id": "H2",
+      "case": "return_after_illness",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Recognizes explicit form-test-after-illness purpose and harder return. Short duration/low average do not obscure the return dose. Preserves unknown readiness/recovery and asks about breathing, legs and subsequent symptoms without inventing illness type or clearance.",
+        "minor_improvements": [
+          "Only partly fulfilled the quiet form-test purpose is defensible from the stated intent and harder return, but final success remains conditional on the missing athlete response as the answer later states."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "none",
+        "meaningful_update": true,
+        "reason": "Centers abnormal breathing with okay legs, qualifies readiness more cautiously while retaining measured dose, and explicitly preserves unknown next-day recovery. Proportional shorter/easier next ride and no progression follow logically without inventing diagnosis or clearance. No redundant question."
+      }
+    },
+    {
+      "review_id": "H3",
+      "case": "thermal_context",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Separates wearable CORE estimates from device temperature, preserves variable/early-window limitations and uncertain effort/recovery, and asks a material whole-ride/heat question. Does not diagnose heat limitation or dehydration.",
+        "minor_improvements": [
+          "Concrete source-unit error: Xert Difficulty is written as 57/100. Activity description supplies Difficulty 57 with a symbol, not a 100-point denominator. The number 57 is correct; the normalization is unsupported and should be removed.",
+          "The question asking whether heat felt limiting is acceptable subjective context, though it should never be treated as a measured physiological limitation."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "meaningful_update": true,
+        "reason": "Integrates experienced heat, heavy breathing in the final hour and comparatively good legs; keeps intake and next-day recovery unknown. Does not diagnose dehydration, heat limitation or respiratory limitation. Advises against automatic dose increase and to reduce late intensity in similar conditions.",
+        "minor_improvements": [
+          "Varme bidro sannsynligvis is a stronger causal probability claim than this dataset establishes. Warm conditions, reported heat and CORE rise make heat a plausible contributor, but kan ha bidratt is better supported. This is not framed as a proven limiting diagnosis.",
+          "Next-session implication is mainly no dose increase. A concise conditional statement about waiting for normal easy-work response would make it more actionable."
+        ]
+      }
+    },
+    {
+      "review_id": "H4",
+      "case": "long_missing_smo2",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Retains very large duration/work dose, explicitly states SmO2/THb absent and does not invent local response. Qualified variable-window interpretation and unknown subjective burden/recovery are preserved; asks relevant experience/intake question.",
+        "minor_improvements": [
+          "Opening increased physiological response is justified but cannot alone mean rising subjective burden; the answer does maintain this distinction.",
+          "Answer can be shorter without losing duration, dose, missing sensor and selected-window qualifications."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "none",
+        "meaningful_update": true,
+        "reason": "Accepts controlled experience and normal late breathing/legs as positive tolerability evidence without erasing the large dose or measured response change. Preserves unknown quantities of food/drink and unknown next-day recovery. No forced negative verdict, adaptation claim or repeated question. Conditional next-hard-session guidance remains proportional."
+      }
+    }
+  ],
+  "workflow": {
+    "verdict": "pass",
+    "findings": [
+      "All cases read the exact requested activity, run fresh activity_inspect.py and analysis_packet.py and inspect source/stream evidence. H2 additionally reads two other activities for context, but the verdict and numbers remain anchored to the correct requested activity.",
+      "No supplied commands write externally or alter source/context files; derived analysis outputs are allowed. Followups use no tools.",
+      "Several CSV attempts are retried after parsing problems; supported final claims are not invalidated by those corrected attempts.",
+      "Normal useful Norwegian prose in all cases, with optional concision improvements.",
+      "No numeric RPE, actual intake quantities, specific illness type, fixed recovery duration, or confirmed thermal/respiratory limitation is invented."
+    ]
+  },
+  "numerical_and_source_spot_checks": {
+    "conclusion": "No material dose or sensor-value errors in checked claims. One concrete unsupported model-scale notation in H3: Difficulty 57/100.",
+    "source_precision": [
+      "Xert XSS/Difficulty values come from activity-description summaries, not newly fetched Xert measurements. H2/H4 explicitly identify this source; H1 refers to the summary.",
+      "H1 XSS 95 versus Intervals load 88 and H3 XSS 165 versus load 136 are distinct source-labelled model metrics; H2 XSS 33 versus load 30 and H4 XSS 382 are likewise supported. They are not interchangeable physiological measurements.",
+      "Raw description provides Difficulty 57, not 57/100. Preserve source label and value without inventing a denominator.",
+      "Mechanical work is kJ, not food intake or metabolic calories. No answer treats modeled carbohydrate use as measured consumption.",
+      "CORE is identified as an estimate; H3 separately identifies device temperature and environmental sensitivity. H2 weather estimate near 26 C is supported by activity weather metadata, distinct from device average around 30.5 C."
+    ],
+    "checked": [
+      "H2 raw 1802/2440 s, 377.331 kJ, 155/233 W, approximately 639 zero-speed samples. 1246-1446 s window directly supports 271.75 W, 168 bpm, 58.41 breaths/min, 28.05 percent SmO2. CORE maximum 38.3 C at 1794 s lies in the post-work stop.",
+      "H4 raw 202009.4 m, 23059/25044 s, 4735.111 kJ and 189/219 W. SmO2/THb have zero populated samples. Rounded selected windows support approximately 221/225 W, 123/137 bpm, 45.6/54 breaths/min and 37.91/38.11 C. Exact selected boundaries may differ by seconds from displayed minute labels.",
+      "H3 raw 78262.96 m, 10685/10871 s, 1965.555 kJ and 181/203 W. Raw 12-17 and 92-97 min windows support about 204/208 W, 116/134 bpm, 35.6/43.9 breaths/min and 37.09/38.06 C; CORE maximum 38.32 C.",
+      "H1 raw 71263.74 m, 7694/9029 s, 1122.227 kJ and 124/193 W. Late pre-stop spot window supports approximately 166 bpm, 57-58 breaths/min and low-mid-20s SmO2; CORE maximum 37.99 C."
+    ]
+  },
+  "overall": {
+    "initial_passes": 4,
+    "initial_total": 4,
+    "followup_passes": 4,
+    "followup_total": 4,
+    "complete_dialogue_passes": 4,
+    "complete_dialogue_total": 4,
+    "stoppefeil": [],
+    "key_result": "All four holdout dialogues satisfy the substantive initial/followup requirements. Both positive reports are accepted without forced negative verdicts. H3 has an unsupported Difficulty denominator and somewhat overconfident heat-causality wording; both are explicitly recorded as minor corrections, not omitted from the passing judgment.",
+    "generalization_limit": "Four heterogeneous previously unused activities are a useful small broader test, not proof of reliability across all workouts. These cases are now regression cases rather than untouched holdouts."
+  }
+}

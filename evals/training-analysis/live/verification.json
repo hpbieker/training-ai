@@ -1,0 +1,21 @@
+{
+  "model": "gpt-6.1-sol",
+  "reasoning_effort": "medium",
+  "initial_request": "Analyser siste uteøkt.",
+  "activity_id": "i198686349",
+  "independent_live_list": "outputs/training-analysis-eval/2026-10-18-live/independent-activity-list.json",
+  "source_inputs": [
+    {
+      "path": "/Users/hanspetterbieker/Documents/Privat/Trening/training-ai/outputs/intervals/activities/2026-10-18_i198686349/activity.json",
+      "matches": true
+    },
+    {
+      "path": "/Users/hanspetterbieker/Documents/Privat/Trening/training-ai/outputs/intervals/activities/2026-10-18_i198686349/streams.csv",
+      "matches": true
+    }
+  ],
+  "inspection": "outputs/activity-inspect/i198686349_20261018T191847292461Z.json",
+  "tracked_diff_unchanged": true,
+  "primary_answer_artifact": "sol-analysis.md",
+  "scope": "One fresh-context agent with live tools and current repo; not a continuation of original athlete conversation. Audit is agent-recorded and source artifacts corroborate retrieval; no full raw agent tool transcript exported."
+}

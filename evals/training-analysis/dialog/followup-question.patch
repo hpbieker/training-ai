@@ -1,0 +1,19 @@
+--- a/.agents/skills/training-analysis/references/physiological-response-synthesis.md
++++ b/.agents/skills/training-analysis/references/physiological-response-synthesis.md
+@@ -307,8 +307,14 @@
+ - Include plan-role completion and the supported consequence for progression or
+   subsequent training when applicable; preserve any explicit classification
+   required by the active plan workflow.
+-- Ask a targeted question only when missing feel, symptoms, setup, or intake
+-  could materially change the verdict.
++- When the verdict or next-session consequence remains provisional because
++  material athlete context is missing, finish with a direct, focused question
++  that would resolve it. Merely stating that effort or recovery is unknown
++  does not complete this step. Ask about whole-ride breathing and legs when
++  perceived effort is missing; select other context only if it would change
++  the assessment. Use information already supplied and do not repeat an
++  answered question. If no missing context would change the assessment,
++  no follow-up question is needed.
+ 
+ When evidence is limited, apply
+ [the missing-evidence limits](#conclusions-with-missing-evidence) and give the

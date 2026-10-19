@@ -1,0 +1,175 @@
+{
+  "D1": {
+    "case": "hill_repeats",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Identifies repeated short climbing efforts and steadier later cycling, avoids treating title as verified six prescribed intervals.",
+      "Uses variable-window power/HR/BR comparison in correct direction, does not claim equal workload or thermal limitation.",
+      "Recorded moving162.6min reported; elapsed165.3min and81s recording gap omitted, but small difference is not material to this particular conclusion.",
+      "Proportionate conditional easy/rest next step and focused experience/recovery question."
+    ],
+    "failures": []
+  },
+  "D2": {
+    "case": "ultra",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Recognizes ultra-duration load, distinguishes8.5h moving and8.7h elapsed; does not confuse official event time, which is unused.",
+      "Correctly locates comparison at6.0/8.1h, uses matched variable mechanics with qualified HR/BR/VE rise and stable core estimate.",
+      "Separates Xert modeled summary from intake/feel and avoids diagnosing depletion/heat or threshold crossing.",
+      "Recovery guidance conditional on actual state rather than fixed invented recovery duration."
+    ],
+    "failures": []
+  },
+  "D3": {
+    "case": "hill_repeats",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Clearly distinguishes repeated climbs from source WORK fragments; no prescribed interval-count claim.",
+      "Moving and elapsed both reported; near-stationary gap described as consistent with pause, not proven cause.",
+      "Correct variable-pair HR/power/BR interpretation; no VO2max or heat/threshold inference.",
+      "Next training is conditional and focused experience question preserves unknown feel."
+    ],
+    "failures": []
+  },
+  "D4": {
+    "case": "ultra",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Ultra-duration and mechanical work establish major load without conflating official and recorded time.",
+      "Explicitly says both comparison periods are late, not early-to-late durability proof; appropriate sensor-fit/lag/posture caveats.",
+      "Xert substrate output explicitly modeled, not measured metabolism.",
+      "Proportionate recovery advice with no fixed recovery period or unwarranted progression."
+    ],
+    "failures": []
+  },
+  "D5": {
+    "case": "mountain",
+    "scores": [
+      1,
+      2,
+      1,
+      2
+    ],
+    "pass": false,
+    "findings": [
+      "Moving versus elapsed and recording interruptions handled; long duration and3930kJ correctly identify major demand.",
+      "Qualified BR/HR variable-window response without causal heat/depletion claim; correctly notes later BR is lower.",
+      "Conditional recovery guidance and material experience question."
+    ],
+    "failures": [
+      "Omits substantial climbing/terrain (3085m) from workload verdict, contrary to case-specific requirement.",
+      "Uses higher temperature registration in physiological discussion without stating core-temperature stream is absent or identifying device/ambient temperature; required source distinction missing."
+    ]
+  },
+  "D6": {
+    "case": "equipment",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Correctly judges documented equipment-check purpose and distinguishes stationary recorded time from recording gaps.",
+      "Short variable work and coupled HR/breathing response are described with sensor and historical-anchor limits.",
+      "Limited training consequence proportional to12.3min/94.2kJ; asks about unexpected symptoms rather than assuming readiness."
+    ],
+    "failures": []
+  },
+  "D7": {
+    "case": "equipment",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Purpose and documented correction used without claiming perfect future reliability.",
+      "Describes stop then5min211W effort and coasting, consistent with raw stream.",
+      "Sensor estimates and short thermal record qualified; no long-ride recovery prescription.",
+      "Conditional continue-as-planned advice is proportionate; experience remains unknown."
+    ],
+    "failures": []
+  },
+  "D8": {
+    "case": "mountain",
+    "scores": [
+      1,
+      2,
+      1,
+      2
+    ],
+    "pass": false,
+    "findings": [
+      "Reports moving/elapsed and qualified recording-pause interpretation.",
+      "Explicitly says selected comparison is not finish and BR subsequently lower; avoids equal-metabolic-load or threshold diagnosis.",
+      "Conditional next-training guidance and focused experience question."
+    ],
+    "failures": [
+      "Omits substantial climbing/terrain (3085m) despite case-specific workload requirement.",
+      "Discusses higher recorded temperature and possible heat contribution without identifying absent core-temperature data or device/ambient nature of available temperature."
+    ]
+  },
+  "D9": {
+    "case": "named_vt1",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Reports82.9min cycling as whole ride and explicitly declines confirmed VT1 completion without historical anchor/prescription; does not assert65min verified VT1.",
+      "Correctly describes similar202W main-block means with HR/BR rise, VT/SmO2 decrease and near-unchanged VE; independently checked raw data.",
+      "Explicit absence of stable comparable windows prevents drift/threshold/heat diagnosis; describes source main blocks without treating them as prescribed intervals.",
+      "Conditional maintain rather than progress advice and material athlete-experience follow-up."
+    ],
+    "failures": []
+  },
+  "D10": {
+    "case": "named_vt1",
+    "scores": [
+      2,
+      2,
+      2,
+      2
+    ],
+    "pass": true,
+    "findings": [
+      "Reports82.9min cycling as whole ride and explicitly declines confirmed VT1 completion without historical anchor/prescription; does not assert65min verified VT1.",
+      "Correctly describes similar202W main-block means with HR/BR rise, VT/SmO2 decrease and near-unchanged VE; independently checked raw data.",
+      "Explicit absence of stable comparable windows prevents drift/threshold/heat diagnosis; describes source main blocks without treating them as prescribed intervals.",
+      "Conditional maintain rather than progress advice and material athlete-experience follow-up."
+    ],
+    "failures": []
+  }
+}

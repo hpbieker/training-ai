@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "mountain",
+      "split": "new_transfer",
+      "activity": "2025-07-26_i89262299",
+      "options": [],
+      "context": "Lang utetur ved Mogán. Formål og opplevelse er ikke dokumentert. Analyser den lagrede økten selvstendig. Historiske terskelankere, detaljert forskrift, opplevd anstrengelse, mat, drikke og senere restitusjon er ukjent utover eksplisitte kildeopplysninger. Ingen hypotetisk utøverrapport er gitt. Gi en kort norsk vurdering av gjennomføring, fysiologisk respons og konsekvens for videre trening.",
+      "required": [
+        "Give a concise ride-specific verdict, qualified response and a proportionate next-training consequence.",
+        "Keep historical anchors, felt effort, intake and subsequent recovery unknown unless explicitly documented; ask only a material focused question.",
+        "Handle moving versus elapsed duration and actual recording interruptions where material; do not infer stationary time from gap subtraction.",
+        "Prioritize usable measured power, work, duration and variability. Terrain is optional when it adds explanatory context; do not fail an answer merely for omitting climbing/elevation.",
+        "If discussing temperature, identify device/environmental proxy versus wearable core estimate, preserve absent core data and do not infer heat from location."
+      ],
+      "prohibited": [
+        "Invent historical thresholds, prescribed dose, numeric RPE, intake or recovery duration.",
+        "Infer ease from low average power, or diagnose glycogen depletion, heat limitation or respiratory limitation from sensors.",
+        "Treat source WORK rows or the activity title alone as proof of completed prescribed intervals.",
+        "Present modeled calories/carbohydrate/fat usage as measured metabolism or consumed food.",
+        "Add climbing as an independent energetic load on top of measured mechanical work without evidence."
+      ]
+    }
+  ],
+  "rubric_version": 2,
+  "revision_reason": "User correction: elevation omission alone is not a failure when measured power adequately explains work."
+}

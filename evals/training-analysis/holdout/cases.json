@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "selection_note": "Four activities absent from all existing eval files at selection; skill/helpers frozen before runs. Once evaluated these are regression cases, not untouched holdouts.",
+  "activity_pool": [
+    "2026-07-17_i166546730",
+    "2026-05-22_i150612397",
+    "2026-07-13_i165215678",
+    "2026-07-28_i170000292"
+  ],
+  "cases": [
+    {
+      "id": "return_after_illness",
+      "activity": "2026-07-17_i166546730",
+      "initial_prompt": "Analyser økt i166546730.",
+      "followup_prompt": "Turen var ment som en forsiktig formtest. Pusten kjentes tyngre enn normalt, særlig på returen, selv om beina var greie. Jeg vet ikke hvordan formen var dagen etter.",
+      "followup_origin": "Synthetic test context only; never persist as historical athlete report.",
+      "required_initial": [
+        "Resolve the exact activity and use fresh raw-data analysis.",
+        "Distinguish measured dose, reported experience, modeled response and unknown recovery; do not infer felt ease from averages.",
+        "Use only supported historical anchors and established intent, including existing activity description.",
+        "Give a useful proportional Norwegian analysis and ask a focused question when material athlete context remains missing.",
+        "Respect sensor availability, quality and time/window scope; no unsupported causal diagnosis or invented sensor data."
+      ],
+      "required_followup": [
+        "Meaningfully integrate supplied athlete report, preserving remaining unknowns and supported dose.",
+        "Do not invent numeric RPE, intake, illness diagnosis or recovery duration.",
+        "Do not repeat answered broad feel questions; any new question must resolve remaining material uncertainty.",
+        "Give a proportional next-session implication, without forced reversal of justified provisional advice."
+      ],
+      "case_specific": [
+        "Recognize description explicitly says cautious form test after illness; do not invent illness type or clearance.",
+        "Short duration and low average must not conceal harder return; interpret readiness cautiously."
+      ],
+      "prohibited": [
+        "External writes or source/context file edits.",
+        "Treat modeled carbohydrate use as actual intake."
+      ]
+    },
+    {
+      "id": "long_missing_smo2",
+      "activity": "2026-05-22_i150612397",
+      "initial_prompt": "Analyser økt i150612397.",
+      "followup_prompt": "Det var en lang tur, men den kjentes kontrollert hele veien. Pust og bein var normale også mot slutten. Jeg spiste og drakk underveis, men husker ikke mengdene. Formen dagen etter er ukjent.",
+      "followup_origin": "Synthetic test context only; never persist as historical athlete report.",
+      "required_initial": [
+        "Resolve the exact activity and use fresh raw-data analysis.",
+        "Distinguish measured dose, reported experience, modeled response and unknown recovery; do not infer felt ease from averages.",
+        "Use only supported historical anchors and established intent, including existing activity description.",
+        "Give a useful proportional Norwegian analysis and ask a focused question when material athlete context remains missing.",
+        "Respect sensor availability, quality and time/window scope; no unsupported causal diagnosis or invented sensor data."
+      ],
+      "required_followup": [
+        "Meaningfully integrate supplied athlete report, preserving remaining unknowns and supported dose.",
+        "Do not invent numeric RPE, intake, illness diagnosis or recovery duration.",
+        "Do not repeat answered broad feel questions; any new question must resolve remaining material uncertainty.",
+        "Give a proportional next-session implication, without forced reversal of justified provisional advice."
+      ],
+      "case_specific": [
+        "Retain large duration/work dose and absent SmO2; do not infer local muscle response from absent sensor.",
+        "Positive subjective feedback supports tolerability but does not erase workload, prove next-day recovery or establish adaptation."
+      ],
+      "prohibited": [
+        "External writes or source/context file edits.",
+        "Treat modeled carbohydrate use as actual intake."
+      ]
+    },
+    {
+      "id": "low_average_group",
+      "activity": "2026-07-13_i165215678",
+      "initial_prompt": "Analyser økt i165215678.",
+      "followup_prompt": "Målet var en sosial tur. Den kjentes lett mellom fartsøkningene, og pust og bein var normale etterpå. Det var ikke ment som en ren restitusjonstur.",
+      "followup_origin": "Synthetic test context only; never persist as historical athlete report.",
+      "required_initial": [
+        "Resolve the exact activity and use fresh raw-data analysis.",
+        "Distinguish measured dose, reported experience, modeled response and unknown recovery; do not infer felt ease from averages.",
+        "Use only supported historical anchors and established intent, including existing activity description.",
+        "Give a useful proportional Norwegian analysis and ask a focused question when material athlete context remains missing.",
+        "Respect sensor availability, quality and time/window scope; no unsupported causal diagnosis or invented sensor data."
+      ],
+      "required_followup": [
+        "Meaningfully integrate supplied athlete report, preserving remaining unknowns and supported dose.",
+        "Do not invent numeric RPE, intake, illness diagnosis or recovery duration.",
+        "Do not repeat answered broad feel questions; any new question must resolve remaining material uncertainty.",
+        "Give a proportional next-session implication, without forced reversal of justified provisional advice."
+      ],
+      "case_specific": [
+        "Use known group-ride context without imposing strict VT1 or recovery intent.",
+        "After feedback, distinguish easy periods/normal post-ride feel from hard surges; no automatic failed-session or prolonged-rest verdict."
+      ],
+      "prohibited": [
+        "External writes or source/context file edits.",
+        "Treat modeled carbohydrate use as actual intake."
+      ]
+    },
+    {
+      "id": "thermal_context",
+      "activity": "2026-07-28_i170000292",
+      "initial_prompt": "Analyser økt i170000292.",
+      "followup_prompt": "Det føltes varmt, og siste timen var tung i pusten. Beina var forholdsvis greie. Jeg vet ikke hvor mye jeg drakk, eller hvordan formen var neste morgen.",
+      "followup_origin": "Synthetic test context only; never persist as historical athlete report.",
+      "required_initial": [
+        "Resolve the exact activity and use fresh raw-data analysis.",
+        "Distinguish measured dose, reported experience, modeled response and unknown recovery; do not infer felt ease from averages.",
+        "Use only supported historical anchors and established intent, including existing activity description.",
+        "Give a useful proportional Norwegian analysis and ask a focused question when material athlete context remains missing.",
+        "Respect sensor availability, quality and time/window scope; no unsupported causal diagnosis or invented sensor data."
+      ],
+      "required_followup": [
+        "Meaningfully integrate supplied athlete report, preserving remaining unknowns and supported dose.",
+        "Do not invent numeric RPE, intake, illness diagnosis or recovery duration.",
+        "Do not repeat answered broad feel questions; any new question must resolve remaining material uncertainty.",
+        "Give a proportional next-session implication, without forced reversal of justified provisional advice."
+      ],
+      "case_specific": [
+        "Distinguish environmental/device temperature from wearable core estimates and preserve time scope.",
+        "Reported heat and breathing burden matter but do not prove heat limitation, dehydration or respiratory limitation."
+      ],
+      "prohibited": [
+        "External writes or source/context file edits.",
+        "Treat modeled carbohydrate use as actual intake."
+      ]
+    }
+  ]
+}

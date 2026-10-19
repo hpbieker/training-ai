@@ -1,0 +1,17 @@
+--- a/.agents/skills/training-analysis/references/activity-analysis.md
++++ b/.agents/skills/training-analysis/references/activity-analysis.md
+@@ -173,6 +173,14 @@
+ When Garmin Performance Condition contributes, retain when its early level and
+ largest fall occurred. An early fall does not establish fatigue accumulated late
+ in the ride, and the model does not identify a physiological cause.
++
++Before subjective effort is known, describe measured workload and structure
++without calling the experienced ride easy, comfortable or controlled. Low power,
++heart rate or modeled load can support a low measured dose, but not felt ease or
++successful recovery. Preserve that distinction in the opening verdict itself;
++a later recovery caveat does not qualify an unqualified easy-session verdict.
++If perceived effort could change the assessment, ask how the whole ride felt,
++including breathing and legs, rather than only how its hard efforts felt.
+ 
+ Narrative effort, breathing and leg reports are evidence even when numeric RPE
+ is null. Let a substantial reported burden affect the verdict; good leg feel or

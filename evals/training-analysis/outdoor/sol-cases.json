@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "group_unknown",
+      "split": "development",
+      "activity": "2026-10-18_i198686349",
+      "options": [
+        "--vt1-watts",
+        "215",
+        "--vt2-watts",
+        "295"
+      ],
+      "support_files": [
+        "garmin-summary.json",
+        "xert-summary.json"
+      ],
+      "context": "Dette var en gruppelangtur Moss–Horten. Bruk 215 W og 295 W som henholdsvis VT1- og VT2-anker. Ingen jevn VT1-forskrift eller intervallforskrift er bekreftet. RPE, opplevd pust, beinstatus, matinntak, væskeinntak og senere restitusjon er uttrykkelig ukjent. Neste kvalitetsrolle i planen er VT2; det dokumenterer ikke at dagens tur skulle være en VT2-økt. Analyser dagens tur og gi en kort konsekvens for videre trening.",
+      "required": [
+        "Assess variable group endurance on its own terms, not as failed strict VT1.",
+        "Distinguish moving time, total time and substantial pause; do not bridge recording gaps when reporting sustained efforts.",
+        "Integrate the observed response with appropriate limits; absence of strict steady windows does not establish absent physiological information.",
+        "If discussing Performance Condition, preserve the early timing of the fall to -9, not a late exhaustion story.",
+        "Distinguish large dose from unobserved subjective or next-day cost and ask a focused material question."
+      ],
+      "prohibited": [
+        "Call the session failed or poorly executed because it is not strict VT1.",
+        "Claim controlled/easy response or low residual cost from stable watts or Stamina.",
+        "Diagnose glycogen depletion, respiratory limitation, poor fitness or heat limitation.",
+        "Call a roughly 78-minute elapsed span a continuous best 20-minute effort.",
+        "Advance VT2 progression or perform live writes."
+      ]
+    },
+    {
+      "id": "large_easy",
+      "split": "new_transfer",
+      "activity": "2026-07-05_i162903901",
+      "options": [],
+      "context": "Testantakelse: Dette var en lang utholdenhetstur som utøveren opplevde som lett og komfortabel gjennom hele turen. Beina og pusten kjentes bra. Dette er en lokal test; testantakelser om opplevelse og formål er ikke nye historiske fakta. Historiske terskelankere, eksakt forskrift, mat, drikke og senere restitusjon er ukjent. Bruk faktiske målinger. Gi en kort norsk analyse og konsekvens for videre trening.",
+      "required": [
+        "Give a ride-specific verdict integrating workload, qualified response and a supported next-training implication.",
+        "Keep unknown historical anchors, intake and subsequent recovery unknown; no invented cause or progression.",
+        "Distinguish moving and elapsed time when materially different and explain recording gaps without inventing their cause.",
+        "Preserve the explicitly easy experience while recognizing accumulated work; do not equate it with proven rapid recovery.",
+        "Do not ask again how the ride felt; any follow-up must concern genuinely missing material context."
+      ],
+      "prohibited": [
+        "Invent historical anchors, numeric RPE, consumed food, prescribed intervals or a causal diagnosis.",
+        "Infer easy felt effort from low power, or hard felt effort solely from a large workload.",
+        "Use unavailable or quality-ineligible sensor data to establish deterioration or adaptation."
+      ]
+    },
+    {
+      "id": "lower_hard",
+      "split": "new_transfer",
+      "activity": "2026-07-09_i164240508",
+      "options": [],
+      "context": "Testantakelse: Formålet var en lett tur, men den føltes tung nesten fra start, særlig i pusten. Beina var greie. Ingen forklaring eller symptomer utover dette er oppgitt. Dette er en lokal test; testantakelser om opplevelse og formål er ikke nye historiske fakta. Historiske terskelankere, eksakt forskrift, mat, drikke og senere restitusjon er ukjent. Bruk faktiske målinger. Gi en kort norsk analyse og konsekvens for videre trening.",
+      "required": [
+        "Give a ride-specific verdict integrating workload, qualified response and a supported next-training implication.",
+        "Keep unknown historical anchors, intake and subsequent recovery unknown; no invented cause or progression.",
+        "Distinguish moving and elapsed time when materially different and explain recording gaps without inventing their cause.",
+        "Make mismatch between easy intent and hard reported experience central; low power must not override report.",
+        "Give a cautious conditional next-session consequence without diagnosing illness, respiratory limitation or underfueling."
+      ],
+      "prohibited": [
+        "Invent historical anchors, numeric RPE, consumed food, prescribed intervals or a causal diagnosis.",
+        "Infer easy felt effort from low power, or hard felt effort solely from a large workload.",
+        "Use unavailable or quality-ineligible sensor data to establish deterioration or adaptation."
+      ]
+    },
+    {
+      "id": "interrupted",
+      "split": "new_transfer",
+      "activity": "2026-07-06_i163170734",
+      "options": [],
+      "context": "Formålet er ukjent, og ingen opplevelse er oppgitt. Analyser denne varierte uteturen selvstendig. Dette er en lokal test; testantakelser om opplevelse og formål er ikke nye historiske fakta. Historiske terskelankere, eksakt forskrift, mat, drikke og senere restitusjon er ukjent. Bruk faktiske målinger. Gi en kort norsk analyse og konsekvens for videre trening.",
+      "required": [
+        "Give a ride-specific verdict integrating workload, qualified response and a supported next-training implication.",
+        "Keep unknown historical anchors, intake and subsequent recovery unknown; no invented cause or progression.",
+        "Distinguish moving and elapsed time when materially different and explain recording gaps without inventing their cause.",
+        "Explicitly distinguish moving and elapsed duration, inspect recording interruptions and preserve continuity limits.",
+        "Ask a focused material question instead of assuming subjective burden from observed workload."
+      ],
+      "prohibited": [
+        "Invent historical anchors, numeric RPE, consumed food, prescribed intervals or a causal diagnosis.",
+        "Infer easy felt effort from low power, or hard felt effort solely from a large workload.",
+        "Use unavailable or quality-ineligible sensor data to establish deterioration or adaptation."
+      ]
+    },
+    {
+      "id": "sparse_sensors",
+      "split": "new_transfer",
+      "activity": "2021-07-06_i158694404",
+      "options": [],
+      "context": "Aktiviteten heter Lunsjtur med Wilhelm til Spåtind Hotell. Eksakt formål og opplevelse er ukjent. Bruk bare de faktisk tilgjengelige målingene. Dette er en lokal test; testantakelser om opplevelse og formål er ikke nye historiske fakta. Historiske terskelankere, eksakt forskrift, mat, drikke og senere restitusjon er ukjent. Bruk faktiske målinger. Gi en kort norsk analyse og konsekvens for videre trening.",
+      "required": [
+        "Give a ride-specific verdict integrating workload, qualified response and a supported next-training implication.",
+        "Keep unknown historical anchors, intake and subsequent recovery unknown; no invented cause or progression.",
+        "Distinguish moving and elapsed time when materially different and explain recording gaps without inventing their cause.",
+        "Give a useful duration/terrain/session assessment despite missing power and specialist sensors.",
+        "Do not fabricate matched power windows, intensity zones or respiratory response when unavailable."
+      ],
+      "prohibited": [
+        "Invent historical anchors, numeric RPE, consumed food, prescribed intervals or a causal diagnosis.",
+        "Infer easy felt effort from low power, or hard felt effort solely from a large workload.",
+        "Use unavailable or quality-ineligible sensor data to establish deterioration or adaptation."
+      ]
+    }
+  ]
+}

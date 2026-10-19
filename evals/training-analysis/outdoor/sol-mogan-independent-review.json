@@ -1,0 +1,89 @@
+{
+  "M1": {
+    "scores4dimensions": {
+      "purpose_work": 1,
+      "physiological_synthesis": 2,
+      "evidence_limits": 1,
+      "next_training_consequence": 2
+    },
+    "pass": false,
+    "findings": [
+      "Correct moving/elapsed distinction and recording-pause qualification; purpose and historical anchors remain unknown.",
+      "Correct qualified comparison of variable work windows and later respiratory response; does not diagnose limitation or equate later window with finish.",
+      "Measured total work (3930 kJ) is omitted; dose verdict rests mainly on duration although matched-window power is supplied.",
+      "Discusses higher recorded temperature and possible heat contribution without identifying device/environmental source or preserving absent core data. Required temperature handling is incomplete.",
+      "Proportionate rest/light-training advice and focused subjective follow-up, with no invented recovery duration."
+    ],
+    "required_missing": [
+      "Prioritization of measured total mechanical work is incomplete.",
+      "Temperature source and absent core data."
+    ],
+    "prohibited_found": [],
+    "terrain_omission_affected_grading": false,
+    "temperature_source_distinguished": false,
+    "core_absence_preserved": false
+  },
+  "M2": {
+    "scores4dimensions": {
+      "purpose_work": 2,
+      "physiological_synthesis": 2,
+      "evidence_limits": 2,
+      "next_training_consequence": 2
+    },
+    "pass": true,
+    "findings": [
+      "Uses 3930 kJ and correct moving/elapsed durations for dose; preserves unknown intent/anchors and qualifies recording interruptions.",
+      "Accurate variable-window power, heart-rate and respiration comparison, explicitly scoped away from stable testing and the finish; recognizes later respiration decline and maintained final work.",
+      "Identifies device temperature, explicitly says core temperature is missing, and avoids causal heat/dehydration/fuel diagnosis.",
+      "Conditional rest/light training and subjective recovery check are proportionate without fixed recovery time."
+    ],
+    "required_missing": [],
+    "prohibited_found": [],
+    "terrain_omission_affected_grading": false,
+    "temperature_source_distinguished": true,
+    "core_absence_preserved": true
+  },
+  "M3": {
+    "scores4dimensions": {
+      "purpose_work": 2,
+      "physiological_synthesis": 2,
+      "evidence_limits": 2,
+      "next_training_consequence": 2
+    },
+    "pass": true,
+    "findings": [
+      "Uses measured 3930 kJ, correct duration distinction and variability for dose; unknown purpose/anchors retained.",
+      "Accurate paired power/respiration/heart-rate observations; scopes them to selected variable sections and avoids generalized endurance failure.",
+      "Identifies device temperature and states it is not a core-temperature measurement; in this context that adequately preserves the absence of a core reading, although an explicit statement that core data are missing would be clearer.",
+      "Recording stops are supported cautiously by near-unchanged distance, not calculated as stationary duration.",
+      "Rest/light training and delayed hard work depend on subjective energy/legs; no invented recovery duration or threshold progression."
+    ],
+    "required_missing": [],
+    "prohibited_found": [],
+    "terrain_omission_affected_grading": false,
+    "temperature_source_distinguished": true,
+    "core_absence_preserved": true
+  },
+  "M4": {
+    "scores4dimensions": {
+      "purpose_work": 2,
+      "physiological_synthesis": 2,
+      "evidence_limits": 1,
+      "next_training_consequence": 2
+    },
+    "pass": false,
+    "findings": [
+      "Uses measured 3930 kJ and correct duration distinction, recognizes recording pauses and unknown purpose/anchors.",
+      "Accurate qualified variable-window comparison, rejects continuous deterioration, and accounts for lower later respiration and maintained final work.",
+      "Temperature is discussed only as a higher recording; its device/environmental source is not identified and absent core data are not stated. Rejection of heat diagnosis does not satisfy those separate requirements.",
+      "Proportionate conditional rest/light training, including response to easy riding before hard training."
+    ],
+    "required_missing": [
+      "Temperature source and absent core data."
+    ],
+    "prohibited_found": [],
+    "terrain_omission_affected_grading": false,
+    "temperature_source_distinguished": false,
+    "core_absence_preserved": false
+  }
+}

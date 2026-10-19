@@ -1,0 +1,15 @@
+{
+  "review_method": "Single reviewer; model names hidden while reading answers, case context visible. Rubric fixed before runs. Not an independent or revision-blind review.",
+  "dimensions": ["task_and_work", "physiological_synthesis", "evidence_limits", "practical_conclusion"],
+  "answers": {
+    "B1": {"scores": [2,1,1,1], "pass": false, "evidence": "Strømmen har betydelige datagap", "findings": ["Broad gap language without stationary-pause distinction.", "Lists uncertainty but no focused question.", "Unmatched source-block averages dominate response assessment."]},
+    "B2": {"scores": [2,1,2,1], "pass": false, "evidence": "Ingen stabile, matchede vinduer var tilgjengelige", "findings": ["Useful dose and limits, but physiology relies on incomparable block averages.", "No focused question despite missing material athlete context."]},
+    "B3": {"scores": [2,1,2,2], "pass": false, "evidence": "Rapporten din om at mye var tungt og pusten ble tydelig sliten mot slutten veier tungt", "findings": ["Uses reported difficulty but omits comparatively okay legs.", "No stronger response evidence than broad source-block averages."]},
+    "B4": {"scores": [1,1,1,2], "pass": true, "evidence": "beina holdt seg forholdsvis bra, mens hele turen stort sett føltes tung", "findings": ["Appropriate subjective verdict and cautious consequence.", "Still leads with fit to unprescribed steady VT1.", "Pustestrømmene er ujevnt dekket does not distinguish recording pause from field loss."]},
+    "B5": {"scores": [1,1,1,2], "pass": false, "evidence": "eksempelvis var effekten 244 W ved starten av blokk 4", "findings": ["A single sample does not confirm high power variability.", "Assumes clock gaps undermine Garmin TE without resolving whether these are recording pauses.", "Subjective hard effort and recovery-first consequence are retained."]},
+    "B6": {"scores": [2,1,2,2], "pass": true, "evidence": "Forholdsvis bra bein betyr derfor ikke at totalbelastningen var lav", "findings": ["Good synthesis of athlete report and model limits.", "Response analysis still rests on broad incomparable blocks."]},
+    "B7": {"scores": [1,1,1,1], "pass": false, "evidence": "Råstrømmene bekrefter også betydelige datagap", "findings": ["Limited physiological synthesis beyond whole-ride HR and absence of matched windows.", "No total/pause timing distinction or focused athlete question."]},
+    "B8": {"scores": [2,1,2,1], "pass": false, "evidence": "et registreringsopphold på rundt 58 minutter ved uendret distanse", "findings": ["Best distinction of stationary recording pause and Moxy gaps.", "Qualified but weak inference from unmatched block averages.", "No focused athlete question."]}
+  },
+  "shared_findings": ["No answer uses available Performance Condition chronology; the helper currently drops it, though the support file is available.", "No answer repeats the pause-spanning best-20-minute bug, so its repair is a deterministic correctness fix rather than an observed answer failure.", "All answers with athlete report recognize the high perceived burden; the largest remaining weakness is useful outdoor physiological evidence."]
+}

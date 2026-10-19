@@ -1,0 +1,45 @@
+{
+  "review_type": "Independent bounded live-workflow review",
+  "answer": {
+    "verdict": "pass_with_minor_precision_correction",
+    "reason": "Useful Norwegian assessment correctly identifies large variable group-endurance dose, distinguishes observed response from felt burden and unknown recovery, preserves time/pause/window/sensor limits, and asks a material followup. Central numerical claims match fresh packet/inspection.",
+    "threshold_precision": {
+      "finding": "245 W is a descriptive exposure cutoff, not a verified physiological threshold; 215 W is configured VT1 training power, not independently date-validated physiology.",
+      "severity": "minor_but_should_clarify",
+      "assessment": "The answer says vanlig VT1-treningswatt rather than claiming a measured VT1 crossing, so it does not explicitly mislabel 245 W as VT1. However, it omits the 215 W configured reference and leaves the adjacent 245 W statistic open to a threshold reading. The audit is clearer than the user-facing answer.",
+      "suggested_wording": "60-sekunderssnittet oversteg 245 W i 51,8 minutter. Dette er en valgt eksponeringsgrense; konfigurert VT1-treningswatt er 215 W. Tallene viser effektvariasjon, ikke dokumentert fysiologisk terskelkryssing.",
+      "packet_issue": "Packet facts label supplied 215/295 W as physiological_anchor_not_prescription although supplied 215 W is a training reference. This provenance/type overstatement should not be treated as external physiological validation."
+    }
+  },
+  "live_source_selection": {
+    "verdict": "pass_with_verification_scope",
+    "findings": [
+      "Independent saved live activity list identifies i198686349 as newest Ride; group-route description supports outdoor identity despite trainer=null.",
+      "Audit records live Intervals discovery followed by fresh metadata/streams, matching Garmin external ID 24769042100, and identity-matched Xert summary path bipvnxm9mu5j89rc. Saved artifacts corroborate selected identity and values.",
+      "This review read the audit and saved source artifacts, not a full raw MCP transcript; call-sequence details therefore remain audit-reported."
+    ]
+  },
+  "integration": {
+    "verdict": "partial_success_with_working_fallbacks",
+    "findings": [
+      "Intervals discovery initially used unsupported date parameter names, then corrected them and retrieved the activity.",
+      "Xert list attempts returned empty; summary call initially used unsupported date arguments, then corrected to a successful identity-matched summary.",
+      "Xert detail argument was corrected, but saved detail is an explicit activity_not_found / success=false response, not a successful full-detail retrieval.",
+      "Using fresh summary XSS/Difficulty is valid; no MPA/detail conclusion is supported. Do not report full Xert integration success.",
+      "Garmin fresh full artifact exists and audit reports TE/PC retrieval.",
+      "EatMyRide tools were unavailable according to audit; actual intake was correctly left unknown. No complete fueling integration."
+    ]
+  },
+  "spot_checks": {
+    "verdict": "pass",
+    "checked": [
+      "Fresh packet: moving 302.2 min, elapsed 384.5 min, measured work 3586.4 kJ; continuous best 20/5 min 236/278 W.",
+      "Fresh inspection: 245 W cutoff, 51.8 min above during pedaling, 19.2 percent of pedaling; distinct from whole elapsed/moving time.",
+      "Selected windows 3633-3933 and 13508-13808 s match reported power, cadence, HR, breathing and VE; prior work 469.1/1803.6 kJ.",
+      "Pause 8101-11588 s with unchanged distance; later window is not the finish.",
+      "Saved Xert summary supports 313.2888 XSS and Difficulty 67.3727 without invented normalization.",
+      "6 t 24 min is harmless truncation of 6:24:30."
+    ]
+  },
+  "overall": "Substantive analysis passes; live discovery and usable-source retrieval succeed with explicit partial Xert detail/fueling integration. Clarify exposure cutoff versus configured training reference in the user-facing paragraph. No new material numerical failure found."
+}

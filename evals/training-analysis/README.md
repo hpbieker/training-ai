@@ -98,3 +98,16 @@ eight sessions with correct reported block/window attribution and no observed
 application-data reads outside the case packages. One respiratory-unit wording
 error remained. The recommendation is to stop repeated broad tuning and use
 the skill on ordinary sessions.
+
+## Daily recommendations
+
+The [recommendation suite](recommendations/README.md) covers uncertainty,
+quality plus endurance composition, calendar placement and remaining-dose
+semantics on isolated, precomputed scenario packets. Its results must not be
+presented as validation of live-source acquisition.
+
+## Variable outdoor rides
+
+The [outdoor suite](outdoor/README.md) tests group-ride intent, recording pauses,
+chronological response, mechanically comparable variable work, and the effect of
+an actual athlete report on the verdict. It includes two separate held-out rides.

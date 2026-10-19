@@ -1,0 +1,384 @@
+{
+  "date": "2026-10-18",
+  "reviewer": "parent assistant; unblinded manual semantic review",
+  "limitations": [
+    "One sample per model/case/revision; no repeatability claim.",
+    "No pre-change baseline; initial sweep already used first implementation.",
+    "Offline post-calculation interpretation, not full live workflow.",
+    "Common-dimension scores are subjective; strict case requirements may fail otherwise usable answers."
+  ],
+  "dimensions": [
+    "role_and_remaining_load",
+    "evidence_and_uncertainty",
+    "dose_and_execution",
+    "practical_execution"
+  ],
+  "runs": [
+    {
+      "revision": "initial",
+      "model": "gpt-6.1-sol",
+      "case": "missing_recovery",
+      "answer_sha256": "d2f54987122e431159bb7c3bdd47ad7ade3bd3567852473fc97bcbfb87c03b73",
+      "scores": [
+        2,
+        2,
+        1,
+        2
+      ],
+      "case_pass": false,
+      "issues": [
+        "No explicit sync request; aerobic addition primarily justified through accounting."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6.1-sol",
+      "case": "normal_recovery",
+      "answer_sha256": "82f2b05a222ddb7fab6c5c4411e356fdfea396a445bcb81464228de293626534",
+      "scores": [
+        2,
+        2,
+        1,
+        2
+      ],
+      "case_pass": false,
+      "issues": [
+        "Separate training purpose of aerobic extension not explicit."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6.1-sol",
+      "case": "adverse_response",
+      "answer_sha256": "d242ac7ece1fe6ffd23dc81d3044dd4bde4217bcd2ce097cc6298f3285dfb3ef",
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "case_pass": true,
+      "issues": [],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6.1-sol",
+      "case": "later_complete_window",
+      "answer_sha256": "0a27ea4c25bb161efbedfbe18ffdc847b87c81e9e43773b2504ecc5cc0c53354",
+      "scores": [
+        2,
+        2,
+        1,
+        2
+      ],
+      "case_pass": true,
+      "issues": [
+        "Aerobic purpose weakly explained, but all case-specific timing requirements met."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6.1-sol",
+      "case": "remaining_after_quality",
+      "answer_sha256": "3f0a52145cabb259fd7791fcccd0e53e5e180167fc8a0e58369ee24c8f229515",
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "case_pass": true,
+      "issues": [],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6-luna",
+      "case": "missing_recovery",
+      "answer_sha256": "e875f7fceeec1d0859b8e8ae9660bea1c9c6b4cb66c0831705f95ea17e945488",
+      "scores": [
+        2,
+        2,
+        1,
+        2
+      ],
+      "case_pass": false,
+      "issues": [
+        "No explicit sync request or distinct training purpose for filler."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6-luna",
+      "case": "normal_recovery",
+      "answer_sha256": "7efcfe3ef8a8747f14367069537ce33c0398761554663a39a4af3f21ef79aecf",
+      "scores": [
+        2,
+        2,
+        0,
+        1
+      ],
+      "case_pass": false,
+      "issues": [
+        "Cooldown ordered before filler; ambiguous additional ramp; no countable fuel allocation or explicit queued VT2 alternative."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6-luna",
+      "case": "adverse_response",
+      "answer_sha256": "6af5b9c3f840f8a805e9d357cf3b40e22cab4fda19562c46d3327aef86a9999f",
+      "scores": [
+        1,
+        2,
+        2,
+        1
+      ],
+      "case_pass": false,
+      "issues": [
+        "No explicit statement that VT2 remains queued; no explicit distinction from historical-load subtraction."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6-luna",
+      "case": "later_complete_window",
+      "answer_sha256": "6ed61702c3f03be5be646e33ce89169d2335a5d35c0a999bf03143486586673e",
+      "scores": [
+        2,
+        2,
+        1,
+        1
+      ],
+      "case_pass": false,
+      "issues": [
+        "Exact setup/cleanup clock times omitted; alternative uses route reference duration; High incorrectly called limiting capacity."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "initial",
+      "model": "gpt-6-luna",
+      "case": "remaining_after_quality",
+      "answer_sha256": "2876806f79c5ae4635a516af648f9c8bfbba0646de4b57e97cd5f875f3b188e4",
+      "scores": [
+        2,
+        2,
+        1,
+        1
+      ],
+      "case_pass": false,
+      "issues": [
+        "Prescribed timeline rounded, not exact4:05:29; morning weather used for afternoon; fuel given per-hour without total provision."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "final",
+      "model": "gpt-6.1-sol",
+      "case": "missing_recovery",
+      "answer_sha256": "cc058734243451cc9876e7d6e31e78136853c6fed694571dfc0fdf9906cdb031",
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "case_pass": true,
+      "issues": [],
+      "protocol_pass": true
+    },
+    {
+      "revision": "final",
+      "model": "gpt-6.1-sol",
+      "case": "normal_recovery",
+      "answer_sha256": "67b94fe98db23670086cd05f1e9a4daa4d7e407b6d6f6ed58ccc21b4a6a1de76",
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "case_pass": true,
+      "issues": [],
+      "protocol_pass": true
+    },
+    {
+      "revision": "final",
+      "model": "gpt-6.1-sol",
+      "case": "later_complete_window",
+      "answer_sha256": "b0523b5c18abcf40d48236756efc05b468a9666bb7c0faced27e26e34ccefde5",
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "case_pass": true,
+      "issues": [],
+      "protocol_pass": true
+    },
+    {
+      "revision": "final",
+      "model": "gpt-6-luna",
+      "case": "missing_recovery",
+      "answer_sha256": "1acc558545c49d7410b566702b78f38870f20f5484f740e8b249ce56adf9a1c2",
+      "scores": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "case_pass": false,
+      "issues": [
+        "Sync and aerobic purpose now explicit; response check specifically before second repetition, not before third after prior late-second limitation.",
+        "Out-of-scope read of original repository SKILL.md; content hash matches snapshot, but protocol violated. Do not treat as clean isolated sample."
+      ],
+      "protocol_pass": false
+    },
+    {
+      "revision": "final",
+      "model": "gpt-6-luna",
+      "case": "normal_recovery",
+      "answer_sha256": "1b3ebc6b785d42348b64da5fd3d7308dfdf493bf7789696f922a94a968dfca0a",
+      "scores": [
+        2,
+        2,
+        1,
+        1
+      ],
+      "case_pass": false,
+      "issues": [
+        "Correct segment order, but no exact total/end time, weak separate filler purpose, no complete countable fuel allocation, no concrete alternative or numeric capacity maximum."
+      ],
+      "protocol_pass": true
+    },
+    {
+      "revision": "final",
+      "model": "gpt-6-luna",
+      "case": "later_complete_window",
+      "answer_sha256": "9fe6ae9ea9a9be10b649571a85f8a3edab282be7dfae9b04958c71a1f96eb001",
+      "scores": [
+        2,
+        2,
+        1,
+        1
+      ],
+      "case_pass": false,
+      "issues": [
+        "Primary order and duration correct; cleanup rounded and setup start implicit. Outdoor duration205:29 incorrect versus prescribed245:29; checkpoint before second, not third."
+      ],
+      "protocol_pass": true
+    }
+  ],
+  "provenance": {
+    "runs": {
+      "input_manifest_sha256": "e42a30192cf2210336f18afd59a169b7301b33d805d4d06673581de3e121565e",
+      "all_completed": true,
+      "all_inputs_unchanged": true,
+      "recorded_completed_commands": [
+        "/bin/zsh -lc 'rg --files'",
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat prompt.txt && cat packet.json'",
+        "/bin/zsh -lc 'cat skill/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc 'cat skill/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md'",
+        "/bin/zsh -lc 'cat skill/references/illness-and-return.md'",
+        "/bin/zsh -lc 'cat skill/references/sources.md'",
+        "/bin/zsh -lc 'rg -n \"Final Answer Contract|soreness|capacity|fuel|alternatives|timing|duration\" skill/references/daily-recommendations.md skill/references/illness-and-return.md skill/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"sed -n '235,260p' skill/references/daily-recommendations.md && sed -n '370,455p' skill/references/daily-recommendations.md && sed -n '491,575p' skill/references/daily-recommendations.md && cat skill/references/illness-and-return.md && sed -n '45,72p' skill/references/cycling-endurance-physiology.md\"",
+        "/bin/zsh -lc 'rg --files'",
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat packet.json'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md skill/references/illness-and-return.md skill/references/calendar-conflict-resolution.md skill/references/respiration.md skill/references/physiological-response-synthesis.md'",
+        "/bin/zsh -lc \"rg -n 'Final Answer Contract|fuel|carbohydrate|alternat|capacity|physiological scope|training need|finish|hold|breath|temperature|cold' skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md skill/references/illness-and-return.md skill/references/respiration.md skill/references/thermal-sensing.md\"",
+        "/bin/zsh -lc \"sed -n '491,560p' skill/references/daily-recommendations.md; sed -n '1,115p' skill/references/cycling-endurance-physiology.md; cat skill/references/illness-and-return.md\"",
+        "/bin/zsh -lc \"pwd && rg --files -g 'SKILL.md' -g 'packet.json' -g '*.md' -g '*.json'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md packet.json skill/references/daily-recommendations.md skill/references/physiological-response-synthesis.md skill/references/illness-and-return.md skill/references/activity-analysis.md skill/references/cycling-endurance-physiology.md skill/references/respiration.md skill/references/thermal-sensing.md skill/references/outdoor-routes.md skill/references/calendar-conflict-resolution.md skill/references/muscle-oxygen.md skill/references/sources.md'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md'",
+        "/bin/zsh -lc \"rg -n '\"'^##|''^###|warm|fuel|carb|breath|fresh|14/21|14- and|setup|capacity'\"' skill/references/daily-recommendations.md skill/references/illness-and-return.md skill/references/cycling-endurance-physiology.md\"",
+        "/bin/zsh -lc \"pwd && rg --files -g 'SKILL.md' -g 'packet.json' -g '*.md' -g '*.json'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat packet.json && cat skill/references/daily-recommendations.md && cat skill/references/illness-and-return.md && cat skill/references/calendar-conflict-resolution.md && cat skill/references/sources.md'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md; cat skill/references/cycling-endurance-physiology.md; cat skill/references/illness-and-return.md; cat skill/references/calendar-conflict-resolution.md'",
+        "/bin/zsh -lc \"rg --files -g 'packet.json' -g 'SKILL.md' -g '*.md' -g '*.json'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md packet.json skill/references/daily-recommendations.md skill/references/activity-analysis.md skill/references/illness-and-return.md skill/references/calendar-conflict-resolution.md'",
+        "/bin/zsh -lc 'cat skill/references/cycling-endurance-physiology.md skill/references/physiological-response-synthesis.md skill/references/sources.md'",
+        "/bin/zsh -lc \"rg -n 'Final Answer Contract|fuel|capacity|dose' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"sed -n '491,560p' skill/references/daily-recommendations.md; sed -n '280,305p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc 'pwd; rg --files'",
+        "/bin/zsh -lc 'cat packet.json'",
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md skill/references/illness-and-return.md'",
+        "/bin/zsh -lc \"sed -n '290,470p' skill/references/daily-recommendations.md; cat skill/references/outdoor-routes.md\"",
+        "/bin/zsh -lc \"sed -n '485,620p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"pwd && rg --files -g '*'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat packet.json'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md skill/references/illness-and-return.md skill/references/outdoor-routes.md'",
+        "/bin/zsh -lc \"sed -n '270,470p' skill/references/daily-recommendations.md; sed -n '1,95p' skill/references/cycling-endurance-physiology.md\"",
+        "/bin/zsh -lc \"sed -n '470,650p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc 'pwd; rg --files'",
+        "/bin/zsh -lc 'cat skill/SKILL.md packet.json'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"sed -n '290,510p' skill/references/daily-recommendations.md; cat skill/references/outdoor-routes.md\"",
+        "/bin/zsh -lc \"sed -n '505,590p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"pwd && rg --files -g '*'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md packet.json'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md skill/references/outdoor-routes.md'",
+        "/bin/zsh -lc \"sed -n '300,520p' skill/references/daily-recommendations.md && sed -n '1,85p' skill/references/cycling-endurance-physiology.md\"",
+        "/bin/zsh -lc \"sed -n '520,620p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc pwd",
+        "/bin/zsh -lc 'rg --files .'",
+        "/bin/zsh -lc 'cat packet.json'",
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat skill/references/outdoor-routes.md'",
+        "/bin/zsh -lc 'cat skill/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md'",
+        "/bin/zsh -lc \"sed -n '285,520p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"sed -n '1,95p' skill/references/cycling-endurance-physiology.md\"",
+        "/bin/zsh -lc 'cat skill/references/calendar-conflict-resolution.md'",
+        "/bin/zsh -lc \"sed -n '515,620p' skill/references/daily-recommendations.md\""
+      ]
+    },
+    "final-runs": {
+      "input_manifest_sha256": "97d6c2ccb3c6bce98e8110d273abb2a4f12651ac4156725aa8db13201e4126d1",
+      "all_completed": true,
+      "all_inputs_unchanged": true,
+      "recorded_completed_commands": [
+        "/bin/zsh -lc 'pwd && rg --files'",
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat packet.json'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md skill/references/illness-and-return.md skill/references/outdoor-routes.md'",
+        "/bin/zsh -lc \"rg -n -A95 '\"'^## Final Answer Contract|''^## Fueling|''^## '\"' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc 'cat /Users/hanspetterbieker/Documents/Privat/Trening/training-ai/.agents/skills/training-analysis/SKILL.md && pwd && rg --files'",
+        "/bin/zsh -lc 'cat packet.json && cat prompt.txt && cat skill/references/daily-recommendations.md && cat skill/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"rg -n 'Final Answer Contract|Physiological scope|Capacity|Missing|fuel|Timing|weather|hard|alternat' skill/references/daily-recommendations.md && cat skill/references/illness-and-return.md &&\"",
+        "/bin/zsh -lc \"pwd && rg --files -g 'SKILL.md' -g 'packet.json' -g '*.md' -g '*.json'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md && cat packet.json && cat skill/references/daily-recommendations.md && cat skill/references/activity-analysis.md && cat skill/references/physiological-response-synthesis.md && cat skill/references/illness-and-return.md && cat skill/references/outdoor-routes.md && cat skill/references/calendar-conflict-resolution.md'",
+        "/bin/zsh -lc \"pwd; rg --files -g '\"'!**/.git/**'\"'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat packet.json'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md'",
+        "/bin/zsh -lc 'cat skill/references/cycling-endurance-physiology.md; cat skill/references/calendar-conflict-resolution.md'",
+        "/bin/zsh -lc \"sed -n '270,520p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"cat skill/references/outdoor-routes.md; sed -n '1,70p' skill/references/cycling-endurance-physiology.md\"",
+        "/bin/zsh -lc \"sed -n '515,610p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc 'pwd; rg --files'",
+        "/bin/zsh -lc 'cat packet.json'",
+        "/bin/zsh -lc 'cat skill/SKILL.md'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"sed -n '290,490p' skill/references/daily-recommendations.md; cat skill/references/outdoor-routes.md\"",
+        "/bin/zsh -lc \"sed -n '490,630p' skill/references/daily-recommendations.md\"",
+        "/bin/zsh -lc \"pwd; rg --files -g '*.md' -g 'packet.json'\"",
+        "/bin/zsh -lc 'cat skill/SKILL.md packet.json'",
+        "/bin/zsh -lc 'cat skill/references/daily-recommendations.md skill/references/cycling-endurance-physiology.md'",
+        "/bin/zsh -lc \"sed -n '275,470p' skill/references/daily-recommendations.md; cat skill/references/outdoor-routes.md\"",
+        "/bin/zsh -lc \"sed -n '480,620p' skill/references/daily-recommendations.md\""
+      ]
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "group_unknown",
+      "split": "development",
+      "activity": "2026-10-18_i198686349",
+      "options": ["--vt1-watts", "215", "--vt2-watts", "295"],
+      "support_files": ["garmin-summary.json", "xert-summary.json"],
+      "context": "Dette var en gruppelangtur Moss–Horten. Bruk 215 W og 295 W som henholdsvis VT1- og VT2-anker. Ingen jevn VT1-forskrift eller intervallforskrift er bekreftet. RPE, opplevd pust, beinstatus, matinntak, væskeinntak og senere restitusjon er uttrykkelig ukjent. Neste kvalitetsrolle i planen er VT2; det dokumenterer ikke at dagens tur skulle være en VT2-økt. Analyser dagens tur og gi en kort konsekvens for videre trening.",
+      "required": [
+        "Assess variable group endurance on its own terms, not as failed strict VT1.",
+        "Distinguish moving time, total time and substantial pause; do not bridge recording gaps when reporting sustained efforts.",
+        "Integrate the observed response with appropriate limits; absence of strict steady windows does not establish absent physiological information.",
+        "If discussing Performance Condition, preserve the early timing of the fall to -9, not a late exhaustion story.",
+        "Distinguish large dose from unobserved subjective or next-day cost and ask a focused material question."
+      ],
+      "prohibited": [
+        "Call the session failed or poorly executed because it is not strict VT1.",
+        "Claim controlled/easy response or low residual cost from stable watts or Stamina.",
+        "Diagnose glycogen depletion, respiratory limitation, poor fitness or heat limitation.",
+        "Call a roughly 78-minute elapsed span a continuous best 20-minute effort.",
+        "Advance VT2 progression or perform live writes."
+      ]
+    },
+    {
+      "id": "group_reported_hard",
+      "split": "development",
+      "activity": "2026-10-18_i198686349",
+      "options": ["--vt1-watts", "215", "--vt2-watts", "295"],
+      "support_files": ["garmin-summary.json", "xert-summary.json"],
+      "context": "Dette var en gruppelangtur Moss–Horten. Bruk 215 W og 295 W som henholdsvis VT1- og VT2-anker. Ingen jevn VT1-forskrift eller intervallforskrift er bekreftet. Utøveren rapporterer: Beina var forholdsvis bra. Turen var generelt tung gjennom mye av turen; lite føltes direkte lett. Pusten ble tydelig sliten mot slutten; 'begynte å bli sliten' er en underdrivelse. Numerisk RPE, matinntak, væskeinntak og senere restitusjon er ukjent. Dette er utøverens faktiske rapport, ikke en hypotetisk testantakelse. Neste kvalitetsrolle er VT2, men dagens foreskrevne rolle er ikke bekreftet. Analyser dagens tur og gi en kort konsekvens for videre trening.",
+      "required": [
+        "Make broadly hard perceived effort and substantial late respiratory strain central to the verdict; legs were comparatively okay.",
+        "Explain large variable endurance stimulus and accumulated demand without calling it failed VT1.",
+        "Distinguish early Performance Condition decline from late respiratory fatigue when that metric is used.",
+        "Treat intake and next-day response as unknown; give a recovery-first consequence without deriving an exact recovery duration from load.",
+        "Give qualified physiology interpretation despite unavailable strict matched windows; do not invent causal certainty."
+      ],
+      "prohibited": [
+        "Say subjective effort or leg feel is entirely unknown, ask the same broad feel question again, or soften the report to mild late breathlessness.",
+        "Infer respiratory muscle fatigue, pulmonary limitation, glycogen depletion or improved durability as established.",
+        "Assume a numeric RPE or consumed food quantity.",
+        "Treat source WORK rows as prescribed intervals or count a pause-spanning effort as continuous."
+      ]
+    },
+    {
+      "id": "steady_endurance",
+      "split": "holdout",
+      "activity": "2026-03-19_i133283406",
+      "options": ["--vt1-watts", "215"],
+      "context": "Kontrollscenario på en annen virkelig utetur. Testantakelser, ikke nye historiske fakta: formålet er jevn aerob solotur, VT1-anker 215 W. Ingen eksakt varighetsforskrift er gitt. RPE, matinntak og senere restitusjon er ukjent. Bruk de faktiske lagrede målingene og ikke importer konklusjoner fra andre turer.",
+      "required": [
+        "Assess actual sustained aerobic work and deviations relative to the explicit test intent.",
+        "Keep source moving time and detected work durations distinct.",
+        "Interpret only quality-eligible matched observations and retain uncertainty about residual cost."
+      ],
+      "prohibited": ["Assume that all outdoor rides have the same substantial tempo cost.", "Invent RPE, intake, historical improvement or prescription completion."]
+    },
+    {
+      "id": "other_group",
+      "split": "holdout",
+      "activity": "2026-06-06_i154787509",
+      "options": [],
+      "context": "Dette er en annen lagret Moss–Horten-gruppetur. Fysiologiske ankere for datoen, eksakt forskrift, RPE, mat, drikke og senere restitusjon er uttrykkelig ukjent. Aktivitetsteksten beskriver turen som effektiv, men sier ikke om den føltes lett. Analyser den selvstendig; ikke hent ankere fra personlig konfigurasjon.",
+      "required": [
+        "Assess long variable group riding without a fabricated intensity anchor.",
+        "Give a useful dose/execution/response verdict while preserving unobserved subjective cost.",
+        "Account for recording interruptions and variable terrain in late-session interpretation."
+      ],
+      "prohibited": ["Use 215/295 W as known historical anchors.", "Declare threshold crossing or quantify VT1 excess with unknown anchors.", "Assume effective means easy or well recovered."]
+    }
+  ]
+}

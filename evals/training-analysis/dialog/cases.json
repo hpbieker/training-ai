@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "activity_pool": ["2026-10-18_i198686349", "2026-07-09_i164240508", "2026-06-12_i156652030"],
+  "cases": [
+    {
+      "id": "long_ride",
+      "activity": "2026-10-18_i198686349",
+      "initial_prompt": "Analyser økt i198686349.",
+      "followup_prompt": "Det var generelt tungt gjennom mye av turen. Lite føltes direkte lett. Beina var forholdsvis bra, men jeg ble ordentlig sliten i pusten mot slutten.",
+      "followup_origin": "Replay of the athlete's actual report in this conversation; no new historical fact.",
+      "required_initial": ["Resolve the exact requested activity among cached alternatives and inspect its raw data; do not merely request already-available data.", "Use the analysis workflow to explain the large variable endurance dose and qualified response, with moving/elapsed/pause scope when material.", "Keep unsupported intent, prescription, experienced burden and recovery provisional; ask a focused material question.", "Give a useful ordinary Norwegian answer, not an evaluation JSON or metric dump."],
+      "required_followup": ["Make known broadly hard experience and substantial late breathing fatigue central while preserving comparatively good legs.", "Explicitly update or sharpen the earlier verdict; keep supported measurements and avoid inventing a causal mechanism.", "Tie the next-session implication to the new burden while preserving unknown later recovery; unchanged provisional advice may be justified rather than forcibly reversed.", "Do not repeat the broad feel question already answered or assign numeric RPE/intake."],
+      "prohibited": ["Use a different activity or stale derived analysis.", "Diagnose glycogen depletion, respiratory limitation or heat limitation from the report.", "Treat source WORK rows as prescribed intervals or infer ease from watts alone.", "Write externally or modify source/context files."]
+    },
+    {
+      "id": "short_ride",
+      "activity": "2026-07-09_i164240508",
+      "initial_prompt": "Analyser økt i164240508.",
+      "followup_prompt": "Det skulle være en lett tur, men den føltes tung nesten fra starten. Lite føltes lett. Beina var ganske greie, men pusten var tung.",
+      "followup_origin": "Synthetic dialogue test context only; do not persist as the athlete's historical report.",
+      "required_initial": ["Resolve the exact requested activity among cached alternatives and inspect raw data.", "Give a proportional assessment of this shorter, lower-power ride without declaring experienced ease or recovery known.", "Do not silently import current thresholds as known historical anchors.", "Give a useful concise Norwegian analysis and ask only material missing context."],
+      "required_followup": ["Revise the verdict around the mismatch between easy intent and hard felt effort; low measured workload must not override the report.", "Preserve okay legs and heavy breathing without assigning a diagnosis or numeric RPE.", "Give a proportional conditional next-session implication; do not impose the long-ride advice solely by analogy.", "Do not repeat already-answered broad feeling questions or invent intake/recovery."],
+      "prohibited": ["Use a different activity or stale derived analysis.", "Invent a historical threshold, illness, energy deficit, respiratory limitation or recovery duration.", "Ignore new subjective evidence because of low watts.", "Write externally or modify source/context files."]
+    }
+  ]
+}

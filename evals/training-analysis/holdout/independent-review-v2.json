@@ -1,0 +1,130 @@
+{
+  "review_type": "Independent regression review of four former holdout dialogues",
+  "scope": "Entire G1-G4 initial/followup answers and command provenance judged against unchanged holdout/cases.json. Spot-checked raw test-workspace metadata, descriptions and new numeric claims. No skill diff read. Same-thread/unchanged inputs accepted as coordinator-verified. These activities are regression cases, not untouched holdouts.",
+  "previous_two_issues": {
+    "unsupported_difficulty_denominator": {
+      "resolved": true,
+      "evidence": "G1 initial now says Xert oppgir 165 XSS og Difficulty 57. No /100 or invented normalization appears in any supplied answer."
+    },
+    "overconfident_heat_causality": {
+      "resolved": true,
+      "evidence": "G1 initial says Varme er en mulig medvirkende faktor; followup says Varme kan ha bidratt. It explicitly retains confounding and rejects a conclusion of heat limitation/dehydration."
+    }
+  },
+  "results": [
+    {
+      "review_id": "G1",
+      "case": "thermal_context",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Accurate large-dose interpretation, source-labelled model value, unknown experienced effort/recovery and material athlete question. CORE estimate is separated from device temperature, variable-window/early-window limitations retained, and heat remains a possible contribution rather than diagnosed mechanism.",
+        "minor_improvements": [
+          "Could be shorter; the extra sensor detail does not change the practical verdict."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "meaningful_update": true,
+        "reason": "New felt heat and final-hour breathing burden sharpen the verdict without overriding relatively good legs or inventing recovery. Corrected possible-contribution heat wording retains uncertainty. Advice reduces effort in comparable conditions and avoids automatic progression.",
+        "minor_improvements": [
+          "Increasing pustebesvaer is stronger symptom wording than the reported heavy breathing; use tung pust or pustebelastning.",
+          "Particularly after two hours should remain tied to this reported final-hour pattern rather than read as a general timing threshold.",
+          "A direct conditional next-session recommendation would be clearer than mainly advising future similar rides and no increase in training targets."
+        ]
+      }
+    },
+    {
+      "review_id": "G2",
+      "case": "low_average_group",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Documented group context and low-average/high-finish contrast are correctly described. Felt ease and recovery are explicitly unknown; no strict VT1 or recovery purpose imposed. Material whole-ride and post-ride question.",
+        "minor_improvements": [
+          "Long response for the central verdict; table plus detailed sensor interpretation could be condensed."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "none",
+        "meaningful_update": true,
+        "reason": "Accepts positive social-purpose/normal-post-ride report, distinguishes easy periods from hard surges and appropriately finds no automatic reason to postpone quality. Explicit normal-next-day condition preserves unknown later recovery. No forced negative outcome."
+      }
+    },
+    {
+      "review_id": "G3",
+      "case": "long_missing_smo2",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Large dose retained, absent SmO2/THb respected, selected-window response changes qualified, and actual effort/recovery kept unknown with a material question. Model values and source labels are accurate.",
+        "minor_improvements": [
+          "Tretthetsutvikling is framed as compatible rather than proven, which is acceptable; retaining a plain observed-response description is more precise."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "meaningful_update": true,
+        "reason": "Positive experience appropriately moderates the provisional fatigue interpretation while preserving workload, unquantified intake and unknown next-day recovery. No invented local response, adaptation or automatic progression.",
+        "minor_improvements": [
+          "Malbar drift is stronger than warranted by the qualified variable-window comparison. Say measured higher pulse/breathing at approximately similar power; the initial window/cadence limitations still apply. This is a wording/precision issue, not a new diagnosis or materially wrong dose judgment."
+        ]
+      }
+    },
+    {
+      "review_id": "G4",
+      "case": "return_after_illness",
+      "initial": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "reason": "Uses explicit illness/form-test context, explains stop-biased average and harder return, and refuses to infer readiness for normal hard training. Asks about experience and delayed response, without illness-type invention or clearance.",
+        "minor_improvements": [
+          "CORE maximum is accurate but occurred during the post-work stop. Mentioning that timing would preserve more useful scope when presenting the maximum, though the answer does not claim it occurred in the hard effort."
+        ]
+      },
+      "followup": {
+        "verdict": "pass",
+        "severity": "minor_improvements_only",
+        "meaningful_update": true,
+        "reason": "Abnormally heavy breathing with okay legs makes the test less supportive of progression, with unknown next-day recovery explicit. Proportional short/easy next session and normal breathing at light work before harder training.",
+        "minor_improvements": [
+          "Beina tolererte arbeidet should be Beine kjentes greie: the supplied report establishes felt condition, not demonstrated physiological tolerance."
+        ]
+      }
+    }
+  ],
+  "workflow": {
+    "verdict": "pass",
+    "findings": [
+      "Exact requested raw activity found for all four; fresh activity_inspect.py and analysis_packet.py calls, followed by inspection of their evidence.",
+      "No supplied command writes externally or modifies source/context files; derived analysis files only. Followups have no tool commands.",
+      "No unsupported historical thresholds, numeric RPE, intake amounts, illness type, fixed recovery duration, or diagnosed heat/dehydration/respiratory limitation.",
+      "All final answers are useful ordinary Norwegian prose; detail could be reduced."
+    ]
+  },
+  "numerical_and_source_spot_checks": {
+    "conclusion": "No material numerical or model-unit errors found. The previous Difficulty denominator error is absent.",
+    "checked": [
+      "Raw descriptions support Difficulty 57/60/66/43 as unnormalized source scores for G1/G2/G3/G4 respectively; XSS values 165/95/382/33. Intervals training-load values remain distinct model measures, not interchangeable units.",
+      "Workspace source metadata support all requested IDs and major duration/work values: G1 10685/10871 s and 1965.555 kJ; G2 7694/9029 s and 1122.227 kJ; G3 23059/25044 s and 4735.111 kJ; G4 1802/2440 s and 377.331 kJ.",
+      "New G3 longest source interval is 14688 s (4:04:48), 214 W, supporting approximately 4 h 04 min wording. It is described as a source-recorded segment, not prescribed work.",
+      "New G4 first approximately 27 min directly yields 222.52 W from raw streams, supporting 223 W.",
+      "Repeated selected-window sensor values and absence of long-ride SmO2/THb remain consistent with earlier raw checks in this review task. Those underlying sources were independently inspected; no prior result report was used to decide the current verdict."
+    ]
+  },
+  "overall": {
+    "initial_passes": 4,
+    "initial_total": 4,
+    "followup_passes": 4,
+    "followup_total": 4,
+    "complete_dialogue_passes": 4,
+    "complete_dialogue_total": 4,
+    "stoppefeil": [],
+    "previous_two_issues_resolved": true,
+    "new_material_errors": [],
+    "key_result": "Both targeted errors are absent. All four dialogues satisfy the unchanged substantive rubric, including positive-feedback cases. New minor wording issues concern measurable drift, felt legs versus demonstrated tolerance, CORE maximum timing and symptom phrasing; no new material factual failure."
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "review_method": "Single reviewer; model identifiers hidden during initial scoring. Case and revised method known. Not an independent or revision-blind review.",
+  "dimensions": ["task_and_work", "physiological_synthesis", "evidence_limits", "practical_conclusion"],
+  "answers": {
+    "F1": {"scores":[2,1,2,1],"pass":true,"evidence":"intervallene er ikke matchet sammenligningsvinduer","findings":["Useful restrained solo-ride verdict, but overlooks available variable-work comparison."]},
+    "F2": {"scores":[2,2,2,2],"pass":true,"evidence":"Begge vinduene ligger sent","findings":["Correct mechanics, timing, respiratory decomposition and unknown anchors."]},
+    "F3": {"scores":[2,2,2,2],"pass":true,"evidence":"minutt 12–17 og 177–182","findings":["Correct selected-window comparison, cadence caveat and qualified consequence."]},
+    "F4": {"scores":[2,1,2,1],"pass":true,"evidence":"bolkene er ikke sammenlignbare nok","findings":["Restrained solo-ride result; physiology still uses broad blocks instead of the available variable match."]},
+    "F5": {"scores":[2,2,2,2],"pass":true,"evidence":"representerer ikke avslutningen","findings":["Uses new evidence with correct scope and central athlete report."]},
+    "F6": {"scores":[2,2,2,2],"pass":true,"evidence":"modellens vanskelighetsgrad nedgraderer ikke din faktiske opplevelse","findings":["Preserves selected-window scope and distinguishes experienced burden from recovery."]},
+    "F7": {"scores":[2,1,2,1],"pass":true,"evidence":"opplevd pusteslitasje veie tungt","findings":["Correct athlete report and provisional consequence; physiological synthesis remains thin."]},
+    "F8": {"scores":[2,2,2,2],"pass":true,"evidence":"vinduene fulgte henholdsvis 118 og 2154 kJ arbeid","findings":["Good matched outdoor response with cadence, workload and model limits."]},
+    "F9": {"scores":[2,0,1,1],"pass":false,"evidence":"Ingen sammenlignbare stabile arbeidsvinduer var tilgjengelige","findings":["Falls back to generic uncertainty without using available variable-work evidence.","No focused missing-context question or total/pause timing."]},
+    "F10": {"scores":[2,2,2,1],"pass":false,"evidence":"største Performance Condition-fall kom allerede rundt minutt 35–44","findings":["Accurate improved physiology and chronology.","Still omits required focused question when athlete report is unknown."]},
+    "F11": {"scores":[2,2,2,1],"pass":false,"evidence":"ikke en validert test av svekket utholdenhet eller et mål på sluttfasen","findings":["Strong bounded response interpretation and pause distinction.","Still no focused missing-context question."]},
+    "F12": {"scores":[1,1,1,2],"pass":false,"evidence":"I fire utvalgte, mekanisk nokså like femminuttersvinduer","findings":["Confuses four eligible pairs with the one selected pair of two windows.","Athlete report and recovery consequence are preserved."]},
+    "F13": {"scores":[2,1,1,1],"pass":false,"evidence":"økende ventilatorisk respons","findings":["Uses respiratory rate and unpaired block means without considering lower estimated VE in the available match.","Does not account for recording interruptions as required."]},
+    "F14": {"scores":[2,1,1,1],"pass":false,"evidence":"analysen fant ingen stabile, matchede vinduer","findings":["Correctly avoids claims of drift from block means, but overlooks available variable-work comparison and recording interruptions."]},
+    "F15": {"scores":[2,2,2,2],"pass":true,"evidence":"opptakspauser på omtrent 4,5 og 50 minutter","findings":["Correct unknown-anchor group assessment, time/work scope and integrated respiration."]},
+    "F16": {"scores":[1,0,1,1],"pass":false,"evidence":"32,8 % av tiden over 236 W","findings":["Incorrect cap: 32.8% refers to 225 W, not the best-20-minute 236 W.","Falsely says no mechanically comparable windows exist, conflating strict and variable methods.","No focused missing-context question."]}
+  }
+}

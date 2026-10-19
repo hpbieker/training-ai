@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "ultra",
+      "split": "new_transfer",
+      "activity": "2026-06-13_i157035063",
+      "options": [],
+      "context": "Vätternrundan 2026. Aktivitetsbeskrivelsen inneholder en offisiell tid og en modellberegnet Xert-oppsummering. Analyser den lagrede økten selvstendig. Historiske terskelankere, detaljert forskrift, opplevd anstrengelse, mat, drikke og senere restitusjon er ukjent utover eksplisitte kildeopplysninger. Ingen hypotetisk utøverrapport er gitt. Gi en kort norsk vurdering av gjennomføring, fysiologisk respons og konsekvens for videre trening.",
+      "required": [
+        "Give a concise ride-specific verdict, qualified response and a proportionate next-training consequence.",
+        "Keep historical anchors, felt effort, intake and subsequent recovery unknown unless explicitly documented; ask only a material focused question.",
+        "Handle moving versus elapsed duration and actual recording interruptions where material; do not infer stationary time from gap subtraction.",
+        "Recognize ultra-long duration despite modest mean power; do not conclude low total demand from mean power.",
+        "Keep official/event time distinct from recorded moving/elapsed time if using it; do not invent discrepancies or causes."
+      ],
+      "prohibited": [
+        "Invent historical thresholds, prescribed dose, numeric RPE, intake or recovery duration.",
+        "Infer ease from low average power, or diagnose glycogen depletion, heat limitation or respiratory limitation from sensors.",
+        "Treat source WORK rows or the activity title alone as proof of completed prescribed intervals.",
+        "Present modeled calories/carbohydrate/fat usage as measured metabolism or consumed food."
+      ]
+    },
+    {
+      "id": "hill_repeats",
+      "split": "new_transfer",
+      "activity": "2025-08-09_i91462296",
+      "options": [],
+      "context": "Økten heter Olav Bulls vei x 6 + Sørkedalen x 3. Eksakte arbeids- og pauseforskrifter er ikke dokumentert. Analyser den lagrede økten selvstendig. Historiske terskelankere, detaljert forskrift, opplevd anstrengelse, mat, drikke og senere restitusjon er ukjent utover eksplisitte kildeopplysninger. Ingen hypotetisk utøverrapport er gitt. Gi en kort norsk vurdering av gjennomføring, fysiologisk respons og konsekvens for videre trening.",
+      "required": [
+        "Give a concise ride-specific verdict, qualified response and a proportionate next-training consequence.",
+        "Keep historical anchors, felt effort, intake and subsequent recovery unknown unless explicitly documented; ask only a material focused question.",
+        "Handle moving versus elapsed duration and actual recording interruptions where material; do not infer stationary time from gap subtraction.",
+        "Inspect repeated stronger work and easier sections rather than assess only a whole-ride average.",
+        "Treat title as a clue, not proof of six correctly completed intervals or known intensity zones."
+      ],
+      "prohibited": [
+        "Invent historical thresholds, prescribed dose, numeric RPE, intake or recovery duration.",
+        "Infer ease from low average power, or diagnose glycogen depletion, heat limitation or respiratory limitation from sensors.",
+        "Treat source WORK rows or the activity title alone as proof of completed prescribed intervals.",
+        "Present modeled calories/carbohydrate/fat usage as measured metabolism or consumed food."
+      ]
+    },
+    {
+      "id": "equipment",
+      "split": "new_transfer",
+      "activity": "2026-06-12_i156652030",
+      "options": [],
+      "context": "Beskrivelsen sier utstyrssjekk før Vätternrundan, nytt kjede og ny slange; én feil funnet og rettet. Analyser den lagrede økten selvstendig. Historiske terskelankere, detaljert forskrift, opplevd anstrengelse, mat, drikke og senere restitusjon er ukjent utover eksplisitte kildeopplysninger. Ingen hypotetisk utøverrapport er gitt. Gi en kort norsk vurdering av gjennomføring, fysiologisk respons og konsekvens for videre trening.",
+      "required": [
+        "Give a concise ride-specific verdict, qualified response and a proportionate next-training consequence.",
+        "Keep historical anchors, felt effort, intake and subsequent recovery unknown unless explicitly documented; ask only a material focused question.",
+        "Handle moving versus elapsed duration and actual recording interruptions where material; do not infer stationary time from gap subtraction.",
+        "Judge the explicitly documented equipment-check purpose and keep training consequence proportional to this short session.",
+        "Do not turn missing long comparison windows into a failed training session or prescribe recovery as for a long ride."
+      ],
+      "prohibited": [
+        "Invent historical thresholds, prescribed dose, numeric RPE, intake or recovery duration.",
+        "Infer ease from low average power, or diagnose glycogen depletion, heat limitation or respiratory limitation from sensors.",
+        "Treat source WORK rows or the activity title alone as proof of completed prescribed intervals.",
+        "Present modeled calories/carbohydrate/fat usage as measured metabolism or consumed food."
+      ]
+    },
+    {
+      "id": "mountain",
+      "split": "new_transfer",
+      "activity": "2025-07-26_i89262299",
+      "options": [],
+      "context": "Lang utetur ved Mogán. Formål og opplevelse er ikke dokumentert. Analyser den lagrede økten selvstendig. Historiske terskelankere, detaljert forskrift, opplevd anstrengelse, mat, drikke og senere restitusjon er ukjent utover eksplisitte kildeopplysninger. Ingen hypotetisk utøverrapport er gitt. Gi en kort norsk vurdering av gjennomføring, fysiologisk respons og konsekvens for videre trening.",
+      "required": [
+        "Give a concise ride-specific verdict, qualified response and a proportionate next-training consequence.",
+        "Keep historical anchors, felt effort, intake and subsequent recovery unknown unless explicitly documented; ask only a material focused question.",
+        "Handle moving versus elapsed duration and actual recording interruptions where material; do not infer stationary time from gap subtraction.",
+        "Account for duration and climbing/terrain in the workload verdict; do not infer heat merely from location.",
+        "Respect absent core-temperature stream; distinguish device/ambient temperature from measured core temperature."
+      ],
+      "prohibited": [
+        "Invent historical thresholds, prescribed dose, numeric RPE, intake or recovery duration.",
+        "Infer ease from low average power, or diagnose glycogen depletion, heat limitation or respiratory limitation from sensors.",
+        "Treat source WORK rows or the activity title alone as proof of completed prescribed intervals.",
+        "Present modeled calories/carbohydrate/fat usage as measured metabolism or consumed food."
+      ]
+    },
+    {
+      "id": "named_vt1",
+      "split": "new_transfer",
+      "activity": "2026-06-27_i160689745",
+      "options": [],
+      "context": "Økten heter VT1 65 min (Sørkedalen x 2). Det historiske VT1-ankeret og en separat forskrift er ikke dokumentert. Analyser den lagrede økten selvstendig. Historiske terskelankere, detaljert forskrift, opplevd anstrengelse, mat, drikke og senere restitusjon er ukjent utover eksplisitte kildeopplysninger. Ingen hypotetisk utøverrapport er gitt. Gi en kort norsk vurdering av gjennomføring, fysiologisk respons og konsekvens for videre trening.",
+      "required": [
+        "Give a concise ride-specific verdict, qualified response and a proportionate next-training consequence.",
+        "Keep historical anchors, felt effort, intake and subsequent recovery unknown unless explicitly documented; ask only a material focused question.",
+        "Handle moving versus elapsed duration and actual recording interruptions where material; do not infer stationary time from gap subtraction.",
+        "Distinguish the title duration from total/moving duration; do not assert 65 minutes of verified VT1 work.",
+        "Assess observed sustained versus variable work without importing current thresholds."
+      ],
+      "prohibited": [
+        "Invent historical thresholds, prescribed dose, numeric RPE, intake or recovery duration.",
+        "Infer ease from low average power, or diagnose glycogen depletion, heat limitation or respiratory limitation from sensors.",
+        "Treat source WORK rows or the activity title alone as proof of completed prescribed intervals.",
+        "Present modeled calories/carbohydrate/fat usage as measured metabolism or consumed food."
+      ]
+    }
+  ]
+}

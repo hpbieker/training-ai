@@ -1,0 +1,107 @@
+{
+  "review_method": "Single reviewer; model names hidden for initial scoring, case and revision known. Not independent or revision-blind.",
+  "dimensions": [
+    "task_and_work",
+    "physiological_synthesis",
+    "evidence_limits",
+    "practical_conclusion"
+  ],
+  "answers": {
+    "O1": {
+      "scores": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "pass": false,
+      "findings": [
+        "No focused question despite unknown subjective response; otherwise good scoped synthesis."
+      ]
+    },
+    "O2": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Accurate comparison, early PC timing and strong actual athlete report."
+      ]
+    },
+    "O3": {
+      "scores": [
+        2,
+        2,
+        2,
+        1
+      ],
+      "pass": false,
+      "findings": [
+        "No focused question despite unknown subjective response; otherwise accurate."
+      ]
+    },
+    "O4": {
+      "scores": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "pass": false,
+      "findings": [
+        "No focused question or moving/elapsed distinction; PC described as later without early timing; omits falling volume."
+      ]
+    },
+    "O5": {
+      "scores": [
+        2,
+        1,
+        1,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Preserves actual report and recovery consequence; comparison timing loosely called late and omits flat VE."
+      ]
+    },
+    "O6": {
+      "scores": [
+        2,
+        2,
+        2,
+        2
+      ],
+      "pass": true,
+      "findings": [
+        "Correct scoped physiology, strong athlete report and provisional recovery consequence."
+      ]
+    },
+    "O7": {
+      "scores": [
+        1,
+        1,
+        1,
+        2
+      ],
+      "pass": false,
+      "findings": [
+        "Says ride cannot count as VT1 work because of variable power despite no confirmed prescription; omits flat VE."
+      ]
+    },
+    "O8": {
+      "scores": [
+        0,
+        1,
+        1,
+        1
+      ],
+      "pass": false,
+      "findings": [
+        "Incorrect moving time 3h22 versus 5h02; omits focused question and flat VE."
+      ]
+    }
+  }
+}

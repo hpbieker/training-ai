@@ -1,0 +1,51 @@
+{
+  "source": "local_xert_segment_duration_solver",
+  "network_used": false,
+  "model_basis": "xert_staff_semantics_plus_calculate_validated_equations",
+  "signature": {
+    "tp": 300.5793286154128,
+    "hie": 14043.528361531404,
+    "pp": 767.8483828559946
+  },
+  "adjustable_segment_index": 1,
+  "adjustable_duration_seconds": 18823,
+  "duration_seconds": 19723,
+  "target_metric": "low_xss",
+  "target_value": 349.2855,
+  "achieved_target_value": 349.2816744552582,
+  "achieved_xss": {
+    "low": 349.2816744552582,
+    "high": 0.0,
+    "peak": 0.0,
+    "total": 349.2816744552582
+  },
+  "target_error": -0.003825544741800968,
+  "absolute_tolerance": 0.05,
+  "matched_within_tolerance": true,
+  "segments": [
+    {
+      "duration_seconds": 720,
+      "end_power": 204.39394345848072,
+      "name": "row 1",
+      "power": 165.31863073847705
+    },
+    {
+      "duration_seconds": 18823,
+      "power": 215
+    },
+    {
+      "duration_seconds": 180,
+      "name": "row 8",
+      "power": 150.2896643077064
+    }
+  ],
+  "difficulty": 64.35451936575664,
+  "feasibility": {
+    "valid": true,
+    "minimum_positive_mpa_reserve_watts": 552.8483828559946,
+    "minimum_positive_mpa_reserve_time_seconds": 720,
+    "first_point_of_failure": null,
+    "invalid_power_above_pp": false,
+    "post_failure_is_hypothetical": false
+  }
+}
