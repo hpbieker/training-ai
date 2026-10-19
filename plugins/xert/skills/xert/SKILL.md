@@ -17,7 +17,7 @@ Load only the references needed for the question.
 
 | Task | Start with | Read when needed |
 | --- | --- | --- |
-| Completed workout or activity comparison | `list_activity_summaries` or `list_activities`, then `get_activity` | [Activity fields](references/field-semantics.md#activity-and-workout-fields); [tool details](references/tool-workflows.md#mcp-read-access) |
+| Completed workout or activity comparison | `list_activity_summaries`; `get_activity` for details or session series | [Activity fields](references/field-semantics.md#activity-and-workout-fields); [tool details](references/tool-workflows.md#mcp-read-access) |
 | Readiness or today's/planned session dose | `get_training_state(view="summary")` and `get_training_advice(view="summary", at=...)` | [Recovery and advice](references/field-semantics.md#recovery-and-advice) |
 | Known workout XSS or adjustable endurance duration | `calculate_strain` or `solve_segment_duration` | [Strain model](references/strain-model.md); [calculation workflow](references/tool-workflows.md#choose-the-narrowest-command) |
 | Capacity, load development or signature projection | `calculate_workout_capacity` or `project_load_model` | [Load model](references/training-load-model.md); [tool arguments](references/tool-workflows.md#choose-the-narrowest-command) |
@@ -44,6 +44,16 @@ Load only the references needed for the question.
   Read [sources.md](references/sources.md) before making validation claims.
 
 ## Common Read And Calculation Path
+
+Use `list_activity_summaries` for completed-activity discovery, including Garmin
+syncs. Xert's OAuth activity endpoints exclude automatically synced Garmin
+activities. Both `list_activities` and `list_activity_summaries` use the
+authenticated dashboard and include those rides. `get_activity` uses the standard
+activity page and its authenticated MPA chart endpoint, including session series.
+Callers do not need to choose transport based on Garmin origin. Saved documents
+identify their web source and preserve chart field names in `session_data`.
+See [Xert API activity access](https://www.xertonline.com/API.html)
+for the upstream OAuth restriction.
 
 Use compact summaries by default and `includeFields` for the extra list fields
 needed. Check `period_complete` on activity-summary results before claiming

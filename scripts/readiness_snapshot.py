@@ -1407,9 +1407,11 @@ def normalize_xert_input(payload: dict[str, Any]) -> dict[str, Any]:
         "recovery_load": state.get("recovery_load"),
     }
     normalized["training_advice"] = advice
-    normalized.setdefault(
-        "source_time_local",
-        advice.get("training_advice_as_of") or state.get("as_of"),
+    # Recovery belongs to the observed state, not the planned advice time or
+    # the time someone copied the response to disk.
+    normalized["source_time_local"] = (
+        state.get("as_of") or advice.get("training_advice_as_of")
+        or payload.get("source_time_local")
     )
     return normalized
 
@@ -1489,8 +1491,10 @@ def compact_xert_advice(
         "next_workout_days": recovery.get("next_workout_days"),
         "recovery_hours": {
             "meaning": (
-                "Positive hours are Xert's recommended wait before more load "
-                "in each system: low = any activity that generates low XSS, "
+                "Positive hours are time to Xert's modeled fresh boundary, "
+                "not an automatic training ban or proof of readiness when zero. "
+                "Use with session purpose, recent response and current body feel. "
+                "Low = any activity that generates low XSS, "
                 "high = work over TP that generates high XSS, peak = work over "
                 "TP with special relevance to peak-power/peak-XSS work."
             ),
@@ -2422,13 +2426,6 @@ def load_xert_input(
     if not isinstance(payload, dict):
         raise SystemExit(f"Xert readiness JSON must be an object: {path}")
     payload.setdefault("source_file", str(path))
-    payload.setdefault(
-        "source_time_local",
-        format_local(
-            file_modified_time(path),
-            local_timezone=local_timezone,
-        ),
-    )
     return payload
 
 

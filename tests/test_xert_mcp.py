@@ -706,11 +706,13 @@ class XertServiceTests(unittest.TestCase):
         credentials = SERVICE.XertCredentials(username="user", password="secret")
         service = self._service(credentials)
         with (
-            patch.object(SERVICE, "fetch_activities", return_value=[{
-                "path": "a1", "name": "Ride", "start_date": "2026-08-01T08:00:00Z",
-                "duration": 3630, "distance": 30.25,
-            }]),
-            patch.object(SERVICE, "fetch_activity_detail", return_value={"summary": {"xss": 4}}),
+            patch.object(service, "list_activity_summaries", return_value={
+                "period_complete": True, "activities": [{
+                    "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
+                    "duration_s": 3630, "distance_m": 30250, "source": "xert_plugin",
+                }],
+            }),
+            patch.object(SERVICE, "fetch_activity_web", return_value={"summary": {"xss": 4}}),
             patch.object(SERVICE, "fetch_workouts", return_value=[{"name": "XMB VT1", "path": "w1"}]),
             patch.object(SERVICE, "fetch_workout", return_value={"path": "w1"}),
         ):
@@ -723,6 +725,22 @@ class XertServiceTests(unittest.TestCase):
             self.assertEqual(service.get_activity("a1")["xss"]["total"], 4)
             self.assertEqual(service.list_workouts(name_keywords="vt1", view="full")[0]["path"], "w1")
             self.assertEqual(service.get_workout("w1"), {"path": "w1"})
+
+    def test_activity_discovery_uses_dashboard_even_when_oauth_is_empty(self):
+        service = self._service(SERVICE.XertCredentials(username="user", password="secret"))
+        with patch.object(SERVICE, "fetch_activities", return_value=[]) as oauth, patch.object(
+            service, "list_activity_summaries", return_value={"period_complete": True, "activities": [
+                {"path": "garmin-sync", "start_local": "2026-10-18T09:47:52", "duration_s": 100,
+                 "distance_m": 2000, "xss": {"total": 0, "high": 0}}
+            ]}
+        ):
+            self.assertEqual(service.list_activities("2026-10-18", "2026-10-18")[0]["path"], "garmin-sync")
+            loads = service.list_activities("2026-10-18", "2026-10-18", view="loads")
+            self.assertEqual(loads["activities"][0]["xss"]["total"], 0)
+            oauth.assert_not_called()
+        with patch.object(service, "list_activity_summaries", return_value={"period_complete": False, "activities": []}):
+            with self.assertRaisesRegex(RuntimeError, "Incomplete"):
+                service.list_activities("2026-10-18", "2026-10-18")
 
     def test_credentials_support_mcp_config_with_environment_override(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

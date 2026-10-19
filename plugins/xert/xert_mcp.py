@@ -385,6 +385,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_activities": {
         "name": "list_activities",
         "description": (
+            "Uses the authenticated dashboard, including automatically synced Garmin rides. "
             "List compact Xert activity identity summaries for an inclusive local-date "
             "range. Use includeFields for details available from the activity-list "
             "response. This tool never fetches individual activity details."
@@ -435,7 +436,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "get_activity": {
         "name": "get_activity",
         "description": (
-            "Get a compact summary of one Xert activity. Set save_full=true to save "
+            "Get activity details from authenticated Xert web analytics, including Garmin syncs. "
+            "Failures are errors, not empty activities. Set save_full=true to save "
             "the complete activity document, or save_session=true to fetch and save "
             "Xert-specific second-by-second data, in private temporary JSON files."
         ),

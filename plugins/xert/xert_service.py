@@ -16,6 +16,7 @@ from typing import Any, Callable
 
 from xert_activities import (
     fetch_activity_detail,
+    fetch_activity_web,
     list_activities as fetch_activities,
     list_activity_details,
 )
@@ -153,37 +154,25 @@ class XertService:
         _validate_date_range(start_date, end_date)
         if view not in {"summary", "loads"}:
             raise ValueError("view must be 'summary' or 'loads'")
-        credentials = self._credentials()
+        # Dashboard includes Garmin syncs excluded from OAuth activity endpoints.
+        from xert_activity_summaries import SUMMARY_FIELDS
+        fields = SUMMARY_FIELDS if view == "loads" else ("duration_s", "distance_m", "source", "map_url")
+        result = self.list_activity_summaries(start_date, end_date, include_fields=fields)
+        if not result.get("period_complete"):
+            raise RuntimeError("Incomplete Xert dashboard period; refusing a partial activity list")
+        activities = []
+        for row in result["activities"]:
+            activity = dict(row)
+            duration, distance = row.get("duration_s"), row.get("distance_m")
+            activity["elapsed_minutes"] = duration / 60 if duration is not None else None
+            activity["distance_km"] = distance / 1000 if distance is not None else None
+            activities.append(activity)
         if view == "summary":
-            activities = fetch_activities(
-                username=credentials.username,
-                password=credentials.password,
-                oldest=start_date,
-                newest=end_date,
-                access_token=self._auth.bearer_token(),
-            )
-            return [
-                compact_activity_load({
-                    "path": activity.get("path"),
-                    "activity_list_row": activity,
-                })
-                for activity in activities
-                if isinstance(activity, dict)
-            ]
-        details = list_activity_details(
-            username=credentials.username,
-            password=credentials.password,
-            oldest=start_date,
-            newest=end_date,
-            include_session_data=False,
-            access_token=self._auth.bearer_token(),
-        )
+            return activities
         return {
-            "source": "xert_plugin_activity_loads",
-            "start_date": start_date,
-            "end_date": end_date,
-            "activity_count": len(details),
-            "activities": [compact_activity_load(detail) for detail in details],
+            "source": "xert_plugin_dashboard_loads",
+            "start_date": start_date, "end_date": end_date,
+            "activity_count": len(activities), "activities": activities,
         }
 
     def list_activity_summaries(self, start_date, end_date, *, include_fields=(), limit=None):
@@ -198,16 +187,23 @@ class XertService:
         path = _require_identifier(path, "activity path")
         if view not in {"summary", "full", "session"}:
             raise ValueError("view must be 'summary', 'full', or 'session'")
-        credentials = self._credentials()
-        payload = fetch_activity_detail(
-            path,
-            username=credentials.username,
-            password=credentials.password,
-            include_session_data=view == "session",
-            access_token=self._auth.bearer_token(),
+        payload = fetch_activity_web(
+            self._auth.web_opener(), path, include_session_data=view == "session",
         )
+        day = payload["summary"].get("start_date_local", "")[:10]
+        if day:
+            from xert_activity_summaries import SUMMARY_FIELDS
+            listing = self.list_activity_summaries(day, day, include_fields=SUMMARY_FIELDS)
+            if not listing.get("period_complete"):
+                raise RuntimeError("Incomplete Xert dashboard coverage for activity details")
+            row = next((row for row in listing["activities"] if row["path"] == path), None)
+            if row is None:
+                raise RuntimeError("Xert activity details could not be matched to dashboard")
+            payload["dashboard_summary"] = row
         if view == "summary":
             result = compact_activity_load(payload)
+            result.update({key: value for key, value in payload.get("dashboard_summary", {}).items()
+                           if value is not None})
             result["path"] = path
             return result
         return payload
@@ -609,10 +605,10 @@ def compact_activity_load(payload: dict[str, Any]) -> dict[str, Any]:
             or list_row.get("duration")
         )),
         "xss": {
-            "total": summary.get("xss") or xss.get("total"),
-            "low": summary.get("xlss") or xss.get("xlss"),
-            "high": summary.get("xhss") or xss.get("xhss"),
-            "peak": summary.get("xpss") or xss.get("xpss"),
+            "total": summary.get("xss") if summary.get("xss") is not None else xss.get("total"),
+            "low": summary.get("xlss") if summary.get("xlss") is not None else xss.get("xlss"),
+            "high": summary.get("xhss") if summary.get("xhss") is not None else xss.get("xhss"),
+            "peak": summary.get("xpss") if summary.get("xpss") is not None else xss.get("xpss"),
         },
         "xep_watts": summary.get("xep"),
         "focus": summary.get("focus"),

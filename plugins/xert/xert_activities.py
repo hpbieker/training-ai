@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 import json
+import re
+from urllib.parse import urlsplit
 from typing import Any
 from urllib.request import Request
 
@@ -16,6 +18,24 @@ from xert_common import (
     xert_web_login,
 )
 
+
+
+def _activity_request(path, access_token, *, params=None):
+    """Reject API-level failures even when HTTP transport succeeds."""
+    payload = _request_json(path, access_token, params=params)
+    if isinstance(payload, dict) and (
+        payload.get("error") or payload.get("success") is False
+        or str(payload.get("success", "")).lower() == "false"
+    ):
+        code = payload.get("error") or "unsuccessful_response"
+        hint = (
+            " Xert OAuth excludes automatically synced Garmin activities; "
+            "use list_activity_summaries for dashboard summaries. "
+            "This response does not prove the activity is absent from Xert."
+            if code == "activity_not_found" else ""
+        )
+        raise RuntimeError(f"Xert activity API failed: {code}.{hint}")
+    return payload
 
 def list_activities(
     *,
@@ -31,7 +51,7 @@ def list_activities(
         username=username,
         password=password,
     )
-    activities = _request_json(
+    activities = _activity_request(
         "/oauth/activity",
         access_token or credentials.bearer_token(),
         params={
@@ -57,7 +77,7 @@ def fetch_activity_detail(
         username=username,
         password=password,
     )
-    detail = _request_json(
+    detail = _activity_request(
         f"/oauth/activity/{path}",
         access_token or credentials.bearer_token(),
         params={"include_session_data": 1 if include_session_data else 0},
@@ -83,7 +103,7 @@ def list_activity_details(
         password=password,
     )
     token = access_token or credentials.bearer_token()
-    activities = _request_json(
+    activities = _activity_request(
         "/oauth/activity",
         token,
         params={
@@ -98,7 +118,7 @@ def list_activity_details(
     for activity in activities["activities"]:
         if not isinstance(activity, dict) or not activity.get("path"):
             continue
-        detail = _request_json(
+        detail = _activity_request(
             f"/oauth/activity/{activity['path']}",
             token,
             params={"include_session_data": 1 if include_session_data else 0},
@@ -134,7 +154,7 @@ def fetch_activity_event_metadata_for_starts(
     targets = {key(value) for value in start_dates}
     targets.discard(None)
     parsed_targets = [datetime.fromisoformat(value) for value in targets]
-    activities = _request_json(
+    activities = _activity_request(
         "/oauth/activity",
         token,
         params={
@@ -151,7 +171,7 @@ def fetch_activity_event_metadata_for_starts(
         start_key = key(activity.get("start_date"))
         if start_key not in targets:
             continue
-        detail = _request_json(
+        detail = _activity_request(
             f"/oauth/activity/{activity['path']}", token, params={"include_session_data": 0}
         )
         summary = detail.get("summary") if isinstance(detail, dict) else None
@@ -203,4 +223,46 @@ def fetch_flagged_activity_starts_with_login(
         if page >= last_page:
             break
         page += 1
+    return result
+
+
+def fetch_activity_web(opener, path: str, *, include_session_data=False):
+    """Read standard activity-page analytics, including Garmin-synced rides.
+
+    Preserve web chart field names rather than pretending they are OAuth data.
+    Only follow the page's same-origin, same-activity standard MPA endpoint.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", path):
+        raise ValueError("Invalid Xert activity path")
+    page_url = f"{XERT_API_BASE_URL}/activities/{path}"
+    html = _open_text(opener, Request(page_url), "Xert activity page")
+    match = re.search(r"(?:const|let|var)\s+activity\s*=\s*", html)
+    chart = re.search(r'Xert\.Activity\.Analytics\.MPA\._chartURL\s*=\s*"([^"<>]+)"', html)
+    if not match or not chart:
+        raise RuntimeError("Xert activity page lacks standard activity analytics")
+    activity, _ = json.JSONDecoder().raw_decode(html[match.end():])
+    url = chart.group(1)
+    parsed, base = urlsplit(url), urlsplit(XERT_API_BASE_URL)
+    if (parsed.scheme, parsed.netloc, parsed.path) != (
+        base.scheme, base.netloc, f"/activities/{path}/mpa/default"
+    ):
+        raise RuntimeError("Xert chart URL does not match the requested activity")
+    if not isinstance(activity, dict) or not activity.get("start_date_local"):
+        raise RuntimeError("Xert activity page has invalid metadata")
+    data = json.loads(_open_text(opener, Request(url, headers={
+        "Accept": "application/json", "X-Requested-With": "XMLHttpRequest",
+    }), "Xert activity analytics"))
+    if (not isinstance(data, dict) or data.get("result") is not True
+            or not isinstance(data.get("summary"), dict)
+            or not isinstance(data.get("data"), list) or not data["data"]
+            or any(not isinstance(row, dict) for row in data["data"])):
+        raise RuntimeError("Xert activity analytics returned invalid or empty data")
+    summary = {**activity, **data["summary"], "sig": data.get("sig"),
+               "focus": data["summary"].get("fa"),
+               "specificity": data["summary"].get("spr")}
+    result = {"path": path, "source": "xert_authenticated_web",
+              "summary": summary, "events": data.get("events", []),
+              "series_format": "xert-standard-mpa-chart-v1"}
+    if include_session_data:
+        result["session_data"] = data["data"]
     return result
