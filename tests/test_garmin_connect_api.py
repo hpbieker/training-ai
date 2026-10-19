@@ -16,6 +16,101 @@ import garmin_connect_api as API  # noqa: E402
 
 
 class GarminCompactHealthTests(unittest.TestCase):
+    def test_training_load_survives_compaction_and_cutoff(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from scripts.readiness_snapshot import compact_training_status
+
+        status = self.payload["sources"]["training_status"]
+        row = status["mostRecentTrainingStatus"]["latestTrainingStatusData"]["12345"]
+        row.update(trainingStatus=2, trainingStatusFeedbackPhrase="PRODUCTIVE", acuteTrainingLoadDTO={
+            "dailyTrainingLoadAcute": 900, "dailyTrainingLoadChronic": 850,
+            "dailyAcuteChronicWorkloadRatio": 1.06, "acwrPercent": 45,
+            "acwrStatus": "OPTIMAL",
+        })
+        status["mostRecentTrainingLoadBalance"] = {"metricsTrainingLoadBalanceDTOMap": {
+            "12345": {"monthlyLoadAerobicLow": 1000, "monthlyLoadAerobicLowTargetMin": 800,
+                      "monthlyLoadAerobicLowTargetMax": 1600, "trainingBalanceFeedbackPhrase": "BALANCED"}
+        }}
+        compact = API.compact_day_payload(self.payload)["sources"]["training_status"]
+        kwargs = {"local_timezone": ZoneInfo("Europe/Oslo")}
+        full_values = compact_training_status(status, **kwargs)
+        compact_values = compact_training_status(compact, **kwargs)
+        for key in ["training_status", "feedback", "acute_load", "chronic_load", "acwr", "acwr_status",
+                    "monthly_load_aerobic_low", "monthly_load_aerobic_low_target_min", "load_balance_feedback"]:
+            self.assertIsNotNone(full_values[key])
+            self.assertEqual(full_values[key], compact_values[key], key)
+        self.assertIsNone(compact_training_status(
+            compact, data_cutoff=datetime.fromisoformat("2026-08-07T12:00:00Z"), **kwargs))
+
+    def test_nested_overnight_sources_survive_compaction_and_readiness(self):
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from scripts.readiness_snapshot import build_readiness_snapshot, readiness_summary
+
+        payload = {
+            "date": "2026-08-17",
+            "sources": {
+                "hrv": {
+                    "sleepEndTimestampGMT": "2026-08-17T05:15:00Z",
+                    "sleepEndTimestampLocal": "2026-08-17T07:15:00",
+                    "hrvSummary": {
+                        "calendarDate": "2026-08-17", "lastNightAvg": 65,
+                        "weeklyAvg": 68, "status": "BALANCED",
+                        "baseline": {"balancedLow": 60, "balancedUpper": 80},
+                    },
+                    "hrvReadings": [{"hrvValue": 65}],
+                },
+                "sleep": {
+                    "dailySleepDTO": {
+                        "calendarDate": "2026-08-17", "sleepTimeSeconds": 27000,
+                        "sleepStartTimestampGMT": "2026-08-16T21:30:00Z",
+                        "sleepEndTimestampGMT": "2026-08-17T05:15:00Z",
+                        "sleepScores": {"overall": {"value": 85}},
+                    },
+                    "sleepHeartRate": [{"value": 45}],
+                },
+                "heart_rate": {"calendarDate": "2026-08-17", "restingHeartRate": 43},
+                "summary": {"calendarDate": "2026-08-17", "bodyBatteryAtWakeTime": 92},
+            },
+        }
+        compact = API.compact_day_payload(payload)
+        self.assertNotIn("hrvReadings", compact["sources"]["hrv"])
+        self.assertNotIn("sleepHeartRate", compact["sources"]["sleep"])
+        self.assertEqual(compact["sources"]["sleep"]["sleep_score"], 85)
+        self.assertEqual(compact["sources"]["hrv"]["baseline"]["balancedLow"], 60)
+        with TemporaryDirectory() as directory:
+            def snapshot(source, now, day="2026-08-17"):
+                return build_readiness_snapshot(
+                    day, artifacts_dir=Path(directory),
+                    now=datetime.fromisoformat(now), garmin_input=source,
+                    local_timezone=ZoneInfo("Europe/Oslo"),
+                )
+            raw = snapshot(payload, "2026-08-17T12:00:00+02:00")
+            result = snapshot(compact, "2026-08-17T12:00:00+02:00")
+            wellness = result["recommendation_inputs"]["wellness"]
+            for key, expected in {
+                "sleep_time_seconds": 27000, "sleep_score": 85,
+                "hrv_last_night_avg": 65, "hrv_weekly_avg": 68,
+                "hrv_status": "BALANCED", "resting_hr": 43,
+                "body_battery_at_wake": 92,
+            }.items():
+                self.assertEqual(wellness[key], expected, key)
+                self.assertEqual(wellness[key], raw["recommendation_inputs"]["wellness"][key])
+            for signal in ["sleep", "hrv", "resting_hr", "body_battery_at_wake"]:
+                self.assertTrue(wellness["garmin_signal_status"][signal]["usable_for_assessment"])
+            brief = readiness_summary(result)
+            self.assertEqual(brief["wellness"]["sleep_score"], 85)
+            self.assertIn("data_cutoff_local", brief)
+            self.assertIn("interpretation_limits", brief)
+            for earlier in (
+                snapshot(compact, "2026-08-17T06:00:00+02:00"),
+                snapshot(compact, "2026-08-18T12:00:00+02:00", "2026-08-18"),
+            ):
+                values = earlier["recommendation_inputs"]["wellness"]
+                for key in ["sleep_time_seconds", "sleep_score", "hrv_last_night_avg", "resting_hr"]:
+                    self.assertIsNone(values[key], key)
+
     def setUp(self) -> None:
         fixture = Path(__file__).parent / "fixtures" / "garmin_readiness_status.json"
         self.payload = json.loads(fixture.read_text(encoding="utf-8"))

@@ -193,9 +193,10 @@ def compact_daily_source_summaries(sources: dict[str, Any]) -> dict[str, Any]:
         ),
         "hrv": (
             "calendarDate", "lastNightAvg", "lastNight5MinHigh", "weeklyAvg",
-            "status", "baselineLowUpper", "baselineBalancedLow",
+            "status", "baseline", "baselineLowUpper", "baselineBalancedLow",
             "baselineBalancedUpper", "feedbackPhrase", "createTimeStamp",
             "endTimestampGMT", "endTimestampLocal",
+            "sleepEndTimestampGMT", "sleepEndTimestampLocal",
         ),
         "sleep": (
             "calendarDate", "sleepTimeSeconds", "napTimeSeconds",
@@ -215,6 +216,9 @@ def compact_daily_source_summaries(sources: dict[str, Any]) -> dict[str, Any]:
             "minHeartRate", "maxHeartRate", "averageStressLevel",
             "maxStressLevel", "stressDuration", "restStressDuration",
             "lowStressDuration", "mediumStressDuration", "highStressDuration",
+            "bodyBatteryAtWakeTime", "bodyBatteryMostRecentValue",
+            "bodyBatteryHighestValue", "bodyBatteryLowestValue",
+            "bodyBatteryChargedValue", "bodyBatteryDrainedValue",
         ),
         "training_status": (
             "calendarDate", "timestamp", "timestampLocal", "trainingStatus",
@@ -234,13 +238,24 @@ def compact_daily_source_summaries(sources: dict[str, Any]) -> dict[str, Any]:
         if isinstance(payload, dict) and payload.get("error"):
             summaries[source] = {"error": payload.get("error")}
             continue
+        if source == "training_status" and isinstance(payload, dict):
+            summaries[source] = compact_training_load_sources(payload)
+            continue
         row = _first_source_row(payload)
         if row is None:
             summaries[source] = None
             continue
+        # gccli returns nested overnight summaries with timing on the envelope.
+        # Flatten only the summary, never the raw overnight time series.
+        nested_key = {"hrv": "hrvSummary", "sleep": "dailySleepDTO"}.get(source)
+        nested = row.get(nested_key) if nested_key else None
+        if isinstance(nested, dict):
+            row = {**row, **nested}
         summary = {key: row[key] for key in fields.get(source, ()) if key in row}
         if source == "sleep":
             score = _nested_value(row, "sleepScores", "overall", "value")
+            if score is None:
+                score = row.get("sleep_score", row.get("sleepScore"))
             if score is not None:
                 summary["sleep_score"] = score
         if source == "stress":
@@ -249,6 +264,47 @@ def compact_daily_source_summaries(sources: dict[str, Any]) -> dict[str, Any]:
                 summary["body_battery"] = battery
         summaries[source] = summary
     return summaries
+
+
+def compact_training_load_sources(payload: dict[str, Any]) -> dict[str, Any]:
+    """Preserve the scalar status/load records consumed by readiness helpers."""
+    status_fields = (
+        "calendarDate", "timestamp", "timestampLocal", "trainingStatus",
+        "trainingStatusFeedbackPhrase", "sinceDate", "fitnessTrend",
+        "fitnessTrendSport", "sport", "deviceId", "primaryTrainingDevice",
+    )
+    acute_fields = (
+        "dailyTrainingLoadAcute", "dailyTrainingLoadChronic",
+        "dailyAcuteChronicWorkloadRatio", "acwrPercent", "acwrStatus",
+    )
+    balance_fields = ("calendarDate", "timestamp", "trainingBalanceFeedbackPhrase") + tuple(
+        f"monthlyLoad{system}{suffix}"
+        for system in ("AerobicLow", "AerobicHigh", "Anaerobic")
+        for suffix in ("", "TargetMin", "TargetMax")
+    )
+    statuses = _nested_value(payload, "mostRecentTrainingStatus", "latestTrainingStatusData") or {}
+    balances = _nested_value(payload, "mostRecentTrainingLoadBalance", "metricsTrainingLoadBalanceDTOMap") or {}
+    status_rows = {}
+    for key, row in statuses.items():
+        if not isinstance(row, dict):
+            continue
+        result = {field: row[field] for field in status_fields if field in row}
+        acute = row.get("acuteTrainingLoadDTO") or {}
+        result["acuteTrainingLoadDTO"] = {field: acute[field] for field in acute_fields if field in acute}
+        status_rows[key] = result
+    latest = max(status_rows.values(), key=lambda row: numeric_value(row.get("timestamp")) or -1, default={})
+    acute = latest.get("acuteTrainingLoadDTO") or {}
+    return {
+        **{key: latest[key] for key in status_fields if key in latest},
+        "acuteTrainingLoad": acute.get("dailyTrainingLoadAcute"),
+        "loadRatio": acute.get("dailyAcuteChronicWorkloadRatio"),
+        "loadRatioStatus": acute.get("acwrStatus"),
+        "mostRecentTrainingStatus": {"latestTrainingStatusData": status_rows},
+        "mostRecentTrainingLoadBalance": {"metricsTrainingLoadBalanceDTOMap": {
+            key: {field: row[field] for field in balance_fields if field in row}
+            for key, row in balances.items() if isinstance(row, dict)
+        }},
+    }
 
 
 def _first_source_row(payload: Any) -> dict[str, Any] | None:

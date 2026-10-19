@@ -147,8 +147,9 @@ this repo needs:
 ```
 
 ```bash
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day 2026-05-14 > /tmp/garmin-connect-day.json
+# Persist get_health_day structuredContent to /tmp/garmin-connect-day.json first.
 python3 -B scripts/readiness_snapshot.py \
+  --summary \
   --time-context-json '{"date":"2026-05-14","local_timezone":"Europe/Oslo","now":"2026-05-14T08:15:00+02:00"}' \
   --source-inputs-json '{"garmin":"/tmp/garmin-connect-day.json","xert":"/tmp/xert-readiness.json","intervals":{"wellness":"/tmp/intervals-wellness.json","events":"/tmp/intervals-events.json"}}'
 ```
@@ -158,6 +159,12 @@ Xert API payloads; source-specific field interpretation belongs to the source
 plugin or the orchestration layer above this script. The repo-level contracts
 are the Garmin Connect day JSON, normalized Xert JSON, and Intervals payloads
 referenced by `--source-inputs-json`.
+
+For a focused readiness question, `--summary` emits the decision evidence,
+freshness and interpretation limits without the full diagnostic packet. For
+post-workout HR/stress analysis, call Garmin `get_health_day(save_full=true)`
+and pass its `full_health_day_file` directly as the Garmin input. Compact health
+responses retain sleep/HRV summaries but deliberately omit those time series.
 
 ## Same-day training recommendation
 

@@ -116,6 +116,10 @@ def main() -> None:
     )
     parser.add_argument("--artifacts-dir", default=str(ARTIFACTS_DIR))
     parser.add_argument(
+        "--summary", action="store_true",
+        help="Emit the focused readiness evidence packet for a chat decision.",
+    )
+    parser.add_argument(
         "--source-inputs-json",
         required=True,
         type=parse_source_inputs_json,
@@ -152,7 +156,59 @@ def main() -> None:
         ),
         local_timezone=local_timezone,
     )
-    print(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True))
+    print(json.dumps(
+        readiness_summary(snapshot) if args.summary else snapshot,
+        ensure_ascii=False, indent=2, sort_keys=True,
+    ))
+
+
+def readiness_summary(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Keep decision evidence, timestamps and uncertainty without a verdict."""
+    inputs = snapshot["recommendation_inputs"]
+    wellness = inputs["wellness"]
+    recovery = inputs["garmin_recovery_readiness"]
+    post = inputs["post_activity_response"]
+    post_hr = post.get("heart_rate") or {}
+    post_stress = post.get("stress") or {}
+    return {
+        "date": snapshot["date"],
+        "time_context": inputs["time_context"],
+        "data_cutoff_local": snapshot["data_cutoff_local"],
+        "latest_activity": snapshot["latest_activity"],
+        "wellness": pick(wellness, [
+            "sleep_time_seconds", "sleep_score", "hrv_last_night_avg",
+            "hrv_weekly_avg", "hrv_status", "hrv_baseline", "resting_hr",
+            "resting_hr_7day", "body_battery_at_wake", "body_battery_latest",
+            "garmin_signal_status", "garmin_sync_recommended",
+        ]),
+        "garmin_recovery": pick(recovery, [
+            "recovery_time_hours_at_timestamp", "recovery_time_timestamp_local",
+            "projected_recovery_time_hours_now",
+            "projected_recovery_time_hours_at_planned",
+            "recovery_projection_assumption",
+        ]),
+        "xert_recovery": inputs["xert_recovery"],
+        "post_activity_response": {
+            "heart_rate": pick(post_hr, ["post_activity_window", "readiness_signal"]),
+            "stress": {
+                "post_activity_window": post_stress.get("post_activity_window"),
+                "after_30min": pick(post_stress.get("post_activity_after_30min") or {}, [
+                    "count", "avg", "latest", "lowest_rolling_avg",
+                ]),
+            },
+            "interpretation_note": post.get("interpretation_note"),
+        },
+        "intervals_wellness_events": inputs["intervals_wellness_events"],
+        "input_freshness": snapshot["input_freshness"],
+        "source_errors": snapshot["garmin"].get("source_errors", {}),
+        "notes": snapshot["notes"],
+        "interpretation_limits": [
+            "Completed overnight signals describe pre-workout recovery; they do not establish recovery after a later workout.",
+            "Exercise-time body feel is not current body feel. Read the latest activity's athlete-report.json when available and retain its observation context.",
+            "Model recovery timers are context, not automatic permission or a ban. A recommendation is not confirmation of physiological recovery.",
+            "Compact Garmin input omits HR/stress series. For post-workout recovery, explicitly pass the saved full health-day file before interpreting their absence.",
+        ],
+    }
 
 
 def parse_source_inputs_json(raw: str) -> dict[str, Any]:
@@ -758,7 +814,7 @@ def compact_summary(summary: dict[str, Any] | None) -> dict[str, Any] | None:
 def compact_hrv(hrv: dict[str, Any] | None) -> dict[str, Any] | None:
     if not hrv:
         return None
-    summary = hrv.get("hrvSummary") or {}
+    summary = hrv.get("hrvSummary") or hrv
     observation_time_local = (
         hrv.get("sleepEndTimestampLocal")
         or hrv.get("endTimestampLocal")
@@ -794,7 +850,8 @@ def compact_hrv_history(
         if not entry_day or entry_day > day:
             continue
         sources = entry.get("sources") or {}
-        summary = ((sources.get("hrv") or {}).get("hrvSummary") or {})
+        hrv = sources.get("hrv") or {}
+        summary = hrv.get("hrvSummary") or hrv
         value = summary.get("lastNightAvg")
         if isinstance(value, (int, float)):
             rows.append({"date": entry_day, "last_night_avg": float(value)})
@@ -843,6 +900,8 @@ def compact_sleep(sleep: dict[str, Any] | None) -> dict[str, Any] | None:
     overall = sleep_scores.get("overall") if isinstance(sleep_scores, dict) else None
     if isinstance(overall, dict):
         result["sleepScore"] = overall.get("value")
+    elif "sleep_score" in source:
+        result["sleepScore"] = source["sleep_score"]
     return result
 
 
@@ -2384,6 +2443,10 @@ def load_garmin_input(
     payload = load_json(path)
     if not isinstance(payload, dict):
         raise SystemExit(f"Garmin Connect JSON must be an object: {path}")
+    # get_health_day(save_full=True) wraps the unchanged original day.
+    # Explicit full input enables post-activity HR/stress analysis when needed.
+    if isinstance(payload.get("health_day"), dict):
+        payload = payload["health_day"]
     payload.setdefault("source_file", str(path))
     payload.setdefault(
         "source_time_local",
@@ -2795,14 +2858,24 @@ def rolling_window_extreme(
     minutes: int,
     mode: str,
 ) -> dict[str, Any] | None:
+    """Require 80% window span and no gaps beyond Garmin's 3-minute cadence.
+
+    This is a sampling-quality check, not evidence that the athlete was resting.
+    Never bridge a missing-data interval with an apparently sustained mean.
+    """
     if not values:
         return None
+    values = sorted(dict(values).items())
     window_ms = minutes * 60 * 1000
     minimum_span_ms = window_ms * 0.8
+    maximum_gap_ms = 3 * 60 * 1000
     best: tuple[float, int, int, int] | None = None
     start = 0
     total = 0.0
     for end, (timestamp, value) in enumerate(values):
+        if end and timestamp - values[end - 1][0] > maximum_gap_ms:
+            start = end
+            total = 0.0
         total += value
         while start <= end and timestamp - values[start][0] > window_ms:
             total -= values[start][1]
@@ -2828,6 +2901,8 @@ def rolling_window_extreme(
         "start_timestamp_ms": start_ms,
         "end_timestamp_ms": end_ms,
         "count": count,
+        "coverage_fraction": round((end_ms - start_ms) / window_ms, 3),
+        "maximum_allowed_gap_seconds": maximum_gap_ms // 1000,
     }
 
 

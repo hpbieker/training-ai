@@ -9,6 +9,20 @@ from activity_inspect import garmin_analysis_context
 
 
 class ActivityInspectGarminTests(unittest.TestCase):
+    def test_clock_gap_alone_does_not_invalidate_device_training_effect(self):
+        result = garmin_analysis_context({}, {}, [], {'heartrate': {
+            'meaningful_gap': True, 'missing': 0, 'invalid': 0,
+            'longest_gap_seconds': 3487, 'missing_fraction': .15}})
+        assessment = result['training_effect_context']['assessments']['sensor_quality']
+        self.assertEqual(assessment['status'], 'context_present')
+        self.assertIsNone(assessment['effect'])
+
+    def test_preserves_performance_condition_timing_in_handoff(self):
+        pc = {'early_stable': {'value': -2.5}, 'minimum_context': {'elapsed_seconds': 2660, 'value': -9}}
+        result = garmin_analysis_context({'performance_condition': pc, 'load': {'activityTrainingLoad': 395}}, {}, [], {})
+        self.assertEqual(result['performance_condition'], pc)
+        self.assertEqual(result['load']['activityTrainingLoad'], 395)
+
     def test_places_stamina_in_separate_analysis_dimensions(self):
         result = garmin_analysis_context(
             {

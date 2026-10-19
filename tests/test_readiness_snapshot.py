@@ -13,6 +13,9 @@ from scripts.readiness_snapshot import (
     build_readiness_snapshot,
     compact_body_battery,
     compact_hrv_history,
+    load_garmin_input,
+    load_xert_input,
+    rolling_window_extreme,
     compact_xert_advice,
     latest_xert_advice,
     intervals_wellness_context,
@@ -46,6 +49,25 @@ class AvailabilityNotesTests(unittest.TestCase):
 
 
 class CompactGarminBodyBatteryTests(unittest.TestCase):
+    def test_full_health_day_wrapper_preserves_series_for_explicit_analysis(self):
+        day = {"date": "2026-08-17", "sources": {
+            "stress": {"stressValuesArray": [[1000, 15], [2000, 20]]},
+        }}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "health-day.json"
+            path.write_text(json.dumps({"date": day["date"], "health_day": day}))
+            result = load_garmin_input(str(path), local_timezone=ZoneInfo("Europe/Oslo"))
+        self.assertEqual(result["sources"], day["sources"])
+        self.assertEqual(result["source_file"], str(path))
+
+    def test_compact_hrv_history_retains_nightly_values(self):
+        result = compact_hrv_history("2026-08-17", {"hrv_history": {"days": [
+            {"date": "2026-08-15", "sources": {"hrv": {"lastNightAvg": 60}}},
+            {"date": "2026-08-16", "sources": {"hrv": {"lastNightAvg": 70}}},
+            {"date": "2026-08-17", "sources": {"hrv": {"lastNightAvg": 80}}},
+        ]}})
+        self.assertEqual(result["mean_3d"], 70)
+
     def test_reads_compact_body_battery_nested_under_stress(self):
         result = compact_body_battery(
             summary={"calendarDate": "2026-08-22"},

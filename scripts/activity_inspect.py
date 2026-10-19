@@ -695,6 +695,8 @@ def garmin_analysis_context(
             ),
         },
         "stamina": stamina,
+        "performance_condition": metrics.get("performance_condition"),
+        "load": metrics.get("load"),
         "blind_spot_control": garmin_blind_spot_control(
             subjective=subjective,
             environment_fields=environment_fields,
@@ -752,6 +754,11 @@ def training_effect_context_assessments(
         if isinstance(data_quality.get(field), dict)
         and data_quality[field].get("meaningful_gap")
     ]
+    clock_gap_fields = [field for field in limiting_streams
+                        if data_quality[field].get('missing') == 0
+                        and data_quality[field].get('invalid') == 0
+                        and data_quality[field].get('longest_gap_seconds', 0) > 0]
+    limiting_streams = [field for field in limiting_streams if field not in clock_gap_fields]
     sensor_evidence = [
         {
             "signal": "meaningful_stream_gap",
@@ -761,6 +768,9 @@ def training_effect_context_assessments(
         }
         for field in limiting_streams
     ]
+    clock_evidence = [{'signal': 'export_clock_gap', 'stream': field,
+                       'interpretation': 'No field loss among recorded samples; recording pause or upstream loss unresolved. Does not establish Garmin device-model failure.'}
+                      for field in clock_gap_fields]
 
     return {
         "scale": {
@@ -786,9 +796,9 @@ def training_effect_context_assessments(
                 status="not_assessed", confidence="none", evidence=[]
             ),
             "sensor_quality": context_assessment(
-                status="supported" if sensor_evidence else "not_assessed",
-                confidence="high" if sensor_evidence else "none",
-                evidence=sensor_evidence,
+                status="supported" if sensor_evidence else "context_present" if clock_evidence else "not_assessed",
+                confidence="high" if sensor_evidence else "low" if clock_evidence else "none",
+                evidence=sensor_evidence + clock_evidence,
                 effect="training_effect_reliability_limited" if sensor_evidence else None,
             ),
         },
