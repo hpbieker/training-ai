@@ -64,8 +64,12 @@ unknown values rather than substituting observed averages or an anchor.
 
 Pass resolved inputs explicitly to the helper:
 
-- `--vt1-watts` and `--vt2-watts` are physiological anchors for the activity's
-  date, not prescribed power targets.
+- `--vt1-watts` and `--vt2-watts` require caller-established physiological
+  anchors for the activity's date, not prescribed power targets. A plan's
+  `target_power_w` is training intent and does not establish such an anchor.
+  Leave these options unset when only training targets are known. Packet
+  reference labels record supplied numbers, not independent physiological
+  validation; power-exposure cutoffs likewise do not establish thresholds.
 - `--prescribed-watts` is an explicitly known common power target for assessed
   VT2 blocks. Without it, target attainment remains unresolved even when an
   anchor is known. Do not use this common target for a session with different
@@ -112,6 +116,83 @@ assess this session without claiming an individual development trend.
   for explicitly requested development/debugging. Do not use `beta_summary`,
   `beta_stability`, or `beta_vo2` as the basis of a coaching verdict or progression.
 
+## Variable Outdoor Endurance
+
+For a shorter first read of an outdoor inspection, generate a scoped packet:
+
+```bash
+python3 -B scripts/analysis_packet.py <inspection.json> --output <analysis-packet.json>
+```
+
+Before delivering the analysis, make a short internal completion check: does
+it assess the established purpose, explain workload and qualified response,
+use the athlete's report, preserve material timing/sensor limitations, and
+justify the next-training consequence? Correct omissions without turning this
+check into an extra user-facing checklist. With substantial interruptions,
+state moving and total elapsed duration together. Recording gaps and source
+non-moving duration need not reconcile; do not infer leftover stationary time
+by subtracting them. The packet's `time_overview` groups these distinct facts.
+
+Start with this packet, the athlete's report and the actual session intent;
+open detailed inspection sections or raw data when needed. Missing fields in
+this deliberately small packet do not establish missing source data.
+
+When a numeric audit is requested, prepare the structured answer contract
+shown in `scripts/analysis_packet.py` and validate it with `--answer <answer.json>`.
+A passing check verifies declared numeric references, units, rounding and scope
+labels only. It cannot verify that the prose uses those facts correctly or that
+physiological interpretations are justified. Review those separately, then
+present the ordinary prose rather than the audit JSON to the athlete.
+
+With usable power data, prioritize measured work, duration and power
+variation. Climbing is not an extra energetic load to add on top of measured
+work. Use terrain only when it explains relevant cadence, coasting, posture
+or cooling beyond the power record; elevation need not appear in every verdict.
+When temperature affects interpretation, use `temperature_context` to identify
+device/environmental proxies versus wearable core estimates. Preserve absent
+core data; device temperature is not a substitute or proof of heat limitation.
+
+Judge the actual ride against its established purpose. Group riding, solo
+endurance and strict VT1 have different execution demands. An automatically
+emitted `outdoor_vt1_pacing` score is a comparison to that anchor, not proof of
+intent or a quality verdict for a group ride. A queued quality role is not the
+prescription for the completed day.
+
+Use `outdoor_evidence` for recording interruptions, chronological segments and
+observed work accumulated before each segment. These segments are descriptive,
+not prescribed intervals. A clock gap at unchanged distance supports a paused
+recording; do not call it sensor failure or claim it invalidates Garmin's device
+models without further evidence. Field-specific loss during recorded riding
+still limits that sensor. Missing whole-ride coverage can coexist with usable
+riding segments.
+
+If strict stable windows are unavailable, inspect the chronological response
+and `variable_work_comparison`. Its mechanically similar five-minute windows
+match mean power, cadence, power distribution, variability, coasting and preceding
+work. They are engineering diagnostics, not steady states or a validated durability
+test. Preserve the reported limitations; do not loosen the criteria to obtain a
+preferred result or treat unmatched segment means as drift. If no match exists,
+retain the useful workload and response chronology without inventing deterioration.
+
+When Garmin Performance Condition contributes, retain when its early level and
+largest fall occurred. An early fall does not establish fatigue accumulated late
+in the ride, and the model does not identify a physiological cause.
+
+Before subjective effort is known, describe measured workload and structure
+without calling the experienced ride easy, comfortable or controlled. Low power,
+heart rate or modeled load can support a low measured dose, but not felt ease or
+successful recovery. Preserve that distinction in the opening verdict itself;
+a later recovery caveat does not qualify an unqualified easy-session verdict.
+If perceived effort could change the assessment, ask how the whole ride felt,
+including breathing and legs, rather than only how its hard efforts felt.
+
+Narrative effort, breathing and leg reports are evidence even when numeric RPE
+is null. Let a substantial reported burden affect the verdict; good leg feel or
+moderate model difficulty cannot negate it. Keep experienced effort during the
+ride distinct from unknown next-day recovery. With material context absent,
+name the provisional consequence and ask the focused question that would change
+it, rather than repeating an inventory of unknowns.
+
 ## Current Analysis And Source Precedence
 
 Use the current inspection generated for this task as the source of calculated
@@ -130,7 +211,14 @@ test packages, use the packaged scripts and inputs within the allowed scope.
 
 ## Reporting The Scope Of Measurements
 
-Start numeric interpretation with `work_block_overview`: each numbered entry
+For variable outdoor rides, start numeric interpretation with `analysis_overview`.
+It distinguishes strict stable comparisons from variable-work comparisons, lists
+the two selected windows separately from the number of eligible pairs, and binds
+each exposure percentage to its watt threshold. Follow its detail paths for
+quality and chronology; do not conclude that no comparison exists merely because
+the strict stable method is unavailable.
+
+For structured work, start with `work_block_overview`: each numbered entry
 keeps its block mean, early/late window boundaries, window means and change
 on the same record. Keep the block number attached when citing a value.
 `block_mean` describes the analysis block; it is not the early window value.
@@ -272,6 +360,9 @@ shared rules:
   confidence with every assessment. Do not translate `context_present` into
   wording such as "heat inflated Training Effect".
 - Numeric difficulty should accompany a text difficulty rating when present.
+  Preserve the source scale: do not append a denominator, percent sign or
+  normalized score unless the source explicitly defines it. Xert Difficulty
+  reported as 57 remains 57, not 57/100.
 - Ask how the session felt when useful, but not when feel/RPE is already known.
 - Save subjective feel/RPE remotely only when the user asks, using the owning
   source skill's write workflow.

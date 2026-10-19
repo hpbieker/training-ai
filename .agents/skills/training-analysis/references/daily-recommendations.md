@@ -1,5 +1,32 @@
 # Daily Training Recommendations
 
+## Focused Readiness Questions
+
+For a narrow question such as “am I ready now?”, use this path before the
+full session-planning workflow below:
+
+1. Resolve the current time and timezone, read relevant personal context, and
+   check compact plan context/pending activities. Fetch fresh Garmin health and
+   Xert state; persist MCP structured content unchanged in private temporary files.
+2. Run `readiness_snapshot.py --summary` with explicit time/source JSON. Use the
+   returned `latest_activity.activity_dir` to find activity reports; do not guess
+   paths or read whole helper scripts to discover the normal workflow.
+3. If assessing recovery after a completed workout, request Garmin
+   `get_health_day(save_full=true)` and pass its `full_health_day_file` as the
+   Garmin input. The helper accepts that saved wrapper and derives post-workout
+   HR/stress windows locally. Compact responses omit these series.
+4. If sleep/HRV appears absent despite a same-day valid-sleep/readiness record,
+   inspect the saved full sleep/HRV summaries before calling it missing or
+   requesting a device sync. Missing from a compact response is not proof of
+   missing source data. Do not substitute aggregate drivers for overnight values.
+5. Lead with the recommendation and relevant evidence. Distinguish completed
+   overnight recovery, exercise-time observations and current recovery. State
+   material missing current body feel or post-workout evidence. Model freshness
+   times do not establish readiness for a hard session at that time.
+
+Keep this packet focused on readiness. Calendar placement, dose solvers, capacity
+and alternative sessions belong to a requested concrete training recommendation.
+
 ## Resolve Context First
 
 Before running helpers, resolve the local date, planned start or free window,
@@ -166,6 +193,10 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   day, is complete, and is fresh enough for its signal type. Exclude
   unavailable or stale signals rather than scoring them negatively; recommend
   a device sync without automatically reducing the training dose.
+  Read `primary_decision.readiness_evidence` alongside the intensity ceiling.
+  No observed blocker is not confirmation of recovery. If direct signals cannot
+  be assessed, describe the plan/model support as provisional and identify the
+  missing evidence; do not turn uncertainty alone into a dose reduction.
 - Interpret Body Battery by time of day. Use the wake value as overnight
   recovery context and the current value as modeled body-resource context at
   its timestamp. It is not measured metabolic energy, glycogen, or calorie
@@ -210,9 +241,10 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   does not by itself require the most recent reduced dose. Preserve adverse
   recent responses as recovery evidence when reassessing the dose.
 - Evaluate the marginal physiological value of the proposed dose in the context
-  of recently completed training and its observed response. Never reduce the
-  packet's primary dose based on the duration or demands of a completed workout;
-  its load is already accounted for in planned-time Xert `remainingXSS`.
+  of recently completed training and its observed response. Do not subtract
+  completed load from Xert `remainingXSS` again. A documented adverse response
+  may nevertheless justify changing intensity or dose: name the response and
+  explain its relevance today. Duration or XSS alone is not such a finding.
   Consider the actual intensity, duration, glycogen demand, mechanical work,
   local muscular response, and systemic response. Assess whether plausible
   residual effects, such as reduced carbohydrate availability, local muscular
@@ -229,8 +261,13 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   goal, progression history, recent stimulus, and the actual power prescription.
 - Treat the recommendation packet as evidence. The final coaching decision must
   also account for goals, future sessions, logistics, weather, and body feel.
-- A hard session requires agreement across the important direct signals; stale
-  or conflicting data should reduce confidence before increasing intensity.
+- For hard work, interpret the available direct signals together. Missing data
+  limits confidence; conflicting observed signals need explicit resolution.
+  Neither the absence of blockers nor complete data proves physiological readiness.
+- When a relevant previous session was limited by breathing, legs or another
+  observed response, place an execution check before the corresponding demand
+  recurs. State what to assess and what changes if it recurs. A warm-up check or
+  a later endurance check cannot replace a check before a problematic repetition.
 - Inspect today's soreness before hard work. Missing soreness alone does not
   downgrade the session, but ask the user to record it; explicit zero counts as
   present.
@@ -284,14 +321,21 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   complete quality-workout XSS, VT1 filler, expected total, and any
   calendar-limited shortfall in both minutes and estimated XSS. If no explicit
   available windows were supplied, say that calendar fit was not verified.
+  Briefly justify the quality dose from plan/progression and the endurance
+  addition from current response, dose and upcoming training separately.
+  Retain the calculated dose when no concrete constraint justifies changing it;
+  a low recent volume density alone does not justify extra training.
 - Treat the complete calculated quality workout—including warm-up, work
   intervals, recoveries, and cool-down—as indivisible for scheduling. Move it
   intact to a later candidate window when necessary; never split, truncate, or
   distribute it across windows. If no window can contain it, report an explicit
   calendar conflict. A calendar-driven quality modification means choosing a
   different complete quality workout or an explicit downgrade, never shortening
-  or splitting the selected quality workout. If VT1 filler is continuous, start
-  it after the calculated quality workout. If it is a separate session, include the easy ramp-in and
+  or splitting the selected quality work. For continuous filler, use the complete
+  canonical solver timeline, including the explicitly placed final cool-down.
+  `quality_base` and `vt1_filler` are load-accounting groups, not execution order.
+  Present `primary_decision.executable_now.timeline` when complete; do not move
+  or duplicate segments to match accounting labels. If filler is a separate session, include the easy ramp-in and
   easy finish inside the allocated VT1 minutes; do not add uncounted warm-up or
   cool-down time. Split guidance must name the quality domain for the first
   session and VT1 for the remainder, never describe both as easy VT1.
@@ -484,11 +528,21 @@ normal recommendation.
   default recommendation. Treat `remaining_after_completed_activities` as a
   remaining dose whose same-day activities are already accounted for; never
   subtract them again. Do not schedule an `unscheduled_remainder` without a real
-  available window. If new information justifies a different recommendation,
-  label it as a coaching override and state which packet input did not cover it.
+  available window. If specific evidence justifies a different recommendation,
+  label it as a coaching override and explain what the model decision did not
+  account for. Relevant adverse response can already appear as narrative context
+  in the packet; do not require it to be newly discovered or subtract load again.
 - Start with the recommended session and best time. Include duration, warm-up,
   watts/intensity, route or setup, and practical fueling. Include only modalities
   available at the resolved location.
+- Before sending, check the prescription against
+  `primary_decision.executable_now.timeline`: write its segments in execution
+  order, including the final cooldown after continuous filler. Accounting-group
+  durations must not become separate sessions or introduce extra ramp-in/out.
+  Show the computed total and its end time; distinguish an outdoor route's
+  reference time from the prescribed duration and state any extension/shortfall.
+  Explain what the quality work and additional aerobic volume each contribute;
+  matching a model dose is not by itself a training-purpose explanation.
 - Include a separate `Capacity before the next workout` section, translated into
   the user's language, following the capacity workflow above. Show the next
   workout role and exact start, limiting Low/High/Peak XSS capacity, and its
@@ -496,10 +550,11 @@ normal recommendation.
   maximum distinct from the recommended dose.
 - Present all three layers below as separate, named parts of every
   recommendation; reporting only the final session is not sufficient:
-  - `Physiological scope`: report the readiness ceiling from
+  - `Physiological scope`: report the model screening ceiling from
      `primary_decision.intensity_decision.readiness_ceiling` and the decisive
-     direct recovery signals. Describe what intensity is physiologically
-     allowed without treating it as the planned intensity.
+     direct recovery signals, together with `primary_decision.readiness_evidence`.
+     Distinguish no observed restriction from evidence supporting recovery;
+     never translate the ceiling into a guarantee of physiological readiness.
   - `Training need`: report what the resolved goal, progression history,
      and recent same-family stimulus/load indicate. Ground this in
      `requested_goal`, `progression_status`, `progression_next_step`,
@@ -520,6 +575,12 @@ normal recommendation.
 - If both cycling modalities are available, provide the selected winner and one
   concrete alternative, each with duration, warm-up, watts/intensity,
   setup/route, and countable fueling actions. State why the winner is preferred.
+  If the alternative changes the plan role, state which quality role remains
+  queued. A longer VT1 alternative is not a replacement quality stimulus.
+  Give drink carbohydrate per bottle, number of bottles/refills, and countable
+  food portions with their combined approximate grams/hour. Use known product
+  values from personal context or source data; if unavailable, name the product
+  assumption and give a grams-based portion, not an invented scoop or candy size.
 - Explain briefly why the winner fits readiness, recent load, weather, calendar,
   goals, and reported body feel.
 - When presenting Garmin Training Effect, preserve the numeric aerobic and
@@ -532,6 +593,10 @@ normal recommendation.
   `garmin_signal_status` to distinguish available observations from missing data.
   Do not restore excluded raw values as negative signals. A sync attempt that
   still leaves sleep unavailable does not itself justify reducing training.
+  If direct recovery data remain missing, explicitly ask the user to sync their
+  device before training (unless already attempted), and ask for soreness/body
+  feel when unknown. Keep the recommendation provisional without an automatic
+  missing-data dose cut.
   Observed values still need comparison and context; availability is not an
   adverse finding or confirmation of good recovery.
 - For Garmin timer arithmetic, use the readiness helper's

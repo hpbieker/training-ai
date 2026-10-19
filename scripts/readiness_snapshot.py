@@ -463,6 +463,7 @@ def latest_activity_on_or_before(
         "end_local": end_local,
         "end_utc": end_utc,
         "elapsed_minutes": minutes(elapsed_seconds),
+        "moving_minutes": minutes(number(metadata.get("moving_time"))),
         "type": metadata.get("type"),
         "load": {
             "source_preference": "Prefer xert_load.xss when present; Intervals load is secondary.",

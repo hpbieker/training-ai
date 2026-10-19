@@ -3179,8 +3179,9 @@ def apply_quality_workout_vt1_composition(
             "duration_minutes": round(filler_minutes, 1),
             "source": solution.get("source"),
             "execution": (
-                "The VT1 duration includes its easy start and easy finish. "
-                "Do not add separate uncounted warm-up or cool-down time."
+                "Follow the canonical solver timeline for segment order. Quality "
+                "and filler totals are accounting groups; warm-up and cool-down "
+                "already occur in that timeline and must not be added again."
             ),
         },
         "estimated_total": {
@@ -3201,7 +3202,7 @@ def apply_quality_workout_vt1_composition(
     target_resolution["reason"] = (
         f"{target_resolution.get('reason') or ''}; complete quality workout "
         f"calculated by Xert ({round(quality_xss, 1)} XSS) and "
-        f"{'included before' if quality_xss_counted_in_remaining_plan else 'already completed, not subtracted again from'} "
+        f"{'combined with' if quality_xss_counted_in_remaining_plan else 'already completed, not subtracted again from'} "
         f"{round(filler_xss, 1)} low XSS in Xert-solved VT1 filler"
     ).strip("; ")
 
@@ -4453,6 +4454,7 @@ def build_primary_decision(
 
     return {
         "action": action,
+        "readiness_evidence": readiness_evidence_status(inputs),
         "selected_intensity": intensity,
         "intensity_decision": intensity_decision,
         "physiological_remaining_dose": {
@@ -4464,6 +4466,10 @@ def build_primary_decision(
             "minutes": round(executable_minutes or 0.0, 1),
             "intensity": intensity,
             "segments": executable_segments,
+            "timeline": executable_timeline(
+                target_resolution, executable_minutes=executable_minutes or 0.0,
+                action=action,
+            ),
         },
         "unexecuted_remainder": {
             "minutes": round(unscheduled_minutes, 1),
@@ -4490,9 +4496,66 @@ def build_primary_decision(
         "llm_rule": (
             "Use this action and executable_now as the default recommendation. "
             "Any different recommendation must be labelled as a coaching override "
-            "and justified by information not already represented in this packet."
+            "and justified by specific evidence not accounted for in the model "
+            "decision. Such evidence may already appear as narrative context "
+            "in this packet; missing data alone does not justify a reduction."
         ),
     }
+
+
+def readiness_evidence_status(inputs: dict[str, Any]) -> dict[str, Any]:
+    """Describe evidence coverage separately from the model's intensity policy."""
+    wellness = inputs.get("wellness") or {}
+    risks = {
+        "hrv": hrv_readiness_risk(wellness),
+        "sleep": sleep_score_caution(number(wellness.get("sleep_score"))),
+        "resting_hr": resting_hr_readiness_risk(wellness),
+    }
+    assessed = [key for key, value in risks.items() if value is not None]
+    missing = [key for key, value in risks.items() if value is None]
+    agreement = intensity_signal_agreement(
+        wellness=wellness, xert=inputs.get("xert_recovery") or {},
+        intervals_events=inputs.get("intervals_wellness_events") or {},
+    )
+    return {
+        "direct_signal_coverage": "complete" if not missing else "partial" if assessed else "unavailable",
+        "assessed_direct_signals": assessed,
+        "unassessed_direct_signals": missing,
+        "observed_limitations": agreement["blockers"],
+        "observed_cautions": agreement["moderate_signals"],
+        "soreness_reported": agreement["soreness"] is not None,
+        "interpretation": (
+            "The intensity ceiling is a model screening result, not confirmed physiological "
+            "readiness. Missing direct evidence lowers confidence, not the dose by itself. "
+            "Interpret observed values and current body feel before prescribing hard work."
+        ),
+    }
+
+
+def executable_timeline(
+    target: dict[str, Any], *, executable_minutes: float, action: str,
+) -> dict[str, Any]:
+    """Expose exact solver order only when the full solved workout is executable."""
+    solution = target.get("endurance_duration_solution") or {}
+    segments = solution.get("segments") or []
+    total = number(solution.get("duration_seconds"))
+    if action != "train" or total is None or not segments:
+        return {"status": "unavailable"}
+    if abs(executable_minutes * 60 - total) > 6:
+        return {"status": "requires_session_specific_calculation"}
+    cursor = 0.0
+    timeline = []
+    for segment in segments:
+        seconds = number(segment.get("duration_seconds"))
+        if seconds is None or seconds < 0:
+            raise ValueError("canonical timeline requires nonnegative segment durations")
+        timeline.append({**segment, "start_seconds": cursor, "end_seconds": cursor + seconds})
+        cursor += seconds
+    if abs(cursor - total) > 1:
+        raise ValueError("canonical timeline duration does not match solver total")
+    return {"status": "complete", "source": "xert_solver_segments",
+            "duration_seconds": total, "segments": timeline,
+            "meaning": "Execution order is authoritative; quality/filler totals are accounting groups, not additional segments."}
 
 
 QUALITY_WORKOUT_REQUIRED_DOMAINS = {"vt2", "vo2max", "sprint", "mixed"}
@@ -7014,8 +7077,12 @@ def format_summary(packet: dict[str, Any]) -> str:
             action=str(primary.get("action") or "missing").upper()
         ),
         "DO NOW: {dose}".format(dose=executable_now_line(primary)),
-        "READINESS CEILING: {ceiling}".format(
+        "READINESS CEILING: {ceiling} (model screening, not confirmed readiness)".format(
             ceiling=intensity_decision.get("readiness_ceiling") or "missing",
+        ),
+        "READINESS EVIDENCE: " + json.dumps(primary.get("readiness_evidence") or {}, ensure_ascii=False),
+        "CANONICAL EXECUTION TIMELINE: " + json.dumps(
+            (primary.get("executable_now") or {}).get("timeline") or {}, ensure_ascii=False,
         ),
         "WORKOUT GOAL: {goal}".format(
             goal=intensity_decision.get("requested_goal") or "missing",

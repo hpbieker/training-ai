@@ -34,7 +34,8 @@ class ProvenanceTests(unittest.TestCase):
             self.assertEqual(first['options']['vt2_watts'], 295)
             self.assertIsNone(second['options']['vt2_watts'])
             self.assertNotIn('output', first['options'])
-            self.assertEqual(len(first['scripts']), 3)
+            self.assertEqual({Path(x['path']).name for x in first['scripts']},
+                             {'activity_inspect.py', 'analysis.py', 'physiological_evidence.py', 'outdoor_evidence.py'})
 
     def test_provenance_survives_all_cli_shapes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -54,7 +55,7 @@ class ProvenanceTests(unittest.TestCase):
             for name in ('activity.json','streams.csv','analysis.json','old-report.md'):
                 (source/name).write_text(name)
             repo=p/'repo';(repo/'scripts').mkdir(parents=True);(repo/'config').mkdir()
-            for name in ('activity_inspect.py','analysis.py','physiological_evidence.py'):
+            for name in ('activity_inspect.py','analysis.py','physiological_evidence.py','outdoor_evidence.py','analysis_packet.py'):
                 (repo/'scripts'/name).write_text('test')
             for name in ('coaching-preferences.md','practical-context.md'):
                 (repo/'config'/name).write_text('test')

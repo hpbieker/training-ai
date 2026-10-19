@@ -97,6 +97,12 @@ Use only when multiple aligned observations support increased thermal cost,
 such as a meaningful temperature trend, relevant environmental or cooling
 conditions, rising physiological cost at matched power, and athlete-reported
 heat strain. State the supporting observations and important confounders.
+Warmth reported alongside rising pulse or breathing does not by itself
+establish heat as the likely cause. Check whether timing and comparable work
+support heat beyond accumulated work, cadence, posture and other plausible
+contributors. If those alternatives remain indistinguishable, describe heat
+as a possible contributor, not a probable cause; a later caveat does not
+qualify an earlier causal claim.
 
 ### `heat_limited`
 

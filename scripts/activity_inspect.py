@@ -17,7 +17,8 @@ from pathlib import Path
 import re
 from typing import Any
 
-from physiological_evidence import timeline, quality, field_summary, matched_windows, prepare_windows
+from physiological_evidence import timeline, quality, field_summary, matched_windows, prepare_windows, numeric
+from outdoor_evidence import outdoor_evidence
 
 from analysis import (
     CORE_STREAMS,
@@ -117,13 +118,13 @@ def main() -> None:
     parser.add_argument(
         "--vt1-watts",
         type=float,
-        help="Working VT1 anchor for VT1 quality caps; caller should pass this from preferences",
+        help="Caller-established physiological VT1 anchor valid for the activity date; not a configured training target",
     )
     parser.add_argument(
         "--vt2-watts",
         type=float,
         help=(
-            "Working VT2 anchor for VT2 quality diagnostics. If omitted, brief output "
+            "Caller-established physiological VT2 anchor valid for the activity date, not a training target. If omitted, brief output "
             "reports unresolved intensity; the activity name only describes intent."
         ),
     )
@@ -334,7 +335,7 @@ def analysis_provenance(activity: SavedActivity, args: argparse.Namespace) -> di
     if getattr(args, "garmin_json", None) is not None:
         inputs.append(Path(args.garmin_json))
     scripts = [Path(__file__).resolve().parent / name for name in
-               ("activity_inspect.py", "analysis.py", "physiological_evidence.py")]
+               ("activity_inspect.py", "analysis.py", "physiological_evidence.py", "outdoor_evidence.py")]
     def fingerprints(paths):
         return [{"path": str(p.resolve()), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
                 for p in paths]
@@ -631,7 +632,54 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
         brief["vt2_quality"] = vt2_quality_result
     if "garmin" in result:
         brief["garmin"] = result["garmin"]
+    if (str(result['activity'].get('type', '')).lower() in {'ride', 'virtualride'}
+            and not result['activity'].get('trainer') and has_gps_like_stream(rows)):
+        allowed = list(result['streams']['data_quality'])
+        brief['outdoor_evidence'] = outdoor_evidence(rows, fields=allowed, pauses=long_pauses)
+        brief['analysis_overview'] = outdoor_analysis_overview(brief)
     return brief
+
+
+def outdoor_analysis_overview(brief: dict[str, Any]) -> dict[str, Any]:
+    """Small entry point that keeps methods, windows and watt thresholds distinct."""
+    outdoor = brief['outdoor_evidence']
+    variable = outdoor.get('variable_work_comparison', {})
+    strict = brief.get('total', {}).get('comparison', {})
+    pacing = brief.get('outdoor_vt1_pacing', {})
+    caps = pacing.get('rolling_power_cap_compliance', {}).get('60s', {})
+    selected = []
+    for key in ('early', 'late'):
+        if key in variable:
+            window = variable[key]
+            selected.append({
+                'position': key, 'start_s': window['start_s'], 'end_s_exclusive': window['end_s_exclusive'],
+                'observed_work_before_kj': window['observed_work_before_kj'],
+                'mechanics': window['mechanics'],
+                'means': {f: v['mean'] for f, v in window['fields'].items()},
+                'unavailable_fields': [f for f,v in window['fields'].items() if v['mean'] is None],
+            })
+    return {
+        'ride_type': 'variable_outdoor; intent must come from user or prescription',
+        'strict_stable_comparison': {'status': strict.get('status'), 'detail_path': 'total.comparison'},
+        'variable_work_comparison': {
+            'status': variable.get('status'), 'selected_window_count': len(selected),
+            'eligible_pair_count': variable.get('eligible_pairs', 0),
+            'selected_windows': selected,
+            'recording_gap_seconds_between_windows': variable.get('recording_gap_seconds_between_windows'),
+            'detail_path': 'outdoor_evidence.variable_work_comparison',
+            'scope': 'One selected pair of two variable-work windows when available. Strict-stable unavailability does not mean no variable match. Later is not necessarily ride end.',
+        },
+        'power_exposure_60s_mean': [
+            {'threshold_w': int(cap), 'minutes_over_during_pedaling': data['time_over_pedaling']['min'],
+             'percent_of_pedaling': data['time_over_pedaling']['pct']}
+            for cap,data in caps.items()
+        ],
+        'recording_interruptions': outdoor.get('interruptions', []),
+        'chronology_detail_path': 'outdoor_evidence.segments',
+        'performance_condition': brief.get('garmin', {}).get('performance_condition'),
+        'interpretation_limits': variable.get('limitations', []),
+        'context_rule': 'Narrative athlete reports remain evidence even when numeric RPE is null. Unknown subjective burden needs a focused follow-up; model difficulty is not felt effort.',
+    }
 
 
 def load_garmin_metrics(path: Path | None, activity: SavedActivity) -> dict[str, Any] | None:
@@ -4233,32 +4281,46 @@ def rolling_best(
     *,
     digits: int,
 ) -> dict[str, Any] | None:
-    samples = [(index, value(row, field)) for index, row in enumerate(rows)]
-    samples = [(index, sample) for index, sample in samples if sample is not None]
-    if len(samples) < window_seconds:
+    from collections import deque
+    clock = timeline(rows)
+    if clock is None or window_seconds <= 0:
         return None
-
-    best: tuple[float, int, int] | None = None
-    running_sum = 0.0
-    start = 0
-    for end, (_, sample) in enumerate(samples):
-        running_sum += sample
-        if end - start + 1 > window_seconds:
-            running_sum -= samples[start][1]
-            start += 1
-        if end - start + 1 != window_seconds:
+    # Integrate contiguous source-time intervals; never stitch across missing
+    # samples or a paused clock. Works for regular and irregular recordings.
+    window = deque()
+    integral = 0.0
+    best = None
+    for row, start, width in zip(rows, clock[0], clock[1]):
+        sample = numeric(row, field)
+        if sample is None or (window and start > window[-1][1] + 1e-6):
+            window.clear()
+            integral = 0.0
+        if sample is None:
             continue
-        average = running_sum / window_seconds
-        if best is None or average > best[0]:
-            best = (average, samples[start][0], samples[end][0])
-
+        end = start + width
+        window.append([start, end, sample])
+        integral += width * sample
+        left = end - window_seconds
+        while window and window[0][1] <= left:
+            a, b, v = window.popleft()
+            integral -= (b - a) * v
+        if window and window[0][0] < left:
+            integral -= (left - window[0][0]) * window[0][2]
+            window[0][0] = left
+        if window and end - window[0][0] >= window_seconds - 1e-6:
+            average = integral / window_seconds
+            if best is None or average > best[0]:
+                best = (average, left, end, start)
     if best is None:
         return None
-    average, start_index, end_index = best
+    average, start, end, last_sample = best
     return {
         "avg": rounded(average, digits=digits),
-        "start_s": rounded(row_time(rows, start_index), digits=0),
-        "end_s": rounded(row_time(rows, end_index), digits=0),
+        "start_s": start,
+        "end_s": last_sample,
+        "end_s_exclusive": end,
+        "window_seconds": window_seconds,
+        "statistics_scope": "continuous_elapsed_time_window",
     }
 
 
