@@ -1,6 +1,6 @@
 {
   "name": "yr",
-  "version": "0.2.0+codex.20260817",
+  "version": "0.2.1+codex.20261020",
   "description": "Yr/MET Norway source semantics and live forecast access.",
   "author": {
     "name": "Hans Petter Bieker"
