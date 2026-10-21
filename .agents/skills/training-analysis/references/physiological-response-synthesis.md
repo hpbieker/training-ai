@@ -280,6 +280,23 @@ appropriate during recovery or long low-intensity work. Judge proportionality
 to the intended domain, completed dose, personal matched response, and
 subsequent recovery evidence.
 
+## Choose The Training Consequence
+
+Base a recommendation to repeat, increase power, extend work, or reduce dose on
+the active plan's objective and progression criteria, the completed work, athlete
+feedback, and available recovery evidence. Explain what the selected change is
+intended to achieve and why the evidence favors it. Unknown subsequent recovery
+makes the next prescription conditional; it does not by itself require repeating
+the session before progression. Preserve any repetition requirement established
+by the active plan.
+
+Noticeable but manageable effort after quality work does not alone establish
+excessive cost or justify a specific watt reduction. When an adjustment is
+warranted, relate its size to the intended role and available individual evidence;
+otherwise offer a conditional adjustment rather than an unsupported precise dose.
+Keep achieved execution, demonstrated adaptation, and readiness for the next dose
+as separate conclusions.
+
 ## Check The Conclusion Against The Evidence
 
 Before finalizing, check that the verdict preserves unresolved intensity and

@@ -88,6 +88,26 @@ that session context, then state the supported consequence. A script score or
 selected window does not replace this synthesis. Without comparable history,
 assess this session without claiming an individual development trend.
 
+## Whole-Session Effort
+
+Before subjective effort is known, describe measured workload and structure
+without calling the experienced ride easy, comfortable or controlled. Low power,
+heart rate or modeled load can support a low measured dose, but not felt ease or
+successful recovery. Preserve that distinction in the opening verdict itself;
+a later recovery caveat does not qualify an unqualified easy-session verdict.
+If perceived effort could change the assessment, ask how the whole ride felt,
+including breathing and legs, rather than only how its hard efforts felt.
+For quality work followed by endurance work, include both parts when their
+perceived effort could change the verdict or next-session consequence. Falling
+HR or respiration during the extension does not establish felt ease.
+
+Narrative effort, breathing and leg reports are evidence even when numeric RPE
+is null. Let a substantial reported burden affect the verdict; good leg feel or
+moderate model difficulty cannot negate it. Keep experienced effort during the
+ride distinct from unknown next-day recovery. With material context absent,
+name the provisional consequence and ask the focused question that would change
+it, rather than repeating an inventory of unknowns.
+
 ## Block Detection
 
 - Use a known target with `--target`, `--tolerance`, and `--min-block` when the
@@ -177,21 +197,6 @@ retain the useful workload and response chronology without inventing deteriorati
 When Garmin Performance Condition contributes, retain when its early level and
 largest fall occurred. An early fall does not establish fatigue accumulated late
 in the ride, and the model does not identify a physiological cause.
-
-Before subjective effort is known, describe measured workload and structure
-without calling the experienced ride easy, comfortable or controlled. Low power,
-heart rate or modeled load can support a low measured dose, but not felt ease or
-successful recovery. Preserve that distinction in the opening verdict itself;
-a later recovery caveat does not qualify an unqualified easy-session verdict.
-If perceived effort could change the assessment, ask how the whole ride felt,
-including breathing and legs, rather than only how its hard efforts felt.
-
-Narrative effort, breathing and leg reports are evidence even when numeric RPE
-is null. Let a substantial reported burden affect the verdict; good leg feel or
-moderate model difficulty cannot negate it. Keep experienced effort during the
-ride distinct from unknown next-day recovery. With material context absent,
-name the provisional consequence and ask the focused question that would change
-it, rather than repeating an inventory of unknowns.
 
 ## Current Analysis And Source Precedence
 
@@ -415,6 +420,15 @@ recovery, cross-training, incomplete, or downgraded sessions remain recorded
 but do not advance the quality queue. Reapplying the exact same activity is
 idempotent; a conflicting or out-of-order update must be resolved explicitly,
 not hidden by a fallback.
+
+Keep the achieved dose separate from the next prescription. Record supported
+completion even when subsequent recovery is still unknown; qualify recovery
+and the next dose in `last_result` and `next_step`. A provisional recommendation
+to repeat is not a permanent progression requirement. When later athlete
+feedback materially changes the assessment, review the stored conclusion and
+reconcile any affected state through the supported correction workflow; do not
+leave superseded advice as the current prescription or silently overwrite a
+conflicting classification.
 
 Use Garmin Training Effect only as supporting evidence for role alignment:
 
