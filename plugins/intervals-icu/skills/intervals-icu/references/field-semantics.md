@@ -31,15 +31,15 @@
 
 - Intervals.icu respiratory stream fields use these meanings:
   - `respiration`: BR, breathing rate in breaths per minute.
-  - `tidal_volume`: VT, the Tyme Wear-reported per-breath volume or breathing-
+  - `tidal_volume`: VT, the Tymewear-reported per-breath volume or breathing-
     depth value. Existing exports appear scaled as centiliters per breath, but
     preserve the source value and do not assume laboratory-calibrated liters
     without verifying the device generation and export contract.
-  - `tidal_volume_min`: VE, the Tyme Wear-reported minute-ventilation value.
+  - `tidal_volume_min`: VE, the Tymewear-reported minute-ventilation value.
     Existing exports appear scaled as liters per minute, but treat the absolute
     unit as source-reported unless independently verified for the exact device
     and processing path.
-  - For current normalized Tyme Wear streams, `tidal_volume_min` should be
+  - For current normalized Tymewear streams, `tidal_volume_min` should be
     arithmetically consistent with `tidal_volume / 100 * respiration`. This
     consistency check validates the mapping, not the absolute volume accuracy.
 - Intervals.icu CORE sensor stream fields use these meanings:
