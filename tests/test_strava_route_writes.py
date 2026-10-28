@@ -305,6 +305,7 @@ class RouteWriteTests(unittest.TestCase):
         for status in [404, 410]:
             with self.subTest(status=status):
                 self.session.request.reset_mock()
+                self.session.authenticate.reset_mock()
                 self.session.request.side_effect = [(b"", 204, "https://www.strava.com/routes/" + self.id), routes.StravaHttpError(status)]
                 with mock.patch.object(routes, "_editable_route", return_value=self.route):
                     result = mcp.StravaToolService().call_tool("delete_route", {"route_id": self.id, "confirm": True})
@@ -314,7 +315,7 @@ class RouteWriteTests(unittest.TestCase):
                 self.assertEqual(calls[0].kwargs["secret_headers"], ["X-CSRF-Token: test-token"])
                 self.assertEqual(calls[1].args[0], "https://www.strava.com/routes/" + self.id)
                 self.assertEqual(len(calls), 2)
-        self.assertEqual(self.session.authenticate.call_count, 4)
+                self.assertEqual(self.session.authenticate.call_count, 2)
 
     def test_delete_rejects_other_owner_and_missing_confirmation(self):
         other = {**self.route, "athlete": {"id": "99"}}
