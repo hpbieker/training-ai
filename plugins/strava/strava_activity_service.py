@@ -218,7 +218,12 @@ def delete_activity_media(
             ),
             keep_blank_values=True,
         )
-        pairs.append((f"photos[{activity_metadata.media_form_identifier(row)}][_destroy]", "true"))
+        # Strava's edit form identifies existing attachments by unique_id and
+        # treats the submitted photos collection as the retained set. A Rails
+        # `_destroy` marker is silently ignored by the current MediaUploader
+        # flow, so re-submit every other attachment and omit only the target.
+        target_prefix = f"photos[{activity_metadata.media_form_identifier(row)}]"
+        pairs = [(key, value) for key, value in pairs if not key.startswith(target_prefix)]
         session.request(
             f"https://www.strava.com/activities/{activity_id}",
             method="POST",

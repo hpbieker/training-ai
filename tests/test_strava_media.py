@@ -7,6 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+from urllib.parse import parse_qsl, urlencode
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -106,6 +107,36 @@ class StravaMediaTests(unittest.TestCase):
             self.assertTrue(result["verified"])
             self.assertEqual(result["uploaded"]["media_id"], "99")
             upload.assert_called_once()
+
+    def test_delete_omits_only_target_uuid_and_preserves_other_form_fields(self) -> None:
+        target = {"id": 44, "unique_id": "photo-uuid", "media_type": 1}
+        retained = {"id": 45, "unique_id": "photo-uuid-extra", "media_type": 1}
+        fields = [
+            ("_method", "put"),
+            ("activity[name]", "Ride & coffee"),
+            ("photos[photo-uuid][id]", "44"),
+            ("photos[photo-uuid][caption]", "Remove"),
+            ("photos[photo-uuid-extra][id]", "45"),
+            ("photos[photo-uuid-extra][caption]", "Keep"),
+            ("photos[photo-uuid-extra][caption]", "Repeated field"),
+        ]
+        with (
+            mock.patch.object(service, "StravaSession") as session_factory,
+            mock.patch.object(service.activity_metadata, "fetch_activity", return_value={}),
+            mock.patch.object(service.activity_metadata, "build_form_body", return_value=urlencode(fields)),
+            mock.patch.object(service, "_fetch_edit_media", side_effect=[
+                (EDIT_HTML, {"media": [target, retained]}),
+                (EDIT_HTML, {"media": [retained]}),
+            ]) as readback,
+        ):
+            result = service.delete_activity_media(activity_id=12, media_id=44, confirm=True)
+        request = session_factory.return_value.__enter__.return_value.request
+        request.assert_called_once()
+        self.assertEqual(request.call_args.kwargs["method"], "POST")
+        sent = parse_qsl(request.call_args.kwargs["data"].decode(), keep_blank_values=True)
+        self.assertEqual(sent, [fields[0], fields[1], *fields[4:]])
+        self.assertEqual(readback.call_count, 2)
+        self.assertEqual(result, {"activity_id": 12, "deleted_media_id": "44", "verified": True})
 
     def test_upload_readback_rejects_unrelated_media(self) -> None:
         self.assertFalse(service._matches_upload({"id": 99, "unique_id": "other"}, "upload-uuid"))
