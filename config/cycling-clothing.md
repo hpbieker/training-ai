@@ -56,8 +56,8 @@ En praktisk oversikt over hva du kan velge til sykkelturen. Temperaturene er vei
 |---|---:|---|
 | Castelli Race Short Glove (HCK) | 18–38 °C (Castelli, Race Short Glove) | Bruk på varme landeveisturer når kortfingrede hansker føles behagelige. |
 | Castelli Perfetto-hansker, letteste par (modell ukjent) | 8–14 °C (anslag; Perfetto Light 2-ref.) | Velg på milde eller kjølige turer når bevegelighet er viktigere enn maksimal isolasjon. |
-| Castelli Perfetto RoS Gore-Tex Infinium Long Gloves | 4–14 °C (Castelli) | Velg i kjølig, vått eller vindfullt vær. Produsentens intervall er 4–14 °C. |
-| Castelli Perfetto Max-hansker, varmeste par | 0–10 °C (Castelli) | Velg Perfetto Max på de kaldeste turene; gå ned i varme hvis hendene blir klamme. |
+| Castelli Perfetto RoS Gore-Tex Infinium Long Gloves | 4–14 °C (Castelli) | Velg i kjølig, vått eller vindfullt vær. Det mellomvarme Perfetto-paret kan brukes under Perfetto Max; kombinasjonen er bekreftet brukt av brukeren. |
+| Castelli Perfetto Max-hansker, varmeste par | 0–10 °C (Castelli) | Velg Perfetto Max på de kaldeste turene; gå ned i varme hvis hendene blir klamme. Kan brukes utenpå det mellomvarme Perfetto RoS-paret for ekstra varme. |
 | Castelli Espresso GT-hansker | −4–10 °C (Castelli) | Varm helfingerhanske til hverdagsbruk i kjølig til kaldt vær. |
 | Castelli Estremo-hansker | −5–5 °C (Castelli) | Bruk på svært kalde turer; Castelli oppgir −5–5 °C for modellen. |
 
@@ -98,7 +98,7 @@ En praktisk oversikt over hva du kan velge til sykkelturen. Temperaturene er vei
 
 | Plagg | Veiledende temperatur | Når jeg bruker det |
 |---|---:|---|
-| Castelli Toe Thingy 2 | 10–18 °C (Castelli) | Trekk over tåpartiet på kjølige turer; kan brukes under hele skotrekket for ekstra varme. |
+| Castelli Toe Thingy 2 | 10–18 °C (Castelli) | Trekk over tåpartiet på kjølige turer; kan brukes under hele skotrekket for ekstra varme. Brukeren har bekreftet å ha brukt denne kombinasjonen. |
 | Castelli Perfetto Shoecover | 2–14 °C (Castelli) | Bruk utenpå skoene for å stenge vind og lett veisprut i kjølig, fuktig vær; kan kombineres med Toe Thingy 2. |
 | Castelli Diluvio Pro-skotrekk | 0–14 °C (Castelli) | Velg til kaldere og våtere turer når isolasjon og regnbeskyttelse veier tyngre enn lufting. |
 | Castelli Estremo Shoecover, svart | −10–5 °C (Castelli) | Velg på de kaldeste turene; dette er Castellis varmeste skotrekk, med vindtett ytterlag og varm fleecefôring. |
