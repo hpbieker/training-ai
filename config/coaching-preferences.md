@@ -43,6 +43,37 @@ executed, and presented.
   required. When a retained optional block should not run, set its repetitions
   to `0` instead of deleting the row.
 
+## Strava Publishing
+
+Apply these defaults when asked to prepare or publish completed cycling
+activities on Strava, unless the current request specifies otherwise:
+
+- Before publishing, run the completed-activity analysis workflow for the
+  exact activity. Reuse an existing analysis only when its inputs and
+  provenance are still valid for that activity.
+- Use a name that describes the actual completed activity, not only the plan.
+  Set and verify this title on Strava before changing visibility to public.
+- Publish with visibility `Everyone` / public.
+- Hide the start time for activities performed Monday–Friday; show it on
+  Saturday and Sunday. Use the activity's local date, not the publication date.
+- Set the bike actually used. Resolve it from the activity/location context
+  and current Strava gear list; do not substitute a retired or different bike.
+- For indoor rides, generate and attach a Strava workout card from the actual
+  activity data and set the primary tag to `Workout`. My request to update
+  Strava authorizes uploading this card and its workout metrics without separate
+  approval. Check that the card's
+  text matches the completed work, including interrupted intervals or omitted
+  endurance extensions.
+- For outdoor rides, publish without a generated workout card by default.
+  They normally have no `Workout` tag; use it only when the ride was an actual
+  structured workout or explicitly requested. Preserve existing photos and
+  other intentional tags.
+- Verify the final name, visibility, start-time privacy, bike, tag, and any
+  uploaded media. In the final reply, explicitly confirm verified public
+  publication, state whether the start time is hidden or visible, and provide
+  the Strava activity link. If publication could not be verified, report that
+  instead of claiming it was published.
+
 ## Fueling
 
 - Present carbohydrate targets as countable on-bike actions, not only grams per
