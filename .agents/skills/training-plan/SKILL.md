@@ -67,11 +67,28 @@ chronological order and apply each reviewed classification with
 `scripts/plan_state.py apply --classification-json '<normalized-json>'`. The
 command writes the complete updated state but prints only its compact context.
 The JSON object contains the activity identity, timestamps, planned/completed
-roles, boolean `quality_completed`, progression effect, reason, evidence array,
-and optional `progression_update`. Do not skip an older pending activity to
+roles, booleans `quality_stimulus` and `quality_role_fulfilled`,
+`planned_workout_completed` (boolean, or null when unknown), progression effect,
+reason, evidence array, and optional `progression_update`. Do not skip an older pending activity to
 apply a newer one. The state owns the current queue; chat history and
 automation memory are explanatory context only. Re-run `context` after
 applying pending activities before choosing today's plan role.
+
+Queue advancement follows fulfilled quality roles, not perfect completion of
+the prescription or progression. A shortened but substantial quality session
+can fulfill its role while holding progression. A brief insufficient attempt
+can warrant recovery spacing without fulfilling the role. Require an explicit
+evidence-based classification rather than a fixed completion percentage.
+Use the correction/replay workflow in training-analysis's activity-analysis
+reference when an already-applied classification needs to change.
+
+Plan state v3 requires explicit role fulfillment and workout completion. To
+upgrade a v2 state, use `scripts/migrate_plan_state_v3.py` with a reviewed
+`--quality-reviews-file` covering every incomplete quality event. Preview first;
+`--write` persists the schema migration. Whole-prescription completion remains
+unknown where the historical record only establishes quality completion. The
+migration preserves the curated queue; replay affected classifications from a
+verified checkpoint to correct queue placement.
 
 When updating progression, distinguish the established achieved dose from the
 latest execution and any temporary consolidation prescription. A reduced or

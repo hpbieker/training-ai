@@ -410,14 +410,23 @@ with an explicit classification:
 
 - `planned_role`;
 - `completed_role`;
-- `quality_completed`;
+- `quality_stimulus`: whether actual work warrants quality-recovery spacing;
+- `quality_role_fulfilled`: whether actual work fulfills the quality role;
+- `planned_workout_completed`: whether the complete prescribed workout was
+  performed (`null` when the prescription or its completion is unknown);
 - `progression_effect`: `advance`, `hold`, `consolidate`, or `none`;
 - a concise reason and the analysis artifact paths used as evidence.
 
-Read `config/plan-state.json` first. Apply the classification through
-`scripts/plan_state.py apply` only after the analysis is complete. Aerobic,
-recovery, cross-training, incomplete, or downgraded sessions remain recorded
-but do not advance the quality queue. Reapplying the exact same activity is
+Read `scripts/plan_state.py context` first. Apply the classification through
+`scripts/plan_state.py apply` only after the analysis is complete. An explicitly
+fulfilled quality role advances its matching queue step even when the planned
+workout was shortened or progression is held. Judge role fulfillment from the
+actual work, intended stimulus, athlete feedback, and plan context; neither a
+missing final repetition nor an omitted endurance extension automatically
+invalidates the quality role. Do not use a universal completion percentage.
+A brief insufficient attempt may require recovery spacing without fulfilling
+the role. Aerobic, recovery, cross-training, and sessions that do not fulfill
+the queued role do not advance that step. Reapplying the exact same activity is
 idempotent; a conflicting or out-of-order update must be resolved explicitly,
 not hidden by a fallback.
 
@@ -429,6 +438,12 @@ feedback materially changes the assessment, review the stored conclusion and
 reconcile any affected state through the supported correction workflow; do not
 leave superseded advice as the current prescription or silently overwrite a
 conflicting classification.
+
+For corrections, preview `scripts/plan_state.py replay --checkpoint <state-json>
+--classifications-file <json-array-file>` from a verified checkpoint immediately
+before the affected activity. Include every subsequent activity in order. Add
+`--write` only after reviewing the resulting compact context. Keep the previous
+state and reviewed correction artifacts so the change can be audited.
 
 Use Garmin Training Effect only as supporting evidence for role alignment:
 
@@ -442,7 +457,7 @@ Use Garmin Training Effect only as supporting evidence for role alignment:
   speed data, and sensor quality before calling the quality stimulus incomplete.
 - A long easy session with low Training Effect can still fulfill its planned
   volume, endurance-base, fatigue-resistance, or recovery purpose.
-- Never set `quality_completed=true` or `progression_effect=advance` from
+- Never set `quality_role_fulfilled=true` or `progression_effect=advance` from
   Training Effect alone. Require agreement with the planned structure,
   mechanical execution, acute physiological response, athlete feel when
   available, and the plan's own progression criteria.

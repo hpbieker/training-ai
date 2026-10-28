@@ -186,16 +186,18 @@ def main() -> None:
         else:
             saved = create_calendar_event_with_opener(opener, event)["event"]
         selected = decision["selected_intensity"]
-        quality_completed = selected in QUALITY_ROLES and bool(quality_base)
-        completed_role = selected if quality_completed else "easy_aerobic"
+        quality_role_fulfilled = selected in QUALITY_ROLES and bool(quality_base)
+        completed_role = selected if quality_role_fulfilled else "easy_aerobic"
         classification = {
             "activity_id": f"scenario-{day.isoformat()}",
             "activity_name": title,
             "started_at": planned.isoformat(),
             "planned_role": planned_role,
             "completed_role": completed_role,
-            "quality_completed": quality_completed,
-            "progression_effect": "advance" if quality_completed else "none",
+            "quality_role_fulfilled": quality_role_fulfilled,
+            "quality_stimulus": quality_role_fulfilled,
+            "planned_workout_completed": True,
+            "progression_effect": "advance" if quality_role_fulfilled else "none",
             "reason": "Scenario assumes the complete recommended session is performed as planned.",
             "evidence": [str(packet_path)],
         }

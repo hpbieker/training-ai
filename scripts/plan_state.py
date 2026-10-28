@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 
-SCHEMA = "training-ai-plan-state-v2"
+SCHEMA = "training-ai-plan-state-v3"
 DEFAULT_STATE_PATH = Path("config/plan-state.json")
 DEFAULT_ARTIFACTS_DIR = Path("outputs/intervals/activities")
 QUALITY_ROLES = {"vt2", "vo2max", "sprint", "mixed"}
@@ -72,8 +72,23 @@ def main() -> None:
         ),
     )
 
+    replay_parser = subparsers.add_parser(
+        "replay", help="Preview or save reviewed corrections from a prior checkpoint.",
+    )
+    replay_parser.add_argument("--checkpoint", type=Path, required=True)
+    replay_parser.add_argument("--classifications-file", type=Path, required=True)
+    replay_parser.add_argument("--write", action="store_true")
+
     args = parser.parse_args()
     state = load_plan_state(args.state)
+    if args.command == "replay":
+        checkpoint = load_plan_state(args.checkpoint)
+        events = json.loads(args.classifications_file.read_text(encoding="utf-8"))
+        updated = replay_activity_classifications(state, checkpoint, events)
+        if args.write:
+            write_plan_state(args.state, updated)
+        print(json.dumps(plan_state_context(updated), ensure_ascii=False, indent=2, sort_keys=True))
+        return
     if args.command == "show":
         print(json.dumps(state, ensure_ascii=False, indent=2, sort_keys=True))
         return
@@ -128,7 +143,8 @@ def parse_classification_json(raw: str) -> dict[str, Any]:
         "started_at",
         "planned_role",
         "completed_role",
-        "quality_completed",
+        "quality_role_fulfilled",
+        "planned_workout_completed",
         "quality_stimulus",
         "progression_effect",
         "reason",
@@ -253,18 +269,27 @@ def validate_event(event: dict[str, Any]) -> None:
     effect = event["progression_effect"]
     if effect not in PROGRESSION_EFFECTS:
         raise PlanStateError(f"Unsupported progression_effect: {effect!r}.")
-    quality_completed = event.get("quality_completed")
-    if not isinstance(quality_completed, bool):
-        raise PlanStateError("quality_completed must be boolean.")
-    if quality_completed and completed_role not in QUALITY_ROLES:
-        raise PlanStateError("quality_completed requires a quality completed_role.")
-    if effect == "advance" and not quality_completed:
-        raise PlanStateError("progression_effect=advance requires quality_completed=true.")
-    quality_stimulus = event.get("quality_stimulus", quality_completed)
+    if "quality_completed" in event:
+        raise PlanStateError("Replace quality_completed with explicit role and workout completion fields.")
+    role_fulfilled = event.get("quality_role_fulfilled")
+    if not isinstance(role_fulfilled, bool):
+        raise PlanStateError("quality_role_fulfilled must be boolean.")
+    if "planned_workout_completed" not in event or (
+        event["planned_workout_completed"] is not None
+        and not isinstance(event["planned_workout_completed"], bool)
+    ):
+        raise PlanStateError("planned_workout_completed must be boolean or null (unknown).")
+    if role_fulfilled and completed_role not in QUALITY_ROLES:
+        raise PlanStateError("quality_role_fulfilled requires a quality completed_role.")
+    if effect == "advance" and not role_fulfilled:
+        raise PlanStateError("progression_effect=advance requires quality_role_fulfilled=true.")
+    quality_stimulus = event.get("quality_stimulus")
     if not isinstance(quality_stimulus, bool):
         raise PlanStateError("quality_stimulus must be boolean.")
     if quality_stimulus and completed_role not in QUALITY_ROLES:
         raise PlanStateError("quality_stimulus requires a quality completed_role.")
+    if role_fulfilled and not quality_stimulus:
+        raise PlanStateError("quality_role_fulfilled requires quality_stimulus=true.")
     evidence = event.get("evidence")
     if not isinstance(evidence, list) or any(not isinstance(item, str) for item in evidence):
         raise PlanStateError("evidence must be a list of paths or references.")
@@ -310,34 +335,25 @@ def apply_activity_classification(
     updated = deepcopy(state)
     queue = updated["quality_queue"]
     completed_role = event["completed_role"]
-    if event.get("quality_stimulus", event["quality_completed"]):
+    if event["quality_stimulus"]:
         queue["last_quality_session"] = {
             "activity_id": event["activity_id"],
             "date": event_started_at.date().isoformat(),
             "role": completed_role,
-            "completed": event["quality_completed"],
-        }
-        # Keep the historical field for consumers that only understand the
-        # older schema; it denotes the last quality session, not only a
-        # progression-advancing session.
-        queue["last_completed_quality"] = {
-            "activity_id": event["activity_id"],
-            "date": event_started_at.date().isoformat(),
-            "role": completed_role,
+            "quality_role_fulfilled": event["quality_role_fulfilled"],
+            "planned_workout_completed": event["planned_workout_completed"],
         }
         current_step_goal = quality_step_goal(
             queue["steps"], queue["next_quality_step"]
         )
-        if completed_role == current_step_goal:
+        if event["quality_role_fulfilled"] and completed_role == current_step_goal:
             queue["next_quality_step"] = next_step_id(
                 queue["steps"], queue["next_quality_step"]
             )
         queue["aerobic_dates_since_quality"] = []
     elif completed_role in AEROBIC_ROLES:
         aerobic_day = event_started_at.date().isoformat()
-        last_quality = queue.get("last_quality_session") or queue.get(
-            "last_completed_quality"
-        )
+        last_quality = queue.get("last_quality_session")
         last_quality_day = last_quality.get("date") if last_quality else None
         if (
             aerobic_day != last_quality_day
@@ -370,6 +386,32 @@ def apply_activity_classification(
     }
     updated["updated_at"] = updated_at or utc_now()
     validate_plan_state(updated)
+    return updated
+
+
+def replay_activity_classifications(
+    current: dict[str, Any],
+    checkpoint: dict[str, Any],
+    events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Reclassify a complete suffix without dropping or duplicating later activities."""
+    validate_plan_state(current)
+    validate_plan_state(checkpoint)
+    if checkpoint["active_plan"] != current["active_plan"]:
+        raise PlanStateError("Replay checkpoint must belong to the same active plan.")
+    prefix = checkpoint["activity_events"]
+    if current["activity_events"][:len(prefix)] != prefix:
+        raise PlanStateError("Replay checkpoint must be an unchanged history prefix.")
+    suffix = current["activity_events"][len(prefix):]
+    if not isinstance(events, list) or len(events) != len(suffix):
+        raise PlanStateError("Replay must include every activity after the checkpoint.")
+    for old, new in zip(suffix, events):
+        validate_event(new)
+        if any(old[key] != new[key] for key in ("activity_id", "started_at")):
+            raise PlanStateError("Replay must preserve activity identities, timestamps, and order.")
+    updated = deepcopy(checkpoint)
+    for event in events:
+        updated = apply_activity_classification(updated, event)
     return updated
 
 
@@ -462,9 +504,7 @@ def plan_state_context(state: dict[str, Any]) -> dict[str, Any]:
             state["quality_queue"]["steps"],
             state["quality_queue"]["next_quality_step"],
         ),
-        "last_completed_quality": deepcopy(
-            state["quality_queue"]["last_completed_quality"]
-        ),
+        "last_quality_session": deepcopy(state["quality_queue"].get("last_quality_session")),
         "aerobic_days_since_quality": state["quality_queue"][
             "aerobic_days_since_quality"
         ],

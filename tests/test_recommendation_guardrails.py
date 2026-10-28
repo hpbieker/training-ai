@@ -1324,7 +1324,7 @@ class RecommendationSummaryTests(unittest.TestCase):
 
     def test_shows_persistent_plan_role_provenance(self):
         state = {
-            "schema": "training-ai-plan-state-v2",
+            "schema": "training-ai-plan-state-v3",
             "updated_at": "2026-07-28T20:00:00Z",
             "active_plan": {
                 "id": "vt2-kapasitet-ut-2026",
@@ -1342,7 +1342,7 @@ class RecommendationSummaryTests(unittest.TestCase):
                     {"id": "vo2max", "intensity_goal": "vo2max"},
                 ],
                 "minimum_aerobic_days_after_quality": 1,
-                "last_completed_quality": {
+                "last_quality_session": {
                     "activity_id": "i168713772",
                     "date": "2026-07-24",
                     "role": "vt2",
@@ -1359,7 +1359,9 @@ class RecommendationSummaryTests(unittest.TestCase):
                     "started_at": "2026-07-28T07:13:25+01:00",
                     "planned_role": "easy_aerobic",
                     "completed_role": "long_aerobic",
-                    "quality_completed": False,
+                    "quality_role_fulfilled": False,
+                    "planned_workout_completed": None,
+                    "quality_stimulus": False,
                     "progression_effect": "none",
                     "reason": "Reviewed.",
                     "evidence": ["analysis.json"],

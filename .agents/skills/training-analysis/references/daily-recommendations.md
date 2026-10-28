@@ -133,6 +133,13 @@ accepting a circular goal choice. Readiness still determines the highest
 intensity the recommendation may select and may downgrade the session without
 advancing or rewriting the queue.
 
+Use the latest actual quality-role fulfillment separately from prescription
+completion and progression. A held progression or an omitted final repetition
+does not create a debt to repeat the same quality domain. If a recent substantial
+session still appears queued solely because it was shortened, reconcile its
+reviewed classification through the plan-state correction workflow before
+selecting today's role. Queue advancement does not establish current readiness.
+
 Fetch Intervals.icu wellness and calendar events through MCP `list_wellness`
 and `list_events` before invoking the helper. Persist each complete MCP result
 as normalized JSON and pass the paths as `intervals_wellness` and
