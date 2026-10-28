@@ -15,6 +15,24 @@ from this repo's persistence, orchestration and cross-source analysis.
 - Intervals.icu: `plugins/intervals-icu/skills/intervals-icu/SKILL.md`
 - Olympiatoppen: `plugins/olympiatoppen/skills/olympiatoppen/SKILL.md`
 
+### Python runtime and tests
+
+MCP plugins use `uv` to prepare `.venv` from their `requirements.txt`, then
+start Python directly. Setup messages go to stderr.
+
+Run the repository tests from the root with the plugin dependencies:
+
+```sh
+uv run --no-project \
+  --with-requirements plugins/strava/requirements.txt \
+  --with-requirements plugins/training-visuals/requirements.txt \
+  --with matplotlib \
+  python -B -m unittest discover -s tests
+```
+
+`test_plugin_startup.py` checks every plugin's launch command and tool catalog
+without a service login. The first run may download dependencies.
+
 ## Use Intervals.icu
 
 Intervals.icu source semantics, MCP access and write-safety rules live in the

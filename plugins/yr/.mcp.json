@@ -1,17 +1,10 @@
 {
   "mcpServers": {
     "yr": {
-      "command": "uv",
+      "command": "sh",
       "args": [
-        "run",
-        "--no-project",
-        "--with",
-        "mcp>=1.27,<2",
-        "--with",
-        "anyio>=4.5,<5",
-        "python",
-        "-B",
-        "./yr_mcp.py"
+        "-c",
+        "(test -x .venv/bin/python || uv venv .venv >&2) && uv pip install -r ./requirements.txt >&2 && exec .venv/bin/python -B ./yr_mcp.py"
       ],
       "cwd": "."
     }

@@ -5,9 +5,8 @@ existing planned or completed route, independent of Garmin, Strava, Xert or Inte
 
 ## Run
 
-Install Python dependencies with `python3 -m pip install -r requirements.txt`.
-The plugin runs `python3 -B training_visuals_mcp.py` over stdio. No Node runtime
-or API key is needed to run the installed plugin.
+The plugin prepares `.venv` from `requirements.txt` with `uv`, then starts
+`training_visuals_mcp.py`. No Node runtime or API key is needed.
 
 Supply exactly one of `route_file` (absolute GPX/GeoJSON/training-ai route JSON
 path) or `geojson` (LineString/MultiLineString or line Features). Optional title,
@@ -30,12 +29,12 @@ JavaScript: Leaflet and the official MCP Apps SDK. Their compiled code is bundle
 in web/dist/show-route.html, with no CDN script dependencies.
 
 ```sh
-python3 -m unittest discover -s tests -v
+uv run --no-project --with-requirements requirements.txt python -B -m unittest discover -s tests -v
 cd web
 npm ci
 npm run build
 cd ..
-python3 scripts/preview.py --arguments /absolute/path/to/arguments.json
+uv run --no-project --with-requirements requirements.txt python scripts/preview.py --arguments /absolute/path/to/arguments.json
 ```
 
 The local preview checks stdio discovery, show_route and resource reading, then

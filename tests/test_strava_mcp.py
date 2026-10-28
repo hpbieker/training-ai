@@ -186,11 +186,11 @@ class StravaMcpTests(unittest.TestCase):
         # A separate interpreter also checks plugin packaging/imports and SDK
         # initialization without requiring a browser session or network.
         script = '''
-import asyncio, os
+import asyncio, os, sys
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 async def run():
-    params = StdioServerParameters(command="python3", args=["-B", "strava_mcp.py"], cwd=os.getcwd(), env={**os.environ, "STRAVA_COOKIE_FILE": os.environ["MISSING_COOKIE"]})
+    params = StdioServerParameters(command=sys.executable, args=["-B", "strava_mcp.py"], cwd=os.getcwd(), env={**os.environ, "STRAVA_COOKIE_FILE": os.environ["MISSING_COOKIE"]})
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as client:
             await client.initialize()

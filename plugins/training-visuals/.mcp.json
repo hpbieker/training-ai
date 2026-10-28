@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "training-visuals": {
-      "command": "python3",
+      "command": "sh",
       "args": [
-        "-B",
-        "./training_visuals_mcp.py"
+        "-c",
+        "(test -x .venv/bin/python || uv venv .venv >&2) && uv pip install -r ./requirements.txt >&2 && exec .venv/bin/python -B ./training_visuals_mcp.py"
       ],
       "cwd": "."
     }

@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "strava": {
-      "command": "python3",
-      "args": ["-B", "./strava_mcp.py"],
+      "command": "sh",
+      "args": [
+        "-c",
+        "(test -x .venv/bin/python || uv venv .venv >&2) && uv pip install -r ./requirements.txt >&2 && exec .venv/bin/python -B ./strava_mcp.py"
+      ],
       "cwd": "."
     }
   }

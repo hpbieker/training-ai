@@ -1,8 +1,11 @@
 {
   "mcpServers": {
     "olympiatoppen": {
-      "command": "python3",
-      "args": ["-B", "./olympiatoppen_mcp.py"],
+      "command": "sh",
+      "args": [
+        "-c",
+        "(test -x .venv/bin/python || uv venv .venv >&2) && uv pip install -r ./requirements.txt >&2 && exec .venv/bin/python -B ./olympiatoppen_mcp.py"
+      ],
       "cwd": "."
     }
   }
