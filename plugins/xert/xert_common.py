@@ -20,8 +20,6 @@ from urllib.request import HTTPCookieProcessor, Request, build_opener, urlopen
 XERT_API_BASE_URL = "https://www.xertonline.com"
 XERT_FORECAST_PATH = "/calendar/training-forecast"
 LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
-DEFAULT_XERT_OAUTH_CLIENT_ID = "xert_public"
-DEFAULT_XERT_OAUTH_CLIENT_SECRET = "xert_public"
 
 
 class CsrfTokenParser(HTMLParser):
@@ -82,37 +80,36 @@ class XertCredentials:
 
     username: str | None = None
     password: str | None = None
-    oauth_client_id: str = DEFAULT_XERT_OAUTH_CLIENT_ID
-    oauth_client_secret: str = DEFAULT_XERT_OAUTH_CLIENT_SECRET
+    oauth_client_id: str | None = None
+    oauth_client_secret: str | None = None
 
     def bearer_token(self) -> str:
-        if self.username and self.password:
-            token = request_xert_token(
-                self.username,
-                self.password,
-                client_id=self.oauth_client_id,
-                client_secret=self.oauth_client_secret,
-            )
-            return token["access_token"]
-        raise ValueError("Set XERT_USERNAME and XERT_PASSWORD")
+        token = request_xert_token(
+            client_id=self.oauth_client_id,
+            client_secret=self.oauth_client_secret,
+        )
+        return token["access_token"]
 
 def request_xert_token(
-    username: str,
-    password: str,
     *,
-    client_id: str = DEFAULT_XERT_OAUTH_CLIENT_ID,
-    client_secret: str = DEFAULT_XERT_OAUTH_CLIENT_SECRET,
+    client_id: str | None = None,
+    client_secret: str | None = None,
 ) -> dict[str, Any]:
-    """Request an OAuth token from Xert."""
+    """Request a personal API token; never accept the demo-only shared client."""
+
+    if not client_id or not client_secret or client_id == "xert_public":
+        raise ValueError(
+            "Set XERT_OAUTH_CLIENT_ID and XERT_OAUTH_CLIENT_SECRET "
+            "(or oauthClientId/oauthClientSecret in ~/.xert_mcp.json) from "
+            "Xert Account Settings > Developer. xert_public returns demo data only."
+        )
 
     client_auth = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode(
         "ascii"
     )
     body = urlencode(
         {
-            "grant_type": "password",
-            "username": username,
-            "password": password,
+            "grant_type": "client_credentials",
         }
     ).encode("utf-8")
     request = Request(
@@ -288,10 +285,8 @@ def load_xert_credentials(env_path: str | Path = ".env") -> XertCredentials:
     return XertCredentials(
         username=values.get("XERT_USERNAME"),
         password=values.get("XERT_PASSWORD"),
-        oauth_client_id=values.get("XERT_OAUTH_CLIENT_ID") or DEFAULT_XERT_OAUTH_CLIENT_ID,
-        oauth_client_secret=(
-            values.get("XERT_OAUTH_CLIENT_SECRET") or DEFAULT_XERT_OAUTH_CLIENT_SECRET
-        ),
+        oauth_client_id=values.get("XERT_OAUTH_CLIENT_ID"),
+        oauth_client_secret=values.get("XERT_OAUTH_CLIENT_SECRET"),
     )
 
 def _request_json(

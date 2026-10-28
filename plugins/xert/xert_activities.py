@@ -29,7 +29,8 @@ def _activity_request(path, access_token, *, params=None):
     ):
         code = payload.get("error") or "unsuccessful_response"
         hint = (
-            " Xert OAuth excludes automatically synced Garmin activities; "
+            " Third-party API access can exclude Garmin activities; personal "
+            "API 1.7 client credentials include them. "
             "use list_activity_summaries for dashboard summaries. "
             "This response does not prove the activity is absent from Xert."
             if code == "activity_not_found" else ""

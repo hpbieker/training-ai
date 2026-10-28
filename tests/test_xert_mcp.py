@@ -746,7 +746,8 @@ class XertServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             config = Path(temp_dir) / "xert.json"
             config.write_text(
-                json.dumps({"username": "config-user", "password": "config-password"}),
+                json.dumps({"username": "config-user", "password": "config-password",
+                            "oauthClientId": "xk_config", "oauthClientSecret": "xs_config"}),
                 encoding="utf-8",
             )
             with patch.dict(
@@ -756,11 +757,31 @@ class XertServiceTests(unittest.TestCase):
                     "XERT_USERNAME": "environment-user",
                     "XERT_PASSWORD": "environment-password",
                 },
-                clear=False,
+                clear=True,
             ):
                 credentials = SERVICE.discover_xert_credentials()
+                self.assertEqual(credentials.oauth_client_id, "xk_config")
+                self.assertEqual(credentials.oauth_client_secret, "xs_config")
+                with patch.dict(os.environ, {"XERT_OAUTH_CLIENT_ID": "xk_env",
+                                             "XERT_OAUTH_CLIENT_SECRET": "xs_env"}):
+                    overridden = SERVICE.discover_xert_credentials()
+                    self.assertEqual(overridden.oauth_client_id, "xk_env")
+                    self.assertEqual(overridden.oauth_client_secret, "xs_env")
         self.assertEqual(credentials.username, "environment-user")
         self.assertEqual(credentials.password, "environment-password")
+
+    def test_api_only_workout_reads_do_not_require_web_credentials(self) -> None:
+        service = self._service(SERVICE.XertCredentials(
+            oauth_client_id="xk_test", oauth_client_secret="xs_test"))
+        with (
+            patch.object(SERVICE, "fetch_workouts", return_value=[]) as listing,
+            patch.object(SERVICE, "fetch_workout", return_value={"name": "Personal"}),
+            patch.object(SERVICE, "xert_web_login") as login,
+        ):
+            self.assertEqual(service.list_workouts(), [])
+            self.assertEqual(service.get_workout("w1"), {"name": "Personal"})
+            self.assertEqual(listing.call_args.kwargs["access_token"], "token")
+            login.assert_not_called()
 
     def test_note_service_filters_normalizes_and_sets_without_weight(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")

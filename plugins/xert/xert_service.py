@@ -32,8 +32,6 @@ from xert_calendar import (
 )
 from xert_common import (
     LOCAL_TIMEZONE,
-    DEFAULT_XERT_OAUTH_CLIENT_ID,
-    DEFAULT_XERT_OAUTH_CLIENT_SECRET,
     XertCredentials,
     _request_json,
     request_xert_token,
@@ -81,12 +79,10 @@ def discover_xert_credentials() -> XertCredentials:
         oauth_client_id=(
             os.environ.get("XERT_OAUTH_CLIENT_ID")
             or _config_string(config, "oauthClientId")
-            or DEFAULT_XERT_OAUTH_CLIENT_ID
         ),
         oauth_client_secret=(
             os.environ.get("XERT_OAUTH_CLIENT_SECRET")
             or _config_string(config, "oauthClientSecret")
-            or DEFAULT_XERT_OAUTH_CLIENT_SECRET
         ),
     )
 
@@ -113,8 +109,6 @@ class XertAuthSession:
                 return self._token
             credentials = self.credentials
             payload = request_xert_token(
-                _required_credential(credentials.username, "XERT_USERNAME"),
-                _required_credential(credentials.password, "XERT_PASSWORD"),
                 client_id=credentials.oauth_client_id,
                 client_secret=credentials.oauth_client_secret,
             )
@@ -154,7 +148,7 @@ class XertService:
         _validate_date_range(start_date, end_date)
         if view not in {"summary", "loads"}:
             raise ValueError("view must be 'summary' or 'loads'")
-        # Dashboard includes Garmin syncs excluded from OAuth activity endpoints.
+        # Dashboard provides bulk load fields, including Garmin-synced rides.
         from xert_activity_summaries import SUMMARY_FIELDS
         fields = SUMMARY_FIELDS if view == "loads" else ("duration_s", "distance_m", "source", "map_url")
         result = self.list_activity_summaries(start_date, end_date, include_fields=fields)
@@ -216,7 +210,7 @@ class XertService:
     ) -> list[dict[str, Any]]:
         if view not in {"summary", "full"}:
             raise ValueError("view must be 'summary' or 'full'")
-        credentials = self._credentials()
+        credentials = self._auth.credentials
         workouts = fetch_workouts(
             username=credentials.username,
             password=credentials.password,
@@ -230,7 +224,7 @@ class XertService:
         path = _require_identifier(path, "workout path")
         if view not in {"resolved", "editable"}:
             raise ValueError("view must be 'resolved' or 'editable'")
-        credentials = self._credentials()
+        credentials = self._auth.credentials
         if view == "resolved":
             return fetch_workout(
                 path,
@@ -412,7 +406,6 @@ class XertService:
     def get_training_state(self, *, view: str = "summary") -> dict[str, Any]:
         if view not in {"summary", "full"}:
             raise ValueError("view must be 'summary' or 'full'")
-        credentials = self._credentials()
         token = self._auth.bearer_token()
         training_info = _request_json("/oauth/training_info", token)
         if not isinstance(training_info, dict):

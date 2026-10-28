@@ -37,7 +37,9 @@ def list_workouts(
         password=password,
     )
     payload = _request_json("/oauth/workouts", access_token or credentials.bearer_token())
-    if not isinstance(payload, dict) or not isinstance(payload.get("workouts"), list):
+    if (not isinstance(payload, dict) or payload.get("error")
+            or str(payload.get("success", "")).lower() == "false"
+            or not isinstance(payload.get("workouts"), list)):
         raise TypeError("Expected Xert workouts endpoint to return a workouts list")
     return payload["workouts"]
 
@@ -86,7 +88,8 @@ def fetch_workout(
     payload = _request_json(
         f"/oauth/workout/{path}", access_token or credentials.bearer_token()
     )
-    if not isinstance(payload, dict):
+    if (not isinstance(payload, dict) or payload.get("error")
+            or str(payload.get("success", "")).lower() == "false"):
         raise TypeError("Expected Xert workout endpoint to return an object")
     return payload
 
@@ -526,6 +529,13 @@ def delete_workout(
     if opener is None:
         opener = xert_web_login(username=username, password=password)
     target = verify_workout_page(opener, path)
+    # Verify that API and web access refer to the same target before mutating.
+    # A demo or mismatched API library must never prove successful deletion.
+    existing = list_workouts(
+        username=username, password=password, access_token=access_token,
+    )
+    if not any(str(row.get("path")) == path for row in existing):
+        raise RuntimeError("Xert workout is missing from the API library; refusing deletion")
     request = Request(
         f"{XERT_API_BASE_URL}/workout/{path}",
         headers={

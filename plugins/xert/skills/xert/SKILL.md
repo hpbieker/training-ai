@@ -46,14 +46,11 @@ Load only the references needed for the question.
 ## Common Read And Calculation Path
 
 Use `list_activity_summaries` for completed-activity discovery, including Garmin
-syncs. Xert's OAuth activity endpoints exclude automatically synced Garmin
-activities. Both `list_activities` and `list_activity_summaries` use the
-authenticated dashboard and include those rides. `get_activity` uses the standard
+syncs. Both `list_activities` and `list_activity_summaries` use the authenticated
+dashboard and include those rides. `get_activity` uses the standard
 activity page and its authenticated MPA chart endpoint, including session series.
 Callers do not need to choose transport based on Garmin origin. Saved documents
 identify their web source and preserve chart field names in `session_data`.
-See [Xert API activity access](https://www.xertonline.com/API.html)
-for the upstream OAuth restriction.
 
 Use compact summaries by default and `includeFields` for the extra list fields
 needed. Check `period_complete` on activity-summary results before claiming
@@ -100,6 +97,20 @@ structural edit and inspect the verified result and `timeline_summary`.
 Xert repeat-row recovery follows every repetition, including the final one.
 
 Live operations require network access; local strain calculations and artifact
-inspection do not. Credentials come from `username` and `password` in the
-user-owned `~/.xert_mcp.json`; explicit `XERT_USERNAME` and `XERT_PASSWORD`
-environment variables override that file for CLI and MCP transports.
+inspection do not. The user-owned `~/.xert_mcp.json` has separate API and web
+credentials:
+
+- `oauthClientId` and `oauthClientSecret`: personal Client Key and Secret from
+  Xert Account Settings > Developer. Environment overrides are
+  `XERT_OAUTH_CLIENT_ID` and `XERT_OAUTH_CLIENT_SECRET`. API tokens use
+  `client_credentials`, without a refresh token. Missing credentials and the
+  demo-only `xert_public` client fail before network access.
+- `username` and `password`: web login for activities, Planner, advice, model
+  parameters and Workout Designer. Environment overrides are `XERT_USERNAME`
+  and `XERT_PASSWORD`. API credentials do not replace the web login.
+
+`list_workouts` and resolved `get_workout` need only API credentials.
+`get_training_state`, `project_load_model` and `delete_workout` need both.
+The other live tools use web login; `calculate_strain` and
+`solve_segment_duration` need neither. Never put secrets in tool arguments or
+chat. Do not regenerate an existing secret as a routine authentication retry.

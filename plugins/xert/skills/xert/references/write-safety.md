@@ -71,6 +71,7 @@ Do not save synthetic workouts unless the user explicitly requests it.
 ## Deletion
 
 Workout deletion is destructive and requires explicit confirmation. Use MCP
-`delete_workout`; it reads the target metadata before deletion and verifies
-afterward that the path is absent. Do not test it against a real workout merely
+`delete_workout`; it reads the target metadata and requires the path to exist
+in the personal API library before deletion, then verifies afterward that the
+path is absent. API errors must not count as an empty library. Do not test it against a real workout merely
 to characterize the endpoint.

@@ -1,9 +1,11 @@
 import concurrent.futures
+import base64
 import json
 import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import parse_qs
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "plugins" / "xert"
@@ -14,6 +16,44 @@ import xert_service as SERVICE
 
 
 class AuthenticationCacheTests(unittest.TestCase):
+    def test_personal_token_request_uses_client_credentials_only(self) -> None:
+        from unittest.mock import MagicMock
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"access_token":"personal"}'
+        with patch.object(COMMON, "urlopen", return_value=response) as send:
+            credentials = COMMON.XertCredentials(
+                username="web-user", password="web-password",
+                oauth_client_id="xk_test", oauth_client_secret="xs_test",
+            )
+            self.assertEqual(credentials.bearer_token(), "personal")
+        request = send.call_args.args[0]
+        self.assertEqual(parse_qs(request.data.decode()), {"grant_type": ["client_credentials"]})
+        self.assertEqual(request.get_header("Authorization"),
+                         "Basic " + base64.b64encode(b"xk_test:xs_test").decode())
+
+    def test_missing_partial_and_demo_credentials_fail_before_network(self) -> None:
+        for key, secret in ((None, None), ("xk_test", None), (None, "xs_test"),
+                            ("xert_public", "xert_public")):
+            with self.subTest(key=key), patch.object(COMMON, "urlopen") as send:
+                with self.assertRaisesRegex(ValueError, "Developer"):
+                    COMMON.request_xert_token(client_id=key, client_secret=secret)
+                send.assert_not_called()
+
+    def test_expired_personal_token_is_reacquired_without_refresh_grant(self) -> None:
+        auth = SERVICE.XertAuthSession(COMMON.XertCredentials(
+            oauth_client_id="xk_test", oauth_client_secret="xs_test"))
+        with patch.object(SERVICE.time, "monotonic", side_effect=[0, 10, 70]), patch.object(
+            SERVICE, "request_xert_token", side_effect=[
+                {"access_token": "first", "expires_in": 120},
+                {"access_token": "second", "expires_in": 120},
+            ],
+        ) as send:
+            self.assertEqual(auth.bearer_token(), "first")
+            self.assertEqual(auth.bearer_token(), "first")
+            self.assertEqual(auth.bearer_token(), "second")
+        self.assertEqual(send.call_count, 2)
+        send.assert_called_with(client_id="xk_test", client_secret="xs_test")
+
     def test_bearer_token_is_reused_within_one_service_session(self) -> None:
         auth = SERVICE.XertAuthSession(
             COMMON.XertCredentials(username="cache-user", password="cache-pass")
@@ -46,6 +86,18 @@ class AuthenticationCacheTests(unittest.TestCase):
 
 
 class WorkoutReplacementTests(unittest.TestCase):
+    def test_workout_api_failures_are_not_empty_library_or_valid_workout(self) -> None:
+        for failure in ({"success": False, "workouts": []},
+                        {"success": "false", "workouts": []},
+                        {"error": "insufficient_scope", "workouts": []}):
+            with self.subTest(failure=failure), patch.object(
+                WORKOUTS, "_request_json", return_value=failure,
+            ):
+                with self.assertRaises(TypeError):
+                    WORKOUTS.list_workouts(access_token="personal")
+                with self.assertRaises(TypeError):
+                    WORKOUTS.fetch_workout("path", access_token="personal")
+
     @staticmethod
     def row(name: str = "Warmup") -> dict:
         return {
@@ -443,7 +495,7 @@ class WorkoutReplacementTests(unittest.TestCase):
             patch.object(WORKOUTS, "xert_web_login", return_value=object()),
             patch.object(WORKOUTS, "verify_workout_page", return_value={"name": "Target"}),
             patch.object(WORKOUTS, "_open_text", return_value="{}"),
-            patch.object(WORKOUTS, "list_workouts", return_value=[]),
+            patch.object(WORKOUTS, "list_workouts", side_effect=[[{"path": "path"}], []]),
         ):
             result = WORKOUTS.delete_workout(
                 "path",
@@ -453,6 +505,25 @@ class WorkoutReplacementTests(unittest.TestCase):
 
         self.assertEqual(result["target"], {"name": "Target"})
         self.assertTrue(result["verified_absent"])
+
+    def test_delete_rejects_mismatched_library_before_mutation(self) -> None:
+        with (
+            patch.object(WORKOUTS, "verify_workout_page", return_value={"name": "Target"}),
+            patch.object(WORKOUTS, "list_workouts", return_value=[{"path": "demo"}]),
+            patch.object(WORKOUTS, "_open_text") as send,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "refusing deletion"):
+                WORKOUTS.delete_workout("path", opener=object(), access_token="personal")
+            send.assert_not_called()
+
+    def test_delete_does_not_confirm_when_target_remains(self) -> None:
+        with (
+            patch.object(WORKOUTS, "verify_workout_page", return_value={"name": "Target"}),
+            patch.object(WORKOUTS, "list_workouts", return_value=[{"path": "path"}]),
+            patch.object(WORKOUTS, "_open_text", return_value="{}"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "still exists"):
+                WORKOUTS.delete_workout("path", opener=object(), access_token="personal")
 
 
 if __name__ == "__main__":
