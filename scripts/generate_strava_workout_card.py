@@ -218,7 +218,17 @@ def workout_story(activity: dict[str, object], rows: list[dict[str, float]]) -> 
         repetitions, seconds_total, watts = selected
         minutes, seconds = divmod(seconds_total, 60)
         duration = f"{minutes}:{seconds:02d}" if seconds else f"{minutes}:00"
-        work_label = f"{repetitions} × {duration} @ {watts} W"
+        matching_finishers = [
+            item for item in parsed_summaries
+            if item[0] == 1
+            and item[2] == watts
+            and item[1] >= seconds_total * 0.5
+        ]
+        finisher_text = "".join(
+            " + " + (f"{extra_seconds // 60}:{extra_seconds % 60:02d}" if extra_seconds % 60 else f"{extra_seconds // 60}:00")
+            for _, extra_seconds, _ in matching_finishers
+        )
+        work_label = f"{repetitions} × {duration}{finisher_text} @ {watts} W"
         if "vo2" in name:
             return WorkoutStory(
                 "VO₂MAX",
@@ -230,7 +240,7 @@ def workout_story(activity: dict[str, object], rows: list[dict[str, float]]) -> 
         if "vt2" in name:
             return WorkoutStory(
                 "VT2",
-                f"{repetitions} × {duration} at {watts} W.",
+                f"{repetitions} × {duration}{finisher_text} at {watts} W.",
                 work_label,
                 float(watts),
                 repetitions,
@@ -248,22 +258,38 @@ def workout_story(activity: dict[str, object], rows: list[dict[str, float]]) -> 
 
 
 def repeated_work_intervals(activity: dict[str, object], story: WorkoutStory) -> list[dict[str, object]]:
-    """Return the source-detected work reps matching the card's stated work."""
+    """Return substantial work intervals matching the card's stated power.
+
+    Intervals.icu can assign a different group_id when the final repetition is
+    shorter than a repeated set. Keep such a meaningful finishing effort in
+    the table when it is near the same target and at least half as long as the
+    main repetition.
+    """
     if story.repetitions is None or story.target_watts is None:
         return []
     candidates = activity.get("icu_intervals")
     if not isinstance(candidates, list):
         return []
-    matches = [
+    candidates = [
         item for item in candidates
         if isinstance(item, dict)
-        and item.get("group_id")
         and as_float(item.get("start_time")) is not None
         and as_float(item.get("end_time")) is not None
         and as_float(item.get("average_watts")) is not None
         and abs(as_float(item["average_watts"]) - story.target_watts) <= 20
     ]
-    return sorted(matches, key=lambda item: as_float(item["start_time"]) or 0)[: story.repetitions]
+    if not candidates:
+        return []
+    longest = max(
+        as_float(item["end_time"]) - as_float(item["start_time"])
+        for item in candidates
+    )
+    minimum_duration = longest * 0.5
+    matches = [
+        item for item in candidates
+        if as_float(item["end_time"]) - as_float(item["start_time"]) >= minimum_duration
+    ]
+    return sorted(matches, key=lambda item: as_float(item["start_time"]) or 0)
 
 
 def story_rows(
