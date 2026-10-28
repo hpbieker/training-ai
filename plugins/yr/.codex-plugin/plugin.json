@@ -1,7 +1,7 @@
 {
   "name": "yr",
-  "version": "0.2.1+codex.20261020",
-  "description": "Yr/MET Norway source semantics and live forecast access.",
+  "version": "0.3.1",
+  "description": "Yr/MET Norway forecasts and historical Frost station observations.",
   "author": {
     "name": "Hans Petter Bieker"
   },
@@ -9,8 +9,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Yr",
-    "shortDescription": "Fetch and interpret Yr/MET Norway forecasts.",
-    "longDescription": "Yr provides source-specific guidance for using MET Norway's Locationforecast API. Local persistence, domain-specific analysis, and downstream decisions live outside the plugin.",
+    "shortDescription": "Fetch forecasts and historical weather observations.",
+    "longDescription": "Yr provides MET Norway Locationforecast forecasts and historical Frost station observations, with station discovery and source semantics. Route interpretation and downstream decisions live outside the plugin.",
     "developerName": "Hans Petter Bieker",
     "category": "Productivity",
     "capabilities": [
@@ -21,7 +21,8 @@
     "defaultPrompt": [
       "Fetch a weather forecast for a place.",
       "Fetch point forecasts for the times and places along a planned route.",
-      "Help me interpret a Yr forecast payload."
+      "Help me interpret a Yr forecast payload.",
+      "Find nearby weather stations and retrieve historical observations."
     ]
   }
 }

@@ -43,7 +43,7 @@ class FakeYrService:
 
 class YrMcpSchemaTests(unittest.TestCase):
     def test_exposes_closed_read_only_tools(self) -> None:
-        self.assertEqual(MCP.ALL_TOOL_NAMES, ("get_forecast", "get_forecasts"))
+        self.assertEqual(MCP.ALL_TOOL_NAMES, ("get_forecast", "get_forecasts", "find_observation_stations", "get_observation_series", "get_observations"))
         for name in MCP.ALL_TOOL_NAMES:
             definition = MCP.TOOL_DEFINITIONS[name]
             self.assertFalse(definition["inputSchema"]["additionalProperties"])
@@ -240,7 +240,7 @@ class YrMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [tool.name for tool in result.tools],
-            ["get_forecast", "get_forecasts"],
+            ["get_forecast", "get_forecasts", "find_observation_stations", "get_observation_series", "get_observations"],
         )
 
 

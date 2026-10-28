@@ -82,6 +82,13 @@ Start with `plugins/yr/skills/yr/SKILL.md` and use its `get_forecast` or bounded
 batch `get_forecasts` MCP tool for live forecast reads. Pass normalized MCP
 output to repo helpers through their source-input arguments.
 
+Historical station data uses Frost through `find_observation_stations`,
+`get_observation_series`, and bounded point/time batch `get_observations`.
+Store the public-archive client ID in `~/.yr_mcp.json` as
+`{"frost": {"client_id": "<your-client-id>"}}`, with file permissions 0600.
+Historical tools retain station identity, measurement times, sensor levels,
+periods and quality codes; route interpretation stays outside the plugin.
+
 The API requires a non-generic User-Agent. The MCP's source client sets one by
 default.
 

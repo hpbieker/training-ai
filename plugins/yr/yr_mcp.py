@@ -5,14 +5,16 @@ from __future__ import annotations
 
 import json
 import sys
+from threading import Lock
 from datetime import datetime
 from typing import Any, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from yr_weather import compact_hourly_forecast, fetch_locationforecast
+import yr_observations
 
 
-ALL_TOOL_NAMES = ("get_forecast", "get_forecasts")
+ALL_TOOL_NAMES = ("get_forecast", "get_forecasts", *yr_observations.TOOL_DEFINITIONS)
 
 TOOL_ANNOTATIONS = {
     "get_forecast": {
@@ -285,6 +287,10 @@ TOOL_DEFINITIONS = {
 }
 
 
+TOOL_DEFINITIONS.update(yr_observations.TOOL_DEFINITIONS)
+TOOL_ANNOTATIONS.update({name: tool["annotations"] for name, tool in yr_observations.TOOL_DEFINITIONS.items()})
+
+
 class ToolFailure(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
@@ -303,8 +309,18 @@ class YrLiveService:
 
 
 class YrToolService:
-    def __init__(self, service_factory: Callable[[], Any] = YrLiveService) -> None:
+    def __init__(self, service_factory: Callable[[], Any] = YrLiveService,
+                 frost_factory: Callable[[], Any] = yr_observations.FrostClient) -> None:
         self._service_factory = service_factory
+        self._frost_factory = frost_factory
+        self._frost_client = None
+        self._frost_lock = Lock()
+
+    def _frost(self):
+        with self._frost_lock:
+            if self._frost_client is None:
+                self._frost_client = yr_observations.CachedFrostClient(self._frost_factory())
+            return self._frost_client
 
     def list_tools(self) -> list[dict[str, Any]]:
         return [TOOL_DEFINITIONS[name] for name in ALL_TOOL_NAMES]
@@ -314,6 +330,12 @@ class YrToolService:
             raise ToolFailure("unknown_tool", f"unknown tool: {name}")
         if not isinstance(arguments, dict):
             raise ToolFailure("invalid_arguments", "arguments must be an object")
+
+        if name in yr_observations.TOOL_DEFINITIONS:
+            try:
+                return yr_observations.call_tool(name, arguments, self._frost())
+            except yr_observations.ObservationFailure as exc:
+                raise ToolFailure(exc.code, str(exc)) from exc
 
         schema = TOOL_DEFINITIONS[name]["inputSchema"]
         unknown = set(arguments) - set(schema["properties"])
@@ -573,9 +595,9 @@ def create_sdk_server(service: YrToolService) -> Any:
 
     server = Server(
         "yr",
-        version="0.2.0",
+        version="0.3.1",
         instructions=(
-            "Fetch compact MET Norway point forecasts singly or in a bounded batch. "
+            "Fetch MET Norway point forecasts and station-backed Frost historical observations. "
             "The caller owns geocoding, route-point and arrival-time selection, route "
             "aggregation, persistence, plotting, and weather-dependent decisions."
         ),
