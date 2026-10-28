@@ -1,10 +1,11 @@
 # Daily recommendation evaluations
 
-These five scenarios test recommendation composition and communication on the
+These scenarios test recommendation composition and communication on the
 same frozen inputs for Sol and Luna. They extend the completed-session suite
 one directory above. They do **not** test live connectors or the complete
 `recommend_training.py` CLI. The generator exercises the production intensity,
-evidence-coverage, dose-composition and primary-decision helpers; the model
+evidence-coverage, dose-composition and primary-decision helpers; the HRV cases
+also execute the acute-readiness dose guardrail. The model
 then interprets that precomputed packet using an isolated skill snapshot.
 
 The calculation fixtures preserve unsaved Xert calculations from 18 October
@@ -67,4 +68,17 @@ Run deterministic regressions separately:
 python3 -B -m unittest discover -s tests -p 'test_recommendation*.py'
 ```
 
-Development results: [18 October 2026](results/2026-10-18.md).
+Development results: [18 October 2026](results/2026-10-18.md),
+[HRV regression, 22 October 2026](results/2026-10-22-hrv.md).
+
+## Isolated HRV regression cases
+
+`isolated_hrv_drop` and `isolated_hrv_missing_history` test the failure observed
+on 22 October: a single low night was converted into a fixed 45-Low-XSS dose,
+and TL above RL was interpreted as increasing recovery concern. The first case
+contains actual three-night values; the second deliberately omits history.
+Both use a frozen, offline Xert calculation for the 219-Low-XSS starting dose.
+The expected behavior is justified coaching with explicit uncertainty, not
+automatic acceptance of either 45 or 219 Low XSS. These are composition evals;
+source ingestion and three-consecutive-night validation have deterministic
+coverage in `tests/test_recommendation_hrv_dose.py`.

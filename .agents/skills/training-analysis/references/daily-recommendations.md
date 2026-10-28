@@ -187,6 +187,25 @@ If Intervals.icu contains a sickness event today or yesterday, follow
 
 ## Readiness Composition
 
+- Before using HRV to reduce intensity or duration, fetch the three latest
+  actual nights with Garmin `list_health_days(until=<observed-date>, days=3,
+  sources=["hrv"])`. Persist its complete `structuredContent` unchanged and
+  pass it as `garmin_hrv_history` alongside the same-run `garmin` override.
+  The helper composes these inputs and computes the mean over three distinct,
+  consecutive dates ending on the target day. Show last night and the mean
+  separately. If history is unavailable or incomplete, disclose the single-night
+  fallback; do not score missing nights negatively or reuse older nights as current.
+- An isolated HRV deviation calls for caution and an execution/body-feel check,
+  not an automatic fixed endurance-dose cap. Explain any dose reduction using
+  the combined recovery evidence, current symptoms or reported response, and
+  the demands of the proposed session. Retain illness and poor-recovery rules.
+  A heuristic risk score is not a measured physiological maximum; removing a
+  cap does not by itself establish that the full XATA dose is appropriate.
+- Attribute the final dose to XATA, next-workout capacity, calendar constraints,
+  or an explicit coaching adjustment, and state the concrete reason for each
+  adjustment. Use planned-time Xert recovery hours for modeled recovery;
+  keep Training Load / Recovery Load diagnostic rather than translating an
+  increasing ratio into increasing fatigue risk.
 - Fetch volatile inputs through their source plugins and pass normalized JSON
   to repo helpers. Do not pass raw API payloads into readiness consumers.
 - Group HRV relative to baseline, resting HR, and Sleep Score as related

@@ -2243,9 +2243,9 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
                 },
                 "garmin_load_focus": {"acute_load": 400, "acwr": 1.3},
                 "xert_recovery": {
-                    "recovery_load": {"low": 100.0},
-                    "training_load": {"low": 120.0},
-                    "recovery_hours": {"low": 12.0},
+                    "recovery_load": {"low": 120.0},
+                    "training_load": {"low": 100.0},
+                    "recovery_hours": {"low": 18.0},
                 },
                 "wellness": {
                     "sleep_time_seconds": 21720,
@@ -2373,7 +2373,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         self.assertEqual(target["acute_readiness_guardrail"]["cumulative_load_risk"], 0.0)
         self.assertEqual(
             target["acute_readiness_guardrail"]["cumulative_load_source"],
-            "xert_recovery_vs_training",
+            "xert_projected_low_recovery_hours",
         )
 
         target_with_high_garmin_score = {

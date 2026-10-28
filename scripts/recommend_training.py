@@ -43,6 +43,7 @@ DEFAULT_OUTPUT_DIR = Path("outputs/recommendations")
 REFRESH_GROUPS = frozenset({"garmin", "xert", "intervals", "weather"})
 SOURCE_REFRESH_POLICY = {
     "garmin": ("garmin", 15),
+    "garmin_hrv_history": ("garmin", 15),
     "xert": ("xert", 30),
     "intervals_wellness": ("intervals", 30),
     "intervals_events": ("intervals", 30),
@@ -534,6 +535,9 @@ def main() -> None:
             parser.error(str(exc))
         override_payload.setdefault("source_file", str(override_path))
         write_json(source_files[source_name], override_payload)
+    compose_garmin_source_overrides(
+        source_files, overridden_sources=set(args.source_overrides_json),
+    )
     compose_xert_source_overrides(
         source_files,
         overridden_sources=set(args.source_overrides_json),
@@ -542,6 +546,8 @@ def main() -> None:
         "garmin", "xert", "intervals_wellness", "intervals_events",
         "xert_activity_loads", "weather_home",
     }
+    if "garmin_hrv_history" in args.source_overrides_json:
+        required_sources.add("garmin_hrv_history")
     if indoor_available:
         required_sources.add("xert_recommended_training")
     if outdoor_available:
@@ -992,6 +998,7 @@ def main() -> None:
 def source_paths(output_dir: Path, day: str) -> dict[str, Path]:
     return {
         "garmin": output_dir / f"garmin-readiness-{day}.json",
+        "garmin_hrv_history": output_dir / f"garmin-hrv-history-{day}.json",
         "xert": output_dir / f"xert-readiness-{day}.json",
         "intervals_wellness": output_dir / f"intervals-wellness-recent-{day}.json",
         "intervals_events": output_dir / f"intervals-events-recent-{day}.json",
@@ -1134,6 +1141,7 @@ def validate_source_override_payload(
     """Fail at ingestion when a supported source lacks its identifying shape."""
 
     required_list = {
+        "garmin_hrv_history": "days",
         "intervals_wellness": "wellness",
         "intervals_events": "events",
         "xert_activity_loads": "activities",
@@ -1175,6 +1183,24 @@ def validate_source_override_payload(
             "source override xert requires training_state or training_advice "
             "after MCP normalization"
         )
+
+
+def compose_garmin_source_overrides(
+    source_files: dict[str, Path], *, overridden_sources: set[str],
+) -> None:
+    """Attach unchanged MCP nightly history to the explicitly supplied health day."""
+    if "garmin_hrv_history" not in overridden_sources:
+        return
+    if "garmin" not in overridden_sources:
+        raise ValueError("garmin_hrv_history requires a garmin override from this run")
+    garmin = load_json_if_exists(source_files["garmin"])
+    history = load_json_if_exists(source_files["garmin_hrv_history"])
+    if not isinstance(garmin, dict) or not isinstance(history, dict):
+        raise ValueError("Garmin day and HRV history must be JSON objects")
+    composed = dict(garmin)
+    composed["hrv_history"] = history
+    composed["hrv_history_source_file"] = str(source_files["garmin_hrv_history"])
+    write_json(source_files["garmin"], composed)
 
 
 def compose_xert_source_overrides(
@@ -5171,9 +5197,6 @@ def apply_acute_readiness_target_guardrail(
     )
     low_recovery_hours = number(recovery_hours.get("low"))
     xert_recovery_components = {
-        "low_training_to_recovery_ratio": linear_risk_optional(
-            low_training_to_recovery_ratio, good=1.0, bad=1.15
-        ),
         "low_recovery_hours": linear_risk_optional(
             low_recovery_hours, good=0.0, bad=24.0
         ),
@@ -5182,7 +5205,7 @@ def apply_acute_readiness_target_guardrail(
     acwr_risk = linear_risk_optional(acwr, good=0.8, bad=1.4)
     cumulative_load_risk = xert_modeled_recovery_risk
     cumulative_load_source = (
-        "xert_recovery_vs_training"
+        "xert_projected_low_recovery_hours"
         if xert_modeled_recovery_risk is not None
         else None
     )
@@ -5202,8 +5225,9 @@ def apply_acute_readiness_target_guardrail(
         if acwr_risk is not None
         else None,
         "meaning": (
-            "Xert low-system recovery hours and Recovery Load versus Training Load "
-            "are the modeled-load gate. Garmin ACWR is retained as a separate "
+            "Xert low-system recovery hours at the planned start are the modeled-load gate. "
+            "Training Load / Recovery Load is diagnostic only; increasing it must not "
+            "increase recovery concern. Garmin ACWR is retained as a separate "
             "diagnostic and never substitutes for missing Xert recovery context."
         ),
     }
@@ -5234,6 +5258,31 @@ def apply_acute_readiness_target_guardrail(
             "Dose decisions use direct physiological domains and normalized load."
         ),
     }
+
+    # HRV can justify an intensity/response review, but does not quantify an
+    # individual's maximum endurance dose. Sleep/RHR corroboration remains one
+    # related recovery family, not additional independent votes.
+    non_hrv_risk = max_present(
+        resting_hr_risk, sleep_score_caution(sleep_score)
+    )
+    isolated_hrv = (
+        hrv_risk is not None and hrv_risk >= 0.4
+        and (non_hrv_risk is None or non_hrv_risk < 0.4)
+    )
+    target_resolution["hrv_dose_review"] = {
+        "history_status": (
+            "three_nights" if wellness.get("hrv_nights_used_3d") == 3
+            else "last_night_fallback" if hrv_risk is not None else "unavailable"
+        ),
+        "isolated_hrv_caution": isolated_hrv,
+        "automatic_dose_cap_from_hrv_alone": False,
+        "meaning": (
+            "HRV caution requires body-feel and execution review; it does not establish "
+            "a physiological maximum or automatically validate the full XATA dose."
+        ),
+    }
+    if isolated_hrv:
+        return
 
     cap = None
     level = None
@@ -5323,7 +5372,7 @@ def apply_acute_readiness_target_guardrail(
             "HRV, resting heart rate, and Sleep Score are grouped as one related "
             "autonomic/recovery family. Body Battery is retained as supporting "
             "diagnostic context rather than an additional independent vote. Xert "
-            "recovery-versus-training context remains the modeled-load gate. Garmin ACWR remains "
+            "projected recovery hours remain the modeled-load gate; TL/RL is diagnostic. Garmin ACWR remains "
             "diagnostic and does not replace missing Xert context. The previous "
             "day's individual workout is "
             "not a separate dose input. Garmin's composite Training "

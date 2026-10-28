@@ -81,6 +81,13 @@ class RecommendationScenarioTests(unittest.TestCase):
         self.assertEqual(remaining['physiological_remaining_dose']['load_xss'], 260)
         self.assertTrue(remaining['completed_activities_already_accounted_for'])
         self.assertEqual(remaining['executable_now']['timeline']['duration_seconds'], 14729)
+        for name in ('isolated_hrv_drop', 'isolated_hrv_missing_history'):
+            packet = packets[name]
+            self.assertEqual(packet['date'], '2026-10-22')
+            self.assertIn(packet['primary_decision']['selected_intensity'], ('vt1', 'easy_vt1'))
+            self.assertNotIn('acute_readiness_guardrail', packet['target_resolution'])
+            self.assertTrue(packet['target_resolution']['hrv_dose_review']['isolated_hrv_caution'])
+            self.assertAlmostEqual(packet['target_resolution']['target_load'], 219, places=1)
 
 
 if __name__ == '__main__':

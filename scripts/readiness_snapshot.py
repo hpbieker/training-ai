@@ -843,22 +843,30 @@ def compact_hrv_history(
     garmin_input: dict[str, Any] | None,
 ) -> dict[str, Any]:
     payload = (garmin_input or {}).get("hrv_history") or {}
-    rows = []
+    by_date = {}
+    target_day = date.fromisoformat(day)
+    earliest = (target_day - timedelta(days=6)).isoformat()
+    recent_start = (target_day - timedelta(days=2)).isoformat()
     for entry in payload.get("days") or []:
         if not isinstance(entry, dict):
             continue
         entry_day = str(entry.get("date") or "")
-        if not entry_day or entry_day > day:
+        try:
+            date.fromisoformat(entry_day)
+        except ValueError:
+            continue
+        if not earliest <= entry_day <= day:
             continue
         sources = entry.get("sources") or {}
         hrv = sources.get("hrv") or {}
         summary = hrv.get("hrvSummary") or hrv
         value = summary.get("lastNightAvg")
-        if isinstance(value, (int, float)):
-            rows.append({"date": entry_day, "last_night_avg": float(value)})
-    rows = sorted(rows, key=lambda row: row["date"])[-7:]
+        if (isinstance(value, (int, float)) and not isinstance(value, bool)
+                and math.isfinite(value) and value > 0):
+            by_date[entry_day] = {"date": entry_day, "last_night_avg": float(value)}
+    rows = sorted(by_date.values(), key=lambda row: row["date"])
     values = [row["last_night_avg"] for row in rows]
-    recent_three = values[-3:]
+    recent_three = [row["last_night_avg"] for row in rows if row["date"] >= recent_start]
     mean_3d = statistics.fmean(recent_three) if len(recent_three) == 3 else None
     mean_7d = statistics.fmean(values) if len(values) == 7 else None
     median_7d = statistics.median(values) if len(values) == 7 else None

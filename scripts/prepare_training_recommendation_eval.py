@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from recommend_training import (recommendation_bias, select_intensity_domain,
     apply_xert_endurance_duration_solution, apply_quality_workout_vt1_composition,
-    build_primary_decision)
+    build_primary_decision, apply_acute_readiness_target_guardrail)
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = ROOT / 'evals/training-analysis/recommendations'
@@ -23,22 +23,27 @@ def build_packet(case):
     inputs = {'wellness': case['wellness'], 'xert_recovery': {
         'projected_recovery_hours_at_planned_time': {'low': -12, 'high': -24, 'peak': -24}},
         'intervals_wellness_events': {'current_day_soreness': case['soreness']}}
+    if case.get('dose_review'):
+        inputs['xert_recovery'].update(training_load={'low':121.258}, recovery_load={'low':112.769})
     ceiling = recommendation_bias(wellness=inputs['wellness'], xert=inputs['xert_recovery'],
                                   intervals_events=inputs['intervals_wellness_events'])
-    decision = select_intensity_domain(day='2026-10-18', readiness_ceiling=ceiling,
+    decision = select_intensity_domain(day=case.get('date', '2026-10-18'), readiness_ceiling=ceiling,
         intensity_goal=case['goal'], progression_advice={}, plan_progression={'vt2': {
             'anchor':'3 x 28 min @ 295 W', 'status':'hold',
             'next_step':'Repeat achieved dose when current response permits; do not increase watts.'}})
     quality = decision['selected_domain'] == 'vt2'
     target = {'source':'xert_training_advice_remaining_xss','target_minutes':0,
               'target_load':260, 'xert_recommended_target_xss':{'low':260,'high':4.9,'peak':0.2}}
-    solution = json.loads((SUITE / 'fixtures' / ('quality-plus-endurance.json' if quality else 'endurance.json')).read_text())
+    if case.get('dose_review'):
+        target.update(target_load=219, target_minutes=210, xert_recommended_target_xss={'low':219,'high':2.1,'peak':0.2})
+        apply_acute_readiness_target_guardrail(target, {'recommendation_inputs':inputs})
+    solution = json.loads((SUITE / 'fixtures' / ('hrv-endurance.json' if case.get('dose_review') else 'quality-plus-endurance.json' if quality else 'endurance.json')).read_text())
     apply_xert_endurance_duration_solution(target, calculation=solution, selected_intensity=decision['selected_domain'])
     if quality:
         apply_quality_workout_vt1_composition(target,
             quality_calculation=json.loads((SUITE/'fixtures/quality.json').read_text()),
             selected_intensity='vt2')
-    packet = {'date':'2026-10-18','planned_at':case['planned_at'],
+    packet = {'date':case.get('date', '2026-10-18'),'planned_at':case['planned_at'],
         'scenario_context':case['context'], 'readiness':{'recommendation_inputs':inputs},
         'target_resolution':target,
         'primary_decision':build_primary_decision(readiness_packet={'recommendation_inputs':inputs},
@@ -61,6 +66,11 @@ def build_packet(case):
         'outdoor_alternative':{'role':'vt1','route':'Synthetic paved steady loop','reference_minutes':205.2,
             'prescribed_total_seconds':14729,'main_power_w':215,'warmup_seconds':720,'cooldown_seconds':180,
             'meaning':'Calculated constant-power duration; actual outdoor XSS is not guaranteed.'}}
+    if case.get('dose_review'):
+        packet['plan_context'].update(next_day_role='vo2max', recent_response='Yesterday controlled3x30@295W, then30min215W demanding but manageable. Subsequent body feel unknown. Aerobic spacing today.')
+        packet['capacity'].update(fresh_at='2026-10-23T11:05:00+02:00')
+        packet['logistics'].update(calendar='Available11:10–16:30 with15min setup/cleanup. Lunch45min movable.', weather='Rain11C; indoor preferred.')
+        packet['outdoor_alternative'].update(prescribed_total_seconds=solution['duration_seconds'])
     return packet
 
 
