@@ -1,8 +1,10 @@
 {
   "name": "olympiatoppen",
-  "version": "0.1.5",
+  "version": "0.1.5+codex.20261027103056",
   "description": "Read logged workouts and session details from Olympiatoppen's training diary.",
-  "author": {"name": "Hans Petter Bieker"},
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -13,7 +15,13 @@
     "category": "Health & Fitness",
     "composerIcon": "./assets/olympiatoppen-icon.png",
     "logo": "./assets/olympiatoppen-icon.png",
-    "capabilities": ["Read logged workouts", "Inspect workout details"],
-    "defaultPrompt": ["List workouts from Olympiatoppen for a date range.", "Inspect a specific Olympiatoppen diary session."]
+    "capabilities": [
+      "Read logged workouts",
+      "Inspect workout details"
+    ],
+    "defaultPrompt": [
+      "List workouts from Olympiatoppen for a date range.",
+      "Inspect a specific Olympiatoppen diary session."
+    ]
   }
 }

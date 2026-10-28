@@ -1,6 +1,6 @@
 {
   "name": "training-visuals",
-  "version": "0.1.0+codex.20260924155242",
+  "version": "0.1.0+codex.20261027103058",
   "description": "Interactive training visualizations from existing route data.",
   "author": {
     "name": "Hans Petter Bieker"
