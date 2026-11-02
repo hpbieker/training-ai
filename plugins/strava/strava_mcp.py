@@ -65,12 +65,13 @@ ROUTE_FIELDS = {
                     "lat": {"type": "number", "minimum": -90, "maximum": 90},
                     "lng": {"type": "number", "minimum": -180, "maximum": 180},
                 },
-            }},
+            }, "metadata": {"type": ["object", "null"]}},
         }},
     }},
     "legs": {"type": "array", "minItems": 1, "items": {
-        "type": "object", "required": ["startElement", "paths"],
-        "properties": {"startElement": {"type": "integer", "minimum": 0}, "paths": {
+        "type": "object", "required": ["startElement", "legType", "paths"],
+        "properties": {"startElement": {"type": "integer", "minimum": 0},
+          "legType": {"type": "string", "minLength": 1}, "paths": {
             "type": "array", "minItems": 1, "items": {"type": "object", "required": ["polyline"],
                 "properties": {"polyline": {"type": "object", "required": ["encoding", "data"],
                     "properties": {"encoding": {"const": "Google"}, "data": {"type": "string", "minLength": 1}}}},

@@ -164,11 +164,19 @@ def _validate_geometry(props: dict[str, Any]) -> None:
     elements, legs = props["elements"], props["legs"]
     if len(legs) != len(elements) - 1:
         raise ValueError("There must be one built leg between each pair of elements.")
+    for element in elements:
+        if element.get("elementType") != "Waypoint":
+            raise ValueError("Route elements must be native Waypoint elements.")
+        waypoint = element.get("waypoint")
+        if not isinstance(waypoint, dict) or "point" not in waypoint:
+            raise ValueError("Each route waypoint must contain a point.")
+        # The editor's native payload includes this key even when it has no metadata.
+        waypoint.setdefault("metadata", None)
     for index, leg in enumerate(legs):
         if len(leg.get('paths', [])) != 1:
             raise ValueError('Save exactly one complete path per leg; multiple paths may be alternatives.')
-        if leg.get("startElement") != index or not leg.get("paths"):
-            raise ValueError("Built legs must have consecutive startElement indices and paths.")
+        if leg.get("startElement") != index or not leg.get("paths") or not isinstance(leg.get("legType"), str) or not leg["legType"]:
+            raise ValueError("Built legs must have consecutive startElement indices, a legType, and paths.")
         for path in leg["paths"]:
             polyline = path.get("polyline")
             if not isinstance(polyline, dict) or polyline.get("encoding") != "Google" or not polyline.get("data"):
@@ -299,6 +307,10 @@ def create_route(props: dict[str, Any], confirm: bool) -> dict[str, Any]:
     if confirm is not True:
         raise ValueError("Route creation requires confirm=true.")
     prepared = {"description": "", "visibility": "OnlyMe", "starred": False, **copy.deepcopy(props)}
+    for element in prepared.get("elements", []):
+        waypoint = element.get("waypoint") if isinstance(element, dict) else None
+        if isinstance(waypoint, dict):
+            waypoint.setdefault("metadata", None)
     _validate_geometry(prepared)
     with StravaSession(default_cookie_file()) as session:
         auth = session.authenticate()
@@ -391,6 +403,10 @@ def update_route(route_id: str, patch: dict[str, Any], confirm: bool, base_geome
                 prepared[field].update(value)
             else:
                 prepared[field] = value
+        for element in prepared.get("elements", []):
+            waypoint = element.get("waypoint") if isinstance(element, dict) else None
+            if isinstance(waypoint, dict):
+                waypoint.setdefault("metadata", None)
         _validate_geometry(prepared)
         prepared["routeId"] = route_id
         detail_geometry = copy.deepcopy(prepared)

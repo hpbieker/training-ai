@@ -61,6 +61,14 @@ separate operations. A two-request build was verified live through MCP.
 supplies the authenticated `athleteId` and defaults omitted metadata to an empty
 description, `OnlyMe`, and unstarred. It does not build a route.
 
+Preserve the complete path objects returned by `build_route`; do not reduce a
+built path to its Google polyline. Each element's waypoint must contain the
+`metadata` key (use `null` when there is no metadata), and each built leg must
+retain its `legType` (normally `Search`) as well as its zero-based
+`startElement`. Strava may silently normalize a leg's structure after saving,
+so verify the saved route and report unresolved geometry rather than treating
+an acknowledged POST as exact verification.
+
 `update_route` takes `route_id` and a nonempty `patch` using the same write
 fields. Read `/maps/create?routeId=...` and use
 `props.pageProps.prefetchedRoute` to preserve current editor state, including

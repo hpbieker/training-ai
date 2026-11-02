@@ -140,6 +140,9 @@ inspected geometry. `props` uses Strava's native write fields: `name`,
 This differs from the read object's field names. The service supplies the
 current athlete ID; new routes default to `OnlyMe`. Build with MCP `build_route`; creation does not rebuild geometry.
 Use the actual built elements, paths, and zero-based `startElement` indices.
+Keep each built leg's `legType` and full path object. Include
+`waypoint.metadata`, using `null` when it is absent. The service fills missing
+waypoint metadata with `null`, and validates the leg type before submission.
 
 Use MCP `update_route(route_id, patch, confirm=true)` for owned routes. Supply
 only changed native write fields. It reads fresh editor state and preserves
