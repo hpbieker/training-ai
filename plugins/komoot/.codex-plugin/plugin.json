@@ -1,0 +1,31 @@
+{
+  "name": "komoot",
+  "version": "0.1.5",
+  "description": "List and inspect Komoot tours, download GPX or FIT, and rename planned tours through the local Safari cookie session.",
+  "author": {
+    "name": "Hans Petter Bieker"
+  },
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Komoot",
+    "shortDescription": "Inspect, export, and rename Komoot tours.",
+    "longDescription": "Local MCP tools use the curl-safari Unix socket to access Komoot with the existing Safari login, list tours, read metadata or full route geometry or native tour-line geometry, save GPX and FIT exports to the training-ai workspace, and rename owned planned tours with explicit confirmation and readback.",
+    "developerName": "Hans Petter Bieker",
+    "category": "Health & Fitness",
+    "capabilities": [
+      "List planned and recorded tours with filtering and pagination",
+      "Read tour metadata separately from full route geometry",
+      "Download a Komoot tour as a validated GPX or FIT file",
+      "Read native Komoot tour-line geometry",
+      "Rename an owned planned tour with explicit confirmation and readback verification",
+      "Use Safari cookies in memory through curl-safari's Unix socket",
+      "Read ordered planned path waypoints",
+      "Inspect way types, surfaces and warnings by distance along the route",
+      "Compare route geometry with another tour or external coordinates"
+    ],
+    "composerIcon": "./assets/komoot-icon.png",
+    "logo": "./assets/komoot-icon.png",
+    "defaultPrompt": "Use the Komoot MCP to list tours, read metadata or full route geometry or native tour-line geometry, export GPX or FIT, or rename an owned planned tour with confirmation."
+  }
+}
