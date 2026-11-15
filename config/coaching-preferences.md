@@ -86,6 +86,9 @@ activities on Strava, unless the current request specifies otherwise:
   session calls for something else.
 - Translate the target into SiS plus seigmenn. A simple default cue is two
   seigmenn every 15–20 minutes, adjusted for drink strength.
+- For Laban Seigmenn, use 3.5 g carbohydrate per piece (5 g), as recorded in
+  EatMyRide product `10139011`. Give the suggested number of pieces and count
+  their carbohydrate together with the drink.
 
 ## Outdoor Routes
 
