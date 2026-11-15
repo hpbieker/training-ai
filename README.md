@@ -16,6 +16,10 @@ training, health, and weather data.
    [`$training-plan`](.agents/skills/training-plan/SKILL.md) to create or update a
    training plan.
 
+Keep your preferences, plans and plan state in the local `config/` directory.
+See [Personal configuration](docs/personal-configuration.md) for the file layout
+and initial plan state.
+
 ## Usage
 
 Ask Codex in plain language. For example:
