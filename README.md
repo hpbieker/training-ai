@@ -27,98 +27,128 @@ Ask Codex in plain language. For example:
 
 ## Data source setup
 
-### Intervals.icu
-
-Intervals.icu source semantics, MCP access and write-safety rules live in the
-local plugin. Start with `plugins/intervals-icu/skills/intervals-icu/SKILL.md`.
-
-For first-time MCP setup, store the Intervals.icu API key in the user-owned
-`~/.intervals_icu_mcp.json` file:
-
-```json
-{"apiKey":"..."}
-```
-
-`INTERVALS_ICU_API_KEY` can override the file. The MCP server loads the key at
-startup; it is not passed as a tool argument.
-
-### Olympiatoppen
-
-Olympiatoppen diary reads are available through the local plugin in
-`plugins/olympiatoppen/skills/olympiatoppen/SKILL.md`. Install the plugin to
-use `list_workouts` and `get_activity`; renew the private browser session with
-`import_session` from the authenticated Nettleser session when authentication
-is required.
-
-### Xert
-
-Xert source semantics, live access, CLI examples and write-safety rules live in
-the local plugin. Start with `plugins/xert/skills/xert/SKILL.md`.
-
-Fetch Xert data live through the plugin for current analysis, summaries,
-readiness or recommendations, and pass only normalized source-aware output to
-repo-level helpers such as
-`scripts/readiness_snapshot.py`.
+Configure only the plugins you use. Keep credential files outside the
+repository and restrict files containing secrets to mode `0600`.
 
 ### EatMyRide
 
-EatMyRide live access, source semantics, CLI examples and write-safety rules
-live in the local plugin. Start with
-`plugins/eatmyride/skills/eatmyride/SKILL.md`.
-
-Fetch EatMyRide data live through the plugin for current analysis, fueling
-checks or recommendations.
-
-### Yr / MET Norway
-
-Yr/MET Norway forecast access and source semantics live in the local plugin.
-Start with `plugins/yr/skills/yr/SKILL.md` and use its `get_forecast` or bounded
-batch `get_forecasts` MCP tool for live forecast reads. Pass normalized MCP
-output to repo helpers through their source-input arguments.
-
-Historical station data uses Frost through `find_observation_stations`,
-`get_observation_series`, and bounded point/time batch `get_observations`.
-Store the public-archive client ID in `~/.yr_mcp.json` as
-`{"frost": {"client_id": "<your-client-id>"}}`, with file permissions 0600.
-Historical tools retain station identity, measurement times, sensor levels,
-periods and quality codes; route interpretation stays outside the plugin.
-
-The API requires a non-generic User-Agent. The MCP's source client sets one by
-default.
-
-Source documentation:
-
-- https://api.met.no/weatherapi/locationforecast/2.0/documentation
-- https://api.met.no/doc/GettingStarted
-
-### Garmin Connect
-
-To enable automatic login on first use, add your Garmin credentials to
-`~/.garmin_mcp.json`:
+**Authentication.** Create `~/.eatmyride_mcp.json` in your home directory.
+Replace the example values with the email address and password you use to sign
+in to EatMyRide. The plugin reads this file when it needs to sign in.
 
 ```json
 {
-  "username": "example@example.com",
+  "username": "you@example.com",
+  "password": "<eatmyride-password>"
+}
+```
+
+[EatMyRide plugin guide](plugins/eatmyride/skills/eatmyride/SKILL.md#authentication-and-boundaries)
+
+### Garmin Connect
+
+**Authentication.** Store your Garmin `username` and `password` in
+`~/.garmin_mcp.json`. The plugin signs in on first use and refreshes its
+saved session. Set `GARMIN_MCP_CONFIG` to use a different file.
+
+```json
+{
+  "username": "you@example.com",
   "password": "<garmin-password>"
 }
 ```
 
-Use `chmod 600 ~/.garmin_mcp.json`. Set `GARMIN_MCP_CONFIG` to select a
-different file. If Garmin requires MFA, enter the code in a terminal. After
-the local plugin has started and created its Python environment, run this
-command from the repository root:
+If Garmin requires MFA, start the local plugin to create its Python environment.
+Then run this from the repository root and enter the MFA code when prompted:
 
 ```sh
 plugins/garmin-connect/.venv/bin/python -B plugins/garmin-connect/scripts/garmin_connect_auth.py login
 ```
 
-Python stores the session in `~/.config/training-ai/garmin` and refreshes it
-when needed.
-Set `TRAINING_AI_GARMIN_TOKEN_STORE` to use a separate directory.
+[Garmin Connect plugin guide](plugins/garmin-connect/skills/garmin-connect/SKILL.md)
 
-Use the Garmin Connect MCP tools for live reads. See the
-[Garmin Connect skill](plugins/garmin-connect/skills/garmin-connect/SKILL.md)
-for tool examples and interpretation of Garmin fields.
+### Intervals.icu
+
+**Authentication.** Store your Intervals.icu API key as `apiKey` in
+`~/.intervals_icu_mcp.json`, or set `INTERVALS_ICU_API_KEY` in the plugin
+environment.
+
+```json
+{
+  "apiKey": "<intervals-api-key>"
+}
+```
+
+[Intervals.icu plugin guide](plugins/intervals-icu/skills/intervals-icu/SKILL.md)
+
+### Komoot
+
+**Authentication.** Sign in to Komoot in Safari and make sure the local
+`curl-safari` cookie service is running. The plugin uses the existing Safari
+session through that service.
+
+[Komoot plugin guide](plugins/komoot/skills/komoot/SKILL.md)
+
+### Olympiatoppen
+
+**Authentication.** Sign in to the training diary in the Codex browser.
+When the plugin reports `auth_required`, follow the session setup in the
+plugin guide. The plugin's `import_session` tool verifies and saves the
+browser session for subsequent requests.
+
+[Olympiatoppen plugin guide](plugins/olympiatoppen/skills/olympiatoppen/SKILL.md#session-setup)
+
+### Strava
+
+**Authentication.** Sign in to Strava in Safari. In Safari Web Inspector,
+copy an authenticated Strava request as cURL and run the `import-curl`
+command in the plugin guide. The importer verifies the session and stores
+the cookie header in `~/.strava/session.headers`. Repeat the import when the
+plugin reports `auth_required`.
+
+[Strava plugin guide](plugins/strava/skills/strava/SKILL.md#authentication)
+
+### Training Visuals
+
+**Authentication.** No account or API key is required. The plugin renders
+routes from the files or geometry you provide.
+
+[Training Visuals plugin guide](plugins/training-visuals/README.md)
+
+### Xert
+
+**Authentication.** Store your Xert `username` and `password` in
+`~/.xert_mcp.json` for web-based tools such as activity history and Planner.
+For API-backed tools, add `oauthClientId` and `oauthClientSecret` from
+**Account Settings > Developer** to the same file. Some tools, including
+`get_training_state`, use both sets of credentials.
+
+```json
+{
+  "username": "you@example.com",
+  "password": "<xert-password>",
+  "oauthClientId": "<xert-client-key>",
+  "oauthClientSecret": "<xert-client-secret>"
+}
+```
+
+[Xert plugin guide](plugins/xert/skills/xert/SKILL.md#writes-and-access)
+
+### Yr / MET Norway
+
+**Authentication.** Forecasts require no credentials. For historical station
+observations, save a Frost client ID in `~/.yr_mcp.json` under
+`frost.client_id`. Public observations require only the client ID.
+
+```json
+{
+  "frost": {
+    "client_id": "<frost-client-id>"
+  }
+}
+```
+
+[Yr plugin guide](plugins/yr/skills/yr/SKILL.md)
 
 ## Development and tests
 
