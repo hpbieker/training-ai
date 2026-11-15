@@ -694,7 +694,7 @@ class ExecutionOptionsContractTests(unittest.TestCase):
                 "date": "2026-08-22",
                 "health_day": {
                     "date": "2026-08-22",
-                    "source": "garmin_connect_gccli",
+                    "source": "garmin_connect",
                     "source_time_local": "2026-08-22T12:01:25+02:00",
                     "sources": {
                         "training_readiness": [{"score": 32}],

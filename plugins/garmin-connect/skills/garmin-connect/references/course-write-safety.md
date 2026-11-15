@@ -13,7 +13,7 @@
   fields, the complete `geoPoints` array, and course-point names survived the
   read-back. If it is false, report the new course ID and mismatches; do not
   automatically delete the created course.
-- Never print or persist the access token returned by `gccli`.
+- Keep session tokens in the private token store and out of tool output.
 
 ## Delete
 

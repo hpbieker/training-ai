@@ -1,10 +1,12 @@
+import io
 import json
 import sys
 import unittest
+import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 
 SCRIPTS_DIR = (
@@ -13,6 +15,100 @@ SCRIPTS_DIR = (
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 import garmin_connect_api as API  # noqa: E402
+
+
+class GarminDirectReadTests(unittest.TestCase):
+    def test_first_request_logs_in_from_config_and_next_request_reuses_tokens(self):
+        with TemporaryDirectory() as workspace:
+            config = Path(workspace) / "config.json"
+            config.write_text(json.dumps({"username": "test@example.com", "password": "example"}))
+            store = Path(workspace) / "session"
+            garmin = Mock()
+            garmin.login.return_value = (None, None)
+            garmin.client.dump.side_effect = lambda directory: (
+                Path(directory) / "garmin_tokens.json"
+            ).write_text("{}")
+            garmin.client.request.return_value.content = b'{"ok": true}'
+            factory = Mock(return_value=garmin)
+            with (
+                patch.dict("os.environ", {"GARMIN_MCP_CONFIG": str(config)}),
+                patch.dict(sys.modules, {"garminconnect": SimpleNamespace(Garmin=factory)}),
+            ):
+                for _ in range(2):
+                    self.assertEqual(API.garmin_api_json("/test", token_store=str(store)), {"ok": True})
+
+            garmin.login.assert_called_once_with("{}")
+            garmin.client.dump.assert_called_once_with(str(store))
+            self.assertEqual(garmin.client.load.call_args_list, [call(str(store)), call(str(store))])
+            self.assertEqual(
+                [entry for entry in factory.call_args_list if entry.args],
+                [call("test@example.com", "example", prompt_mfa=None, return_on_mfa=True)],
+            )
+
+    def test_mfa_stops_health_fetch_without_prompting_or_retrying(self):
+        garmin = Mock()
+        garmin.login.return_value = ("needs_mfa", {})
+
+        with (
+            TemporaryDirectory() as workspace,
+            patch("garmin_connect_auth.load_credentials", return_value=("user", "example")) as config,
+            patch("garmin_connect_auth.getpass") as getpass,
+            patch.dict(sys.modules, {"garminconnect": SimpleNamespace(Garmin=Mock(return_value=garmin))}),
+        ):
+            with self.assertRaisesRegex(API.GarminLoginError, "requires MFA"):
+                API.fetch_day("2026-11-10", token_store=workspace, tolerate_errors=True)
+            config.assert_called_once_with(interactive=False)
+            garmin.login.assert_called_once_with("{}")
+            getpass.assert_not_called()
+            self.assertFalse((Path(workspace) / "garmin_tokens.json").exists())
+
+    @patch.object(API, "garmin_api_json")
+    def test_fetch_day_reuses_profile_and_keeps_other_sources_on_error(self, request):
+        day = "2026-11-10"
+        request.side_effect = [
+            {"displayName": "test/profile"},
+            {"heartRateValues": []},
+            RuntimeError("sleep unavailable"),
+            {"calendarDate": day},
+        ]
+
+        payload = API.fetch_day(
+            day, token_store="token_store", only=["heart_rate", "sleep", "summary"],
+            tolerate_errors=True,
+        )
+
+        self.assertEqual(payload["sources"]["sleep"]["error"]["type"], "garmin_read_failed")
+        self.assertEqual(payload["sources"]["summary"], {"calendarDate": day})
+        self.assertEqual(request.call_args_list, [
+            call("/userprofile-service/userprofile/settings", token_store="token_store"),
+            call(f"/wellness-service/wellness/dailyHeartRate/test%2Fprofile?date={day}", token_store="token_store"),
+            call(
+                f"/wellness-service/wellness/dailySleepData/test%2Fprofile?date={day}"
+                "&nonSleepBufferMinutes=60", token_store="token_store",
+            ),
+            call(
+                f"/usersummary-service/usersummary/daily/test%2Fprofile?calendarDate={day}",
+                token_store="token_store",
+            ),
+        ])
+
+    @patch.object(API, "garmin_api_request")
+    def test_fit_download_writes_the_fit_member(self, request):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w") as files:
+            files.writestr("metadata.txt", b"metadata")
+            files.writestr("nested/activity.FIT", b"fit bytes")
+        request.return_value = archive.getvalue()
+
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "activity.fit"
+            path = API.download_activity_file(
+                "123", token_store="token_store", file_format="fit", output_path=output
+            )
+            self.assertEqual(path, output)
+            self.assertEqual(output.read_bytes(), b"fit bytes")
+
+        request.assert_called_once_with("/download-service/files/activity/123", token_store="token_store")
 
 
 class GarminCompactHealthTests(unittest.TestCase):
@@ -145,7 +241,7 @@ class GarminCompactHealthTests(unittest.TestCase):
 
     def test_compact_day_summarizes_stress_and_body_battery_series(self) -> None:
         payload = {
-            "source": "garmin_connect_gccli",
+            "source": "garmin_connect",
             "date": "2026-08-17",
             "sources": {
                 "stress": {
@@ -199,7 +295,7 @@ class GarminCompactHealthTests(unittest.TestCase):
 
     def test_missing_fields_remain_null_and_do_not_become_zero(self) -> None:
         payload = {
-            "source": "garmin_connect_gccli",
+            "source": "garmin_connect",
             "date": "2026-08-08",
             "sources": {
                 "training_readiness": [{"score": 50, "level": "MODERATE"}],
@@ -230,7 +326,7 @@ class GarminCompactHealthTests(unittest.TestCase):
 
     def test_compact_recent_normalizes_each_day(self) -> None:
         recent = {
-            "source": "garmin_connect_gccli",
+            "source": "garmin_connect",
             "start_date": "2026-08-08",
             "end_date": "2026-08-08",
             "days": [self.payload],
@@ -338,39 +434,39 @@ class GarminCourseTests(unittest.TestCase):
         )
 
     @patch.object(API, "local_now", return_value="2026-07-26T20:00:00+02:00")
-    @patch.object(API, "run_gccli_json")
+    @patch.object(API, "garmin_api_json")
     def test_fetch_courses_normalizes_courses_for_user(
         self,
-        run_gccli_json,
+        garmin_api_json,
         _local_now,
     ) -> None:
-        run_gccli_json.return_value = {
+        garmin_api_json.return_value = {
             "coursesForUser": [
                 {"courseId": 123, "courseName": "Slemdal"},
                 "not-a-course",
             ]
         }
 
-        result = API.fetch_courses(gccli="/opt/homebrew/bin/gccli")
+        result = API.fetch_courses(token_store="/mock/garmin-tokens")
 
-        run_gccli_json.assert_called_once_with(
-            "/opt/homebrew/bin/gccli",
-            ["courses", "list"],
+        garmin_api_json.assert_called_once_with(
+            "/web-gateway/course/owner/",
+            token_store="/mock/garmin-tokens",
         )
         self.assertEqual(
             result,
             {
-                "source": "garmin_connect_gccli",
+                "source": "garmin_connect",
                 "source_time_local": "2026-07-26T20:00:00+02:00",
                 "courses": [{"courseId": 123, "courseName": "Slemdal"}],
             },
         )
 
     @patch.object(API, "local_now", return_value="2026-07-26T20:00:00+02:00")
-    @patch.object(API, "run_gccli_json")
+    @patch.object(API, "garmin_api_json")
     def test_fetch_course_preserves_full_geometry(
         self,
-        run_gccli_json,
+        garmin_api_json,
         _local_now,
     ) -> None:
         course = {
@@ -378,13 +474,13 @@ class GarminCourseTests(unittest.TestCase):
             "courseName": "Slemdal",
             "geoPoints": [{"latitude": 59.95, "longitude": 10.68}],
         }
-        run_gccli_json.return_value = course
+        garmin_api_json.return_value = course
 
-        result = API.fetch_course("123", gccli="/opt/homebrew/bin/gccli")
+        result = API.fetch_course("123", token_store="/mock/garmin-tokens")
 
-        run_gccli_json.assert_called_once_with(
-            "/opt/homebrew/bin/gccli",
-            ["courses", "detail", "123"],
+        garmin_api_json.assert_called_once_with(
+            "/course-service/course/123",
+            token_store="/mock/garmin-tokens",
         )
         self.assertEqual(result["course_id"], "123")
         self.assertIs(result["course"], course)
@@ -425,7 +521,7 @@ class GarminCourseTests(unittest.TestCase):
             path.write_text(json.dumps(source), encoding="utf-8")
             result = API.upload_course(
                 str(path),
-                gccli="/opt/homebrew/bin/gccli",
+                token_store="/mock/garmin-tokens",
                 course_name="Kopi",
             )
 
@@ -437,45 +533,40 @@ class GarminCourseTests(unittest.TestCase):
         self.assertEqual(result["course_id"], "123")
         self.assertTrue(result["verification"]["verified"])
 
-    @patch.object(API, "local_now", return_value="2026-07-26T20:00:00+02:00")
-    @patch.object(API, "fetch_courses")
-    @patch.object(API, "fetch_course")
-    @patch.object(API.subprocess, "run")
-    def test_delete_course_requires_id_and_verifies_absence(
-        self,
-        subprocess_run,
-        fetch_course,
-        fetch_courses,
-        _local_now,
-    ) -> None:
-        subprocess_run.return_value = SimpleNamespace(
-            returncode=0,
-            args=[],
-            stdout="",
-            stderr="",
-        )
-        fetch_course.return_value = {"course": {"courseId": 123, "courseName": "Kopi"}}
-        fetch_courses.return_value = {"courses": [{"courseId": 456}]}
+    @patch.object(API, "garmin_api_request")
+    def test_delete_course_reads_target_and_verifies_absence(self, request) -> None:
+        request.side_effect = [
+            b'{"courseId": 123, "courseName": "Kopi"}',
+            b"",
+            b'{"coursesForUser": [{"courseId": 456}]}',
+        ]
 
-        result = API.delete_course(
-            "123",
-            gccli="/opt/homebrew/bin/gccli",
-            confirmed_course_id="123",
-        )
+        result = API.delete_course("123", token_store="token_store", confirmed_course_id="123")
 
-        subprocess_run.assert_called_once_with(
-            ["/opt/homebrew/bin/gccli", "courses", "delete", "123", "--force"],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        self.assertEqual(request.call_args_list, [
+            call("/course-service/course/123", token_store="token_store", method="GET",
+                 payload=None, accept_json=True),
+            call("/course-service/course/123", token_store="token_store", method="DELETE",
+                 accept_json=True),
+            call("/web-gateway/course/owner/", token_store="token_store", method="GET",
+                 payload=None, accept_json=True),
+        ])
         self.assertTrue(result["deleted"])
+        self.assertEqual(result["course_name"], "Kopi")
+
+    @patch.object(API, "garmin_api_request")
+    def test_delete_course_fails_when_absence_cannot_be_verified(self, request) -> None:
+        for response in (b"{}", b'{"coursesForUser": [{"courseId": 123}]}'):
+            with self.subTest(response=response):
+                request.side_effect = [b'{"courseId": 123}', b"", response]
+                with self.assertRaises(RuntimeError):
+                    API.delete_course("123", token_store="token_store", confirmed_course_id="123")
 
     def test_delete_course_rejects_mismatched_confirmation(self) -> None:
         with self.assertRaises(SystemExit):
             API.delete_course(
                 "123",
-                gccli="/opt/homebrew/bin/gccli",
+                token_store="/mock/garmin-tokens",
                 confirmed_course_id="321",
             )
 

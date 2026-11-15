@@ -1,14 +1,13 @@
 ---
 name: garmin-connect
-description: Use when working with Garmin Connect live health, readiness, Body Battery, HRV, sleep, stress, Training Status, activity metrics, saved courses/routes including upload and deletion, gccli access, or Garmin sync semantics.
+description: Use when working with Garmin Connect live health, readiness, Body Battery, HRV, sleep, stress, Training Status, activity metrics, saved courses/routes including upload and deletion, or Garmin sync semantics.
 ---
 
 # Garmin Connect
 
 Use this skill for Garmin Connect access, Garmin-specific field interpretation,
-sync/freshness behavior, and tightly scoped course writes. The plugin uses local
-`gccli` for authentication and its primary transport boundary. Health, activity,
-and course operations are exposed through MCP.
+sync/freshness behavior, and tightly scoped course writes. The plugin uses Python for Garmin Connect data requests and authentication. Health, activity, and course operations are
+exposed through MCP.
 
 ## Network Execution
 
@@ -109,9 +108,11 @@ needs a saved input, persist the normalized MCP result with its timestamps and
 source context. The caller's workflow owns downstream helper commands and input
 contracts; in training-ai, use the training-analysis skill for that integration.
 
-Authentication is managed outside the repo with
-`/opt/homebrew/bin/gccli auth login`. The plugin prefers that binary and falls
-back to `gccli` on `PATH`.
+Add `username` and `password` to `~/.garmin_mcp.json` for automatic login on
+first use. Set `GARMIN_MCP_CONFIG` to use a different config file. If Garmin
+requires MFA, run `scripts/garmin_connect_auth.py login` in a terminal using the
+plugin's Python environment. The plugin stores and refreshes tokens outside
+the repo.
 
 Before uploading or deleting a course, read
 [references/course-write-safety.md](references/course-write-safety.md).

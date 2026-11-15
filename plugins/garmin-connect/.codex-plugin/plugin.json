@@ -10,7 +10,7 @@
   "interface": {
     "displayName": "Garmin Connect",
     "shortDescription": "Read Garmin health and activities, and manage saved courses.",
-    "longDescription": "Garmin Connect provides gccli-backed MCP access and source-specific guidance for health, readiness, Body Battery, Training Readiness, Training Status, activity metadata, and saved-course operations. Local persistence and cross-source analysis live outside the plugin.",
+    "longDescription": "Garmin Connect provides MCP access and source-specific guidance for health, readiness, Body Battery, Training Readiness, Training Status, activity metadata, and saved-course operations. Local persistence and cross-source analysis live outside the plugin.",
     "developerName": "Hans Petter Bieker",
     "category": "Health & Fitness",
     "capabilities": [

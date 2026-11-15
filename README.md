@@ -99,48 +99,27 @@ Source documentation:
 
 ## Fetch health data from Garmin Connect
 
-Garmin Connect does not provide a simple public personal API. For local personal
-use, this project uses `gccli`, with credentials managed by `gccli auth login`
-outside the repository. Source-specific access and interpretation live in the
-repo-local Garmin Connect plugin at
-`plugins/garmin-connect/skills/garmin-connect/SKILL.md`. Garmin Connect data is
-fetched live through the plugin.
+To enable automatic login on first use, add your Garmin credentials to
+`~/.garmin_mcp.json`:
 
-Install and authenticate:
-
-```bash
-/opt/homebrew/bin/brew install bpauli/tap/gccli
-/opt/homebrew/bin/gccli auth login
+```json
+{
+  "username": "you@example.com",
+  "password": "your Garmin password"
+}
 ```
 
-Fetch Garmin readiness/health data:
+Use `chmod 600 ~/.garmin_mcp.json`. Set `GARMIN_MCP_CONFIG` to select a
+different file. If Garmin requires MFA, run `scripts/garmin_connect_auth.py login`
+in a terminal with the plugin's Python environment and enter the code there.
 
-```bash
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py day 2026-05-14
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py recent --days 7 --until 2026-05-14
-```
+Python stores the session in `~/.config/training-ai/garmin` and refreshes it
+when needed.
+Set `TRAINING_AI_GARMIN_TOKEN_STORE` to use a separate directory.
 
-`day` fetches all daily Garmin health sources used for readiness checks,
-including heart rate, stress, HRV, sleep, summary, training readiness and
-training status. `--only` is available for targeted debugging, but normal
-readiness work should fetch the whole day so the sources stay in sync.
-
-Use `python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py status`
-only for troubleshooting `gccli` authentication. It does not fetch readiness
-data.
-
-Fetch Garmin metadata for a specific activity when Garmin's activity-level
-assessment is useful:
-
-```bash
-python3 -B plugins/garmin-connect/scripts/garmin_connect_cli.py activity i148448596
-```
-
-`activity` fetches Garmin activity metadata such as Training Effect, stamina,
-performance condition and secondary Garmin load context. It accepts either a
-Garmin activity id or a saved Intervals.icu artifact id; for Intervals
-artifacts from Garmin Connect it uses `external_id` as the Garmin activity id.
-Use `--summary-only` when the chart details are not needed.
+Use the Garmin Connect MCP tools for live reads. See the
+[Garmin Connect skill](plugins/garmin-connect/skills/garmin-connect/SKILL.md)
+for tool examples and interpretation of Garmin fields.
 
 ## Build readiness context
 

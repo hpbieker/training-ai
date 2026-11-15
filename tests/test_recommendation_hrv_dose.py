@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 
 def history(days=('20', '21', '22'), values=(71, 71, 61)):
-    return {'source': 'garmin_connect_gccli', 'days': [
+    return {'source': 'garmin_connect', 'days': [
         {'date': '2026-10-' + day, 'sources': {'hrv': {'lastNightAvg': value}}}
         for day, value in zip(days, values)]}
 

@@ -18,7 +18,7 @@ SPEC.loader.exec_module(MCP)
 
 class GarminConnectMcpTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.service = MCP.GarminConnectToolService(lambda: "/mock/gccli")
+        self.service = MCP.GarminConnectToolService(lambda: "/mock/garmin-tokens")
 
     def test_lists_exactly_eleven_tools_with_closed_inputs(self) -> None:
         tools = self.service.list_tools()
@@ -45,7 +45,7 @@ class GarminConnectMcpTests(unittest.TestCase):
 
         fetch_day.assert_called_once_with(
             "2026-08-17",
-            gccli="/mock/gccli",
+            token_store="/mock/garmin-tokens",
             only=None,
             profile="readiness",
             tolerate_errors=True,
@@ -103,7 +103,7 @@ class GarminConnectMcpTests(unittest.TestCase):
         fetch_recent.assert_called_once_with(
             days=7,
             until="2026-08-17",
-            gccli="/mock/gccli",
+            token_store="/mock/garmin-tokens",
             only=["hrv", "body-battery"],
             profile="full",
             tolerate_errors=True,
@@ -142,7 +142,7 @@ class GarminConnectMcpTests(unittest.TestCase):
         )
 
         search.assert_called_once_with(
-            "/mock/gccli", "2026-08-17", "2026-08-17", limit=100
+            "/mock/garmin-tokens", "2026-08-17", "2026-08-17", limit=100
         )
         self.assertEqual(result["count"], 1)
         self.assertEqual(result["includeFields"], [])
@@ -186,7 +186,7 @@ class GarminConnectMcpTests(unittest.TestCase):
             "activity_id": 123, "name": "Indoor ride",
             "start_local": "2026-08-17 12:15:23", "type": "indoor_cycling",
             "duration_s": 7747.1, "distance_m": 72510.5,
-            "source": "garmin_connect_gccli",
+            "source": "garmin_connect",
         })
 
     def test_list_activities_rejects_invalid_include_fields(self) -> None:
@@ -206,7 +206,7 @@ class GarminConnectMcpTests(unittest.TestCase):
     @patch.object(MCP, "fetch_activity")
     def test_get_activity_returns_only_normalized_summary(self, fetch_activity) -> None:
         fetch_activity.return_value = {
-            "source": "garmin_connect_gccli",
+            "source": "garmin_connect",
             "metrics_summary": {"training_effect": {}},
             "summary": {"large": True},
             "details": {"chart": []},
@@ -215,7 +215,7 @@ class GarminConnectMcpTests(unittest.TestCase):
         result = self.service.call_tool("get_activity", {"activity_id": "123"})
 
         fetch_activity.assert_called_once_with(
-            "123", gccli="/mock/gccli", include_details=True
+            "123", token_store="/mock/garmin-tokens", include_details=True
         )
         self.assertNotIn("summary", result)
         self.assertNotIn("details", result)
@@ -224,7 +224,7 @@ class GarminConnectMcpTests(unittest.TestCase):
     @patch.object(MCP, "fetch_activity")
     def test_get_activity_can_save_full_private_file(self, fetch_activity) -> None:
         source = {
-            "source": "garmin_connect_gccli",
+            "source": "garmin_connect",
             "metrics_summary": {"training_effect": {}},
             "summary": {"activityId": 123},
             "details": {"chart": [{"power": 200}]},
@@ -254,7 +254,7 @@ class GarminConnectMcpTests(unittest.TestCase):
 
     @patch.object(MCP, "download_activity_file")
     def test_get_activity_file_returns_private_file(self, download) -> None:
-        def write_file(activity, *, gccli, file_format, output_path):
+        def write_file(activity, *, token_store, file_format, output_path):
             output_path.write_bytes(b"fit-data")
             return output_path
 
@@ -279,21 +279,21 @@ class GarminConnectMcpTests(unittest.TestCase):
         ftp_result = self.service.call_tool("get_cycling_ftp", {})
         lt_result = self.service.call_tool("get_lactate_threshold", {})
 
-        cycling_ftp.assert_called_once_with(gccli="/mock/gccli")
-        lactate.assert_called_once_with(gccli="/mock/gccli")
+        cycling_ftp.assert_called_once_with(token_store="/mock/garmin-tokens")
+        lactate.assert_called_once_with(token_store="/mock/garmin-tokens")
         self.assertEqual(ftp_result["cycling_ftp"]["ftp"], 300)
         self.assertEqual(lt_result["lactate_threshold"]["heartRate"], 170)
 
     @patch.object(MCP, "fetch_courses")
     def test_list_courses_uses_course_service(self, fetch_courses) -> None:
         fetch_courses.return_value = {
-            "source": "garmin_connect_gccli", "source_time_local": "now",
+            "source": "garmin_connect", "source_time_local": "now",
             "courses": [{"courseId": 123, "courseName": "Slemdal", "elevationGainMeter": 500}],
         }
 
         result = self.service.call_tool("list_courses", {})
 
-        fetch_courses.assert_called_once_with(gccli="/mock/gccli")
+        fetch_courses.assert_called_once_with(token_store="/mock/garmin-tokens")
         self.assertEqual(result["courses"][0]["course_id"], 123)
         self.assertNotIn("elevationGainMeter", result["courses"][0])
 
@@ -316,13 +316,13 @@ class GarminConnectMcpTests(unittest.TestCase):
         })
         self.assertEqual([row["activity_id"] for row in result["activities"]], [2])
         search.assert_called_once_with(
-            "/mock/gccli", "2026-01-01", "2026-08-17", limit=500
+            "/mock/garmin-tokens", "2026-01-01", "2026-08-17", limit=500
         )
 
     @patch.object(MCP, "fetch_courses")
     def test_list_courses_filters_and_sorts(self, fetch_courses) -> None:
         fetch_courses.return_value = {
-            "source": "garmin_connect_gccli", "source_time_local": "now",
+            "source": "garmin_connect", "source_time_local": "now",
             "courses": [
                 {"courseId": 1, "courseName": "Short", "distanceMeter": 20000},
                 {"courseId": 2, "courseName": "Long", "distanceMeter": 80000},
@@ -339,7 +339,7 @@ class GarminConnectMcpTests(unittest.TestCase):
 
         self.service.call_tool("get_course", {"course_id": "123"})
 
-        fetch_course.assert_called_once_with("123", gccli="/mock/gccli")
+        fetch_course.assert_called_once_with("123", token_store="/mock/garmin-tokens")
 
     @patch.object(MCP, "upload_course")
     def test_create_course_passes_object_and_name_to_verified_uploader(self, upload) -> None:
@@ -352,7 +352,7 @@ class GarminConnectMcpTests(unittest.TestCase):
 
         upload.assert_called_once_with(
             course,
-            gccli="/mock/gccli",
+            token_store="/mock/garmin-tokens",
             course_name="Copy",
             course_privacy=2,
         )
@@ -367,7 +367,7 @@ class GarminConnectMcpTests(unittest.TestCase):
         )
 
         delete.assert_called_once_with(
-            "123", gccli="/mock/gccli", confirmed_course_id="123"
+            "123", token_store="/mock/garmin-tokens", confirmed_course_id="123"
         )
         self.assertTrue(result["deleted"])
 

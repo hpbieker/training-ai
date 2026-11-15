@@ -17,6 +17,7 @@ SCRIPTS_DIR = PLUGIN_ROOT / "scripts"
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
+from garmin_connect_auth import resolve_token_store  # noqa: E402
 from garmin_connect_api import (  # noqa: E402
     DAILY_SPEC_CHOICES,
     compact_day_payload,
@@ -32,7 +33,6 @@ from garmin_connect_api import (  # noqa: E402
     fetch_recent_days,
     garmin_activity_search,
     local_now,
-    resolve_gccli,
     upload_course,
 )
 from list_query import apply_list_query, query_fields, query_properties  # noqa: E402
@@ -383,8 +383,8 @@ def _write_private_health_day_file(
 
 
 class GarminConnectToolService:
-    def __init__(self, gccli_factory: Callable[[], str] = resolve_gccli) -> None:
-        self._gccli_factory = gccli_factory
+    def __init__(self, token_store_factory: Callable[[], str] = resolve_token_store) -> None:
+        self._token_store_factory = token_store_factory
 
     def list_tools(self) -> list[dict[str, object]]:
         return [TOOL_DEFINITIONS[name] for name in ALL_TOOL_NAMES]
@@ -396,11 +396,13 @@ class GarminConnectToolService:
             return self._call_tool(name, arguments)
         except (ValueError, TypeError, KeyError) as exc:
             raise ToolFailure(str(exc), "invalid_arguments") from exc
-        except SystemExit as exc:
+        except ToolFailure:
+            raise
+        except (OSError, RuntimeError, SystemExit) as exc:
             raise ToolFailure(str(exc), "garmin_access_error") from exc
 
     def _call_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        gccli = self._gccli_factory()
+        token_store = self._token_store_factory()
         if name == "get_health_day":
             day = _iso_date(arguments["date"], "date")
             save_full = arguments.get("save_full", False)
@@ -408,7 +410,7 @@ class GarminConnectToolService:
                 raise ValueError("save_full must be a boolean")
             payload = fetch_day(
                 day,
-                gccli=gccli,
+                token_store=token_store,
                 only=_sources(arguments),
                 profile="full" if arguments.get("sources") else "readiness",
                 tolerate_errors=arguments.get("tolerate_errors", True),
@@ -430,7 +432,7 @@ class GarminConnectToolService:
             payload = fetch_recent_days(
                 days=days,
                 until=until,
-                gccli=gccli,
+                token_store=token_store,
                 only=_sources(arguments),
                 profile="full" if arguments.get("sources") else "readiness",
                 tolerate_errors=arguments.get("tolerate_errors", True),
@@ -460,7 +462,7 @@ class GarminConnectToolService:
             effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
             has_query = bool(arguments.get("filters") or arguments.get("sort"))
             fetch_limit = 500 if has_query else limit
-            activities = garmin_activity_search(gccli, since, until, limit=fetch_limit)
+            activities = garmin_activity_search(token_store, since, until, limit=fetch_limit)
             summaries = [
                 _activity_list_summary(activity, effective_fields)
                 for activity in activities
@@ -470,7 +472,7 @@ class GarminConnectToolService:
                 default_limit=limit,
             )
             return {
-                "source": "garmin_connect_gccli",
+                "source": "garmin_connect",
                 "source_time_local": local_now(),
                 "since": since,
                 "until": until,
@@ -484,7 +486,7 @@ class GarminConnectToolService:
             save_full = arguments.get("save_full", False)
             if not isinstance(save_full, bool):
                 raise ValueError("save_full must be a boolean")
-            payload = fetch_activity(activity, gccli=gccli, include_details=True)
+            payload = fetch_activity(activity, token_store=token_store, include_details=True)
             result = dict(payload)
             result.pop("summary", None)
             result.pop("details", None)
@@ -518,7 +520,7 @@ class GarminConnectToolService:
             output_path = temporary_dir / f"activity-{activity}.{file_format}"
             try:
                 path = download_activity_file(
-                    activity, gccli=gccli, file_format=file_format,
+                    activity, token_store=token_store, file_format=file_format,
                     output_path=output_path,
                 )
                 os.chmod(path, 0o600)
@@ -532,11 +534,11 @@ class GarminConnectToolService:
                 "file_path": str(path), "byte_size": path.stat().st_size,
             }
         if name == "get_cycling_ftp":
-            return fetch_cycling_ftp(gccli=gccli)
+            return fetch_cycling_ftp(token_store=token_store)
         if name == "get_lactate_threshold":
-            return fetch_lactate_threshold(gccli=gccli)
+            return fetch_lactate_threshold(token_store=token_store)
         if name == "list_courses":
-            payload = fetch_courses(gccli=gccli)
+            payload = fetch_courses(token_store=token_store)
             include_fields = _include_fields(
                 arguments.get("includeFields", []), _COURSE_LIST_INCLUDE_FIELDS
             )
@@ -559,7 +561,7 @@ class GarminConnectToolService:
                 "count": len(summaries), "courses": summaries, **query_meta,
             }
         if name == "get_course":
-            return fetch_course(_required_id(arguments, "course_id"), gccli=gccli)
+            return fetch_course(_required_id(arguments, "course_id"), token_store=token_store)
         if name == "create_course":
             course = arguments["course"]
             if not isinstance(course, dict):
@@ -571,7 +573,7 @@ class GarminConnectToolService:
                 raise ValueError("name must be a non-empty string when supplied")
             return upload_course(
                 course,
-                gccli=gccli,
+                token_store=token_store,
                 course_name=name_override.strip() if name_override else None,
                 course_privacy=arguments.get("privacy", 2),
             )
@@ -584,7 +586,7 @@ class GarminConnectToolService:
             )
         return delete_course(
             course_id,
-            gccli=gccli,
+            token_store=token_store,
             confirmed_course_id=confirmed_course_id,
         )
 
@@ -643,7 +645,7 @@ def _activity_list_summary(
         "type": type_key,
         "duration_s": activity.get("duration"),
         "distance_m": activity.get("distance"),
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
     }
     summary.update({
         field: aliases[field] if field in aliases else activity.get(field)
@@ -663,7 +665,7 @@ def _course_list_summary(
         "name": course.get("courseName"),
         "sport_type": sport_type,
         "distance_m": course.get("distanceMeter"),
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
     }
     summary.update({field: course.get(field) for field in include_fields})
     return summary

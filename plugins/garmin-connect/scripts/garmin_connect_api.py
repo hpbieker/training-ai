@@ -1,24 +1,21 @@
-"""Garmin Connect live helpers backed by gccli.
-
-Garmin Connect does not expose a simple public personal API, so this module
-uses the local ``gccli`` command as the transport boundary. Credentials remain
-managed by ``gccli auth login`` and the local keyring.
-"""
+"""Garmin Connect HTTP operations using a local Python session."""
 
 from __future__ import annotations
 
+import io
 import json
-import shutil
-import subprocess
-import urllib.request
+import fcntl
+import os
+import zipfile
+from urllib.parse import parse_qsl, quote, urlencode
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Iterable
 
+from garmin_connect_auth import GarminLoginError, login
 
-DEFAULT_GCCLI = "/opt/homebrew/bin/gccli"
+
 GARMIN_ACTIVITY_DETAILS_MAX_POINTS = 2000
-GARMIN_CONNECT_API = "https://connectapi.garmin.com"
 GARMIN_MOBILE_USER_AGENT = "com.garmin.android.apps.connectmobile"
 COURSE_SAVE_FIELDS = {
     "activityTypePk", "boundingBox", "coordinateSystem", "courseLines",
@@ -52,21 +49,10 @@ DAILY_PROFILE_SPECS = {
 }
 
 
-def resolve_gccli() -> str:
-    """Return the preferred gccli executable path."""
-
-    if Path(DEFAULT_GCCLI).exists():
-        return DEFAULT_GCCLI
-    resolved = shutil.which("gccli")
-    if resolved:
-        return resolved
-    raise SystemExit("gccli not found. Install it and run `gccli auth login` first.")
-
-
 def fetch_day(
     day: str,
     *,
-    gccli: str,
+    token_store: str,
     only: Iterable[str] | None = None,
     profile: str = "full",
     tolerate_errors: bool = False,
@@ -77,15 +63,37 @@ def fetch_day(
     wanted = {daily_spec_key(name) for name in DAILY_PROFILE_SPECS[profile]}
     if only:
         wanted &= {daily_spec_key(name) for name in only}
-    specs = {name: command for name, command in specs.items() if name in wanted}
+    source_time = local_now()
+    sources = {}
+    display_name = None
+    for name, path in specs.items():
+        if name not in wanted:
+            continue
+        try:
+            if "{display_name}" in path:
+                if display_name is None:
+                    settings = garmin_api_json(
+                        "/userprofile-service/userprofile/settings", token_store=token_store
+                    )
+                    display_name = settings.get("displayName") if isinstance(settings, dict) else None
+                    if not isinstance(display_name, str) or not display_name:
+                        raise RuntimeError("Garmin profile has no display name")
+                path = path.format(display_name=quote(display_name, safe=""))
+            sources[name] = garmin_api_json(path, token_store=token_store)
+        except GarminLoginError:
+            raise
+        except (OSError, ValueError, RuntimeError) as error:
+            if not tolerate_errors:
+                raise
+            sources[name] = {"error": {
+                "type": "garmin_read_failed",
+                "message": str(error),
+            }}
     return {
-        "source": "garmin_connect_gccli",
-        "source_time_local": local_now(),
+        "source": "garmin_connect",
+        "source_time_local": source_time,
         "date": day,
-        "sources": {
-            name: run_gccli_json(gccli, command, tolerate_errors=tolerate_errors)
-            for name, command in specs.items()
-        },
+        "sources": sources,
     }
 
 
@@ -93,7 +101,7 @@ def fetch_recent_days(
     *,
     days: int,
     until: str,
-    gccli: str,
+    token_store: str,
     only: Iterable[str] | None = None,
     profile: str = "full",
     tolerate_errors: bool = False,
@@ -103,14 +111,14 @@ def fetch_recent_days(
     until_date = date.fromisoformat(until)
     start_date = until_date - timedelta(days=days - 1)
     result = {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
         "start_date": start_date.isoformat(),
         "end_date": until_date.isoformat(),
         "days": [
             fetch_day(
                 (until_date - timedelta(days=offset)).isoformat(),
-                gccli=gccli,
+                token_store=token_store,
                 only=only,
                 profile=profile,
                 tolerate_errors=tolerate_errors,
@@ -127,21 +135,22 @@ def fetch_recent_days(
         result["body_battery_range"] = fetch_body_battery_range(
             start_date.isoformat(),
             until_date.isoformat(),
-            gccli=gccli,
+            token_store=token_store,
         )
     return result
 
 
-def daily_specs(day: str) -> dict[str, list[str]]:
+def daily_specs(day: str) -> dict[str, str]:
+    wellness = "/wellness-service/wellness"
     return {
-        "body_battery": ["health", "body-battery", "range", "--start", day, "--end", day],
-        "training_readiness": ["health", "training-readiness", day],
-        "stress": ["health", "stress", "view", day],
-        "heart_rate": ["health", "hr", day],
-        "hrv": ["health", "hrv", day],
-        "sleep": ["health", "sleep", day],
-        "summary": ["health", "summary", day],
-        "training_status": ["health", "training-status", day],
+        "body_battery": body_battery_path(day, day),
+        "training_readiness": f"/metrics-service/metrics/trainingreadiness/{day}",
+        "stress": f"{wellness}/dailyStress/{day}",
+        "heart_rate": f"{wellness}/dailyHeartRate/{{display_name}}?date={day}",
+        "hrv": f"/hrv-service/hrv/{day}",
+        "sleep": f"{wellness}/dailySleepData/{{display_name}}?date={day}&nonSleepBufferMinutes=60",
+        "summary": f"/usersummary-service/usersummary/daily/{{display_name}}?calendarDate={day}",
+        "training_status": f"/metrics-service/metrics/trainingstatus/aggregated/{day}",
     }
 
 
@@ -245,7 +254,7 @@ def compact_daily_source_summaries(sources: dict[str, Any]) -> dict[str, Any]:
         if row is None:
             summaries[source] = None
             continue
-        # gccli returns nested overnight summaries with timing on the envelope.
+        # Garmin returns nested overnight summaries with timing on the envelope.
         # Flatten only the summary, never the raw overnight time series.
         nested_key = {"hrv": "hrvSummary", "sleep": "dailySleepDTO"}.get(source)
         nested = row.get(nested_key) if nested_key else None
@@ -570,19 +579,21 @@ def date_distance_days(observed: Any, requested: Any) -> int | None:
         return None
 
 
-def fetch_body_battery_range(start: str, end: str, *, gccli: str) -> Any:
+def fetch_body_battery_range(start: str, end: str, *, token_store: str) -> Any:
     """Fetch Garmin Body Battery data for a date range."""
 
-    return run_gccli_json(
-        gccli,
-        ["health", "body-battery", "range", "--start", start, "--end", end],
-    )
+    return garmin_api_json(body_battery_path(start, end), token_store=token_store)
+
+
+def body_battery_path(start: str, end: str) -> str:
+    query = urlencode({"startDate": start, "endDate": end})
+    return f"/wellness-service/wellness/bodyBattery/reports/daily?{query}"
 
 
 def fetch_activity(
     activity: str,
     *,
-    gccli: str,
+    token_store: str,
     include_details: bool = True,
 ) -> dict[str, Any]:
     """Fetch one Garmin activity's summary and optional details metadata.
@@ -593,23 +604,18 @@ def fetch_activity(
     """
 
     resolved = resolve_garmin_activity(activity)
-    summary = run_gccli_json(gccli, ["activity", "summary", resolved["garmin_id"]])
-    details = (
-        run_gccli_json(
-            gccli,
-            [
-                "activity",
-                "details",
-                resolved["garmin_id"],
-                "--max-chart",
-                str(GARMIN_ACTIVITY_DETAILS_MAX_POINTS),
-            ],
-        )
-        if include_details
-        else {}
-    )
+    activity_id = quote(resolved["garmin_id"], safe="")
+    path = f"/activity-service/activity/{activity_id}"
+    summary = garmin_api_json(path, token_store=token_store)
+    details = {}
+    if include_details:
+        query = urlencode({
+            "maxChartSize": GARMIN_ACTIVITY_DETAILS_MAX_POINTS,
+            "maxPolylineSize": 4000,
+        })
+        details = garmin_api_json(f"{path}/details?{query}", token_store=token_store)
     payload = {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
         "resolved_activity": resolved,
         "metrics_summary": garmin_activity_metrics(summary, details),
@@ -623,76 +629,85 @@ def fetch_activity(
 def download_activity_file(
     activity: str,
     *,
-    gccli: str,
+    token_store: str,
     file_format: str,
     output_path: Path,
 ) -> Path:
     """Download one Garmin Connect activity export to an explicit path."""
 
     resolved = resolve_garmin_activity(activity)
-    result = subprocess.run(
-        [
-            gccli, "activity", "download", resolved["garmin_id"],
-            "--format", file_format, "--output", str(output_path),
-        ],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode,
-            result.args,
-            output=result.stdout,
-            stderr=result.stderr,
-        )
-    if not output_path.is_file() or output_path.stat().st_size == 0:
-        raise RuntimeError("gccli did not create a non-empty activity file")
+    activity_id = quote(resolved["garmin_id"], safe="")
+    if file_format == "fit":
+        path = f"/download-service/files/activity/{activity_id}"
+        archive = garmin_api_request(path, token_store=token_store)
+        with zipfile.ZipFile(io.BytesIO(archive)) as files:
+            member = next(
+                (entry for entry in files.infolist()
+                 if not entry.is_dir() and Path(entry.filename).suffix.lower() == ".fit"),
+                None,
+            )
+            if member is None:
+                raise RuntimeError("Garmin activity archive contains no FIT file")
+            data = files.read(member)
+    elif file_format in {"gpx", "tcx", "kml", "csv"}:
+        path = f"/download-service/export/{file_format}/activity/{activity_id}"
+        data = garmin_api_request(path, token_store=token_store)
+    else:
+        raise ValueError(f"Unsupported activity format: {file_format}")
+    if not data:
+        raise RuntimeError("Garmin returned an empty activity file")
+    output_path.write_bytes(data)
     return output_path
 
 
-def fetch_cycling_ftp(*, gccli: str) -> dict[str, Any]:
+def fetch_cycling_ftp(*, token_store: str) -> dict[str, Any]:
     """Fetch Garmin Connect's latest cycling FTP payload."""
 
     return {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
-        "cycling_ftp": run_gccli_json(gccli, ["health", "cycling-ftp"]),
+        "cycling_ftp": garmin_api_json(
+            "/biometric-service/biometric/latestFunctionalThresholdPower/CYCLING", token_store=token_store
+        ),
     }
 
 
-def fetch_lactate_threshold(*, gccli: str) -> dict[str, Any]:
+def fetch_lactate_threshold(*, token_store: str) -> dict[str, Any]:
     """Fetch Garmin Connect's latest lactate-threshold payload."""
 
     return {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
-        "lactate_threshold": run_gccli_json(gccli, ["health", "lactate-threshold"]),
+        "lactate_threshold": garmin_api_json(
+            "/biometric-service/biometric/latestLactateThreshold", token_store=token_store
+        ),
     }
 
 
-def fetch_courses(*, gccli: str) -> dict[str, Any]:
+def fetch_courses(*, token_store: str) -> dict[str, Any]:
     """Fetch the Garmin Connect user's saved courses (routes)."""
 
-    payload = run_gccli_json(gccli, ["courses", "list"])
-    courses = []
+    payload = garmin_api_json("/web-gateway/course/owner/", token_store=token_store)
     if isinstance(payload, dict) and isinstance(payload.get("coursesForUser"), list):
         courses = [item for item in payload["coursesForUser"] if isinstance(item, dict)]
     elif isinstance(payload, list):
         courses = [item for item in payload if isinstance(item, dict)]
+    else:
+        raise RuntimeError("Garmin returned an invalid course list")
     return {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
         "courses": courses,
     }
 
 
-def fetch_course(course_id: str, *, gccli: str) -> dict[str, Any]:
+def fetch_course(course_id: str, *, token_store: str) -> dict[str, Any]:
     """Fetch one Garmin Connect course, including its route geometry."""
 
-    course = run_gccli_json(gccli, ["courses", "detail", course_id])
+    path = f"/course-service/course/{quote(str(course_id), safe='')}"
+    course = garmin_api_json(path, token_store=token_store)
     return {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
         "course_id": str(course_id),
         "course": course,
@@ -702,7 +717,7 @@ def fetch_course(course_id: str, *, gccli: str) -> dict[str, Any]:
 def upload_course(
     course_json: str | dict[str, Any],
     *,
-    gccli: str,
+    token_store: str,
     course_name: str | None = None,
     course_privacy: int = 2,
 ) -> dict[str, Any]:
@@ -718,14 +733,14 @@ def upload_course(
     payload["coursePrivacy"] = course_privacy
     payload.setdefault("rulePK", 2)
     created = garmin_api_json(
-        "/course-service/course", gccli=gccli, method="POST", payload=payload
+        "/course-service/course", token_store=token_store, method="POST", payload=payload
     )
     if not isinstance(created, dict) or created.get("courseId") is None:
         raise RuntimeError("Garmin returned no courseId for the created course.")
     course_id = str(created["courseId"])
-    fetched = fetch_course(course_id, gccli=gccli)["course"]
+    fetched = fetch_course(course_id, token_store=token_store)["course"]
     return {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
         "operation": "course_upload",
         "course_id": course_id,
@@ -737,7 +752,7 @@ def upload_course(
 def delete_course(
     course_id: str,
     *,
-    gccli: str,
+    token_store: str,
     confirmed_course_id: str,
 ) -> dict[str, Any]:
     """Delete one Garmin course after exact course-ID confirmation."""
@@ -747,33 +762,27 @@ def delete_course(
         raise SystemExit(
             f"Refusing deletion: --confirm-course-id must exactly equal {course_id}."
         )
-    existing = fetch_course(course_id, gccli=gccli)["course"]
-    result = subprocess.run(
-        [gccli, "courses", "delete", course_id, "--force"],
-        check=False,
-        capture_output=True,
-        text=True,
+    if not course_id.isascii() or not course_id.isdecimal():
+        raise ValueError("Garmin course ID must be numeric")
+    existing = fetch_course(course_id, token_store=token_store)["course"]
+    if not isinstance(existing, dict) or str(existing.get("courseId")) != course_id:
+        raise RuntimeError(f"Garmin did not return the requested course {course_id}.")
+    garmin_api_request(
+        f"/course-service/course/{course_id}", token_store=token_store, method="DELETE", accept_json=True
     )
-    if result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            result.returncode,
-            result.args,
-            output=result.stdout,
-            stderr=result.stderr,
-        )
     remaining_ids = {
         str(course.get("courseId"))
-        for course in fetch_courses(gccli=gccli)["courses"]
+        for course in fetch_courses(token_store=token_store)["courses"]
         if course.get("courseId") is not None
     }
     if course_id in remaining_ids:
         raise RuntimeError(f"Garmin still lists course {course_id} after deletion.")
     return {
-        "source": "garmin_connect_gccli",
+        "source": "garmin_connect",
         "source_time_local": local_now(),
         "operation": "course_delete",
         "course_id": course_id,
-        "course_name": existing.get("courseName") if isinstance(existing, dict) else None,
+        "course_name": existing.get("courseName"),
         "deleted": True,
     }
 
@@ -849,62 +858,71 @@ def verify_uploaded_course(expected: dict[str, Any], actual: Any) -> dict[str, A
 def garmin_api_json(
     path: str,
     *,
-    gccli: str,
+    token_store: str,
     method: str = "GET",
     payload: dict[str, Any] | None = None,
 ) -> Any:
-    """Call Garmin Connect with the access token managed by gccli."""
+    return json.loads(garmin_api_request(
+        path, token_store=token_store, method=method, payload=payload, accept_json=True
+    ))
 
-    token_result = subprocess.run(
-        [gccli, "auth", "token", "--plain"],
-        check=False,
-        capture_output=True,
-        text=True,
+
+def garmin_api_request(
+    path: str,
+    *,
+    token_store: str,
+    method: str = "GET",
+    payload: dict[str, Any] | None = None,
+    accept_json: bool = False,
+) -> bytes:
+    """Send a Garmin request with a locally stored, renewable session."""
+    from garminconnect import Garmin
+
+    directory = Path(token_store)
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    route, _, query = path.partition("?")
+    headers = {"User-Agent": GARMIN_MOBILE_USER_AGENT}
+    headers["Accept"] = "application/json" if accept_json else "*/*"
+    client = Garmin().client
+    # Serialize session access across MCP processes so token rotation is saved
+    # before another process loads the session.
+    lock = os.open(
+        directory / ".session.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600
     )
-    if token_result.returncode != 0:
-        raise subprocess.CalledProcessError(
-            token_result.returncode,
-            token_result.args,
-            output=token_result.stdout,
-            stderr=token_result.stderr,
-        )
-    token = token_result.stdout.strip()
-    if not token:
-        raise RuntimeError("gccli returned an empty Garmin access token.")
-    body = json.dumps(payload).encode("utf-8") if payload is not None else None
-    request = urllib.request.Request(
-        f"{GARMIN_CONNECT_API}{path}",
-        data=body,
-        method=method,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "User-Agent": GARMIN_MOBILE_USER_AGENT,
-        },
-    )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.loads(response.read().decode("utf-8"))
+    with os.fdopen(lock, "rb") as session_lock:
+        fcntl.flock(session_lock, fcntl.LOCK_EX)
+        if not (directory / "garmin_tokens.json").is_file():
+            login(token_store, interactive=False)
+        try:
+            client.load(token_store)
+            response = client.request(
+                method,
+                "connectapi",
+                route,
+                params=parse_qsl(query, keep_blank_values=True),
+                headers=headers,
+                json=payload,
+                timeout=60,
+            )
+        except Exception as error:
+            raise RuntimeError(
+                f"Garmin request failed ({type(error).__name__}). "
+                "If the session has expired, run garmin_connect_auth.py login."
+            ) from None
+        return response.content
 
 
 def garmin_activity_search(
-    gccli: str,
+    token_store: str,
     start_date: str,
     end_date: str,
     *,
     limit: int,
 ) -> list[dict[str, Any]]:
-    payload = run_gccli_json(
-        gccli,
-        [
-            "activities",
-            "search",
-            "--start-date",
-            start_date,
-            "--end-date",
-            end_date,
-            "--limit",
-            str(limit),
-        ],
+    query = urlencode({"start": 0, "limit": limit, "startDate": start_date, "endDate": end_date})
+    payload = garmin_api_json(
+        f"/activitylist-service/activities/search/activities?{query}", token_store=token_store
     )
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
@@ -1360,38 +1378,6 @@ def load_activity_metadata(metadata_path: Path) -> dict[str, Any]:
     if isinstance(payload, dict):
         return payload
     raise SystemExit(f"Expected JSON object in {metadata_path}")
-
-
-def run_gccli_json(
-    gccli: str,
-    args: list[str],
-    *,
-    tolerate_errors: bool = False,
-) -> Any:
-    result = subprocess.run(
-        [gccli, "--json", *args],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode == 0:
-        return json.loads(result.stdout)
-    if not tolerate_errors:
-        raise subprocess.CalledProcessError(
-            result.returncode,
-            result.args,
-            output=result.stdout,
-            stderr=result.stderr,
-        )
-    return {
-        "error": {
-            "type": "gccli_failed",
-            "returncode": result.returncode,
-            "command": [gccli, "--json", *args],
-            "stderr": result.stderr.strip(),
-            "stdout": result.stdout.strip(),
-        }
-    }
 
 
 def local_now() -> str:
