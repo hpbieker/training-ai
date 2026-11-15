@@ -18,7 +18,6 @@
       "List, download, and verified upload of activity photos and videos",
       "Verified activity metadata updates, including bike and start-time privacy",
       "Route creation from start location and target distance",
-      "VT1 route scoring from BRouter GeoJSON",
       "Strava route creation and update guidance"
     ],
     "defaultPrompt": "Use Safari-authenticated Strava workflows when working with my Strava routes.",
