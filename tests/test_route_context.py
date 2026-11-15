@@ -26,9 +26,9 @@ class RouteContextTests(unittest.TestCase):
             json.dumps(
                 {
                     "start_anchor": {
-                        "display_name": "Dagaliveien 17B, Oslo",
-                        "lat": 59.95581576954476,
-                        "lng": 10.688188956334665,
+                        "display_name": "Example start",
+                        "lat": 51.5074,
+                        "lng": -0.1278,
                         "radius_km": 0.25,
                     },
                     "surface_preference": "road",

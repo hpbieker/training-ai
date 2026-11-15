@@ -409,6 +409,9 @@ def main() -> None:
         args.available_modalities = frozenset(
             planning_context["cycling"]["available_modalities"]
         )
+        preferred_workout_name = planning_context["cycling"].get(
+            "preferred_workout_name_contains"
+        )
         args.surface_preference = planning_context["route"]["surface_preference"]
         start_anchor = planning_context["route"].get("start_anchor") or {}
         args.start_anchor_displayname = start_anchor.get("display_name")
@@ -627,6 +630,7 @@ def main() -> None:
         source_files=source_files,
         recommendations_dir=args.output_dir,
         plan_progression=plan_context.get("progression") or {},
+        preferred_workout_name_contains=preferred_workout_name,
     )
     intensity_decision = select_intensity_domain(
         day=args.date,
@@ -795,6 +799,7 @@ def main() -> None:
             target_minutes=target_minutes,
             target_load=target_load,
             readiness_bias=workout_bias,
+            preferred_workout_name_contains=preferred_workout_name,
         )
         annotate_indoor_window_fit(
             indoor_workouts_packet,
@@ -1408,6 +1413,13 @@ def parse_planning_context_json(raw: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(
             "--planning-context-json requires a cycling object"
         )
+    preferred_workout_name_contains = cycling.get("preferred_workout_name_contains")
+    if preferred_workout_name_contains is not None and (
+        not isinstance(preferred_workout_name_contains, str) or not preferred_workout_name_contains.strip()
+    ):
+        raise argparse.ArgumentTypeError(
+            "--planning-context-json cycling.preferred_workout_name_contains must be a non-empty string"
+        )
     modalities_raw = cycling.get("available_modalities")
     if not isinstance(modalities_raw, list) or any(
         not isinstance(value, str) for value in modalities_raw
@@ -1488,6 +1500,10 @@ def parse_planning_context_json(raw: str) -> dict[str, Any]:
             "unavailable_reasons": {
                 key: value.strip() for key, value in unavailable_reasons.items()
             },
+            **(
+                {"preferred_workout_name_contains": preferred_workout_name_contains.strip()}
+                if preferred_workout_name_contains is not None else {}
+            ),
         },
         "route": route,
         "calendar": calendar,
@@ -1822,10 +1838,8 @@ def indoor_unavailable_packet(*, reason: str) -> dict[str, Any]:
             "Indoor trainer workouts were not fetched or ranked because indoor "
             "equipment is not available in the current location context."
         ),
-        "xmb_candidates": [],
-        "other_candidates": [],
+        "candidates": [],
         "higher_intensity_candidates": [],
-        "non_xmb_candidates_omitted_by_default": 0,
         "recommended": None,
         "relevant_options": [],
     }
@@ -1843,10 +1857,8 @@ def indoor_gym_packet(*, target_minutes: float) -> dict[str, Any]:
             "for structured threshold or VO2Max by default."
         ),
         "load_estimation": "estimated_without_reliable_power",
-        "xmb_candidates": [],
-        "other_candidates": [],
+        "candidates": [],
         "higher_intensity_candidates": [],
-        "non_xmb_candidates_omitted_by_default": 0,
         "recommended": {
             "name": "Continuous aerobic gym-bike ride",
             "duration_minutes": round(target_minutes, 1),
@@ -2055,6 +2067,7 @@ def build_progression_advice(
     source_files: dict[str, Path],
     recommendations_dir: Path,
     plan_progression: dict[str, Any],
+    preferred_workout_name_contains: str | None = None,
 ) -> dict[str, Any]:
     """Run workout-family progression advisors as context, not as day readiness."""
 
@@ -2075,6 +2088,8 @@ def build_progression_advice(
             "--output",
             str(source_files[key]),
         ]
+        if preferred_workout_name_contains:
+            command.append(f"--preferred-workout-name-contains={preferred_workout_name_contains}")
         if workout_type == "vt2":
             target_power_w = required_plan_target_power(
                 plan_progression,
@@ -4765,14 +4780,14 @@ def annotate_indoor_window_fit(
     for key in ("recommended",):
         if isinstance(packet.get(key), dict):
             packet[key]["window_fit"] = window_fit(packet[key].get("duration_minutes"), window_minutes)
-    for list_key in ("xmb_candidates", "other_candidates", "higher_intensity_candidates", "relevant_options"):
+    for list_key in ("candidates", "higher_intensity_candidates", "relevant_options"):
         for option in packet.get(list_key) or []:
             if isinstance(option, dict):
                 option["window_fit"] = window_fit(option.get("duration_minutes"), window_minutes)
     packet["first_window_minutes"] = round(window_minutes, 1) if window_minutes is not None else None
     packet["first_window_fit_tolerance_minutes"] = WINDOW_FIT_TOLERANCE_MINUTES
     packet["shorter_window_options"] = shorter_fitting_options(
-        packet.get("relevant_options") or packet.get("xmb_candidates") or [],
+        packet.get("candidates") or packet.get("relevant_options") or [],
         duration_key="duration_minutes",
         window_minutes=window_minutes,
     )
@@ -6642,6 +6657,7 @@ def compact_xert_workout_recommendations(
     target_minutes: float,
     target_load: float,
     readiness_bias: str = "normal_vt1",
+    preferred_workout_name_contains: str | None = None,
 ) -> dict[str, Any]:
     from_mcp_workouts = isinstance(payload, dict) and "workouts" in payload
     exercises = (
@@ -6664,36 +6680,25 @@ def compact_xert_workout_recommendations(
         target_minutes=target_minutes,
         target_load=target_load,
     )
-    xmb = [row for row in eligible_low_intensity if row["is_xmb"]]
-    ranked_xmb = sorted(
-        xmb,
-        key=lambda row: workout_rank_key(row, target_minutes=target_minutes, target_load=target_load),
-        reverse=True,
-    )
-    ranked_other = sorted(
-        [row for row in eligible_low_intensity if not row["is_xmb"]],
-        key=lambda row: workout_rank_key(row, target_minutes=target_minutes, target_load=target_load),
-        reverse=True,
-    )
-    xmb_higher_intensity = [row for row in higher_intensity if row["is_xmb"]]
-    non_xmb_higher_intensity = [row for row in higher_intensity if not row["is_xmb"]]
-    ranked_higher_intensity = sorted(
-        xmb_higher_intensity,
-        key=lambda row: workout_rank_key(row, target_minutes=target_minutes, target_load=target_load),
-        reverse=True,
-    )
+    preferred_name = (preferred_workout_name_contains or "").casefold()
+
+    def rank(row: dict[str, Any]) -> tuple[bool, float]:
+        return (
+            bool(preferred_name and preferred_name in row["name"].casefold()),
+            workout_rank_key(row, target_minutes=target_minutes, target_load=target_load),
+        )
+
+    ranked = sorted(eligible_low_intensity, key=rank, reverse=True)
+    ranked_higher_intensity = sorted(higher_intensity, key=rank, reverse=True)
     if readiness_bias in {"rest", "active_recovery_only", "easy_vt1"}:
         bias_suppressed.extend(higher_intensity)
         ranked_higher_intensity = []
     return {
         "source": "xert_recommended_training_compact",
         "policy": (
-            "Prefer XMB workouts for indoor recommendations when suitable. "
-            "Default summary candidate lists only show XMB workouts because "
-            "those are user-authored workouts. "
-            "For chat recommendations, present a small menu of relevant indoor "
-            "options when multiple XMB workouts fit the same goal, especially "
-            "near shorter/normal/longer duration choices. "
+            "Prioritize suitable workouts whose name contains the configured text. "
+            "Rank all other eligible workouts as well. "
+            "Present a small menu when several indoor workouts fit the same goal. "
             "Assume indoor trainer workouts are ridden in ERG mode by default; "
             "describe fixed workout targets or workout-intensity adjustments, "
             "not free-riding or gliding above target watts. "
@@ -6715,16 +6720,15 @@ def compact_xert_workout_recommendations(
             ),
             "suppressed_count": len(bias_suppressed),
         },
-        "xmb_candidates": ranked_xmb[:5],
-        "other_candidates": ranked_other[:3],
+        "preferred_workout_name_contains": preferred_workout_name_contains,
+        "candidates": ranked[:5],
         "higher_intensity_candidates": ranked_higher_intensity[:5],
         "suppressed_by_readiness_bias": [
             suppressed_workout_trace(row, readiness_bias=readiness_bias)
             for row in bias_suppressed[:10]
         ],
-        "non_xmb_candidates_omitted_by_default": len(ranked_other) + len(non_xmb_higher_intensity),
-        "recommended": ranked_xmb[0] if ranked_xmb else None,
-        "relevant_options": relevant_indoor_options(ranked_xmb),
+        "recommended": ranked[0] if ranked else None,
+        "relevant_options": relevant_indoor_options(ranked),
     }
 
 
@@ -6787,13 +6791,13 @@ def suppressed_workout_trace(
 
 
 def relevant_indoor_options(
-    ranked_xmb: list[dict[str, Any]],
+    ranked: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Return a compact menu of viable indoor options for chat recommendations."""
     options: list[dict[str, Any]] = []
     seen: set[str] = set()
 
-    for row in ranked_xmb:
+    for row in ranked:
         label = indoor_option_label(row)
         if not label:
             continue
@@ -6854,7 +6858,6 @@ def compact_xert_workout(
         "name": name,
         "path": path,
         "url": row.get("url"),
-        "is_xmb": name.startswith("XMB: "),
         "intensity_tags": intensity["tags"],
         "low_intensity_candidate": intensity["low_intensity_candidate"],
         "suppressed_from_default": intensity["suppressed_from_default"],
@@ -6898,7 +6901,7 @@ def workout_structure_guidance(name: str, *, duration_minutes: float) -> dict[st
         "main_set_minutes": main_set_minutes,
         "warmup_instruction": "use_built_in_warmup",
         "chat_rule": (
-            "When recommending this as an existing Xert/XMB workout, tell the user "
+            "When recommending this as an existing Xert workout, tell the user "
             "to ride the workout as-is in ERG and use its built-in warmup/cooldown. "
             "Do not prescribe an extra warmup unless the recommendation explicitly "
             "modifies or extends the workout."
@@ -7632,13 +7635,13 @@ def progression_summary_line(advice: dict[str, Any]) -> str:
     if matching:
         if matching.get("available") and best.get("name"):
             parts.append(
-                "xmb_match={name} ({quality})".format(
+                "workout_match={name} ({quality})".format(
                     name=best.get("name"),
                     quality=matching.get("match_quality"),
                 )
             )
         elif matching.get("reason"):
-            parts.append(f"xmb_match={matching.get('reason')}")
+            parts.append(f"workout_match={matching.get('reason')}")
     avoid = advice.get("avoid") or []
     if avoid:
         avoid_prescription = (avoid[0].get("prescription") or {}).get("summary")

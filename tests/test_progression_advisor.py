@@ -1,8 +1,11 @@
+import json
+import subprocess
 import sys
 import unittest
 from argparse import Namespace
 from datetime import datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
@@ -63,6 +66,36 @@ class BatchedActivityInspectionTests(unittest.TestCase):
                 [self.activity("one"), self.activity("two")],
                 args=Namespace(type="vt2", vt2_watts=290, force_inspect=False),
             )
+
+
+class PreferredWorkoutNameTests(unittest.TestCase):
+    def test_cli_prefers_name_text_and_falls_back_to_a_matching_workout(self):
+        script = Path(__file__).resolve().parents[1] / "scripts" / "progression_advisor.py"
+        library = "Library VT2 2x12 min @ 250W"
+        preferred = "VT2 2x13 min @ 250W (Personal)"
+        unrelated = "VO2Max (Personal)"
+        with TemporaryDirectory() as folder:
+            directory = Path(folder)
+            source = directory / "workouts.json"
+            command = [
+                sys.executable, "-B", str(script), "--type", "vt2", "--date", "2026-01-15",
+                "--vt2-watts", "250", "--artifacts-dir", str(directory),
+                "--xert-recommended-training-json", str(source),
+            ]
+            for preferred_name, names, expected in (
+                ("personal", [library, preferred, unrelated], preferred),
+                (None, [library, preferred, unrelated], library),
+                ("personal", [library, unrelated], library),
+            ):
+                with self.subTest(preferred_name=preferred_name, expected=expected):
+                    source.write_text(json.dumps({
+                        "exercises": [{"exerciseType": "Workout", "name": name} for name in names],
+                    }))
+                    args = command + (
+                        ["--preferred-workout-name-contains", preferred_name] if preferred_name else []
+                    )
+                    result = json.loads(subprocess.check_output(args))
+                    self.assertEqual(result["matching_existing_workouts"]["best"]["name"], expected)
 
 
 class InferredVt2PrescriptionTests(unittest.TestCase):

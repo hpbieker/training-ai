@@ -288,7 +288,7 @@ class GarminConnectMcpTests(unittest.TestCase):
     def test_list_courses_uses_course_service(self, fetch_courses) -> None:
         fetch_courses.return_value = {
             "source": "garmin_connect", "source_time_local": "now",
-            "courses": [{"courseId": 123, "courseName": "Slemdal", "elevationGainMeter": 500}],
+            "courses": [{"courseId": 123, "courseName": "Example route", "elevationGainMeter": 500}],
         }
 
         result = self.service.call_tool("list_courses", {})

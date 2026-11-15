@@ -442,7 +442,7 @@ class GarminCourseTests(unittest.TestCase):
     ) -> None:
         garmin_api_json.return_value = {
             "coursesForUser": [
-                {"courseId": 123, "courseName": "Slemdal"},
+                {"courseId": 123, "courseName": "Example route"},
                 "not-a-course",
             ]
         }
@@ -458,7 +458,7 @@ class GarminCourseTests(unittest.TestCase):
             {
                 "source": "garmin_connect",
                 "source_time_local": "2026-07-26T20:00:00+02:00",
-                "courses": [{"courseId": 123, "courseName": "Slemdal"}],
+                "courses": [{"courseId": 123, "courseName": "Example route"}],
             },
         )
 
@@ -471,7 +471,7 @@ class GarminCourseTests(unittest.TestCase):
     ) -> None:
         course = {
             "courseId": 123,
-            "courseName": "Slemdal",
+            "courseName": "Example route",
             "geoPoints": [{"latitude": 59.95, "longitude": 10.68}],
         }
         garmin_api_json.return_value = course

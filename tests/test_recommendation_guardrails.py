@@ -136,7 +136,7 @@ class TrainingTargetContractTests(unittest.TestCase):
         oslo = ZoneInfo("Europe/Oslo")
         packet = {
             "recommendations": [
-                {"name": "Sørkedalen x 6", "moving_minutes": 205.2}
+                {"name": "Example loop x 6", "moving_minutes": 205.2}
             ]
         }
 
@@ -622,7 +622,7 @@ class ExecutionOptionsContractTests(unittest.TestCase):
         self.assertEqual(options["map_scope"], "none")
 
     def test_route_map_status_distinguishes_not_requested_from_unavailable(self):
-        route_packet = {"recommendations": [{"name": "Sørkedalen x 4"}]}
+        route_packet = {"recommendations": [{"name": "Example loop x 4"}]}
 
         not_requested = annotate_route_map_status(route_packet, map_scope="none")
         unavailable = annotate_route_map_status(route_packet, map_scope="top")
@@ -645,7 +645,7 @@ class ExecutionOptionsContractTests(unittest.TestCase):
             {
                 "recommendations": [
                     {
-                        "name": "Sørkedalen x 4",
+                        "name": "Example loop x 4",
                         "xert_map_url": "https://example.test/map.png",
                     }
                 ]
@@ -1327,11 +1327,11 @@ class RecommendationSummaryTests(unittest.TestCase):
             "schema": "training-ai-plan-state-v3",
             "updated_at": "2026-07-28T20:00:00Z",
             "active_plan": {
-                "id": "vt2-kapasitet-ut-2026",
-                "path": "config/plans/2026-07-25-vt2-kapasitet-ut-2026.md",
+                "id": "example-plan",
+                "path": "config/plans/2026-07-25-example-plan.md",
             },
             "activity_cursor": {
-                "activity_id": "i170000292",
+                "activity_id": "example-endurance-1",
                 "started_at": "2026-07-28T07:13:25+01:00",
             },
             "next_role": "vo2max",
@@ -1343,7 +1343,7 @@ class RecommendationSummaryTests(unittest.TestCase):
                 ],
                 "minimum_aerobic_days_after_quality": 1,
                 "last_quality_session": {
-                    "activity_id": "i168713772",
+                    "activity_id": "example-quality-1",
                     "date": "2026-07-24",
                     "role": "vt2",
                 },
@@ -1354,8 +1354,8 @@ class RecommendationSummaryTests(unittest.TestCase):
             "progression": {},
             "activity_events": [
                 {
-                    "activity_id": "i170000292",
-                    "activity_name": "Algarve dag 4",
+                    "activity_id": "example-endurance-1",
+                    "activity_name": "Example endurance ride",
                     "started_at": "2026-07-28T07:13:25+01:00",
                     "planned_role": "easy_aerobic",
                     "completed_role": "long_aerobic",
@@ -3072,6 +3072,32 @@ class SurfaceClassificationTests(unittest.TestCase):
 
 
 class WorkoutReadinessBiasTests(unittest.TestCase):
+    def test_prefers_name_text_only_when_an_eligible_workout_matches(self):
+        workouts = [
+            {"name": "Library VT1", "path": "library", "duration_seconds": 3000, "xss": 35, "max_power": 160},
+            {"name": "VT1 (Personal)", "path": "personal", "duration_seconds": 2700, "xss": 30, "max_power": 160},
+            {"name": "VO2Max (Personal)", "path": "hard", "duration_seconds": 3000, "xss": 55, "max_power": 340},
+        ]
+        for preferred_name, candidates, expected in (
+            ("personal", workouts, "personal"),
+            (None, workouts, "library"),
+            ("personal", [workouts[0], workouts[2]], "library"),
+        ):
+            with self.subTest(preferred_name=preferred_name, expected=expected):
+                cycling = {"available_modalities": ["indoor_cycling"]}
+                if preferred_name is not None:
+                    cycling["preferred_workout_name_contains"] = preferred_name
+                context = parse_planning_context_json(json.dumps({
+                    "date": "2026-01-15", "local_timezone": "Etc/UTC",
+                    "now": "2026-01-15T08:00:00Z", "cycling": cycling,
+                }))
+                result = compact_xert_workout_recommendations(
+                    {"workouts": candidates}, target_minutes=50, target_load=35,
+                    preferred_workout_name_contains=context["cycling"].get("preferred_workout_name_contains"),
+                )
+                self.assertEqual(result["recommended"]["path"], expected)
+                self.assertNotIn("hard", [row["path"] for row in result["candidates"]])
+
     def test_accepts_mcp_recommended_workout_shape(self):
         result = compact_xert_workout_recommendations(
             {

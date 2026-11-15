@@ -46,6 +46,10 @@ def main() -> None:
     parser.add_argument("--recommendations-dir", type=Path, default=DEFAULT_RECOMMENDATIONS_DIR)
     parser.add_argument("--xert-recommended-training-json", type=Path)
     parser.add_argument(
+        "--preferred-workout-name-contains",
+        help="Optional text to prefer in workout names, regardless of case.",
+    )
+    parser.add_argument(
         "--vt2-watts",
         type=float,
         help="Required explicit VT2 reference power when --type=vt2.",
@@ -67,17 +71,21 @@ def main() -> None:
         target_power_w=(args.vt2_watts if args.type == "vt2" else args.vo2max_watts),
     )
     inspected = inspect_activities(activities, args=args)
-    xmb_workouts = load_xmb_workouts(args, day=day)
+    workout_source = args.xert_recommended_training_json or (
+        args.recommendations_dir / day.isoformat() / f"xert-recommended-training-{day.isoformat()}.json"
+    )
+    workouts = load_existing_workouts(workout_source)
     if args.type == "vt2":
         advice = advise_vt2(inspected, target_power_w=args.vt2_watts)
     else:
         advice = advise_vo2max(inspected, target_power_w=args.vo2max_watts)
-    advice["matching_existing_workouts"] = match_existing_xmb_workouts(
+    advice["matching_existing_workouts"] = match_existing_workouts(
         advice.get("next_step", {}).get("prescription") or {},
-        xmb_workouts,
+        workouts,
         workout_type=args.type,
+        preferred_workout_name_contains=args.preferred_workout_name_contains,
     )
-    advice["xmb_workout_source"] = xmb_workout_source(args, day=day)
+    advice["workout_source"] = str(workout_source)
 
     payload = {
         "schema": SCHEMA,
@@ -644,10 +652,7 @@ def activity_matches_type(
     ) is not None
 
 
-def load_xmb_workouts(args: argparse.Namespace, *, day: date) -> list[dict[str, Any]]:
-    path = args.xert_recommended_training_json or (
-        args.recommendations_dir / day.isoformat() / f"xert-recommended-training-{day.isoformat()}.json"
-    )
+def load_existing_workouts(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -656,7 +661,7 @@ def load_xmb_workouts(args: argparse.Namespace, *, day: date) -> list[dict[str, 
         if not isinstance(row, dict) or row.get("exerciseType") != "Workout":
             continue
         name = str(row.get("name") or "")
-        if not name.startswith("XMB:"):
+        if not name:
             continue
         rows.append(
             {
@@ -672,14 +677,15 @@ def load_xmb_workouts(args: argparse.Namespace, *, day: date) -> list[dict[str, 
     return rows
 
 
-def match_existing_xmb_workouts(
+def match_existing_workouts(
     prescription: dict[str, Any],
     workouts: list[dict[str, Any]],
     *,
     workout_type: str,
+    preferred_workout_name_contains: str | None = None,
 ) -> dict[str, Any]:
     if not workouts:
-        return {"available": False, "reason": "No XMB workout list available."}
+        return {"available": False, "reason": "No workout list available."}
     target_power = number(prescription.get("target_power_w"))
     candidates = [
         (workout_match_score(prescription, row, workout_type=workout_type, target_power=target_power), row)
@@ -690,14 +696,20 @@ def match_existing_xmb_workouts(
     if not candidates:
         return {
             "available": False,
-            "reason": f"No XMB workout found matching {prescription.get('summary')}.",
+            "reason": f"No workout found matching {prescription.get('summary')}.",
         }
-    score, best = min(candidates, key=lambda item: item[0])
+    preferred_name = (preferred_workout_name_contains or "").strip().casefold()
+    candidates.sort(key=lambda item: (
+        item[0] > 6,
+        not (preferred_name and preferred_name in item[1]["name"].casefold()),
+        item[0],
+    ))
+    score, best = candidates[0]
     return {
         "available": True,
         "match_quality": "exact_or_close" if score <= 6 else "loose",
         "best": best,
-        "alternatives": [row for _, row in sorted(candidates, key=lambda item: item[0])[1:4]],
+        "alternatives": [row for _, row in candidates[1:4]],
     }
 
 
@@ -753,13 +765,6 @@ def name_matches_type(name: str, workout_type: str) -> bool:
     if workout_type == "vt2":
         return "vt2" in lowered or "threshold" in lowered or "terskel" in lowered
     return "vo2" in lowered or "vo2max" in lowered
-
-
-def xmb_workout_source(args: argparse.Namespace, *, day: date) -> str:
-    path = args.xert_recommended_training_json or (
-        args.recommendations_dir / day.isoformat() / f"xert-recommended-training-{day.isoformat()}.json"
-    )
-    return str(path)
 
 
 def load_activity_metadata(path: Path) -> dict[str, Any]:

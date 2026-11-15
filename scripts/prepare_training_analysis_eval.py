@@ -47,6 +47,8 @@ def main():
     args = parser.parse_args()
     output = args.output_dir.resolve()
     case_file = args.cases_file.resolve()
+    if not case_file.is_file():
+        parser.error(f'Missing local evaluation cases: {case_file}. See evals/README.md.')
     cases = json.loads(case_file.read_text())['cases']
     skill = ROOT / '.agents/skills/training-analysis'
     sources = {}

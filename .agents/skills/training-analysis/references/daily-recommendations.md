@@ -31,12 +31,13 @@ and alternative sessions belong to a requested concrete training recommendation.
 
 Before running helpers, resolve the local date, planned start or free window,
 location/start anchor, available modalities, surface/bike intent, target event
-and time horizon, and practical fueling defaults. Use the configured earliest
-start and workout-placement preference when no time is supplied. Resolve the
-plan role and its complete workout before choosing `planned_at`. For a quality
-role, first find the earliest practical window supported by current readiness
-and the relevant Xert recovery gate; otherwise assess the appropriate downgrade
-in an earlier window. Select one winning session. When both indoor and outdoor
+and time horizon, and practical fueling defaults. When the user has not
+specified a time, use the workout-placement preference and any earliest-start
+constraint in `config/coaching-preferences.md`. Resolve the plan role and its
+complete workout before choosing `planned_at`. For a quality role, check
+readiness and the relevant Xert recovery gate at each candidate start. If
+those checks rule out the planned quality work, assess the appropriate
+downgrade. Select one winning session. When both indoor and outdoor
 cycling are available, retain one concrete alternative for the final answer
 without letting it replace the winner. Resolve modality availability from
 explicit user input or personal context, never from the repository.
@@ -50,13 +51,15 @@ block time. Include local-offset `day_start`/`day_end` and setup/cleanup
 buffers. For movable events, pass the minimum duration and whether shortening
 is permitted; use the placement returned by the helper.
 
-Treat the earliest feasible workout start in every availability window as a
-separate `planned_at` candidate. Evaluate candidates independently, keeping
-each candidate's inputs and results together, and select the earliest candidate
-whose complete, candidate-specific workout fits its window. Reject a candidate
-that does not fit and continue to the next one without shortening the workout
-to fit the rejected window. Only after every candidate window has been rejected
-may the recommendation reduce the dose or use multiple windows.
+Consider the earliest feasible start in each availability window and any
+later start called for by the user's placement preference. Evaluate each
+`planned_at` independently, keeping its inputs and results together. Choose
+among candidates whose complete, candidate-specific workout fits its window
+using the user's placement preference. With no preference, choose the earliest
+candidate that fits. Reject a candidate that does not fit and continue to the
+next one without shortening the workout to fit it. Only after every candidate
+window has been rejected may the recommendation reduce the dose or use
+multiple windows.
 
 Before finalizing a calendar-backed workout time, run these checks:
 
@@ -519,6 +522,11 @@ auditable trace of resolved logistics is useful. It is LLM-authored context,
 not a helper input contract.
 
 ## Candidate Selection
+
+If local coaching preferences identify preferred indoor workouts by text in
+their names, pass that text as `cycling.preferred_workout_name_contains` in
+`--planning-context-json`. Matching ignores case. Rank all suitable workouts
+by fit when there is no preference or no suitable match.
 
 For `rest`, retain only rest or explicit recovery candidates within the cap.
 For `easy_vt1`, retain recovery/endurance candidates within duration and load.

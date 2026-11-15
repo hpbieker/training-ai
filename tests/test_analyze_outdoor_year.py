@@ -16,9 +16,9 @@ class OutdoorActivityIntentTests(unittest.TestCase):
 
     def test_route_and_terrain_names_do_not_imply_threshold_intent(self):
         for name in (
-            "Tryvannstårnet",
-            "Tryvannstårnet+Sørkedalen",
-            "Klatring til Frognerseteren",
+            "Hilltop",
+            "Hilltop+River Valley",
+            "Klatring til utsiktspunktet",
             "Climb day",
             "Bakkeøkt",
         ):

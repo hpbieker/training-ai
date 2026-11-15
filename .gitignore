@@ -7,3 +7,14 @@ outputs/
 reports/
 
 /config/
+
+# Local evaluations based on personal ride data.
+/evals/training-analysis/README.md
+/evals/training-analysis/cases.json
+/evals/training-analysis/dialog/
+/evals/training-analysis/holdout/
+/evals/training-analysis/live/
+/evals/training-analysis/outdoor/
+/evals/training-analysis/results/
+/evals/training-analysis/recommendations/results/
+/docs/research/xert-beta-bundle-2026-09-15.md
