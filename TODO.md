@@ -1,11 +1,12 @@
 # TODO
 
-- Add managed authentication and session renewal for plugins that currently require a browser session cookie to be captured and imported manually. Both plugins require a fresh cookie after the session expires and cannot renew the session themselves:
-  - `strava`: capture a logged-in request as cURL in Safari Web Inspector; the local CLI extracts, verifies, and stores its Cookie header.
-  - `olympiatoppen`: capture the Cookie header from a browser request to `/api/Auth/Session` through CDP; the MCP verifies and stores it.
-
-- Normalize internal time handling:
-  - Use timezone-aware UTC datetimes for calculations, comparisons and source matching.
-  - Use the machine's local timezone for human-facing day buckets and local activity folder names.
-  - In normalized/script output, prefer paired fields such as `start_utc` + `start_local`, `end_utc` + `end_local`, `latest_utc` + `latest_local`, and `source_mtime_utc` + `source_mtime_local`.
-  - Avoid deriving comparable timestamps from naive local strings; parse provider timestamps into UTC first, then format local time only for display.
+- Simplify session renewal for Strava and Olympiatoppen. When a plugin returns
+  `auth_required`, show the shortest supported recovery path. Reuse the
+  signed-in browser session where possible, verify the imported session, and
+  retry the original read. Handle write retries separately by checking the
+  remote state first.
+- Fix timestamp handling in plan-state processing. Prefer source timestamps
+  with an explicit offset. When a source supplies only local time, resolve the
+  source timezone before comparing in UTC. Add tests for midnight and
+  daylight-saving transitions. Use the selected timezone for display and
+  preserve the activity's local date in artifact folder names.
