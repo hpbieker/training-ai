@@ -1,41 +1,33 @@
 # Training AI
 
-Utilities for downloading and analysing cycling training data.
+Tools for analysing cycling workouts, managing training plans, and recommending
+daily sessions and routes. Local Codex plugins connect the workflows to
+training, health, and weather data.
 
-## Local plugins
+## Getting started
 
-This repo includes local Codex plugins under `plugins/`. They keep
-source-specific live access, field semantics and write-safety rules separate
-from this repo's persistence, orchestration and cross-source analysis.
+1. Open this repository in Codex and make sure `uv` is available. The local MCP
+   plugins use it to create their Python environments when they start.
+2. Use the [plugin catalog](.agents/plugins/marketplace.json) to find the plugins
+   for your data sources. Follow [Data source setup](#data-source-setup) for
+   credentials and service-specific settings.
+3. Use [`$training-analysis`](.agents/skills/training-analysis/SKILL.md) in Codex
+   for workout analysis, readiness, daily recommendations or routes. Use
+   [`$training-plan`](.agents/skills/training-plan/SKILL.md) to create or update a
+   training plan.
 
-- Xert: `plugins/xert/skills/xert/SKILL.md`
-- EatMyRide: `plugins/eatmyride/skills/eatmyride/SKILL.md`
-- Yr: `plugins/yr/skills/yr/SKILL.md`
-- Garmin Connect: `plugins/garmin-connect/skills/garmin-connect/SKILL.md`
-- Intervals.icu: `plugins/intervals-icu/skills/intervals-icu/SKILL.md`
-- Olympiatoppen: `plugins/olympiatoppen/skills/olympiatoppen/SKILL.md`
+## Usage
 
-### Python runtime and tests
+Ask Codex in plain language. For example:
 
-MCP plugins use `uv` to prepare `.venv` from their `requirements.txt`, then
-start Python directly. Setup messages go to stderr.
+- “Analyse my latest ride. How steady was the effort?”
+- “What should I ride today given my training plan, recovery and available time?”
+- “Find a paved endurance route from my saved rides that fits a 90-minute session.”
+- “Help me adjust next week's training plan around my travel days.”
 
-Run all core and plugin tests from the repository root:
+## Data source setup
 
-```sh
-uv run --no-project \
-  --with-requirements plugins/strava/requirements.txt \
-  --with-requirements plugins/training-visuals/requirements.txt \
-  --with matplotlib \
-  python -B tests/run_all.py
-```
-
-Core and cross-plugin tests live in `tests/`. Plugin-specific tests live in
-`plugins/<name>/tests/`. The runner starts a separate Python process for each
-suite. `tests/test_plugin_startup.py` checks every plugin's launch command and
-tool catalog without a service login. The first run may download dependencies.
-
-## Use Intervals.icu
+### Intervals.icu
 
 Intervals.icu source semantics, MCP access and write-safety rules live in the
 local plugin. Start with `plugins/intervals-icu/skills/intervals-icu/SKILL.md`.
@@ -50,7 +42,7 @@ For first-time MCP setup, store the Intervals.icu API key in the user-owned
 `INTERVALS_ICU_API_KEY` can override the file. The MCP server loads the key at
 startup; it is not passed as a tool argument.
 
-## Use Olympiatoppen
+### Olympiatoppen
 
 Olympiatoppen diary reads are available through the local plugin in
 `plugins/olympiatoppen/skills/olympiatoppen/SKILL.md`. Install the plugin to
@@ -58,7 +50,7 @@ use `list_workouts` and `get_activity`; renew the private browser session with
 `import_session` from the authenticated Nettleser session when authentication
 is required.
 
-## Use Xert
+### Xert
 
 Xert source semantics, live access, CLI examples and write-safety rules live in
 the local plugin. Start with `plugins/xert/skills/xert/SKILL.md`.
@@ -68,7 +60,7 @@ readiness or recommendations, and pass only normalized source-aware output to
 repo-level helpers such as
 `scripts/readiness_snapshot.py`.
 
-## Use EatMyRide
+### EatMyRide
 
 EatMyRide live access, source semantics, CLI examples and write-safety rules
 live in the local plugin. Start with
@@ -77,7 +69,7 @@ live in the local plugin. Start with
 Fetch EatMyRide data live through the plugin for current analysis, fueling
 checks or recommendations.
 
-## Use Yr / MET Norway
+### Yr / MET Norway
 
 Yr/MET Norway forecast access and source semantics live in the local plugin.
 Start with `plugins/yr/skills/yr/SKILL.md` and use its `get_forecast` or bounded
@@ -99,21 +91,26 @@ Source documentation:
 - https://api.met.no/weatherapi/locationforecast/2.0/documentation
 - https://api.met.no/doc/GettingStarted
 
-## Fetch health data from Garmin Connect
+### Garmin Connect
 
 To enable automatic login on first use, add your Garmin credentials to
 `~/.garmin_mcp.json`:
 
 ```json
 {
-  "username": "you@example.com",
-  "password": "your Garmin password"
+  "username": "example@example.com",
+  "password": "<garmin-password>"
 }
 ```
 
 Use `chmod 600 ~/.garmin_mcp.json`. Set `GARMIN_MCP_CONFIG` to select a
-different file. If Garmin requires MFA, run `scripts/garmin_connect_auth.py login`
-in a terminal with the plugin's Python environment and enter the code there.
+different file. If Garmin requires MFA, enter the code in a terminal. After
+the local plugin has started and created its Python environment, run this
+command from the repository root:
+
+```sh
+plugins/garmin-connect/.venv/bin/python -B plugins/garmin-connect/scripts/garmin_connect_auth.py login
+```
 
 Python stores the session in `~/.config/training-ai/garmin` and refreshes it
 when needed.
@@ -123,171 +120,19 @@ Use the Garmin Connect MCP tools for live reads. See the
 [Garmin Connect skill](plugins/garmin-connect/skills/garmin-connect/SKILL.md)
 for tool examples and interpretation of Garmin fields.
 
-## Build readiness context
+## Development and tests
 
-Build a compact readiness context for chat. The script receives optional
-Garmin, Xert, and Intervals.icu files through one `--source-inputs-json`
-object. The normalized Xert readiness JSON contains only the selected fields
-this repo needs:
+Run all core and plugin tests from the repository root:
 
-```json
-{
-  "source_time_local": "2026-05-14T08:15:00+02:00",
-  "recovery": {
-    "recovery_hours": {"low": -3.5, "high": 12.0, "peak": 24.0},
-    "training_load": {"low": 125.0, "high": 1.2, "peak": 0.4},
-    "recovery_load": {"low": 90.0, "high": 0.8, "peak": 0.2},
-    "workout_capacity": {"low": 250.0, "high": 8.0, "peak": 1.0},
-    "training_status": {"form_cat": "Fresh"}
-  },
-  "activity_loads": [
-    {
-      "start_local": "2026-05-13T17:30:00",
-      "name": "Endurance ride",
-      "xss": {"total": 75.0, "low": 70.0, "high": 4.0, "peak": 1.0},
-      "difficulty": 42.0,
-      "difficulty_rating": "Moderate"
-    }
-  ]
-}
+```sh
+uv run --no-project \
+  --with-requirements plugins/strava/requirements.txt \
+  --with-requirements plugins/training-visuals/requirements.txt \
+  --with matplotlib \
+  python -B tests/run_all.py
 ```
 
-```bash
-# Persist get_health_day structuredContent to /tmp/garmin-connect-day.json first.
-python3 -B scripts/readiness_snapshot.py \
-  --summary \
-  --time-context-json '{"date":"2026-05-14","local_timezone":"Europe/Oslo","now":"2026-05-14T08:15:00+02:00"}' \
-  --source-inputs-json '{"garmin":"/tmp/garmin-connect-day.json","xert":"/tmp/xert-readiness.json","intervals":{"wellness":"/tmp/intervals-wellness.json","events":"/tmp/intervals-events.json"}}'
-```
-
-The readiness script does not call source plugins itself and does not parse raw
-Xert API payloads; source-specific field interpretation belongs to the source
-plugin or the orchestration layer above this script. The repo-level contracts
-are the Garmin Connect day JSON, normalized Xert JSON, and Intervals payloads
-referenced by `--source-inputs-json`.
-
-For a focused readiness question, `--summary` emits the decision evidence,
-freshness and interpretation limits without the full diagnostic packet. For
-post-workout HR/stress analysis, call Garmin `get_health_day(save_full=true)`
-and pass its `full_health_day_file` directly as the Garmin input. Compact health
-responses retain sleep/HRV summaries but deliberately omit those time series.
-
-## Same-day training recommendation
-
-For daily or future-date training recommendations, use `recommend_training.py` as the primary
-composer. The agent fetches MCP-owned live inputs first and supplies them as
-normalized source overrides; the helper writes the full source packet under
-`outputs/recommendations/<date>/`, ranks indoor XMB workouts, selects a
-saved-history outdoor route, adds timing guidance, and prints a compact
-chat-oriented summary with `--summary`.
-
-Source refresh is cache-aware by default. `--refresh-json '{"mode":"auto"}'`
-reuses snapshots within source-specific TTLs. Modes `all` and `none` force all
-sources or use existing files without network calls. Selected groups use, for
-example, `{"mode":"selected","sources":["garmin","xert"]}`. The packet records the decision,
-age, TTL, and reason for each source under `source_refresh`. An explicit
-`--source-overrides-json` maps normalized source names to JSON file paths. An
-overridden source cannot be combined with a refresh policy that forces its
-source group. Garmin, Intervals.icu wellness/events, Xert readiness/state and
-advice, Xert activity history, and Xert recommended workouts are MCP-only.
-Whenever their cached snapshots need refreshing, supply the applicable
-`garmin`, `xert`, `intervals_wellness`, `intervals_events`,
-`xert_activity_loads`, and `xert_recommended_training` overrides.
-
-```bash
-python3 -B scripts/recommend_training.py \
-  --planning-context-json '{"date":"2026-06-26","local_timezone":"Europe/Oslo","now":"2026-06-26T08:00:00+02:00","planned_at":"2026-06-26T10:30:00+02:00","availability":{"windows":[]},"cycling":{"available_modalities":["indoor_cycling","outdoor_cycling"],"unavailable_reasons":{}},"route":{"surface_preference":"road","start_anchor":{"display_name":"Example start","lat":60.0,"lng":10.0,"radius_km":0.25}}}' \
-  --plan-selection-json '{"intensity_goal":"vt1"}' \
-  --training-target-json '{"minutes":75,"load":60}' \
-  --summary
-```
-
-If the user does not give a training time, omit `planned_at` from the planning
-context; the packet will
-mark the planned time as an assumed planning anchor and include
-`coach_summary.timing_guidance`. Chat answers should mention that timing
-guidance, including whether the time was assumed, the evaluated weather window,
-and whether Garmin/watch sync is needed before considering a harder session.
-When giving practical fueling, translate carbohydrate targets into countable
-actions using `config/coaching-preferences.md` and current product data from
-EatMyRide. Keep personal defaults in context rather than in code.
-
-Use the full JSON output when debugging or when another script consumes the
-packet:
-
-```bash
-python3 -B scripts/recommend_training.py \
-  --planning-context-json '{"date":"2026-06-26","local_timezone":"Europe/Oslo","now":"2026-06-26T08:00:00+02:00","planned_at":"2026-06-26T10:30:00+02:00","availability":{"windows":[]},"cycling":{"available_modalities":[],"unavailable_reasons":{"indoor_cycling":"not_available","outdoor_cycling":"not_available"}}}' \
-  --plan-selection-json '{"intensity_goal":"vt1"}'
-```
-
-The indoor workout ranking prefers `XMB: ` workouts. When multiple XMB workouts
-fit the same goal, the packet includes `relevant_options` so chat answers can
-show a short menu such as conservative, normal and longer duration choices
-instead of only one winner. The default candidate list filters out threshold,
-VO2, hard-power, high-average-power, and high-difficulty structures. Those
-workouts are still retained as `higher_intensity_candidates` in the packet for
-days where intensity is explicitly appropriate.
-
-Daily dose guardrails use direct readiness domains rather than Garmin's
-composite Training Readiness score: HRV/resting-HR response, sleep, Body
-Battery, plus cumulative load context from ACWR and rolling-load percentile.
-The previous day's individual workout is not weighted separately because its
-effect should already appear in recovery and physiological response signals.
-Training Readiness remains in the packet only as a
-diagnostic agreement check and is marked `used_for_dose: false`.
-
-For chat recommendations, assume indoor trainer workouts are ridden in ERG mode
-unless the user says otherwise. Describe indoor options as fixed workout targets
-or workout-intensity adjustments, not as free-riding above target watts. Reserve
-slope mode language for explicitly requested slope sessions or workouts where it
-naturally fits the purpose, typically VO2Max, opener, standing, or harder
-over-threshold work.
-
-## Recommend outdoor routes from history
-
-For same-day outdoor training recommendations, prefer concrete route candidates
-from saved Intervals.icu activity history instead of generic geography. The
-route helper reads local `outputs/intervals/activities/*` packages, filters to
-GPS-backed outdoor rides from the last five years, uses the caller-provided or
-profile-resolved start/end anchor, and ranks candidates by fit to the planned
-duration and distance.
-
-```bash
-python3 -B scripts/route_recommendations.py \
-  --date 2026-06-26 \
-  --years 5 \
-  --route-context-json '{"start_anchor":{"display_name":"Example start","lat":60.0,"lng":10.0,"radius_km":0.25},"surface_preference":"road","target_distance_km":80}'
-```
-
-Use `--query Example route` or another fragment only when the user asks for that
-route family. Set `allow_away` to `true` inside `--route-context-json` only when routes away from the selected anchor should be
-eligible. In chat recommendations, cite the selected prior activity by route
-name, date and activity id. The route helper's `url` field is the Intervals.icu
-activity URL for the saved route reference; it is not a map image. When a route
-is proposed in chat, embed the Xert route map image whenever available and the
-chat surface supports Markdown images. In live recommendation packets, prefer
-`xert_map_local_path` for Codex/app Markdown image embeds, for example
-`![Xert-kart for <route>](<xert_map_local_path>)`, because app chat may not
-render external asset URLs reliably. Fall back to `xert_map_url` when no local
-   copy exists. If the route packet lacks `xert_map_url`, list Xert activities for
-   the selected route date with Xert MCP `list_activities`, match by
-   route name/date/distance, and use that
-row's `map_url` as the route map. If no Xert map can be found, say so explicitly
-instead of silently omitting it. If Markdown image embedding is not supported,
-include the direct map URL as a fallback.
-
-Route results may include `route_flexibility` from GPS analysis. When
-`scalable` is true, the route is not necessarily a fixed full-distance
-prescription:
-
-- `out_and_back_adjustable` means the ride substantially retraces the same road,
-  so loop-based routes can be scaled by doing fewer/more loops or by
-  turning earlier/later.
-- `repeatable_segment_adjustable` means the activity contains a repeated
-  corridor or climb, so interval routes can be shortened by doing fewer
-  repeats or shorter climbs.
-
-For chat recommendations, prefer a direct short variant when one matches the
-day. If only a longer scalable reference exists, prescribe the relevant fraction
-or repeat count rather than treating the full historical route as mandatory.
+Core and cross-plugin tests live in `tests/`. Plugin-specific tests live in
+`plugins/<name>/tests/`. The runner starts a separate Python process for each
+suite. `tests/test_plugin_startup.py` checks every plugin's launch command and
+tool catalog without a service login. The first run may download dependencies.
