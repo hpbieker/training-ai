@@ -109,10 +109,9 @@ source context. The caller's workflow owns downstream helper commands and input
 contracts; in training-ai, use the training-analysis skill for that integration.
 
 Add `username` and `password` to `~/.garmin_mcp.json` for automatic login on
-first use. Set `GARMIN_MCP_CONFIG` to use a different config file. If Garmin
-requires MFA, run `scripts/garmin_connect_auth.py login` in a terminal using the
-plugin's Python environment. The plugin stores and refreshes tokens outside
-the repo.
+first use. Set `GARMIN_MCP_CONFIG` to use a different config file. Login requires
+a Garmin account that can sign in with a password alone. The plugin stores and
+refreshes tokens outside the repo.
 
 Before uploading or deleting a course, read
 [references/course-write-safety.md](references/course-write-safety.md).

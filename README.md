@@ -48,21 +48,13 @@ in to EatMyRide. The plugin reads this file when it needs to sign in.
 ### Garmin Connect
 
 **Authentication.** Store your Garmin `username` and `password` in
-`~/.garmin_mcp.json`. The plugin signs in on first use and refreshes its
-saved session. Set `GARMIN_MCP_CONFIG` to use a different file.
+`~/.garmin_mcp.json`.
 
 ```json
 {
   "username": "you@example.com",
   "password": "<garmin-password>"
 }
-```
-
-If Garmin requires MFA, start the local plugin to create its Python environment.
-Then run this from the repository root and enter the MFA code when prompted:
-
-```sh
-plugins/garmin-connect/.venv/bin/python -B plugins/garmin-connect/scripts/garmin_connect_auth.py login
 ```
 
 [Garmin Connect plugin guide](plugins/garmin-connect/skills/garmin-connect/SKILL.md)
@@ -84,7 +76,8 @@ environment.
 ### Komoot
 
 **Authentication.** Sign in to Komoot in Safari and make sure the local
-`curl-safari` cookie service is running. The plugin uses the existing Safari
+[curl-safari](https://github.com/hpbieker/codex-plugin-curl-safari) cookie service
+is running. The plugin uses the existing Safari
 session through that service.
 
 [Komoot plugin guide](plugins/komoot/skills/komoot/SKILL.md)
@@ -108,20 +101,9 @@ plugin reports `auth_required`.
 
 [Strava plugin guide](plugins/strava/skills/strava/SKILL.md#authentication)
 
-### Training Visuals
-
-**Authentication.** No account or API key is required. The plugin renders
-routes from the files or geometry you provide.
-
-[Training Visuals plugin guide](plugins/training-visuals/README.md)
-
 ### Xert
 
-**Authentication.** Store your Xert `username` and `password` in
-`~/.xert_mcp.json` for web-based tools such as activity history and Planner.
-For API-backed tools, add `oauthClientId` and `oauthClientSecret` from
-**Account Settings > Developer** to the same file. Some tools, including
-`get_training_state`, use both sets of credentials.
+**Authentication.** Fill in all four fields in `~/.xert_mcp.json`.
 
 ```json
 {
@@ -138,7 +120,8 @@ For API-backed tools, add `oauthClientId` and `oauthClientSecret` from
 
 **Authentication.** Forecasts require no credentials. For historical station
 observations, save a Frost client ID in `~/.yr_mcp.json` under
-`frost.client_id`. Public observations require only the client ID.
+`frost.client_id`. See [MET Norway's guide to getting a Frost client ID](https://frost.met.no/howto.html).
+Public observations require only the client ID.
 
 ```json
 {

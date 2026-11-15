@@ -54,14 +54,13 @@ def login(token_store: str, *, interactive: bool) -> None:
         garmin = Garmin(
             username,
             password,
-            prompt_mfa=(lambda: getpass("Garmin MFA code: ").strip()) if interactive else None,
-            return_on_mfa=not interactive,
+            return_on_mfa=True,
         )
         # Use the supplied credentials even if another integration has set a token store.
         status, _ = garmin.login("{}")
         if status == "needs_mfa":
             raise GarminLoginError(
-                "Garmin requires MFA. Run garmin_connect_auth.py login in a terminal."
+                "Garmin requires MFA, which the Garmin Connect plugin does not support."
             )
         if not garmin.client.di_refresh_token:
             raise GarminLoginError("Garmin did not provide a renewable session.")

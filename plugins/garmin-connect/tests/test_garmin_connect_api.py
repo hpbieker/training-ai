@@ -42,7 +42,7 @@ class GarminDirectReadTests(unittest.TestCase):
             self.assertEqual(garmin.client.load.call_args_list, [call(str(store)), call(str(store))])
             self.assertEqual(
                 [entry for entry in factory.call_args_list if entry.args],
-                [call("test@example.com", "example", prompt_mfa=None, return_on_mfa=True)],
+                [call("test@example.com", "example", return_on_mfa=True)],
             )
 
     def test_mfa_stops_health_fetch_without_prompting_or_retrying(self):
