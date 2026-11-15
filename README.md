@@ -93,11 +93,22 @@ browser session for subsequent requests.
 
 ### Strava
 
-**Authentication.** Sign in to Strava in Safari. In Safari Web Inspector,
-copy an authenticated Strava request as cURL and run the `import-curl`
-command in the plugin guide. The importer verifies the session and stores
-the cookie header in `~/.strava/session.headers`. Repeat the import when the
-plugin reports `auth_required`.
+**Authentication.** Import a signed-in Safari session on your Mac.
+
+1. Sign in to Strava in Safari and open a page that requires your account,
+   such as your training log.
+2. Open Safari Web Inspector, select **Network**, and reload the page. Find
+   a request to `www.strava.com` whose request headers include `Cookie`.
+   Right-click that request and choose **Copy as cURL**.
+3. With the request still on your clipboard, run this from the repository root:
+
+   ```sh
+   python3 -B plugins/strava/scripts/strava_session.py import-curl
+   ```
+
+The importer reads the clipboard directly and verifies the session before
+saving the cookie header locally. Repeat these steps if the plugin returns
+`auth_required`.
 
 [Strava plugin guide](plugins/strava/skills/strava/SKILL.md#authentication)
 
