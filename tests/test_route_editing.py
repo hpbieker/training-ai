@@ -18,7 +18,7 @@ class EditingTests(unittest.TestCase):
         self.path = edit.make_path(self.points, list(zip(ds, [10, 12, 8, 11, 10])))
         self.route = {'id': '3532440438889330932', 'elements': [
             {'waypoint': {'point': dict(zip(('lat','lng'), p))}} for p in (self.points[0],self.points[-1])],
-            'legs': [{'paths': [self.path]}]}
+            'legs': [{'legType': 'Search', 'paths': [self.path]}]}
         self.geo = {'type': 'LineString', 'coordinates': [[10.001,59,12],[10.002,59.0001,14],[10.003,59,11]]}
 
     def test_splice_preserves_prefix_suffix_and_source(self):

@@ -13,7 +13,7 @@ def element(x):
 
 
 def leg(label):
-    return {'paths': [{'polyline': {'encoding': 'Google', 'data': '??AA'}, 'custom': label, 'length': 1.5, 'elevation': {'encoding': 'DrewsBadIdea', 'data': '??]?' }}]}
+    return {'legType': 'Search', 'paths': [{'polyline': {'encoding': 'Google', 'data': '??AA'}, 'custom': label, 'length': 1.5, 'elevation': {'encoding': 'DrewsBadIdea', 'data': '??]?' }}]}
 
 
 class PrepareTests(unittest.TestCase):
