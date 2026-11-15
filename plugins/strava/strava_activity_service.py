@@ -421,11 +421,18 @@ def normalize_result(result: dict[str, Any]) -> dict[str, Any]:
     elif isinstance(value, str):
         try:
             parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
-            if parsed.tzinfo is not None:
-                parsed = parsed.astimezone().replace(tzinfo=None)
-            normalized["start_date_local"] = parsed.isoformat()
+            normalized["start_date_local"] = parsed.replace(tzinfo=None).isoformat()
         except ValueError:
             pass
+    start_date = normalized.pop("start_date", None)
+    if isinstance(start_date, str):
+        try:
+            absolute_start = dt.datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        except ValueError:
+            pass
+        else:
+            if absolute_start.utcoffset() is not None:
+                normalized["start_utc"] = absolute_start.astimezone(dt.timezone.utc).isoformat()
     selected = normalized.get("selected_tag_type")
     try:
         tag_id = int(selected) if selected is not None else None
@@ -490,7 +497,8 @@ def list_activities(
                 matches.append(activity)
             if oldest is not None and oldest < since_date:
                 break
-    matches.sort(key=lambda row: (row.get("start_date_local") or "", str(row.get("id"))), reverse=True)
+    start_field = "start_utc" if all(row.get("start_utc") for row in matches) else "start_date_local"
+    matches.sort(key=lambda row: (row.get(start_field) or "", str(row.get("id"))), reverse=True)
     return {"count": len(matches), "activities": matches}
 
 

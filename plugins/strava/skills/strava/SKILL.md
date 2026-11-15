@@ -57,6 +57,9 @@ preserved. Use `tag: null` to clear a tag or `bike_id: "none"` to clear a bike.
 Visibility, hidden start time, and mute are independent settings. Updates verify
 API metadata plus edit-page-only bike, start-time, and mute state.
 
+`start_date_local` is the activity's local wall-clock time. Use `start_utc`
+when present to compare start times across sources or timezones.
+
 Activity, gear, and media operations are available only through MCP. The Python
 activity helpers are internal modules without CLI entry points. Use MCP
 `build_route` for explicit waypoint pairs. CLI helpers handle session

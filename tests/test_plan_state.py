@@ -527,6 +527,73 @@ class PlanStatePersistenceTests(unittest.TestCase):
 
         self.assertEqual([item["activity_id"] for item in pending], ["new-1"])
 
+    def test_uses_utc_for_cursor_and_local_date_for_spacing_around_midnight(self):
+        state = base_state()
+        cursor = "2026-07-24T21:55:00Z"
+        state["activity_cursor"]["started_at"] = cursor
+        state["activity_events"][-1]["started_at"] = cursor
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, utc, local in (
+                ("before-cursor", "2026-07-24T21:50:00Z", "2026-07-24T23:50:00"),
+                ("after-midnight", "2026-07-24T22:05:00Z", "2026-07-25T00:05:00"),
+            ):
+                path = root / name
+                path.mkdir()
+                (path / "activity.json").write_text(json.dumps({
+                    "id": name, "start_date": utc, "start_date_local": local,
+                }))
+            pending = pending_activities(state, root)
+
+        self.assertEqual([item["activity_id"] for item in pending], ["after-midnight"])
+        classification = event(
+            activity_id="after-midnight",
+            started_at=pending[0]["started_at"],
+            completed_role="easy_aerobic",
+        )
+        classification["start_date_local"] = pending[0]["start_date_local"]
+        updated = apply_activity_classification(
+            state, parse_classification_json(json.dumps(classification)),
+        )
+        self.assertEqual(updated["activity_cursor"]["started_at"], "2026-07-24T22:05:00Z")
+        self.assertEqual(updated["quality_queue"]["aerobic_dates_since_quality"], ["2026-07-25"])
+
+    def test_pending_orders_the_repeated_autumn_hour_by_utc(self):
+        state = base_state()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name, utc in (
+                ("z-first", "2026-10-25T00:30:00Z"),
+                ("a-second", "2026-10-25T01:30:00Z"),
+            ):
+                path = root / name
+                path.mkdir()
+                (path / "activity.json").write_text(json.dumps({
+                    "id": name, "start_date": utc, "start_date_local": "2026-10-25T02:30:00",
+                }))
+            self.assertEqual(
+                [item["activity_id"] for item in pending_activities(state, root)],
+                ["z-first", "a-second"],
+            )
+            cursor = "2026-10-25T01:00:00Z"
+            state["activity_cursor"]["started_at"] = cursor
+            state["activity_events"][-1]["started_at"] = cursor
+            self.assertEqual(
+                [item["activity_id"] for item in pending_activities(state, root)],
+                ["a-second"],
+            )
+
+    def test_pending_reports_activity_without_an_offset_in_either_field(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "missing-offset"
+            path.mkdir()
+            (path / "activity.json").write_text(json.dumps({
+                "id": "missing-offset", "start_date_local": "2026-10-25T02:30:00",
+            }))
+            with self.assertRaisesRegex(PlanStateError, "missing-offset.*explicit UTC offset"):
+                pending_activities(base_state(), root)
+
 
 if __name__ == "__main__":
     unittest.main()

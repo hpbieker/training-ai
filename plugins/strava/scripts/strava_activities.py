@@ -25,8 +25,12 @@ def payload_rows(payload: Any) -> list[dict[str, Any]]:
     raise StravaError("Strava returned an unsupported activity-list response.")
 
 
+def activity_local_start(row: dict[str, Any]) -> str | int | float | None:
+    return row.get("start_date_local") or row.get("start_date_local_raw") or row.get("start_time")
+
+
 def activity_date(row: dict[str, Any]) -> dt.date | None:
-    value = row.get("start_time") or row.get("start_date_local") or row.get("start_date_local_raw") or row.get("start_date")
+    value = activity_local_start(row) or row.get("start_date")
     if not value:
         return None
     if isinstance(value, (int, float)):
@@ -44,7 +48,8 @@ def normalized_activity(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "id": row.get("id"),
         "name": row.get("name"),
-        "start_date_local": row.get("start_time") or row.get("start_date_local"),
+        "start_date_local": activity_local_start(row),
+        "start_date": row.get("start_date"),
         "type": row.get("type") or row.get("sport_type"),
         "visibility": visibility,
         "private": row.get("private"),

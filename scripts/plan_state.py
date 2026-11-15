@@ -141,6 +141,7 @@ def parse_classification_json(raw: str) -> dict[str, Any]:
         "activity_id",
         "activity_name",
         "started_at",
+        "start_date_local",
         "planned_role",
         "completed_role",
         "quality_role_fulfilled",
@@ -263,6 +264,8 @@ def validate_event(event: dict[str, Any]) -> None:
     if not isinstance(event, dict) or any(not event.get(key) for key in required_strings):
         raise PlanStateError("Activity event is missing required string fields.")
     parse_datetime(event["started_at"])
+    if "start_date_local" in event:
+        parse_iso_datetime(event["start_date_local"])
     completed_role = event["completed_role"]
     if completed_role not in COMPLETED_ROLES:
         raise PlanStateError(f"Unsupported completed_role: {completed_role!r}.")
@@ -335,10 +338,13 @@ def apply_activity_classification(
     updated = deepcopy(state)
     queue = updated["quality_queue"]
     completed_role = event["completed_role"]
+    activity_day = parse_iso_datetime(
+        event.get("start_date_local", event["started_at"])
+    ).date().isoformat()
     if event["quality_stimulus"]:
         queue["last_quality_session"] = {
             "activity_id": event["activity_id"],
-            "date": event_started_at.date().isoformat(),
+            "date": activity_day,
             "role": completed_role,
             "quality_role_fulfilled": event["quality_role_fulfilled"],
             "planned_workout_completed": event["planned_workout_completed"],
@@ -352,14 +358,13 @@ def apply_activity_classification(
             )
         queue["aerobic_dates_since_quality"] = []
     elif completed_role in AEROBIC_ROLES:
-        aerobic_day = event_started_at.date().isoformat()
         last_quality = queue.get("last_quality_session")
         last_quality_day = last_quality.get("date") if last_quality else None
         if (
-            aerobic_day != last_quality_day
-            and aerobic_day not in queue["aerobic_dates_since_quality"]
+            activity_day != last_quality_day
+            and activity_day not in queue["aerobic_dates_since_quality"]
         ):
-            queue["aerobic_dates_since_quality"].append(aerobic_day)
+            queue["aerobic_dates_since_quality"].append(activity_day)
             queue["aerobic_dates_since_quality"].sort()
 
     progression_update = event.get("progression_update") or {}
@@ -429,11 +434,17 @@ def pending_activities(
         except (OSError, json.JSONDecodeError):
             continue
         activity_id = str(activity.get("id") or "")
-        started_at_raw = activity.get("start_date_local") or activity.get("start_date")
-        if not activity_id or not started_at_raw:
+        if not activity_id or activity_id in known_ids:
             continue
-        started_at = parse_datetime(str(started_at_raw))
-        if activity_id in known_ids or started_at <= cursor:
+        start_date_local = activity.get("start_date_local")
+        started_at_raw = activity.get("start_date") or start_date_local
+        if not started_at_raw:
+            continue
+        try:
+            started_at = parse_datetime(started_at_raw, require_offset=True)
+        except PlanStateError as exc:
+            raise PlanStateError(f"Activity {activity_id}: {exc}") from exc
+        if started_at <= cursor:
             continue
         pending.append(
             {
@@ -441,6 +452,7 @@ def pending_activities(
                 "activity_name": activity.get("name"),
                 "activity_type": activity.get("type"),
                 "started_at": str(started_at_raw),
+                **({"start_date_local": start_date_local} if start_date_local else {}),
                 "activity_dir": str(activity_json.parent),
             }
         )
@@ -553,12 +565,18 @@ def next_step_id(steps: list[dict[str, str]], step_id: str) -> str:
     return step_ids[(index + 1) % len(step_ids)]
 
 
-def parse_datetime(value: str) -> datetime:
+def parse_iso_datetime(value: str) -> datetime:
     try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError as exc:
         raise PlanStateError(f"Invalid ISO datetime: {value!r}.") from exc
+
+
+def parse_datetime(value: str, *, require_offset: bool = False) -> datetime:
+    parsed = parse_iso_datetime(value)
     if parsed.tzinfo is None:
+        if require_offset:
+            raise PlanStateError(f"Timestamp needs an explicit UTC offset: {value!r}.")
         return parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
 

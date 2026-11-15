@@ -66,8 +66,10 @@ If `pending` returns activities, inspect and classify every activity in
 chronological order and apply each reviewed classification with
 `scripts/plan_state.py apply --classification-json '<normalized-json>'`. The
 command writes the complete updated state but prints only its compact context.
-The JSON object contains the activity identity, timestamps, planned/completed
-roles, booleans `quality_stimulus` and `quality_role_fulfilled`,
+Copy `started_at` and, when present, `start_date_local` from `pending` into the
+classification. Plan state compares `started_at` in UTC and uses
+`start_date_local` for the activity's calendar day. The JSON object also contains the activity identity,
+planned/completed roles, booleans `quality_stimulus` and `quality_role_fulfilled`,
 `planned_workout_completed` (boolean, or null when unknown), progression effect,
 reason, evidence array, and optional `progression_update`. Do not skip an older pending activity to
 apply a newer one. The state owns the current queue; chat history and

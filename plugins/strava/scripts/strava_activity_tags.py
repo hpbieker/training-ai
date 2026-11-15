@@ -399,6 +399,7 @@ def summarize(activity: dict[str, Any]) -> dict[str, Any]:
         "id": activity.get("id"),
         "name": activity.get("name"),
         "start_date_local": activity.get("start_date_local") or activity.get("start_date_local_raw"),
+        "start_date": activity.get("start_date"),
         "visibility": activity.get("visibility"),
         "private": activity.get("private"),
         "trainer": activity.get("trainer"),

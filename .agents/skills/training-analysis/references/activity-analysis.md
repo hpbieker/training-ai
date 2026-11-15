@@ -418,7 +418,9 @@ with an explicit classification:
 - a concise reason and the analysis artifact paths used as evidence.
 
 Read `scripts/plan_state.py context` first. Apply the classification through
-`scripts/plan_state.py apply` only after the analysis is complete. An explicitly
+`scripts/plan_state.py apply` only after the analysis is complete. Use the
+Intervals.icu `start_date` as `started_at` and include `start_date_local` for
+the activity's local calendar day. An explicitly
 fulfilled quality role advances its matching queue step even when the planned
 workout was shortened or progression is held. Judge role fulfillment from the
 actual work, intended stimulus, athlete feedback, and plan context; neither a

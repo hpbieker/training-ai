@@ -32,6 +32,7 @@ from garmin_connect_api import (  # noqa: E402
     fetch_lactate_threshold,
     fetch_recent_days,
     garmin_activity_search,
+    garmin_activity_start_utc,
     local_now,
     upload_course,
 )
@@ -97,7 +98,7 @@ _COURSE_LIST_INCLUDE_FIELDS = (
     "updatedDate", "privacyRule", "userProfilePk",
 )
 _ACTIVITY_LIST_FILTER_FIELDS = (
-    "activity_id", "name", "start_local", "type", "duration_s", "distance_m",
+    "activity_id", "name", "start_local", "start_utc", "type", "duration_s", "distance_m",
     "source", *_ACTIVITY_LIST_INCLUDE_FIELDS,
 )
 _COURSE_LIST_FILTER_FIELDS = (
@@ -179,7 +180,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "description": (
             "List compact Garmin activity identity summaries in an inclusive local-date "
             "range. Use the same date for since and until when resolving an exact "
-            "same-day activity, and includeFields for selected training details."
+            "same-day activity, and includeFields for selected training details. "
+            "Returns start_utc when Garmin supplies startTimeGMT."
         ),
         "inputSchema": {
             "type": "object",
@@ -641,6 +643,9 @@ def _activity_list_summary(
         "name": activity.get("activityName"),
         "start_local": activity.get("startTimeLocal"),
     }
+    start_utc = garmin_activity_start_utc(activity.get("startTimeGMT"))
+    if start_utc is not None:
+        summary["start_utc"] = start_utc
     aliases = {
         "type": type_key,
         "duration_s": activity.get("duration"),

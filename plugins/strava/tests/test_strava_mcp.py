@@ -52,6 +52,41 @@ class StravaMcpTests(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
 
+    def test_list_activities_filters_by_local_date_and_sorts_by_utc(self):
+        rows = [
+            {"id": 1, "name": "Second ride", "start_date_local": "2026-10-25T02:30:00Z",
+             "start_date": "2026-10-25T01:30:00Z"},
+            {"id": 2, "name": "First ride", "start_date_local": "2026-10-25T02:30:00+02:00",
+             "start_date": "2026-10-25T00:30:00Z"},
+            {"id": 3, "name": "After midnight", "start_date_local": "2026-10-25T00:15:00+02:00",
+             "start_time": "2026-10-24T22:15:00Z", "start_date": "2026-10-24T22:15:00Z"},
+        ]
+        with mock.patch.object(mcp_server.activities, "fetch_page", side_effect=[rows, []]):
+            result = self.service.call_tool(
+                "list_activities", {"since": "2026-10-25", "until": "2026-10-25"},
+            )
+        activities = result["activities"]
+        self.assertEqual([row["id"] for row in activities], [1, 2, 3])
+        self.assertEqual(activities[1]["start_date_local"], "2026-10-25T02:30:00")
+        self.assertEqual(activities[2]["start_date_local"], "2026-10-25T00:15:00")
+        self.assertEqual(activities[2]["start_utc"], "2026-10-24T22:15:00+00:00")
+
+    def test_get_activity_returns_utc_only_when_absolute_source_field_exists(self):
+        source = {"id": 1, "start_date_local": "2026-08-17T00:15:00+02:00"}
+        for absolute in (None, "2026-08-16T22:15:00Z"):
+            with (
+                self.subTest(absolute=absolute),
+                mock.patch.object(mcp_server.activities.activity_metadata, "fetch_activity",
+                                  return_value={**source, "start_date": absolute}),
+                mock.patch.object(mcp_server.activities.activity_metadata, "fetch_edit", return_value=""),
+            ):
+                result = self.service.call_tool("get_activity", {"activity_id": "1"})
+                self.assertEqual(result["start_date_local"], "2026-08-17T00:15:00")
+                if absolute:
+                    self.assertEqual(result["start_utc"], "2026-08-16T22:15:00+00:00")
+                else:
+                    self.assertNotIn("start_utc", result)
+
     def test_rejects_invalid_writes_before_network(self):
         for args in [
             {"activity_id": "12", "patch": {"mute": True}, "confirm": False},

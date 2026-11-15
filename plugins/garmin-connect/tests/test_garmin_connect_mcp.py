@@ -167,6 +167,23 @@ class GarminConnectMcpTests(unittest.TestCase):
         self.assertEqual(result["activities"][0]["avgPower"], 220)
         self.assertNotIn("userRoles", result["activities"][0])
 
+    @patch.object(MCP, "garmin_activity_search")
+    def test_list_activities_can_sort_repeated_autumn_hour_by_utc(self, search) -> None:
+        search.return_value = [
+            {"activityId": 1, "startTimeLocal": "2026-10-25 02:30:00",
+             "startTimeGMT": "2026-10-25 01:30:00"},
+            {"activityId": 2, "startTimeLocal": "2026-10-25 02:30:00",
+             "startTimeGMT": "2026-10-25 00:30:00"},
+        ]
+        result = self.service.call_tool("list_activities", {
+            "since": "2026-10-25", "until": "2026-10-25",
+            "sort": [{"field": "start_utc", "direction": "asc"}],
+        })
+        activities = result["activities"]
+        self.assertEqual([row["activity_id"] for row in activities], [2, 1])
+        self.assertEqual(activities[0]["start_utc"], "2026-10-25T00:30:00+00:00")
+        self.assertEqual(activities[1]["start_local"], "2026-10-25 02:30:00")
+
     @patch.object(MCP, "local_now", return_value="2026-08-17T12:00:00+02:00")
     @patch.object(MCP, "garmin_activity_search")
     def test_list_activities_adds_old_default_fields_only_when_requested(

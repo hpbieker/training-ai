@@ -8,7 +8,7 @@ import fcntl
 import os
 import zipfile
 from urllib.parse import parse_qsl, quote, urlencode
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -934,10 +934,24 @@ def garmin_activity_search(
     return []
 
 
+def garmin_activity_start_utc(value: Any) -> str | None:
+    """Normalize Garmin's startTimeGMT field without inferring it from local time."""
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.utcoffset() is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
 def garmin_activity_metrics(summary: dict[str, Any], details: dict[str, Any]) -> dict[str, Any]:
     """Extract compact Garmin training-effect/performance metadata."""
 
     summary_dto = summary.get("summaryDTO") or {}
+    start_utc = garmin_activity_start_utc(summary_dto.get("startTimeGMT"))
     performance = detail_performance_condition_summary(details)
     stamina = detail_stamina_summary(details)
     stamina.update(
@@ -951,6 +965,7 @@ def garmin_activity_metrics(summary: dict[str, Any], details: dict[str, Any]) ->
         "activityId": summary.get("activityId"),
         "activityName": summary.get("activityName"),
         "startTimeLocal": summary_dto.get("startTimeLocal"),
+        **({"start_utc": start_utc} if start_utc else {}),
         "training_effect": {
             "aerobic": summary_dto.get("trainingEffect"),
             "anaerobic": summary_dto.get("anaerobicTrainingEffect"),

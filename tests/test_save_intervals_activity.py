@@ -22,7 +22,8 @@ class SaveIntervalsActivityTests(unittest.TestCase):
             activity = {
                 "id": "i123",
                 "name": "Test ride",
-                "start_date_local": "2026-08-17T10:00:00",
+                "start_date": "2026-08-16T22:15:00Z",
+                "start_date_local": "2026-08-17T00:15:00",
             }
             activity_json.write_text(
                 json.dumps({"activity_id": "i123", "activity": activity}),

@@ -18,6 +18,19 @@ import garmin_connect_api as API  # noqa: E402
 
 
 class GarminDirectReadTests(unittest.TestCase):
+    def test_activity_summary_keeps_local_date_and_uses_gmt_for_utc(self):
+        summary = {
+            "summaryDTO": {
+                "startTimeLocal": "2026-08-17 00:15:00",
+                "startTimeGMT": "2026-08-16 22:15:00",
+            }
+        }
+        result = API.garmin_activity_metrics(summary, {})
+        self.assertEqual(result["startTimeLocal"], "2026-08-17 00:15:00")
+        self.assertEqual(result["start_utc"], "2026-08-16T22:15:00+00:00")
+        del summary["summaryDTO"]["startTimeGMT"]
+        self.assertNotIn("start_utc", API.garmin_activity_metrics(summary, {}))
+
     def test_first_request_logs_in_from_config_and_next_request_reuses_tokens(self):
         with TemporaryDirectory() as workspace:
             config = Path(workspace) / "config.json"
