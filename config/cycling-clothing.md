@@ -8,6 +8,38 @@ Ved nye anbefalinger: bruk bekreftet antrekk og rapportert komfort fra sammenlig
 
 Bruk også tilgjengelig CORE-estimert kjernetemperatur og lokal hudtemperatur som støtte for klesvurderingen, etter brukerens ønske 2026-10-31. Sammenhold forløpene med faktisk antrekk, komfort, vær, effekt, fart/luftstrøm, stopp og eventuelle klesbytter. Foretrekk sammenlignbare, stabile perioder; vurder sensorens oppstart og tiden etter lengre pauser separat. Kontroller dekning, gap, fastlåste verdier og brå sprang. Sammenligning mellom turer forutsetter tilsvarende sensorplassering og feste; oppsettet er foreløpig ikke bekreftet. Hudtemperaturen er lokal og sier ikke direkte noe om kalde hender eller føtter. CORE er et estimat, og core-/hudtemperatur fra samme sensor er ikke to uavhengige bekreftelser. Bruk mønstre og brukerens opplevelse sammen; ikke fastsett en personlig komfortgrense fra ett temperaturtall.
 
+### 2026-11-03 – Sørkedalen: Flanders Warm, passe varmt
+
+- **Kilde:** Brukeren bekrefter: «Beina og pusten kjentes bra. Brukte Flanders Warm, ellers samme klær som i går. Passe varmt.» Komforten gjelder hele antrekket, ikke en separat vurdering av hender eller føtter.
+- **Tur:** [Intervals.icu i205300269](https://intervals.icu/activities/i205300269), 42,6 km, 87 minutter i bevegelse og 88 minutter totalt, kl. 13.12–14.40. Snitteffekt 181 W, vektet effekt 202 W; aerob landeveistur.
+- **Bekreftet antrekk:** Flanders Warm langermet innerst, ellers som 2. november: langermet Perfetto + blå, tykk Windstopper-vest, Sorpasso Team Bib vinterbukse, Perfetto Max alene, Distanza 20 + Toe Thingy 2 under Perfetto Shoecover med RC903, Pro Thermal 2 Skully og Light Head Thingy. Flanders-variant med eller uten integrert hals er ikke spesifisert. Eventuelle justeringer underveis er ikke bekreftet.
+- **Værgrunnlag:** MET-varselet for Sørkedalen viste 6,0 °C kl. 14 og 5,6 °C kl. 15, ingen nedbør og vind 0,4–0,5 m/s. Dette er prognoser, ikke observerte temperaturer langs turen; kl. 15 er etter faktisk slutt. Tidligere varsler for kl. 16–17 beskriver ikke denne turens eksponering.
+- **Temperaturstøtte:** [Øktanalysen](../outputs/intervals/activities/2026-11-03_i205300269/analysis.md) viser CORE-estimat 38,04 °C i minuttene 30–60 og 38,10 °C i siste del, med maksimum 38,16 °C. Forløpet viser et platå etter oppvarming, ikke vedvarende termisk opptrapping. Sensoroppsett er ikke bekreftet, og temperaturdata beviser ikke hånd-/fotkomfort eller effekten av ett bestemt plagg.
+
+**Bruk i senere anbefalinger:** Bekreftet passende kombinasjon for denne ca. 90 minutter lange aerobe ettermiddagsturen. Flanders Warm fungerte godt sammen med resten av gårsdagens antrekk. Forskjeller i effekt, eksponering og varighet hindrer en isolert konklusjon om at undertrøyebyttet var nødvendig. Erfaringen gjelder ikke automatisk en lengre kveldstur nær frysepunktet.
+
+### 2026-11-02 – Sørkedalen: passe varmt
+
+- **Kilde:** Brukeren bekreftet avtalt antrekk, med bare Perfetto Max-hansker: «Passe varmt. Noen ganger litt kaldt og noen ganger litt varmt. Dvs passe.» Komforten gjelder helheten; det er ikke en egen vurdering av håndvarmen.
+- **Tur:** [Intervals.icu i204790438](https://intervals.icu/activities/i204790438), 42,4 km og ca. 1 t 19 min, kl. 13.49–15.08. Snitteffekt 217 W, vektet effekt 235 W; variabel aerob landeveistur med korte hardere innslag. Brukeren rapporterte bra kraft i beina og grei pust.
+- **Værgrunnlag:** MET-varselet hentet før turen viste 7,0 °C kl. 14 og 6,5 °C kl. 15 ved Sørkedalen, ingen nedbør og nordavind 1,3–1,5 m/s. Dette er prognoser, ikke observerte temperaturer langs turen. Varslet på 4,8 °C kl. 16 gjelder etter at turen var avsluttet og skal ikke brukes som bekreftet eksponering.
+
+| Del | Bekreftet brukt |
+|---|---|
+| Innerst | Castelli Prosecco Tech langermet |
+| Overkropp | Langermet Castelli Perfetto + blå, tykk Windstopper-vest; hvilken Perfetto-jakke er ikke avklart |
+| Bein | Castelli Sorpasso Team Bib vinterbukse |
+| Hender | Castelli Perfetto Max alene, uten mellomparet Perfetto RoS under |
+| Føtter | Castelli Distanza 20-sokker + Toe Thingy 2 under Perfetto Shoecover, Shimano RC903-sko |
+| Hode | Castelli Pro Thermal 2 Skully under hjelmen |
+| Hals | Castelli Light Head Thingy |
+
+- **Sol og skygge:** Brukeren opplevde tydelig temperaturforskjell mellom sol og skygge. Dette gir kontekst til at komforten vekslet mellom litt kaldt og litt varmt; forskjellen i målt lufttemperatur er ikke kjent.
+- **Regulering:** Eventuell åpning eller avtaking av vesten er ikke bekreftet.
+- **Temperaturstøtte:** [Analyse og målevinduer](../outputs/intervals/activities/2026-11-02_i204790438/analysis-windows.json). CORE-estimatet nådde 38,34 °C, lå rundt 38,30 °C i minuttene 40–60 og falt svakt mot slutten. Lokal hudtemperatur falt fra ca. 33,1 °C i minuttene 10–20 til ca. 31,3 °C mot slutten. Ingen opptaksgap; plassering og feste er ikke bekreftet. Verdiene dokumenterer temperaturforløp, ikke en personlig komfortgrense eller hånd-/fotvarme.
+
+**Bruk i senere anbefalinger:** Et bekreftet, passende antrekk for denne ca. 80 minutter lange, variable aerobe turen med prognose rundt 6–7 °C, tørt og svak vind. Prosecco langermet og Perfetto Max alene fungerte i denne kombinasjonen. Bruk dette som utgangspunkt ved lignende forhold; ikke overfør automatisk til lengre turer eller kaldere ettermiddager.
+
 ### 2026-10-31 – Drøbak–Kråkstad: helt passe
 
 - **Kilde:** Brukeren bekreftet antrekket og komforten i chat 2026-10-31: «Tok ikke av vesten og byttet ikke hansker. Det var helt passe.» Dette er faktisk bruk, ikke bare en tidligere anbefaling.
