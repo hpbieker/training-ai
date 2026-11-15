@@ -270,17 +270,9 @@ def validate_header_file(path: Path) -> Path:
     return path
 
 
-def validate_json(path: Path) -> None:
-    try:
-        json.loads(path.read_text())
-    except json.JSONDecodeError as exc:
-        raise SystemExit(f"{path} is not valid JSON: {exc}") from exc
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("endpoint", choices=("auth", "build"))
-    parser.add_argument("body", type=Path, nargs="?", help="Cookie-free JSON request body.")
+    parser = argparse.ArgumentParser(description="Check the authenticated Strava session.")
+    parser.add_argument("command", choices=("auth",))
     parser.add_argument(
         "--cookie-file",
         type=Path,
@@ -292,23 +284,11 @@ def main() -> int:
         type=Path,
         help="Optional private file of additional non-secret browser headers.",
     )
-    parser.add_argument("--out", type=Path)
-    parser.add_argument("--verbose-log", type=Path)
     args = parser.parse_args()
-
-    if args.endpoint != "auth":
-        if args.body is None or args.out is None:
-            parser.error("body and --out are required for Route Builder API calls")
-        validate_json(args.body)
 
     try:
         with StravaSession(args.cookie_file, args.header_file) as session:
-            auth = session.authenticate()
-            if args.endpoint == "auth":
-                print(json.dumps(auth, ensure_ascii=False))
-                return 0
-            payload = session.api(args.endpoint, args.body, args.out, args.verbose_log)
-            print(json.dumps({"out": str(args.out), "response": payload}, ensure_ascii=False))
+            print(json.dumps(session.authenticate(), ensure_ascii=False))
             return 0
     except StravaError as exc:
         print(f"error: {exc}", file=sys.stderr)

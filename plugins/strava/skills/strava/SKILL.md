@@ -58,8 +58,9 @@ Visibility, hidden start time, and mute are independent settings. Updates verify
 API metadata plus edit-page-only bike, start-time, and mute state.
 
 Activity, gear, and media operations are available only through MCP. The Python
-activity helpers are internal modules without CLI entry points. CLI commands
-remain for session management, route building, and route analysis.
+activity helpers are internal modules without CLI entry points. Use MCP
+`build_route` for explicit waypoint pairs. CLI helpers handle session
+management, target-distance route candidates and route analysis.
 
 Use `list_gear` to retrieve current and retired bikes and shoes. `get_gear`
 accepts an ID returned by that list; provide `gear_type` (`bike` or `shoe`) when

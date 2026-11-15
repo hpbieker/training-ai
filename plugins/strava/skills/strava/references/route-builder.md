@@ -102,12 +102,13 @@ retain the route ID and report `write_unverified`; no automatic retry occurs.
 This path is covered by mocked deletion/readback tests; no real route was
 deleted during implementation.
 
-## CLI Boundaries
+## Route Building Tools
 
-`strava_build_route.py` builds and inspects candidates only. Route creation,
-updates, and deletion use MCP. The low-level `strava_route_api.py` CLI exposes
-only `auth` and `build`; its internal create/update transport remains available
-to the MCP service.
+Use the Strava MCP tool `build_route` with `requests` containing waypoint
+pairs and route preferences. Use `strava_build_route.py` to propose and inspect
+candidates from a start point and target distance. Use MCP for route creation,
+updates and deletion. The `strava_route_api.py auth` command checks the
+authenticated session.
 
 ## Endpoints
 
