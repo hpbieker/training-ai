@@ -82,13 +82,10 @@ evidence-based classification rather than a fixed completion percentage.
 Use the correction/replay workflow in training-analysis's activity-analysis
 reference when an already-applied classification needs to change.
 
-Plan state v3 requires explicit role fulfillment and workout completion. To
-upgrade a v2 state, use `scripts/migrate_plan_state_v3.py` with a reviewed
-`--quality-reviews-file` covering every incomplete quality event. Preview first;
-`--write` persists the schema migration. Whole-prescription completion remains
-unknown where the historical record only establishes quality completion. The
-migration preserves the curated queue; replay affected classifications from a
-verified checkpoint to correct queue placement.
+Plan state v3 requires explicit role fulfillment and workout completion.
+Whole-prescription completion remains unknown where the historical record only
+establishes quality completion. Replay affected classifications from a verified
+checkpoint to correct queue placement.
 
 When updating progression, distinguish the established achieved dose from the
 latest execution and any temporary consolidation prescription. A reduced or
