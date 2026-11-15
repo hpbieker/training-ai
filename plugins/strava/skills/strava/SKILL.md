@@ -28,7 +28,7 @@ retrying a write, check the remote state. For partial batches inspect
 `details.updated`, `details.failed` and `details.not_attempted` before choosing
 which items to retry.
 
-See [session diagnostics](references/route-builder.md#transport) for cache paths
+See [session diagnostics](references/route-builder.md#session-diagnostics) for cache paths
 and troubleshooting.
 
 ## Activities
