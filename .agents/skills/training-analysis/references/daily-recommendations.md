@@ -254,6 +254,17 @@ If Intervals.icu contains a sickness event today or yesterday, follow
 - Separate historical/cumulative load from acute physiological response. A
   normal load does not make mixed acute signals disappear.
 
+## Preserve the origin of an adjusted dose
+
+Before passing a coaching-selected load or duration to a helper, state the
+original XATA dose, the chosen dose and the concrete reason for the adjustment.
+Explain why that amount fits the training purpose, including relevant evidence
+against reducing it. Keep this rationale separate from the subsequent
+calculation. A successful helper run verifies the proposed workout's modeled
+load and execution; it does not independently establish that the selected dose
+was necessary or optimal. In the final answer, retain coaching authorship of an
+agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
+
 ## Dose And Intensity
 
 - Use readiness to set the intensity ceiling. Within that ceiling, use the
