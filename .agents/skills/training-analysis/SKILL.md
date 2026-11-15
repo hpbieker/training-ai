@@ -19,6 +19,7 @@ live access, field semantics, and remote write safety.
   context as the agent and pass explicit CLI arguments or normalized JSON.
 - Read the relevant plugin skill before using a source. Resolve its linked
   references relative to that skill's directory.
+- Run the `scripts/` commands in this skill from the repository root.
 - Prefer original-source values for source-specific semantics and use
   aggregation copies only when they are the best available input.
 - Keep comparable timestamps in UTC internally and convert at local-calendar or
@@ -81,8 +82,8 @@ Also read
 [references/cycling-endurance-physiology.md](references/cycling-endurance-physiology.md)
 when prescribing a long ride, late-session intensity, severe intervals, heat
 exposure, or deliberate low-carbohydrate availability.
-Also use the repo-local `training-plan` skill: discover active plans under
-`config/plans/`, select the applicable plan, decide the current plan role, and
+Use the repo-local [training-plan skill](../training-plan/SKILL.md) to find active
+plans under `config/plans/`, select the applicable plan, decide the current plan role, and
 pass that role to the recommendation helper through an explicit
 `intensity_goal` inside `--plan-selection-json`. Do not use a generic goal as a substitute for plan
 selection, and do not make a helper parse an LLM-readable plan file.
@@ -106,7 +107,8 @@ When the user asks to add a banner, card, or workout image to a completed
 Strava activity, use `scripts/generate_strava_workout_card.py` by default.
 Call it with the current Intervals.icu activity directory, `--xert-session`
 for the matching saved Xert session, and `--output` for the PNG. Inspect the
-result, then attach it through the Strava media workflow.
+result, then attach it through the
+[Strava media workflow](../../../plugins/strava/skills/strava/references/write-safety.md#activity-media).
 
 ## Output
 

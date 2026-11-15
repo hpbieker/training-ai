@@ -110,7 +110,7 @@ calendar evidence, not an automatic choice of `planned_at`; select its start
 only when the same placement calculation supports it.
 
 Discover active files under `config/plans/` through the repo-local
-`training-plan` skill. For plan state, run `python3 -B scripts/plan_state.py
+[training-plan skill](../../training-plan/SKILL.md). For plan state, run `python3 -B scripts/plan_state.py
 context` and `python3 -B scripts/plan_state.py pending`; do not print or read
 the raw `config/plan-state.json` into LLM context. If pending activities are
 returned, inspect, classify, and apply every one chronologically, then refresh
