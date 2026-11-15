@@ -5,6 +5,18 @@
   },
   "plugins": [
     {
+      "name": "eatmyride",
+      "source": {
+        "source": "local",
+        "path": "./plugins/eatmyride"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Health & Fitness"
+    },
+    {
       "name": "komoot",
       "source": {
         "source": "local",
