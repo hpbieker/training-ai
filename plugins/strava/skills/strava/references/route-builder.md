@@ -13,12 +13,16 @@ to create a verified mode-0600 `Cookie:` header file. Pass that path as
 4. API POST with the same runtime cookie and CSRF;
 5. HTTP and JSON validation.
 
-Do not store full copied cURL, Authorization, or CSRF values. Reuse the private
-mode-0600 Cookie cache until it expires or is explicitly cleared. Keep only sanitized
-templates, response bodies, and redacted logs. Do not use Curl Safari for
-Strava until its cookie-completeness issue is resolved; its
-disk-backed jar omitted `_strava4_session` from a session Safari demonstrably
-used.
+Keep full copied cURL, Authorization and CSRF values out of stored artifacts.
+Reuse the private Cookie cache until it expires or is explicitly cleared.
+The supported renewal path is the Web Inspector import in the
+[authentication instructions](../SKILL.md#authentication).
+
+Use `strava_session.py status` for a live session check and
+`status --local-only` for a file and permission check. Use `clear` only for
+explicit credential cleanup. The default cache is `~/.strava/session.headers`;
+`STRAVA_COOKIE_FILE` overrides it and the importer also accepts `--cookie-file`.
+Keep the directory at mode 0700 and the file at mode 0600.
 
 ## Saved Route Listing
 
@@ -33,14 +37,24 @@ types. The response is `me.searchRoutes.nodes` with `pageInfo.hasNextPage` and
 page and its JavaScript on 2026-09-08. The service validates pagination rather
 than treating malformed or error responses as an empty collection.
 
+The MCP exposes `query`, `created_by`, `only_starred` and `route_types`. Follow
+`next_cursor` with unchanged filters when `has_more` is true. The default
+`max_pages` is 20 with 16 routes per page. `count` covers returned unique routes.
+An unknown `private` value does not establish visibility.
+
 ## Saved Route Details
 
 MCP `get_route(route_id)` reads `GET /routes/{route_id}` and extracts
 `props.pageProps.route` from the page's `__NEXT_DATA__` JSON. It checks that the
-returned ID matches the requested route, then returns that object without
-renaming, deriving, filtering, or flattening fields. Only the route object is
-returned, excluding other page state such as session data. The response shape
-was verified on 2026-09-08; missing values and future fields stay source-native.
+returned ID matches the requested route. The route keeps its native field
+names and values. The extraction excludes other page state, including session data.
+
+By default the MCP response uses `{route_id, route, omitted_arrays}` and omits
+`elements`, `legs`, `segmentsOnRoute`, `segments`, `elevation`, `polyline`,
+`distanceStream` and `routePolylineData.media` from `route`. Each omission reports
+the JSON-pointer path, item count and UTF-8 JSON byte size. Use `save_full=true`
+to save the complete `{route_id, route}` to `full_route_file`; the response also
+provides `full_route_format` and `full_route_byte_size`.
 
 ## MCP Build
 
@@ -52,6 +66,11 @@ not an alternative complete route. Missing/incomplete build results are errors.
 No route is saved, and no confirmation parameter is needed. Route planning,
 target-distance waypoint selection, analysis, and GeoJSON conversion are
 separate operations. A two-request build was verified live through MCP.
+
+Use `save_full=true` to save the unchanged build response to `full_build_file`
+as private JSON. The compact response includes `result_count`, `leg_count`,
+`full_build_format` and `full_build_byte_size`. The file is accepted directly
+as a replacement by `prepare_route_update.py`.
 
 ## MCP Writes
 
@@ -146,10 +165,40 @@ Add zero-based `startElement` to built legs before create/update.
 
 ## Analysis
 
+Run the helper from the Strava plugin directory.
+
 ```bash
-python3 -B plugins/strava/scripts/analyze_strava_build.py <response.json> \
-  --geojson-out <route.geojson> --json
+python3 -B scripts/analyze_strava_build.py /absolute/path/response.json \
+  --geojson-out /absolute/path/route.geojson --json
 ```
 
 Build before writing, apply distance and surface gates, default to private, and
 verify the created route page.
+
+## Target-Distance Candidates
+
+For a route from a start place and target distance, resolve:
+
+- start name, latitude, and longitude;
+- target kilometres and `loop` or `out-and-back`;
+- preferred direction or bearing;
+- `Paved`, `Any`, or `Dirt`;
+- `flat` or `hilly`, and direct versus popular routing;
+- optional deliberate via points;
+- route name and visibility.
+
+Prefer explicit user choices, current-location context, actual saved activity
+geometry, and map-backed anchors. A generated bearing is only a candidate;
+inspect it because it can point across water or unsuitable roads.
+
+Use repeatable `--via LAT,LNG,NAME` arguments for deliberate anchors. Inspect
+`analysis.json` and `route.geojson`, then read
+[route quality](route-quality.md). Revise poor
+candidates instead of suppressing the 15 percent distance guardrail.
+
+Run `strava_build_route.py` with `--cookie-file`, the resolved start,
+distance, shape, routing choices, and an output directory to build and inspect. Save through MCP `create_route` only when the user explicitly asked to create
+or save the inspected route. New routes default to
+`OnlyMe`; use `Everyone` only when explicitly requested. Report the verified
+route URL, distance, elevation, surface uncertainty, shape, and material road
+or traffic caveats.

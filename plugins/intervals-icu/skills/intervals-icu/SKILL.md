@@ -51,30 +51,18 @@ Choose the narrowest workflow that answers the request:
 
 ## MCP Tools
 
-- `list_athletes` lists athletes accessible to the authenticated account. Use it
-  only when another athlete must be selected. `list_activities`, `get_activity`,
-  `get_activities`, `get_activity_streams`, `list_activity_hr_curves`,
-  `list_activity_pace_curves`, `search_activity_intervals`, and
-  `list_sport_settings`, `list_wellness`, `list_events`,
-  `list_activity_power_curves`, `get_activity_file`, `search_activities`,
-  `list_activity_messages`, `get_training_plan`, and `get_athlete_summary`, as
-  well as all write tools (`update_activity`, `delete_activity`,
-  `delete_activities`, `upload_activity`, `update_wellness`, `create_event`,
-  `update_event`, and `delete_event`) accept an optional `athlete`; omission,
-  `me`, and `0` all mean the
-  authenticated athlete and remain implicit in the response. An explicitly
-  selected non-default athlete is validated against `list_athletes` and
-  included in the response.
+- Use `list_athletes` when selecting another athlete. Tools that accept
+  `athlete` use the signed-in athlete by default. Confirm the exact athlete
+  before a write if the request targets someone else.
 - `list_activities` lists every activity in an inclusive local-date range as
   compact identity summaries containing only `id`, `name`, and
   `start_date_local` by default. Use `includeFields` to add only selected
   allowed detail fields to each row; `search_activities` performs source text or tag
   search with the same compact rows and `includeFields` choices.
-- `list_activities`, `search_activities`, `list_wellness`, and `list_events`
-  accept closed `filters` (`field`, `op`, `value`), ordered `sort` keys, and a
-  post-filter `limit` where applicable. Filters use AND; operators are `eq`,
-  `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `contains`, and `exists`.
-  Inspect `source_count` and `matched_count`; searches are `source_limited`.
+- Use filters and sorting where supported. Inspect `source_count` and
+  `matched_count`; searches are `source_limited`. See
+  [athlete selection and list queries](references/field-semantics.md#athlete-selection-and-list-queries)
+  for supported tools and operators.
 - `get_activity` returns a compact identity summary and accepts `includeFields`
   for selected inline detail fields. With
   `save_full=true`, it also saves the complete source activity in the standard

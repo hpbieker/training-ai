@@ -239,7 +239,9 @@ If Intervals.icu contains a sickness event today or yesterday, follow
   recommendation date, fetch the latest real Garmin day rather than the empty
   future day so its timestamped Recovery Time can be projected. Do not carry
   that day's HRV, sleep, resting HR, Body Battery, or aggregate Training
-  Readiness forward as if they were observations for the future date.
+  Readiness forward as if they were observations for the future date. Describe
+  those signals as pending until the relevant day or time has occurred. Report
+  expected data as missing or stale when it should already have synced.
 - Use Xert recovery hours as the first model gate for low/high/peak load, then
   compare the corresponding Xert Recovery Load with Training Load. Use Xert
   target XSS as the remaining recommended dose when available.

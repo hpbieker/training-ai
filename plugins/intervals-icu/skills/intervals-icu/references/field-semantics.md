@@ -136,3 +136,25 @@
 - Intervals.icu activities may include subjective fields such as `feel`, `perceived_exertion`, `session_rpe`, and `icu_rpe`.
 - When saving RPE, write `icu_rpe`. Intervals.icu derives `session_rpe` from RPE and duration and rejects direct writes to `session_rpe`.
 - Prefer Intervals.icu activity fields for feel/RPE when available rather than burying the information only in chat.
+
+## Athlete Selection And List Queries
+
+- `list_athletes` lists athletes accessible to the authenticated account. Use it
+  only when another athlete must be selected. `list_activities`, `get_activity`,
+  `get_activities`, `get_activity_streams`, `list_activity_hr_curves`,
+  `list_activity_pace_curves`, `search_activity_intervals`, and
+  `list_sport_settings`, `list_wellness`, `list_events`,
+  `list_activity_power_curves`, `get_activity_file`, `search_activities`,
+  `list_activity_messages`, `get_training_plan`, and `get_athlete_summary`, as
+  well as all write tools (`update_activity`, `delete_activity`,
+  `delete_activities`, `upload_activity`, `update_wellness`, `create_event`,
+  `update_event`, and `delete_event`) accept an optional `athlete`; omission,
+  `me`, and `0` all mean the
+  authenticated athlete and remain implicit in the response. An explicitly
+  selected non-default athlete is validated against `list_athletes` and
+  included in the response.
+- `list_activities`, `search_activities`, `list_wellness`, and `list_events`
+  accept closed `filters` (`field`, `op`, `value`), ordered `sort` keys, and a
+  post-filter `limit` where applicable. Filters use AND; operators are `eq`,
+  `ne`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `contains`, and `exists`.
+  Inspect `source_count` and `matched_count`; searches are `source_limited`.

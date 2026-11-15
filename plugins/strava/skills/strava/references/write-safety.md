@@ -26,6 +26,11 @@ never keyed by the numeric attachment ID. Metadata updates must refuse unknown
 media state and verify that media UUIDs, captions, order, and types survive the
 write. A successful metadata readback alone does not confirm media preservation.
 
+To mute an activity in home feeds, use `update_activity` with
+`patch: {"mute": true}` and `confirm: true`. Use `false` to undo it. The fresh
+edit form's `activity[hide_from_home]` checkbox verifies the result. An absent
+checkbox is unknown and writes fail if it cannot be located.
+
 ## Activity Media
 
 List the exact activity's media before downloading or changing it. Download
@@ -76,8 +81,9 @@ readback window cannot guarantee that later asynchronous changes never occur.
 
 Retain the private Cookie header until Strava rejects it, it is replaced by a
 newly verified Safari capture, or the user explicitly clears it. Never retain
-CSRF headers or a complete copied cURL command. Follow browser-curl-replay for
-the Web Inspector capture; MCP does not refresh the session itself.
+CSRF headers or a complete copied cURL command. Follow the
+[authentication instructions](../SKILL.md#authentication) to renew the browser
+session.
 
 Resolve activity IDs with a date-bounded MCP `list_activities` query before a
 batch write. Do not select duplicate activity names without checking ID and

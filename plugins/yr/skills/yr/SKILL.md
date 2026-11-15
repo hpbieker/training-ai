@@ -35,36 +35,16 @@ interfaces; helpers must not import or invoke the Yr plugin directly.
   historical window and the desired Frost elements. Each sampled route point
   references nearby stations and shared summaries. Check station distance,
   altitude and measurement gaps before applying the summaries to the route.
-- Use `find_observation_stations` with coordinates, timezone, local window and
-  exact Frost element IDs. The search starts with at least three candidates
-  (or the requested result limit) and expands through 10, 25 and 50 only when
-  coverage is insufficient. Results are ranked by distance among candidates
-  with all requested series available in the window. Availability
-  metadata does not guarantee complete samples. Check altitude and exposure.
-- Use `get_observation_series` for up to 10 known station IDs and 10 elements,
-  an inclusive window of up to 31 days, and `PT1H` (default) or `PT10M` resolution.
-  Requests are bounded to 50000 expected samples; reduce scope when necessary.
-- Use `get_observations_summary` for temperature, hourly precipitation and
-  snow depth near up to 25 points over one shared window. Each point references
-  the nearest station with samples for each requested element. Shared station
-  summaries appear once. Check distance, altitude and missing hours before
-  using the results. When available, compare snow samples around the first
-  and last wet hours. Frost's snow value `-1` means zero depth or partial snow
-  cover and yields no numeric change when it occurs at either endpoint.
-- Use `get_observations` for 1–25 selected point/time requests. It starts with
-  three nearby candidates and fetches their observations in one request,
-  normally making two API calls per point. It expands to 10, 25 and 50 candidates
-  only when coverage is incomplete, fetching only newly encountered stations.
-  It prefers complete element coverage then distance, and
-  selects the nearest sample per element within `tolerance_minutes` (default
-  60, maximum 180). Ties select the earlier sample. Each result uses one station;
-  inspect actual times, missing elements, warnings and per-point errors.
-- Station metadata and series-availability metadata are cached for 15 minutes
-  in the server process, in a bounded cache. Metadata found by a nearest search
-  is reused for explicit station reads for the same validity interval. Repeated
-  point lookups normally need only the observation request. Observations are
-  always fetched fresh. `available_series` is empty for point results because
-  those use actual sample coverage rather than a separate availability request.
+- Use `find_observation_stations` to locate stations and check series
+  availability. Inspect distance, altitude and exposure. Availability metadata
+  alone does not establish that all expected samples are present.
+- Use `get_observation_series` to read time series from known station IDs.
+- Use `get_observations_summary` to compare temperature, precipitation and
+  snow depth over a shared window. Check missing hours and station
+  representativeness. Frost snow depth `-1` marks zero depth or partial snow
+  cover. Calculate a change only when both samples report a measured depth.
+- Use `get_observations` for observations near selected points and times.
+  Inspect the actual times, missing elements, warnings and per-point errors.
 - Frost reads `frost.client_id` from `~/.yr_mcp.json`; keep this file private
   (0600). `client_secret` may be stored there but is not needed or sent for public
   observations. Never print credentials or put them in tool arguments.
