@@ -66,6 +66,40 @@ STATION = object_schema({
 }, ["station_id", "name", "latitude", "longitude", "altitude_m", "distance_km",
     "valid_from", "valid_to", "available_series"])
 WARNINGS = {"type": "array", "items": {"type": "string"}}
+TEMPERATURE = "air_temperature"
+PRECIPITATION = "sum(precipitation_amount PT1H)"
+SNOW_DEPTH = "surface_snow_thickness"
+SUMMARY_ELEMENTS = [TEMPERATURE, PRECIPITATION, SNOW_DEPTH]
+SUMMARY_POINT = object_schema({"id": STRING, **POINT}, ["id", *POINT])
+SUMMARY_SAMPLE = object_schema({
+    "time_local": TIME, "value": {"type": "number"},
+    "quality_code": {"type": ["integer", "null"]},
+}, ["time_local", "value", "quality_code"])
+OPTIONAL_SAMPLE = {"anyOf": [SUMMARY_SAMPLE, {"type": "null"}]}
+SUMMARY_METRICS = {
+    TEMPERATURE: object_schema({
+        "min": SUMMARY_SAMPLE, "max": SUMMARY_SAMPLE,
+        "first_at_or_below_zero": OPTIONAL_SAMPLE,
+        "last_at_or_below_zero": OPTIONAL_SAMPLE,
+    }, ["min", "max", "first_at_or_below_zero", "last_at_or_below_zero"]),
+    PRECIPITATION: object_schema({
+        "total": {"type": "number"}, "first_wet_hour": OPTIONAL_SAMPLE,
+        "last_wet_hour": OPTIONAL_SAMPLE, "wettest_hour": OPTIONAL_SAMPLE,
+    }, ["total", "first_wet_hour", "last_wet_hour", "wettest_hour"]),
+    SNOW_DEPTH: object_schema({
+        "first": SUMMARY_SAMPLE, "last": SUMMARY_SAMPLE,
+        "change": {"type": ["number", "null"]},
+    }, ["first", "last", "change"]),
+}
+SUMMARY_ROW = object_schema({
+    "station_id": STRING, "element": {"enum": SUMMARY_ELEMENTS},
+    "unit": STRING, "sample_count": {"type": "integer"},
+    "missing_hours": {"type": "integer"},
+    "first_time_local": TIME, "last_time_local": TIME,
+    "quality_codes": {"type": "array", "items": {"type": ["integer", "null"]}},
+    "metrics": {"oneOf": list(SUMMARY_METRICS.values())},
+}, ["station_id", "element", "unit", "sample_count", "missing_hours",
+    "first_time_local", "last_time_local", "quality_codes", "metrics"])
 SERIES_OUTPUT = object_schema({
     "source": STRING, "timezone": STRING, "from_local": STRING, "to_local": STRING,
     "stations": {"type": "array", "items": STATION},
@@ -126,7 +160,38 @@ TOOL_DEFINITIONS = {
                            "warnings": WARNINGS, "error": {"type": ["string", "null"]}},
                            ["id", "requested_at_local", *POINT, "station", "observations",
                             "missing_elements", "warnings", "error"])}},
-                      ["source", "timezone", "count", "success_count", "error_count", "results"]))}
+                      ["source", "timezone", "count", "success_count", "error_count", "results"])),
+    "get_observations_summary": definition(
+        "get_observations_summary",
+        "Summarize hourly temperature, precipitation and snow depth near 1–25 points "
+        "over a shared inclusive window of at most 31 days. Selects the nearest station "
+        "with actual samples per element. Returns each station and summary once, without raw samples.",
+        {"timezone": STRING, "from_local": TIME, "to_local": TIME, "radius_km": RADIUS,
+         "elements": {**ELEMENTS, "items": {"enum": SUMMARY_ELEMENTS}, "maxItems": 3,
+                      "description": "Temperature, hourly precipitation and/or snow depth."},
+         "points": {"type": "array", "minItems": 1, "maxItems": 25, "items": SUMMARY_POINT}},
+        ["timezone", "from_local", "to_local", "elements", "points"],
+        object_schema({
+            "source": STRING, "timezone": STRING, "from_local": TIME, "to_local": TIME,
+            "stations": {"type": "array", "items": object_schema({
+                "station_id": STRING, "name": {"type": ["string", "null"]},
+                "altitude_m": {"type": ["number", "null"]},
+            }, ["station_id", "name", "altitude_m"])},
+            "results": {"type": "array", "items": object_schema({
+                "id": STRING,
+                "matches": {"type": "array", "items": object_schema({
+                    "element": {"enum": SUMMARY_ELEMENTS}, "station_id": STRING,
+                    "distance_km": {"type": "number"},
+                }, ["element", "station_id", "distance_km"])},
+                "missing_elements": {"type": "array", "items": {"enum": SUMMARY_ELEMENTS}},
+                "snow_around_precipitation": object_schema({
+                    "before_first_wet_hour": OPTIONAL_SAMPLE,
+                    "at_or_after_last_wet_hour": OPTIONAL_SAMPLE,
+                }, ["before_first_wet_hour", "at_or_after_last_wet_hour"]),
+            }, ["id", "matches", "missing_elements"])},
+            "summaries": {"type": "array", "items": SUMMARY_ROW},
+        }, ["source", "timezone", "from_local", "to_local", "stations", "results", "summaries"])),
+}
 
 
 class FrostClient:
@@ -238,16 +303,17 @@ def validate(name, arguments):
     for element in arguments["elements"]:
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_() .-]{0,150}", element):
             raise ObservationFailure("invalid_arguments", "Expected exact Frost element IDs")
-    if name == "get_observations":
+    if name in ("get_observations", "get_observations_summary"):
         ids = set()
-        for r in arguments["requests"]:
+        for r in arguments["requests" if name == "get_observations" else "points"]:
             if r["id"] in ids:
                 raise ObservationFailure("invalid_arguments", "Duplicate request id")
             ids.add(r["id"])
-            local_time(r["at_local"], tz)
+            if "at_local" in r:
+                local_time(r["at_local"], tz)
             if not all(math.isfinite(r[k]) for k in POINT):
                 raise ObservationFailure("invalid_arguments", "Coordinates must be finite")
-    else:
+    if name != "get_observations":
         start, end = window(arguments, tz)
         if name == "get_observation_series":
             step = 600 if arguments.get("time_resolution") == "PT10M" else 3600
@@ -466,10 +532,110 @@ def get_points(client, a, tz):
             "success_count": success, "error_count": len(results)-success, "results": results}
 
 
+def summary_sample(row):
+    if row is None:
+        return None
+    return {key: row[key] for key in ("time_local", "value", "quality_code")}
+
+
+def summarize_series(rows, element, expected_hours):
+    first, last = rows[0], rows[-1]
+    if element == TEMPERATURE:
+        freezing = [row for row in rows if row["value"] <= 0]
+        metrics = {
+            "min": summary_sample(min(rows, key=lambda row: row["value"])),
+            "max": summary_sample(max(rows, key=lambda row: row["value"])),
+            "first_at_or_below_zero": summary_sample(freezing[0] if freezing else None),
+            "last_at_or_below_zero": summary_sample(freezing[-1] if freezing else None),
+        }
+    elif element == PRECIPITATION:
+        wet = [row for row in rows if row["value"] > 0]
+        metrics = {
+            "total": math.fsum(row["value"] for row in rows),
+            "first_wet_hour": summary_sample(wet[0] if wet else None),
+            "last_wet_hour": summary_sample(wet[-1] if wet else None),
+            "wettest_hour": summary_sample(max(wet, key=lambda row: row["value"]) if wet else None),
+        }
+    else:
+        metrics = {
+            "first": summary_sample(first), "last": summary_sample(last),
+            "change": last["value"] - first["value"]
+            if len(rows) > 1 and min(first["value"], last["value"]) >= 0 else None,
+        }
+    return {
+        "station_id": first["station_id"], "element": element, "unit": first["unit"],
+        "sample_count": len(rows), "missing_hours": max(0, expected_hours - len(rows)),
+        "first_time_local": first["time_local"], "last_time_local": last["time_local"],
+        "quality_codes": sorted({row["quality_code"] for row in rows},
+                                key=lambda code: (code is None, code)),
+        "metrics": metrics,
+    }
+
+
+def get_points_summary(client, a, tz):
+    start, end = window(a, tz)
+    expected_hours = math.floor(end.timestamp() / 3600) - math.ceil(start.timestamp() / 3600) + 1
+    stations, summaries, results = {}, {}, []
+    series_cache = {}
+    for point in a["points"]:
+        matches = []
+        missing = []
+        selected_keys = {}
+        for element in a["elements"]:
+            args = {**a, **point, "elements": [element]}
+            for count in candidate_limits():
+                candidates, exhausted = candidate_stations(client, args, start, end, count)
+                new_ids = [s["id"] for s in candidates if (s["id"], element) not in series_cache]
+                # Bound each Frost response even when expanding to 50 stations.
+                for offset in range(0, len(new_ids), 10):
+                    ids = new_ids[offset:offset + 10]
+                    grouped = {station_id: {} for station_id in ids}
+                    for row in fetch_observation_rows(client, {**args, "station_ids": ids}, tz):
+                        if (row["station_id"] in grouped and row["element_id"] == element
+                                and (element == TEMPERATURE or row["value"] >= 0
+                                     or (element == SNOW_DEPTH and row["value"] == -1))):
+                            grouped[row["station_id"]].setdefault(row["time_utc"], row)
+                    for station_id, samples in grouped.items():
+                        series_cache[station_id, element] = list(samples.values())
+                selected = next((s for s in candidates if series_cache[s["id"], element]), None)
+                if selected or exhausted:
+                    break
+            if selected is None:
+                missing.append(element)
+                continue
+            station_id = selected["id"]
+            station = station_row(selected, point["latitude"], point["longitude"])
+            stations[station_id] = {key: station[key] for key in ("station_id", "name", "altitude_m")}
+            key = station_id, element
+            selected_keys[element] = key
+            if key not in summaries:
+                summaries[key] = summarize_series(series_cache[key], element, expected_hours)
+            matches.append({"element": element, "station_id": station_id,
+                            "distance_km": station["distance_km"]})
+        result = {"id": point["id"], "matches": matches, "missing_elements": missing}
+        if PRECIPITATION in selected_keys and SNOW_DEPTH in selected_keys:
+            wet = [row for row in series_cache[selected_keys[PRECIPITATION]] if row["value"] > 0]
+            if wet:
+                snow = series_cache[selected_keys[SNOW_DEPTH]]
+                before = next((row for row in reversed(snow)
+                               if row["time_utc"] < wet[0]["time_utc"]), None)
+                after = next((row for row in snow if row["time_utc"] >= wet[-1]["time_utc"]), None)
+                result["snow_around_precipitation"] = {
+                    "before_first_wet_hour": summary_sample(before),
+                    "at_or_after_last_wet_hour": summary_sample(after),
+                }
+        results.append(result)
+    return {"source": SOURCE, "timezone": str(tz), "from_local": start.isoformat(),
+            "to_local": end.isoformat(), "stations": list(stations.values()),
+            "results": results, "summaries": list(summaries.values())}
+
+
 def call_tool(name, arguments, client):
     tz = validate(name, arguments)
     if name == "find_observation_stations":
         return find_stations(client, arguments, tz)
     if name == "get_observation_series":
         return get_series(client, arguments, tz)
+    if name == "get_observations_summary":
+        return get_points_summary(client, arguments, tz)
     return get_points(client, arguments, tz)

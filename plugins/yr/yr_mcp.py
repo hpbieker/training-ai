@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import json
 import sys
+from bisect import bisect_left
+from itertools import accumulate, pairwise
 from threading import Lock
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -14,7 +16,10 @@ from yr_weather import compact_hourly_forecast, fetch_locationforecast
 import yr_observations
 
 
-ALL_TOOL_NAMES = ("get_forecast", "get_forecasts", *yr_observations.TOOL_DEFINITIONS)
+ALL_TOOL_NAMES = (
+    "get_forecast", "get_forecasts", "get_route_forecasts_summary", "get_route_observations_summary",
+    *yr_observations.TOOL_DEFINITIONS,
+)
 
 TOOL_ANNOTATIONS = {
     "get_forecast": {
@@ -32,7 +37,6 @@ TOOL_ANNOTATIONS = {
         "openWorldHint": True,
     }
 }
-
 _NULLABLE_NUMBER = {"type": ["number", "null"]}
 _NULLABLE_STRING = {"type": ["string", "null"]}
 _FORECAST_ROW_SCHEMA = {
@@ -287,6 +291,88 @@ TOOL_DEFINITIONS = {
 }
 
 
+_route_properties = {
+    "timezone": {"type": "string", "minLength": 1},
+    "geometry": yr_observations.object_schema({
+        "type": {"const": "LineString"},
+        "coordinates": {"type": "array", "minItems": 2, "maxItems": 50000,
+                        "items": {"type": "array", "minItems": 2, "maxItems": 3,
+                                  "items": {"type": "number"}}},
+    }, ["type", "coordinates"]),
+    "sample_count": {"type": "integer", "minimum": 2, "maximum": 25, "default": 5},
+}
+_route_required = ["timezone", "geometry"]
+_distance_schema = {"type": "number"}
+_forecast_range = yr_observations.object_schema(
+    {"min": {"type": "number"}, "max": {"type": "number"}}, ["min", "max"]
+)
+_forecast_summary_point = {
+    "id": {"type": "string"},
+    **yr_observations.POINT,
+    "distance_km": _distance_schema,
+    "requested_at_local": {"type": "string"},
+    "from_local": {"type": "string"},
+    "to_local": {"type": "string"},
+    "covered_from_local": _NULLABLE_STRING,
+    "covered_to_local": _NULLABLE_STRING,
+    "source_updated_at": _NULLABLE_STRING,
+    "missing_hours": {"type": "integer"},
+    "temperature_c": {"anyOf": [_forecast_range, {"type": "null"}]},
+    "wind_speed_mps": {"anyOf": [_forecast_range, {"type": "null"}]},
+    "wind_from_degrees": {"type": "array", "items": {"type": "number"}},
+    "precipitation_mm_overlapping_hours": _NULLABLE_NUMBER,
+    "error": _NULLABLE_STRING,
+}
+_forecast_route_output = {
+    "source": {"type": "string"},
+    "timezone": _route_properties["timezone"],
+    "distance_km": _distance_schema,
+    "timing_method": {"enum": ["distance", "recorded_elapsed_time"]},
+    "results": {"type": "array", "items": yr_observations.object_schema(
+        _forecast_summary_point, list(_forecast_summary_point)
+    )},
+}
+TOOL_DEFINITIONS["get_route_forecasts_summary"] = yr_observations.definition(
+    "get_route_forecasts_summary",
+    "Summarize weather around estimated passage times along a GeoJSON LineString. "
+    "Uses distance-proportional timing or scales recorded elapsed times.",
+    {
+        **_route_properties,
+        "start_local": yr_observations.TIME,
+        "duration_minutes": {"type": "number", "exclusiveMinimum": 0, "maximum": 1440},
+        "elapsed_seconds": {"type": "array", "minItems": 2, "maxItems": 50000,
+                            "items": {"type": "number", "minimum": 0}},
+        "window_minutes": {"type": "integer", "minimum": 1, "maximum": 120, "default": 30,
+                           "description": "Minutes before and after each passage."},
+    },
+    [*_route_required, "start_local", "duration_minutes"],
+    yr_observations.object_schema(_forecast_route_output, list(_forecast_route_output)),
+)
+_summary_tool = yr_observations.TOOL_DEFINITIONS["get_observations_summary"]
+_summary_input = _summary_tool["inputSchema"]["properties"]
+_summary_output = _summary_tool["outputSchema"]
+_summary_result = _summary_output["properties"]["results"]["items"]
+TOOL_DEFINITIONS["get_route_observations_summary"] = yr_observations.definition(
+    "get_route_observations_summary",
+    "Summarize Frost weather history near sampled route points over one shared window. "
+    "Returns station references and compact summaries of temperature, precipitation and snow depth.",
+    {
+        **_route_properties,
+        **{key: _summary_input[key] for key in ("from_local", "to_local", "elements", "radius_km")},
+    },
+    [*_route_required, "from_local", "to_local", "elements"],
+    yr_observations.object_schema({
+        **_summary_output["properties"],
+        "distance_km": _distance_schema,
+        "results": {"type": "array", "items": yr_observations.object_schema({
+            **_summary_result["properties"], **yr_observations.POINT,
+            "distance_km": _distance_schema,
+        }, [*_summary_result["required"], *yr_observations.POINT, "distance_km"])},
+    }, [*_summary_output["required"], "distance_km"]),
+)
+for _name in ("get_route_forecasts_summary", "get_route_observations_summary"):
+    TOOL_ANNOTATIONS[_name] = TOOL_DEFINITIONS[_name]["annotations"]
+
 TOOL_DEFINITIONS.update(yr_observations.TOOL_DEFINITIONS)
 TOOL_ANNOTATIONS.update({name: tool["annotations"] for name, tool in yr_observations.TOOL_DEFINITIONS.items()})
 
@@ -350,6 +436,8 @@ class YrToolService:
             )
         if name == "get_forecasts":
             return self._call_forecasts(arguments)
+        if name in ("get_route_forecasts_summary", "get_route_observations_summary"):
+            return self._call_route_tool(name, arguments)
 
         latitude = _number(arguments["latitude"], "latitude", -90, 90)
         longitude = _number(arguments["longitude"], "longitude", -180, 180)
@@ -429,6 +517,140 @@ class YrToolService:
             "hourly": rows,
             "warnings": warnings,
         }
+
+    def _call_route_tool(self, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        from jsonschema import Draft202012Validator
+
+        schema = TOOL_DEFINITIONS[name]["inputSchema"]
+        error = next(Draft202012Validator(schema).iter_errors(arguments), None)
+        if error:
+            path = ".".join(map(str, error.absolute_path)) or "arguments"
+            raise ToolFailure("invalid_arguments", f"invalid {path}: {error.validator}")
+
+        coordinates = arguments["geometry"]["coordinates"]
+        for point in coordinates:
+            _number(point[0], "longitude", -180, 180)
+            _number(point[1], "latitude", -90, 90)
+        distances = list(accumulate(
+            (yr_observations.distance(a[1], a[0], b) for a, b in pairwise(coordinates)),
+            initial=0.0,
+        ))
+        total = distances[-1]
+        if total <= 0:
+            raise ToolFailure("invalid_arguments", "route must have positive distance")
+        historical = name == "get_route_observations_summary"
+        elapsed = arguments.get("elapsed_seconds")
+        if not historical:
+            timezone = _timezone(arguments["timezone"])
+            try:
+                start = yr_observations.local_time(arguments["start_local"], timezone).astimezone(UTC)
+            except yr_observations.ObservationFailure as exc:
+                raise ToolFailure(exc.code, str(exc)) from exc
+            duration = _number(arguments["duration_minutes"], "duration_minutes", 0, 1440)
+        if elapsed is not None:
+            if (len(elapsed) != len(coordinates) or elapsed[0] != 0
+                    or not 0 < elapsed[-1] < float("inf")
+                    or not all(0 <= a <= b for a, b in pairwise(elapsed))):
+                raise ToolFailure("invalid_arguments",
+                                  "elapsed_seconds must start at zero, be finite and ordered, "
+                                  "and match the coordinates with a positive final time")
+
+        sample_count = arguments.get("sample_count", 5)
+        sample_distances = [total * (i / (sample_count - 1)) for i in range(sample_count)]
+        requests = []
+        for index, distance in enumerate(sample_distances):
+            if index in (0, sample_count - 1):
+                longitude, latitude = coordinates[0 if index == 0 else -1][:2]
+                progress = 0 if index == 0 else 1
+            else:
+                right = bisect_left(distances, distance)
+                left = right - 1
+                fraction = (distance - distances[left]) / (distances[right] - distances[left])
+                lon1, lat1 = coordinates[left][:2]
+                lon2, lat2 = coordinates[right][:2]
+                longitude = (lon1 + fraction * ((lon2 - lon1 + 180) % 360 - 180) + 180) % 360 - 180
+                latitude = lat1 + fraction * (lat2 - lat1)
+                progress = distance / total
+                if elapsed is not None:
+                    passage = elapsed[left] + fraction * (elapsed[right] - elapsed[left])
+                    progress = passage / elapsed[-1]
+            point = {"id": str(index + 1), "latitude": latitude, "longitude": longitude}
+            if not historical:
+                at = start + timedelta(seconds=round(duration * 60 * progress))
+                point["at_local"] = at
+            requests.append(point)
+
+        if historical:
+            batch = {key: arguments[key] for key in
+                     ("timezone", "from_local", "to_local", "elements", "radius_km")
+                     if key in arguments}
+            result = self.call_tool("get_observations_summary", {**batch, "points": requests})
+            for point, request in zip(result["results"], requests, strict=True):
+                point.update(request)
+        else:
+            margin = timedelta(minutes=arguments.get("window_minutes", 30))
+            result = {
+                "source": "MET Norway Locationforecast 2.0 compact",
+                "timezone": arguments["timezone"],
+                "timing_method": "distance" if elapsed is None else "recorded_elapsed_time",
+                "results": [self._route_forecast_window(point, timezone, margin) for point in requests],
+            }
+        for point, distance in zip(result["results"], sample_distances, strict=True):
+            point["distance_km"] = round(distance, 3)
+        result["distance_km"] = round(total, 3)
+        return result
+
+    def _route_forecast_window(self, point, timezone, margin):
+        passage = point["at_local"]
+        start, end = passage - margin, passage + margin
+        first_hour = start.replace(minute=0, second=0, microsecond=0)
+        hour = timedelta(hours=1)
+        last_hour = end.replace(minute=0, second=0, microsecond=0)
+        if last_hour == end:
+            last_hour -= hour
+
+        def local(dt):
+            return dt.astimezone(timezone).isoformat(timespec="seconds")
+
+        result = {
+            "id": point["id"], "latitude": point["latitude"], "longitude": point["longitude"],
+            "requested_at_local": local(passage), "from_local": local(start), "to_local": local(end),
+            "covered_from_local": None, "covered_to_local": None, "source_updated_at": None,
+            "missing_hours": (last_hour - first_hour) // hour + 1,
+            "temperature_c": None, "wind_speed_mps": None, "wind_from_degrees": [],
+            "precipitation_mm_overlapping_hours": None, "error": None,
+        }
+        try:
+            forecast = self.call_tool("get_forecast", {
+                "latitude": point["latitude"], "longitude": point["longitude"],
+                "timezone": str(timezone), "from_local": first_hour.isoformat(),
+                "to_local": last_hour.isoformat(),
+            })
+        except ToolFailure as exc:
+            result["error"] = str(exc)
+            return result
+
+        result["source_updated_at"] = forecast["source_updated_at"]
+        rows = forecast["hourly"]
+        if not rows:
+            result["error"] = forecast["warnings"][0]
+            return result
+
+        result["missing_hours"] -= len(rows)
+        first = datetime.fromisoformat(rows[0]["time_utc"])
+        last = datetime.fromisoformat(rows[-1]["time_utc"])
+        result["covered_from_local"] = local(max(start, first))
+        result["covered_to_local"] = local(min(end, last + hour))
+        for field, output in (("air_temperature", "temperature_c"), ("wind_speed", "wind_speed_mps")):
+            values = [row[field] for row in rows if row[field] is not None]
+            if values:
+                result[output] = {"min": min(values), "max": max(values)}
+        result["wind_from_degrees"] = sorted({row["wind_from_direction"] for row in rows
+                                              if row["wind_from_direction"] is not None})
+        rain = [row["precipitation_amount_next_1h"] for row in rows]
+        if not result["missing_hours"] and None not in rain:
+            result["precipitation_mm_overlapping_hours"] = round(sum(rain), 3)
+        return result
 
     def _call_forecasts(self, arguments: dict[str, Any]) -> dict[str, Any]:
         timezone_name = arguments["timezone"]

@@ -57,7 +57,7 @@ class ObservationToolsTests(unittest.TestCase):
 
     def call(self, name, a):
         result = self.tools.call_tool(name, a)
-        Draft202012Validator(OBS.TOOL_DEFINITIONS[name]["outputSchema"]).validate(result)
+        Draft202012Validator(MCP.TOOL_DEFINITIONS[name]["outputSchema"]).validate(result)
         return result
 
     def test_find_ranks_and_filters_actual_series_coverage(self):
@@ -83,6 +83,23 @@ class ObservationToolsTests(unittest.TestCase):
         self.assertEqual(self.fake.calls[-1][1]["referencetime"],
                          "2026-10-18T08:00:00Z/2026-10-18T09:00:01Z")
         self.assertEqual(self.fake.calls[-1][1]["levels"], "default")
+
+    def test_summary_shares_station_data_and_reports_missing_elements(self):
+        self.fake.observations[0]["observations"][0]["value"] = -1
+        args = {**self.window, "elements": [OBS.TEMPERATURE, OBS.SNOW_DEPTH],
+                "points": [{"id": id, "latitude": 59.9, "longitude": lon}
+                           for id, lon in [("a", 10.7), ("b", 10.71)]]}
+        result = self.call("get_observations_summary", args)
+        self.assertEqual(len(result["stations"]), 1)
+        self.assertEqual(len(result["summaries"]), 1)
+        summary = result["summaries"][0]
+        self.assertEqual(summary["missing_hours"], 0)
+        self.assertEqual(summary["metrics"]["first_at_or_below_zero"]["value"], -1)
+        for point in result["results"]:
+            self.assertEqual(point["matches"][0]["station_id"], "SN2")
+            self.assertEqual(point["missing_elements"], [OBS.SNOW_DEPTH])
+        calls = [p for endpoint, p in self.fake.calls if endpoint == "observations"]
+        self.assertEqual(len(calls), 2)
 
     def test_subdaily_offset_is_not_added_to_reference_time(self):
         self.fake.observations[0]["observations"][0]["timeOffset"] = "PT6H"
@@ -110,6 +127,19 @@ class ObservationToolsTests(unittest.TestCase):
         self.assertEqual([endpoint for endpoint, _ in self.fake.calls], ["sources", "observations"])
         self.assertEqual(self.fake.calls[0][1]["nearestmaxcount"], 3)
         self.assertEqual(set(self.fake.calls[1][1]["sources"].split(",")), {"SN1", "SN2"})
+
+    def test_route_observations_summary_shares_the_window_and_station(self):
+        result = self.call("get_route_observations_summary", {
+            **self.window,
+            "sample_count": 2,
+            "geometry": {"type": "LineString", "coordinates": [[10.7, 59.9], [10.72, 59.9]]},
+        })
+        self.assertEqual(len(result["summaries"]), 1)
+        self.assertEqual(result["summaries"][0]["sample_count"], 2)
+        self.assertEqual(result["summaries"][0]["metrics"]["min"]["value"], 4.6)
+        self.assertEqual([p["matches"][0]["station_id"] for p in result["results"]],
+                         ["SN2", "SN2"])
+        self.assertEqual(result["results"][-1]["distance_km"], result["distance_km"])
 
     def test_reuses_metadata_but_reads_observations_fresh(self):
         self.call("get_observations", self.point_args())

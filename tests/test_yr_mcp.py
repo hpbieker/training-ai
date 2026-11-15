@@ -43,7 +43,7 @@ class FakeYrService:
 
 class YrMcpSchemaTests(unittest.TestCase):
     def test_exposes_closed_read_only_tools(self) -> None:
-        self.assertEqual(MCP.ALL_TOOL_NAMES, ("get_forecast", "get_forecasts", "find_observation_stations", "get_observation_series", "get_observations"))
+        self.assertEqual(MCP.ALL_TOOL_NAMES, ("get_forecast", "get_forecasts", "get_route_forecasts_summary", "get_route_observations_summary", "find_observation_stations", "get_observation_series", "get_observations", "get_observations_summary"))
         for name in MCP.ALL_TOOL_NAMES:
             definition = MCP.TOOL_DEFINITIONS[name]
             self.assertFalse(definition["inputSchema"]["additionalProperties"])
@@ -119,6 +119,39 @@ class YrMcpDispatchTests(unittest.TestCase):
         arguments["from_local"] = "2026-08-17T11:00"
         with self.assertRaisesRegex(MCP.ToolFailure, "before or equal"):
             self.tools.call_tool("get_forecast", arguments)
+
+    def test_route_samples_both_passages_and_scales_recorded_timing(self) -> None:
+        from jsonschema import Draft202012Validator
+
+        route = {
+            "timezone": "Europe/Oslo",
+            "start_local": "2026-08-17T08:00",
+            "duration_minutes": 60,
+            "geometry": {"type": "LineString", "coordinates": [
+                [10.68, 59.95], [10.60, 59.95], [10.68, 59.95],
+            ]},
+        }
+        result = self.tools.call_tool("get_route_forecasts_summary", route)
+        Draft202012Validator(MCP.TOOL_DEFINITIONS["get_route_forecasts_summary"]["outputSchema"]).validate(result)
+        points = result["results"]
+        self.assertAlmostEqual(points[1]["longitude"], points[3]["longitude"])
+        self.assertEqual([p["requested_at_local"][11:16] for p in points],
+                         ["08:00", "08:15", "08:30", "08:45", "09:00"])
+        self.assertEqual(points[1]["missing_hours"], 2)
+        self.assertIsNone(points[1]["precipitation_mm_overlapping_hours"])
+        self.assertEqual(points[-1]["temperature_c"], {"min": 17.2, "max": 17.2})
+        self.assertEqual(points[-1]["covered_from_local"][11:16], "09:00")
+        self.assertEqual(points[-1]["missing_hours"], 1)
+        self.assertIsNone(points[-1]["precipitation_mm_overlapping_hours"])
+        covered = self.tools.call_tool("get_route_forecasts_summary", {
+            **route, "start_local": "2026-08-17T09:30", "sample_count": 2,
+        })
+        self.assertEqual(covered["results"][0]["precipitation_mm_overlapping_hours"], 0.1)
+        self.assertEqual(covered["results"][0]["missing_hours"], 0)
+        recorded = self.tools.call_tool("get_route_forecasts_summary", {**route, "elapsed_seconds": [0, 600, 3600]})
+        self.assertEqual(recorded["timing_method"], "recorded_elapsed_time")
+        self.assertEqual([p["requested_at_local"][11:16] for p in recorded["results"]],
+                         ["08:00", "08:05", "08:10", "08:35", "09:00"])
 
     def test_batch_returns_ordered_point_and_time_forecasts(self) -> None:
         result = self.tools.call_tool(
@@ -240,7 +273,7 @@ class YrMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             [tool.name for tool in result.tools],
-            ["get_forecast", "get_forecasts", "find_observation_stations", "get_observation_series", "get_observations"],
+            ["get_forecast", "get_forecasts", "get_route_forecasts_summary", "get_route_observations_summary", "find_observation_stations", "get_observation_series", "get_observations", "get_observations_summary"],
         )
 
 

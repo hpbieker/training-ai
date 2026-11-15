@@ -18,11 +18,23 @@ shared timezone and one to 25 requests with unique IDs. This accommodates a
 six-hour route sampled at the start and every 15 minutes. The caller still owns
 point selection, arrival-time estimates, route meaning, and aggregation.
 
+Use `get_route_forecasts_summary` for a GeoJSON LineString in longitude/latitude
+order, a local start and a planned duration. It samples five points by default,
+including start and finish, with a forecast window of 30 minutes on each side
+of passage. Supply `elapsed_seconds` aligned with the coordinates to scale a
+recorded ride's timing. Check coverage and missing hours. Precipitation sums
+the complete source hours overlapping the requested window, including partial
+boundary hours at their full amount.
+
 Pass normalized MCP output to repo helpers through their source-input
 interfaces; helpers must not import or invoke the Yr plugin directly.
 
 ## Historical Observations
 
+- Use `get_route_observations_summary` with a GeoJSON LineString, a shared
+  historical window and the desired Frost elements. Each sampled route point
+  references nearby stations and shared summaries. Check station distance,
+  altitude and measurement gaps before applying the summaries to the route.
 - Use `find_observation_stations` with coordinates, timezone, local window and
   exact Frost element IDs. The search starts with at least three candidates
   (or the requested result limit) and expands through 10, 25 and 50 only when
@@ -32,6 +44,13 @@ interfaces; helpers must not import or invoke the Yr plugin directly.
 - Use `get_observation_series` for up to 10 known station IDs and 10 elements,
   an inclusive window of up to 31 days, and `PT1H` (default) or `PT10M` resolution.
   Requests are bounded to 50000 expected samples; reduce scope when necessary.
+- Use `get_observations_summary` for temperature, hourly precipitation and
+  snow depth near up to 25 points over one shared window. Each point references
+  the nearest station with samples for each requested element. Shared station
+  summaries appear once. Check distance, altitude and missing hours before
+  using the results. When available, compare snow samples around the first
+  and last wet hours. Frost's snow value `-1` means zero depth or partial snow
+  cover and yields no numeric change when it occurs at either endpoint.
 - Use `get_observations` for 1–25 selected point/time requests. It starts with
   three nearby candidates and fetches their observations in one request,
   normally making two API calls per point. It expands to 10, 25 and 50 candidates
