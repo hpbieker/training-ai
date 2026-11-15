@@ -20,18 +20,20 @@ from this repo's persistence, orchestration and cross-source analysis.
 MCP plugins use `uv` to prepare `.venv` from their `requirements.txt`, then
 start Python directly. Setup messages go to stderr.
 
-Run the repository tests from the root with the plugin dependencies:
+Run all core and plugin tests from the repository root:
 
 ```sh
 uv run --no-project \
   --with-requirements plugins/strava/requirements.txt \
   --with-requirements plugins/training-visuals/requirements.txt \
   --with matplotlib \
-  python -B -m unittest discover -s tests
+  python -B tests/run_all.py
 ```
 
-`test_plugin_startup.py` checks every plugin's launch command and tool catalog
-without a service login. The first run may download dependencies.
+Core and cross-plugin tests live in `tests/`. Plugin-specific tests live in
+`plugins/<name>/tests/`. The runner starts a separate Python process for each
+suite. `tests/test_plugin_startup.py` checks every plugin's launch command and
+tool catalog without a service login. The first run may download dependencies.
 
 ## Use Intervals.icu
 

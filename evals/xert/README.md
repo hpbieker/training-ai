@@ -19,7 +19,7 @@ Use an isolated environment with the plugin's declared dependencies:
 ```sh
 python3.14 -m venv /private/tmp/xert-test-venv
 /private/tmp/xert-test-venv/bin/python -m pip install -r plugins/xert/requirements.txt
-/private/tmp/xert-test-venv/bin/python -B -m unittest discover -s tests -p 'test_xert*.py'
+/private/tmp/xert-test-venv/bin/python -B -m unittest discover -s plugins/xert/tests
 ```
 
 On 17 October 2026, all 155 tests passed using Python 3.14, MCP 1.30.0 and
