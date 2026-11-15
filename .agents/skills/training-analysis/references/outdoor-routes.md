@@ -69,6 +69,13 @@ candidate. It does not fetch routes or call Strava.
 
 - Fetch fresh point forecasts for materially different parts/times of the
   actual route corridor, not one generic point.
+- Before recommending whether to ride a route where snow, slush or ice is
+  plausible, check hourly temperature and precipitation for the previous 48
+  hours and snow depth before and after precipitation. Use stations
+  representative of the route. Look for a recent local road report or camera
+  image and say what it shows. State the likely road conditions, what remains
+  unknown and whether you recommend riding at the proposed time with the
+  proposed tyres.
 - Read `config/cycling-clothing.md` when clothing guidance is requested or
   useful. Recommend known items only when inventory context exists; otherwise
   give generic layers.

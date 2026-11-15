@@ -607,6 +607,9 @@ normal recommendation.
   food portions with their combined approximate grams/hour. Use known product
   values from personal context or source data; if unavailable, name the product
   assumption and give a grams-based portion, not an invented scoop or candy size.
+- When outdoor riding is an option, apply the
+  [route weather and road condition checks](outdoor-routes.md#weather-clothing-and-presentation)
+  before choosing between indoor and outdoor training.
 - Explain briefly why the winner fits readiness, recent load, weather, calendar,
   goals, and reported body feel.
 - When presenting Garmin Training Effect, preserve the numeric aerobic and
