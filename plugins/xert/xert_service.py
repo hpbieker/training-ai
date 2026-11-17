@@ -850,7 +850,9 @@ def compact_training_state(
 
 
 def compact_current_training_advice(model: dict[str, Any]) -> dict[str, Any]:
+    advice = model.get("training_advice") or {}
     return {
+        **_compact_advice_context(advice),
         "source": model.get("source"),
         "source_endpoint": "/my-fitness",
         "source_scope": "current",
@@ -901,12 +903,27 @@ def _project_at_state_without_training(
     return {**at_state, "start_date": start_date, "tl": projected_tl, "rl": projected_rl}
 
 
+def _compact_advice_context(advice: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "xss_deficit": advice.get("xss_deficit"),
+        "xss_goal": advice.get("xss_goal"),
+        "availability": advice.get("availability"),
+        "is_availability_restricted": advice.get("is_availability_restricted"),
+        "improvement_rate": advice.get("ir"),
+        "weekly_hours": advice.get("weekly_hours"),
+        "training_gradient": advice.get("training_gradient"),
+        "phase": advice.get("phase"),
+        "recommended_athlete": advice.get("recommended_athlete"),
+    }
+
+
 def compact_planned_training_advice(payload: dict[str, Any], *, at: str) -> dict[str, Any]:
     advice = payload.get("training_advice") if isinstance(payload, dict) else {}
     if not isinstance(advice, dict):
         advice = {}
     return {
         "source": "xert_recommended_training",
+        **_compact_advice_context(advice),
         "source_endpoint": "/recommended-training",
         "source_scope": "planned_time",
         "at": at,

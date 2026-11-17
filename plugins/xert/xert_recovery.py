@@ -79,6 +79,7 @@ def fetch_recovery_model_with_opener(opener) -> dict[str, Any]:
     )
     return {
         "source": "xert_web_direct",
+        "training_advice": training_advice,
         "recovery_offset": recovery_offset,
         "next_workout_days": next_workout_days,
         "ir_params": ir_params,

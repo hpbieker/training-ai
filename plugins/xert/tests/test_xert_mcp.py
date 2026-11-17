@@ -12,6 +12,7 @@ sys.path.insert(0, str(PLUGIN_ROOT))
 
 import xert_mcp as MCP  # noqa: E402
 import xert_service as SERVICE  # noqa: E402
+import xert_recovery as RECOVERY  # noqa: E402
 
 
 class FakeXertService:
@@ -918,6 +919,73 @@ class XertServiceTests(unittest.TestCase):
             additional=False,
             sport=None,
         )
+
+    def test_planned_advice_preserves_planning_context(self) -> None:
+        source = {
+            "xss_deficit": 273.3,
+            "xss_goal": 223.3,
+            "availability": 3.25,
+            "is_availability_restricted": True,
+            "ir": 3,
+            "weekly_hours": 16.8,
+            "training_gradient": 3,
+            "phase": "Continuous",
+            "recommended_athlete": "Endurance",
+        }
+        for zero_values in (False, True):
+            with self.subTest(zero_values=zero_values):
+                advice = dict(source)
+                if zero_values:
+                    advice.update({
+                        key: False if isinstance(value, bool) else 0
+                        for key, value in source.items()
+                        if isinstance(value, (int, float))
+                    })
+                summary = SERVICE.compact_planned_training_advice(
+                    {"training_advice": advice}, at="2026-08-18T09:00:00+02:00"
+                )
+                for key, value in advice.items():
+                    output_key = "improvement_rate" if key == "ir" else key
+                    self.assertEqual(summary[output_key], value)
+                    self.assertIs(type(summary[output_key]), type(value))
+
+    def test_current_advice_preserves_source_context_in_summary_and_full(self) -> None:
+        service = self._service(SERVICE.XertCredentials(username="user", password="secret"))
+        advice = {
+            "at_state": {"start_date": "2026-08-17T09:00:00+02:00"},
+            "targetXSS": {"xlss": 40, "xhss": 2, "xpss": 0},
+            "xss_deficit": 0,
+            "xss_goal": 42,
+            "availability": 0,
+            "is_availability_restricted": False,
+            "ir": 0,
+            "weekly_hours": 0,
+            "training_gradient": 0,
+            "phase": "Continuous",
+            "recommended_athlete": "Endurance",
+            "additional_source_field": "preserved in full",
+        }
+        with (
+            patch.object(RECOVERY, "fetch_my_fitness_model", return_value=(
+                advice, {"settings": {"recovery": 0.2}}
+            )),
+            patch.object(RECOVERY, "fetch_ir_params", return_value={}),
+            patch.object(RECOVERY, "fetch_training_forecast_with_opener", return_value={}),
+            patch.object(RECOVERY, "calculate_recovery_days", return_value={}),
+            patch.object(RECOVERY, "infer_next_workout_days", return_value=1),
+            patch.object(RECOVERY, "calculate_workout_capacity", return_value={}),
+        ):
+            summary = service.get_training_advice()
+            full = service.get_training_advice(view="full")
+        self.assertEqual(full["payload"]["training_advice"], advice)
+        self.assertEqual(summary["target_xss"], {"low": 40, "high": 2, "peak": 0})
+        for key in (
+            "xss_deficit", "xss_goal", "availability", "is_availability_restricted",
+            "ir", "weekly_hours", "training_gradient", "phase", "recommended_athlete",
+        ):
+            output_key = "improvement_rate" if key == "ir" else key
+            self.assertEqual(summary[output_key], advice[key])
+            self.assertIs(type(summary[output_key]), type(advice[key]))
 
     def test_list_recommended_workouts_filters_to_workouts(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")
