@@ -12,7 +12,11 @@ illness activates this workflow. Preserve the original wording of wellness
 notes. A denial or a report about a family member alone gives no evidence of
 current illness in the athlete. If the person, timing or meaning is uncertain,
 clarify it before recommending hard training. A free-text denial cannot clear
-an unresolved episode or override an active SICK event.
+an unresolved episode or override an active SICK event. Carry a previous
+ambiguous comment forward with its original date, source and wording until
+clarified. Include the original note and subsequent clarifications in the
+wellness input even when the usual retrieval window moves past them. A blank
+wellness day or favorable readiness values do not resolve the question.
 
 For mild illness with symptoms resolved or only very mild local symptoms and no
 warning signs, consider an easy exercise challenge. Reassess after 10–20 minutes.

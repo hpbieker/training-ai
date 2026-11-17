@@ -73,6 +73,13 @@ def assess_return(context, assessment, *, day, cutoff):
             raise ValueError('Illness assessment must describe this day and be available at the data cutoff')
         if latest and assessment['last_sick_date'] < latest['date']:
             raise ValueError('Illness assessment predates the latest recorded illness episode')
+        pending = context.get("unresolved_illness_comment")
+        if pending and assessment["illness_started_on"] <= pending["date"] <= assessment["last_sick_date"]:
+            context["unresolved_illness_comment"] = None
+            context["current_day_review_signals"] = [
+                signal for signal in context["current_day_review_signals"]
+                if signal != "clarify_current_illness_comment"
+            ]
         phase = 'awaiting_review'
         if assessment['red_flags'] or assessment['symptoms'] == 'systemic' or assessment['response'] == 'abnormal':
             phase = 'stop_and_review'

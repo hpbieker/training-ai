@@ -33,6 +33,33 @@ class IllnessReturnTests(unittest.TestCase):
     def evaluate(self, value, ctx=None):
         return assess_return(ctx or context(), value, day='2026-11-17', cutoff=NOW)
 
+    def test_personal_fever_and_sore_throat_blocks_next_day(self):
+        for text, blocked in [("Jeg har feber og vondt i halsen", True),
+                              ("Barnet mitt har feber og vondt i halsen", False),
+                              ("Jeg har ikke feber", False)]:
+            with self.subTest(text=text):
+                ctx = intervals_wellness_context("2026-11-17", [{"id": "2026-11-16", "comments": text}])
+                self.assertEqual(self.evaluate(None, ctx)["illness_training_blocked"], blocked)
+                self.assertEqual(ctx["current_day_review_signals"], [])
+
+    def test_ambiguity_retains_source_until_clarified(self):
+        rows = [{"id": "2026-11-12", "comments": "Muligens syk?"},
+                {"id": "2026-11-17", "sleepScore": 95}]
+        ctx = intervals_wellness_context("2026-11-17", rows)
+        self.assertEqual(ctx["unresolved_illness_comment"]["date"], "2026-11-12")
+        self.assertEqual(ctx["unresolved_illness_comment"]["source"], "wellness")
+        self.assertIn("clarify_current_illness_comment", ctx["current_day_review_signals"])
+        self.assertFalse(self.evaluate(None, ctx)["current_day_illness"])
+        outside_episode = self.evaluate(assessment(last_sick_date="2026-11-11"), copy.deepcopy(ctx))
+        self.assertIsNotNone(outside_episode["unresolved_illness_comment"])
+        self.assertIn("clarify_current_illness_comment", outside_episode["current_day_review_signals"])
+        ctx["current_day_review_signals"].append("reported_fatigue")
+        self.assertIsNone(self.evaluate(assessment(), ctx)["unresolved_illness_comment"])
+        self.assertEqual(ctx["current_day_review_signals"], ["reported_fatigue"])
+        rows.append({"id": "2026-11-13", "comments": "Jeg er frisk."})
+        cleared = intervals_wellness_context("2026-11-17", rows, lookback_days=2)
+        self.assertEqual(cleared["current_day_review_signals"], [])
+
     def test_third_day_and_older_source_illness_do_not_clear_without_review(self):
         for sick in ('2026-11-14', '2026-11-01', '2026-10-01'):
             result = self.evaluate(None, context(sick=sick))
