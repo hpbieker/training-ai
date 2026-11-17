@@ -97,6 +97,14 @@ Use only when multiple aligned observations support increased thermal cost,
 such as a meaningful temperature trend, relevant environmental or cooling
 conditions, rising physiological cost at matched power, and athlete-reported
 heat strain. State the supporting observations and important confounders.
+Align air temperature and relative humidity with the actual work window.
+Use known fan setting, airflow and changes in cooling when interpreting indoor
+rides. If unknown, keep cooling unresolved. High relative humidity in cold air
+and session-wide maxima reached at different times provide little basis for
+attributing a change to heat. Heart rate can enter the wearable CORE estimate.
+Seek independent corroboration, such as a respiratory change at matched power
+or the athlete's contemporaneous heat report, before strengthening the verdict.
+
 Warmth reported alongside rising pulse or breathing does not by itself
 establish heat as the likely cause. Check whether timing and comparable work
 support heat beyond accumulated work, cadence, posture and other plausible

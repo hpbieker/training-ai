@@ -17,7 +17,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from physiological_evidence import timeline, quality, field_summary, matched_windows, prepare_windows, numeric
+from physiological_evidence import MAX_MISSING_FRACTION, timeline, quality, field_summary, matched_windows, prepare_windows, numeric
 from outdoor_evidence import outdoor_evidence
 
 from analysis import (
@@ -38,7 +38,7 @@ from analysis import (
 
 
 MAX_RECOVERY_INTERVAL = 10
-ANALYSIS_FORMAT_VERSION = 1
+ANALYSIS_FORMAT_VERSION = 2
 
 DEFAULT_FIELDS = [
     "watts",
@@ -229,7 +229,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
         "streams": {
             "rows": len(rows),
             "fields": list(rows[0].keys()) if rows else [],
-            "ignored_fields": sorted(set(requested_fields) - set(fields)),
+            "ignored_fields": sorted(activity.ignored_stream_fields),
             "data_quality": data_quality_summary(rows, fields),
         },
         "total": {
@@ -253,7 +253,7 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
     if not args.no_intervals:
         result["intervals"] = interval_summaries(activity, fields, window_context=window_context)
 
-    if args.steady_vt1:
+    if args.steady_vt1 and not activity.metadata.get("icu_ignore_power"):
         segment_rows, start, end, target = detect_steady_power_segment(rows)
         result["steady_vt1_segment"] = summarize_block(
             rows,
@@ -364,10 +364,10 @@ def activity_metadata(activity) -> dict[str, Any]:
         "external_id": metadata.get("external_id"),
         "icu_training_load": metadata.get("icu_training_load"),
         "icu_intensity": metadata.get("icu_intensity"),
-        "average_watts": metadata.get("average_watts"),
-        "weighted_average_watts": metadata.get("weighted_average_watts"),
-        "average_heartrate": metadata.get("average_heartrate"),
-        "max_heartrate": metadata.get("max_heartrate"),
+        "average_watts": None if metadata.get("icu_ignore_power") else metadata.get("average_watts"),
+        "weighted_average_watts": None if metadata.get("icu_ignore_power") else metadata.get("weighted_average_watts"),
+        "average_heartrate": None if metadata.get("icu_ignore_hr") else metadata.get("average_heartrate"),
+        "max_heartrate": None if metadata.get("icu_ignore_hr") else metadata.get("max_heartrate"),
         "average_altitude": metadata.get("average_altitude"),
         "icu_ignore_hr": metadata.get("icu_ignore_hr"),
         "icu_ignore_power": metadata.get("icu_ignore_power"),
@@ -379,7 +379,11 @@ def activity_metadata(activity) -> dict[str, Any]:
 def interval_summaries(activity, fields: list[str], *, window_context=None) -> list[dict[str, Any]]:
     window_context = window_context if window_context is not None else prepare_windows(activity.streams)
     summaries = []
+    work_count = 0
     for index, interval in enumerate(activity.intervals, start=1):
+        interval_type = str(interval.get("type")).upper()
+        if interval_type == "WORK":
+            work_count += 1
         start = int(interval.get("start_index") or 0)
         end = int(interval.get("end_index") or start)
         summary = summarize_block(
@@ -399,6 +403,8 @@ def interval_summaries(activity, fields: list[str], *, window_context=None) -> l
                 "elapsed_time": interval.get("elapsed_time"),
             }
         )
+        if interval_type == "RECOVERY":
+            summary["after_work_block"] = work_count
         summaries.append(summary)
     return summaries
 
@@ -600,13 +606,17 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
             vt1_watts=float(vt1_watts),
             pauses=long_pauses,
             auto_triggered=not outdoor_vt1_requested,
+            ignore_power=bool(result["activity"].get("icu_ignore_power")),
+            activity_moving_seconds=numeric(result["activity"], "moving_time"),
         )
     elif include_outdoor_vt1 and outdoor_vt1_requested:
         brief["outdoor_vt1_pacing"] = {
             "error": "missing_vt1_anchor_watts",
             "message": "Pass --vt1-watts from caller-level preferences.",
         }
-    if include_indoor_vt1 and isinstance(vt1_watts, (int, float)):
+    if include_indoor_vt1 and result["activity"].get("icu_ignore_power"):
+        brief["indoor_vt1_quality"] = {"status": "unavailable", "reason": "source_ignored_power"}
+    elif include_indoor_vt1 and isinstance(vt1_watts, (int, float)):
         brief["indoor_vt1_quality"] = indoor_vt1_quality(
             rows,
             window_context=result.get("_window_context"),
@@ -789,8 +799,9 @@ def training_effect_context_assessments(
     heat_status = "not_assessed"
     heat_confidence = "none"
     if heat_evidence:
-        heat_status = "supported" if heat_response and len(heat_evidence) >= 2 else "context_present"
-        heat_confidence = "moderate" if heat_status == "supported" else "low"
+        # Whole-ride extrema may come from entirely different exposures.
+        heat_status = "context_present"
+        heat_confidence = "low"
 
     altitude_evidence = []
     if altitude is not None and altitude >= 1500:
@@ -831,7 +842,6 @@ def training_effect_context_assessments(
                 status=heat_status,
                 confidence=heat_confidence,
                 evidence=heat_evidence,
-                effect="training_effect_may_be_elevated" if heat_evidence else None,
             ),
             "altitude": context_assessment(
                 status="context_present" if altitude_evidence else "not_assessed",
@@ -1136,11 +1146,14 @@ def vt2_block_quality(
         core_temp_drift=drift.get("core_temperature"),
         vt_drift=drift.get("tidal_volume"),
     )
+    humidity = comparison["fields"].get("RuuviHumidity", {}).get("late_avg")
+    if humidity is None:
+        humidity = comparison["fields"].get("Humidity", {}).get("late_avg")
     response["thermal_evidence"] = thermal_evidence_assessment(
         core_temp_max=stat(summary, "core_temperature", "max", digits=2),
         core_temp_drift=drift.get("core_temperature"),
-        ambient_temp_max=stat(summary, "RuuviTemperature", "max", digits=1),
-        humidity_max=stat(summary, "RuuviHumidity", "max", digits=1),
+        ambient_temp_c=comparison["fields"].get("RuuviTemperature", {}).get("late_avg"),
+        relative_humidity=humidity,
         hr_per_w_drift=relative_drift.get("heartrate"),
         ve_per_w_drift=relative_drift.get("tidal_volume_min"),
         br_per_w_drift=relative_drift.get("respiration"),
@@ -1267,8 +1280,8 @@ def thermal_evidence_assessment(
     *,
     core_temp_max: Any,
     core_temp_drift: Any,
-    ambient_temp_max: Any = None,
-    humidity_max: Any = None,
+    ambient_temp_c: Any = None,
+    relative_humidity: Any = None,
     hr_per_w_drift: Any = None,
     ve_per_w_drift: Any = None,
     br_per_w_drift: Any = None,
@@ -1278,18 +1291,14 @@ def thermal_evidence_assessment(
     """Grade thermal evidence without treating a wearable cutoff as causal proof."""
 
     observations: list[dict[str, Any]] = []
-    wearable_present = isinstance(core_temp_max, (int, float))
+    wearable_present = any(isinstance(v, (int, float)) for v in (core_temp_max, core_temp_drift))
     progressive_pattern = (
         isinstance(core_temp_drift, (int, float)) and core_temp_drift > 0.4
     )
-    environment_present = (
-        (isinstance(ambient_temp_max, (int, float)) and ambient_temp_max >= 28)
-        or (isinstance(humidity_max, (int, float)) and humidity_max >= 75)
-    )
+    warm_window = isinstance(ambient_temp_c, (int, float)) and ambient_temp_c >= 28
     acute_cost_present = any(
         isinstance(value, (int, float)) and value > threshold
         for value, threshold in (
-            (hr_per_w_drift, 8),
             (ve_per_w_drift, 12),
             (br_per_w_drift, 14),
         )
@@ -1298,7 +1307,7 @@ def thermal_evidence_assessment(
         isinstance(execution_score, (int, float)) and execution_score < 82
     )
 
-    if wearable_present:
+    if core_temp_max is not None:
         observations.append(
             {"signal": "wearable_core_temperature", "max": rounded(core_temp_max, digits=2)}
         )
@@ -1306,21 +1315,25 @@ def thermal_evidence_assessment(
         observations.append(
             {"signal": "wearable_core_temperature_rise", "drift": rounded(core_temp_drift, digits=2)}
         )
-    if isinstance(ambient_temp_max, (int, float)):
-        observations.append({"signal": "ambient_temperature", "max": rounded(ambient_temp_max, digits=1)})
-    if isinstance(humidity_max, (int, float)):
-        observations.append({"signal": "relative_humidity", "max": rounded(humidity_max, digits=1)})
+    if ambient_temp_c is not None or relative_humidity is not None:
+        observations.append({"signal": "late_matched_window_environment",
+                             "air_temperature_c": ambient_temp_c, "relative_humidity_pct": relative_humidity})
+    if hr_per_w_drift is not None:
+        observations.append({"signal": "hr_per_watt_drift_pct", "value": hr_per_w_drift,
+                             "dependence": "Heart rate can contribute to the wearable temperature estimate."})
     if acute_cost_present:
-        observations.append({"signal": "corroborating_acute_physiology"})
+        observations.append({"signal": "corroborating_acute_physiology",
+                             "ve_per_watt_drift_pct": ve_per_w_drift,
+                             "br_per_watt_drift_pct": br_per_w_drift})
     if mechanical_deterioration:
         observations.append({"signal": "mechanical_deterioration"})
     if athlete_heat_report:
         observations.append({"signal": "athlete_reported_heat_strain"})
 
     grade = "not_assessed"
-    if wearable_present or environment_present:
+    if wearable_present or ambient_temp_c is not None or relative_humidity is not None:
         grade = "thermal_context_present"
-    if progressive_pattern and environment_present and acute_cost_present:
+    if progressive_pattern and warm_window and acute_cost_present:
         grade = "thermal_cost_supported"
     if grade == "thermal_cost_supported" and mechanical_deterioration and athlete_heat_report:
         grade = "heat_limited"
@@ -1329,7 +1342,8 @@ def thermal_evidence_assessment(
         "grade": grade,
         "observations": observations,
         "wearable_estimate_not_direct_core_measurement": wearable_present,
-        "rule": "An absolute wearable temperature or HSI alone cannot establish thermal cost or heat limitation.",
+        "rule": ("The thresholds screen matched work windows. Review actual cooling, airflow, "
+                 "accumulated work and the athlete's report before attributing a change to heat."),
     }
 
 
@@ -1491,9 +1505,12 @@ def indoor_vt1_quality(
     pedaling_rows = [row for row in analysis_moving_rows if outdoor_pedaling_row(row)]
     vt1_stability_rows = indoor_vt1_power_window_rows(pedaling_rows, vt1_watts)
     caps = indoor_vt1_caps(vt1_watts)
+    ranges = analysis_window.get("work_ranges", [])
+    parts = [rows[start:end] for start, end in ranges] or [analysis_rows]
     rolling = {
-        "30s": rolling_power_by_time(analysis_rows, 30, pause_ranges),
-        "60s": rolling_power_by_time(analysis_rows, 60, pause_ranges),
+        f"{seconds}s": {t: mean for part in parts for t, mean in
+                        rolling_power_by_time(part, seconds, pause_ranges).items()}
+        for seconds in (30, 60)
     }
     first, middle, final = split_rows_by_elapsed_time(pedaling_rows, parts=3)
     vt1_first, vt1_middle, vt1_final = split_rows_by_elapsed_time(vt1_stability_rows, parts=3)
@@ -1507,8 +1524,12 @@ def indoor_vt1_quality(
         "middle_third": indoor_segment_stats(vt1_middle),
         "final_third": indoor_segment_stats(vt1_final),
     }
-    stability = descriptive_work_change(analysis_rows, window_context=(
-        window_context if window_context is not None else prepare_windows(rows)))
+    # Keep the full recording's clock and work-run boundaries, including between repeats.
+    vt1_context = {**window_context, "candidates": [
+        (chunk, window) for chunk, window in window_context["candidates"]
+        if vt1_watts - 20 <= window["power_avg"] <= vt1_watts + 10
+    ]}
+    stability = descriptive_work_change(analysis_rows, window_context=vt1_context)
     assessment = indoor_vt1_assessment(
         vt1_watts=vt1_watts,
         rolling_60=rolling["60s"],
@@ -1524,6 +1545,7 @@ def indoor_vt1_quality(
             "auto_triggered": auto_triggered,
             "analysis_window": analysis_window,
             "duration": {
+                "session_moving_min": rounded(covered_seconds(moving_rows) / 60, digits=1),
                 "moving_min": rounded(covered_seconds(analysis_moving_rows) / 60, digits=1),
                 "pedaling_min": rounded(covered_seconds(pedaling_rows) / 60, digits=1),
                 "vt1_stability_min": rounded(covered_seconds(vt1_stability_rows) / 60, digits=1),
@@ -1545,6 +1567,11 @@ def indoor_vt1_quality(
                 for window, series in rolling.items()
             },
             "segment_stability": segment_stats,
+            "work_interval_response": [
+                {"start_s": row_time_value(part[0]), "duration_min": covered_seconds(part) / 60,
+                 "response": descriptive_work_change(part, window_context=vt1_context)}
+                for part in parts if ranges
+            ],
             "vt1_filtered_segment_stability": vt1_segment_stats,
             "drift": stability,
             "assessment": assessment,
@@ -1588,23 +1615,24 @@ def indoor_vt1_rows_from_work_blocks(
     ]
     if not candidates:
         return None
-    starts = [block.get("start_index") for block in candidates]
-    ends = [block.get("end_index") for block in candidates]
-    if not all(isinstance(index, int) for index in starts + ends):
+    ranges = []
+    for block in sorted(candidates, key=lambda item: item["start_index"]):
+        start, end = max(0, block["start_index"]), min(len(rows), block["end_index"])
+        if start >= end:
+            continue
+        if ranges and start < ranges[-1][1]:
+            ranges[-1][1] = max(end, ranges[-1][1])
+        else:
+            ranges.append([start, end])
+    if not ranges:
         return None
-    start = max(0, min(starts))
-    end = min(len(rows), max(ends))
-    if end <= start:
-        return None
-    selected = rows[start:end]
-    pedaling_min = covered_seconds([row for row in selected if outdoor_pedaling_row(row)]) / 60
-    if pedaling_min < 20:
-        return None
+    selected = [row for start, end in ranges for row in rows[start:end]]
     return selected, {
         "source": "work_intervals",
         "work_interval_count": len(candidates),
-        "start_s": rounded(row_time(rows, start), digits=0),
-        "end_s": rounded(row_time(rows, end - 1), digits=0),
+        "work_ranges": ranges,
+        "start_s": row_time_value(selected[0]),
+        "end_s": row_time_value(selected[-1]),
         "duration_min": rounded(covered_seconds(selected) / 60, digits=1),
         "meaning": "Indoor VT1 metrics are computed from matching WORK interval rows.",
     }
@@ -1710,7 +1738,7 @@ def indoor_vt1_power_window_rows(
         for row in rows
         if (watts := value(row, "watts")) is not None and lower <= watts <= upper
     ]
-    return filtered or rows
+    return filtered
 
 
 def indoor_vt1_caps(vt1_watts: float) -> list[int]:
@@ -1848,10 +1876,37 @@ def outdoor_vt1_pacing(
     vt1_watts: float,
     pauses: list[dict[str, Any]],
     auto_triggered: bool,
+    ignore_power: bool = False,
+    activity_moving_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Return outdoor VT1/endurance pacing diagnostics for variable terrain."""
 
     rows = timed_rows(rows)
+    power_quality = quality(rows, "watts")
+    valid_seconds = power_quality.get("valid_seconds")
+    recorded_seconds = power_quality.get("duration_seconds")
+    # A short stream can be internally complete while covering only part of the ride.
+    duration = max(recorded_seconds or 0, activity_moving_seconds or 0)
+    fraction = valid_seconds / duration if valid_seconds is not None and duration else None
+    coverage = {
+        "scope": "recorded timeline, at least the source activity moving time when available",
+        "valid_seconds": valid_seconds,
+        "duration_seconds": duration or None,
+        "valid_pct": round(100 * fraction, 1) if fraction is not None else None,
+        "reasons": list(power_quality["reasons"]),
+    }
+    if recorded_seconds and duration > recorded_seconds and fraction <= 1 - MAX_MISSING_FRACTION:
+        coverage["reasons"].append("incomplete_activity_coverage")
+    if ignore_power:
+        coverage["reasons"].append("source_ignored_power")
+    result = {
+        "vt1_watts": rounded(vt1_watts, digits=0),
+        "auto_triggered": auto_triggered,
+        "power_coverage": coverage,
+        "assessment": {"verdict": "power_pacing_unavailable"},
+    }
+    if coverage["reasons"]:
+        return result
 
     pause_ranges = [
         (int(pause.get("start_s") or 0), int(pause.get("end_s") or 0))
@@ -1865,6 +1920,9 @@ def outdoor_vt1_pacing(
         "30s": rolling_power_by_time(rows, 30, pause_ranges),
         "60s": rolling_power_by_time(rows, 60, pause_ranges),
     }
+    if not any(rolling["60s"].get(row_time_value(row)) is not None for row in pedaling_rows):
+        coverage["reasons"].append("no_evaluable_pedaling_windows")
+        return result
     rolling_compliance = {
         window: {
             str(cap): rolling_cap_summary(
@@ -1914,9 +1972,8 @@ def outdoor_vt1_pacing(
 
     return drop_none(
         {
-            "vt1_watts": rounded(vt1_watts, digits=0),
+            **result,
             "caps_watts": caps,
-            "auto_triggered": auto_triggered,
             "duration": {
                 "moving_min": rounded(covered_seconds(moving_rows) / 60, digits=1),
                 "pedaling_min": rounded(covered_seconds(pedaling_rows) / 60, digits=1),
@@ -4518,15 +4575,11 @@ def brief_recoveries(
     work_block_count: int,
     max_recovery_seconds: int = 10 * 60,
 ) -> list[dict[str, Any]]:
-    moxy_by_after_work_block = {}
-    for moxy_recovery in moxy_recoveries:
-        after_work_block = recovery_after_work_block(moxy_recovery)
-        if after_work_block is not None:
-            moxy_by_after_work_block[after_work_block] = moxy_recovery
+    moxy_by_interval = {recovery["index"]: recovery for recovery in moxy_recoveries}
 
     recoveries = []
     for block in blocks:
-        after_work_block = recovery_after_work_block(block)
+        after_work_block = block.get("after_work_block")
         if after_work_block is None:
             continue
         if after_work_block < 1 or after_work_block > work_block_count:
@@ -4538,7 +4591,7 @@ def brief_recoveries(
                 block,
                 index=len(recoveries) + 1,
                 after_work_block=after_work_block,
-                moxy_recovery=moxy_by_after_work_block.get(after_work_block),
+                moxy_recovery=moxy_by_interval.get(block.get("index")),
             )
         )
     return recoveries
@@ -4552,7 +4605,7 @@ def brief_post_work_blocks(
 ) -> list[dict[str, Any]]:
     post_work_blocks = []
     for block in blocks:
-        after_work_block = recovery_after_work_block(block)
+        after_work_block = block.get("after_work_block")
         if after_work_block != work_block_count:
             continue
         if (block.get("duration_seconds") or 0) <= min_seconds:
@@ -4582,11 +4635,6 @@ def brief_post_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any
             "core_temp_max": stat(summary, "core_temperature", "max", digits=2),
         }
     )
-
-
-def recovery_after_work_block(block: dict[str, Any]) -> int | None:
-    source_index = block.get("index")
-    return max(0, (source_index - 1) // 2) if isinstance(source_index, int) else None
 
 
 def brief_recovery(
@@ -4621,8 +4669,10 @@ def brief_recovery(
             "ve_min": stat(summary, "tidal_volume_min", "min", digits=1),
             "ve_end": stat(summary, "tidal_volume_min", "end", digits=1),
             "smo2_start": rounded(moxy.get("smo2_start"), digits=1),
+            "smo2_recovery_status": moxy.get("status"),
             "smo2_min": rounded(moxy.get("smo2_min"), digits=1),
             "smo2_peak": rounded(moxy.get("smo2_peak"), digits=1),
+            "smo2_peak_after_min": rounded(moxy.get("smo2_peak_after_min"), digits=1),
             "smo2_end": rounded(moxy.get("smo2_end"), digits=1),
             "smo2_rise_min_to_peak": rounded(moxy.get("smo2_rise_min_to_peak"), digits=1),
             "smo2_rise_start_to_peak": rounded(moxy.get("smo2_rise_start_to_peak"), digits=1),

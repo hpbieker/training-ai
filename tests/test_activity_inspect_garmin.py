@@ -50,8 +50,9 @@ class ActivityInspectGarminTests(unittest.TestCase):
         self.assertEqual(controls["heat_humidity_or_dehydration"]["status"], "environment_data_available")
         self.assertIn("local_muscular_fatigue_or_soreness", result["blind_spot_control"]["unresolved"])
         heat = result["training_effect_context"]["assessments"]["heat_or_humidity"]
-        self.assertEqual(heat["status"], "supported")
-        self.assertEqual(heat["confidence"], "moderate")
+        self.assertEqual(heat["status"], "context_present")
+        self.assertEqual(heat["confidence"], "low")
+        self.assertIsNone(heat["effect"])
 
     def test_missing_subjective_context_is_not_treated_as_normal(self):
         result = garmin_analysis_context(

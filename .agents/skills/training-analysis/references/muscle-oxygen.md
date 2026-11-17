@@ -154,6 +154,14 @@ Avoid using unrestricted recovery maximum as the main reoxygenation outcome:
 it is sensitive to recovery duration, overshoot, and isolated samples. Compare
 fixed windows or normalized recovery kinetics when possible.
 
+For the helper's pause amplitude, require an observed transition from the
+preceding work interval and usable SmO2 coverage through the pause. Count a
+rise only from the nadir to a subsequent value. A falling trace gives zero
+rise, while missing boundary samples or inadequate coverage leave the rise
+unknown. Keep this amplitude in percentage points distinct from the time
+needed to regain half the recovery amplitude measured from the end of work.
+[Arnold et al.](https://doi.org/10.3389/fphys.2024.1449384)
+
 Name the reoxygenation metric and its windows every time it materially affects
 the conclusion. Acceptable examples include rise in percentage points during a
 fixed interval, slope over a stated early-recovery window, time to a defined

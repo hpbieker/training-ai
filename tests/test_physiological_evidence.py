@@ -3,7 +3,7 @@ import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from physiological_evidence import quality, field_summary, matched_windows, prepare_windows
-from analysis import summarize_block, summarize_rows
+from analysis import SavedActivity, recovery_reoxygenation, summarize_block, summarize_rows
 from activity_inspect import vt2_block_quality, hr_recovery_after_block, indoor_vt1_assessment
 
 
@@ -14,6 +14,37 @@ def ride(step=1, duration=1200):
 
 
 class EvidenceTests(unittest.TestCase):
+    def test_block_uses_environment_in_the_actual_comparison_window(self):
+        rows = ride(step=5)
+        for row in rows:
+            t = int(row['time'])
+            row.update(RuuviTemperature=32 if t < 120 else 8, Humidity=80,
+                       core_temperature=37 if t < 600 else 37.6,
+                       tidal_volume_min=80 if t < 600 else 96)
+        block = {'start_index': 0, 'end_index': len(rows), 'duration_seconds': 1200}
+        report = vt2_block_quality(rows, block, index=1, target_watts=290, anchor_watts=290)
+        thermal = report['physiology']['thermal_evidence']
+        self.assertEqual(thermal['grade'], 'thermal_context_present')
+        environment = next(o for o in thermal['observations'] if o['signal'] == 'late_matched_window_environment')
+        self.assertEqual((environment['air_temperature_c'], environment['relative_humidity_pct']), (8, 80))
+
+    def test_recovery_rise_requires_coverage_and_a_later_peak(self):
+        intervals = [{'type': 'WORK', 'start_index': 0, 'end_index': 1},
+                     {'type': 'RECOVERY', 'start_index': 1, 'end_index': 62}]
+        for levels, expected in [
+            ([70 - t / 2 for t in range(61)], 0),
+            ([40 + t / 2 for t in range(61)], 30),
+            ([70, 40] + [52] * 59, 12),
+            ([70 if t == 10 else 40 if t == 50 else None for t in range(61)], None),
+        ]:
+            rows = [dict(time=t, smo2=level) for t, level in enumerate([48, *levels])]
+            activity = SavedActivity(Path('.'), {'icu_intervals': intervals}, rows)
+            result, = recovery_reoxygenation(activity)
+            self.assertEqual(result.get('smo2_rise_min_to_peak'), expected)
+            self.assertEqual(result['status'], 'observed' if expected is not None else 'unavailable')
+            rows[0]['smo2'] = None
+            self.assertEqual(recovery_reoxygenation(activity)[0]['status'], 'unavailable')
+
     def test_work_overview_keeps_each_blocks_windows_and_missing_fields(self):
         from activity_inspect import work_block_overview
         rows = ride(duration=1800)

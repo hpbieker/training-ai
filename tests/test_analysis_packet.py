@@ -1,10 +1,35 @@
+import json
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from analysis_packet import build_packet,validate,temperature_context
 
 class PacketTest(unittest.TestCase):
+    def test_inspection_masks_ignored_power_through_packet_generation(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir)
+            metadata = dict(id="test", type="Ride", elapsed_time=1800, moving_time=1800,
+                            icu_ignore_power=True, average_watts=310)
+            (path / "activity.json").write_text(json.dumps(metadata))
+            (path / "streams.csv").write_text("time,watts,heartrate,cadence,distance,altitude\n" + "".join(
+                f"{t},310,142,90,{t * 8},120\n" for t in range(0, 1800, 5)))
+            script = Path(__file__).resolve().parents[1] / "scripts/activity_inspect.py"
+            brief = json.loads(subprocess.check_output([
+                sys.executable, "-B", str(script), temp_dir, "--brief", "--auto-blocks",
+                "--outdoor-vt1", "--vt1-watts", "200", "--stdout"]))
+        self.assertIn("watts", brief["streams"]["ignored_fields"])
+        self.assertEqual(brief["total"]["hr_avg"], 142)
+        self.assertNotIn("watts_avg", brief["total"])
+        facts = build_packet(brief)["facts"]
+        self.assertFalse(any(key.startswith("effort.best_") for key in facts))
+        self.assertNotIn("ride.work", facts)
+        brief["provenance"]["format_version"] = 1
+        with self.assertRaisesRegex(ValueError, "Refresh"):
+            build_packet(brief)
+
     def setUp(self):
         self.packet=build_packet({'activity':{'moving_min':302.2,'duration_min':384.5},'analysis_overview':{'variable_work_comparison':{'selected_window_count':2,'eligible_pair_count':4}}})
     def answer(self,display='302',fact='ride.moving',scope='whole_ride',unit='min'):

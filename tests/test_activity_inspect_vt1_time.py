@@ -3,7 +3,7 @@ import sys
 import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from activity_inspect import (timed_rows, covered_seconds, indoor_power_control,
-    outdoor_pedaling_normalized, outdoor_pedaling_row, rolling_time_over,
+    outdoor_pedaling_normalized, outdoor_pedaling_row, outdoor_vt1_pacing, rolling_time_over,
     rolling_power_by_time, rolling_bouts_over, indoor_vt1_quality,
     detect_indoor_vt1_power_segment, time_after_moving_seconds,
     best_continuous_vt1_block_for_duration, detect_traffic_stop_segments)
@@ -15,6 +15,36 @@ def ride(step):
 
 
 class Vt1TimeTests(unittest.TestCase):
+    def test_outdoor_pacing_requires_usable_power(self):
+        for valid_samples, ignored, expected_pct, reason in (
+            (0, False, 0, "no_valid_values"),
+            (30, False, 50, "insufficient_time_coverage"),
+            (60, True, 100, "source_ignored_power"),
+            (60, False, 100, None),
+        ):
+            with self.subTest(valid_samples=valid_samples, ignored=ignored):
+                rows = [{"time": i * 5, "watts": 200 if i < valid_samples else None}
+                        for i in range(60)]
+                result = outdoor_vt1_pacing(rows, vt1_watts=210, pauses=[],
+                                            auto_triggered=True, ignore_power=ignored)
+                self.assertEqual(result["power_coverage"]["valid_pct"], expected_pct)
+                if reason:
+                    self.assertIn(reason, result["power_coverage"]["reasons"])
+                    self.assertEqual(result["assessment"]["verdict"], "power_pacing_unavailable")
+                    self.assertNotIn("quality_scores", result)
+                    self.assertNotIn("training_characterization", result)
+                else:
+                    self.assertEqual(result["assessment"]["verdict"], "controlled_outdoor_vt1")
+                    self.assertEqual(result["quality_scores"]["execution_score"], 100)
+
+    def test_complete_excerpt_cannot_grade_a_longer_ride(self):
+        rows = [{"time": i, "watts": 200} for i in range(300)]
+        result = outdoor_vt1_pacing(rows, vt1_watts=210, pauses=[], auto_triggered=True,
+                                    activity_moving_seconds=1200)
+        self.assertEqual(result["power_coverage"]["valid_pct"], 25)
+        self.assertIn("incomplete_activity_coverage", result["power_coverage"]["reasons"])
+        self.assertNotIn("quality_scores", result)
+
     def test_uniform_sample_rates_preserve_time_and_power_distribution(self):
         outputs = []
         for step in [1, 5, 10]:

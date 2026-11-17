@@ -46,7 +46,7 @@ class ProvenanceTests(unittest.TestCase):
                 output = p/'result.json'
                 subprocess.run([sys.executable,'-B',str(ROOT/'scripts/activity_inspect.py'),str(p),*flags,'--output',str(output)],check=True,capture_output=True)
                 result = json.loads(output.read_text())
-                self.assertEqual(result['provenance']['format_version'], 1)
+                self.assertEqual(result['provenance']['format_version'], 2)
                 self.assertEqual(result['provenance']['inputs'][0]['sha256'], hashlib.sha256((p/'activity.json').read_bytes()).hexdigest())
 
     def test_case_snapshot_excludes_legacy_analyses(self):

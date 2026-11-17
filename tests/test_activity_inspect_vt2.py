@@ -119,25 +119,38 @@ class ThermalEvidenceAssessmentTests(unittest.TestCase):
         result = thermal_evidence_assessment(
             core_temp_max=38.8,
             core_temp_drift=0.8,
-            ambient_temp_max=30,
+            ambient_temp_c=30,
+            ve_per_w_drift=13,
             hr_per_w_drift=9,
             execution_score=95,
         )
 
         self.assertEqual(result["grade"], "thermal_cost_supported")
 
+    def test_humidity_and_heart_rate_cannot_establish_heat_cost(self):
+        for temp, ve_drift in [(8, None), (8, 15), (30, None)]:
+            with self.subTest(temp=temp, ve_drift=ve_drift):
+                result = thermal_evidence_assessment(
+                    core_temp_max=38.5, core_temp_drift=0.5,
+                    ambient_temp_c=temp, relative_humidity=80,
+                    hr_per_w_drift=9, ve_per_w_drift=ve_drift,
+                )
+                self.assertEqual(result["grade"], "thermal_context_present")
+
     def test_heat_limited_requires_mechanical_and_athlete_evidence(self):
         without_report = thermal_evidence_assessment(
             core_temp_max=38.8,
             core_temp_drift=0.8,
-            ambient_temp_max=30,
+            ambient_temp_c=30,
+            ve_per_w_drift=13,
             hr_per_w_drift=9,
             execution_score=75,
         )
         with_report = thermal_evidence_assessment(
             core_temp_max=38.8,
             core_temp_drift=0.8,
-            ambient_temp_max=30,
+            ambient_temp_c=30,
+            ve_per_w_drift=13,
             hr_per_w_drift=9,
             execution_score=75,
             athlete_heat_report=True,

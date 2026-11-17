@@ -50,6 +50,10 @@ def temperature_context(data):
 
 
 def build_packet(data):
+    if ((data.get('activity', {}).get('icu_ignore_power') or
+         'watts' in data.get('streams', {}).get('ignored_fields', [])) and
+            data.get('provenance', {}).get('format_version', 0) < 2):
+        raise ValueError('Refresh this inspection to exclude ignored power from derived evidence.')
     overview = data.get('analysis_overview')
     if not overview:
         raise ValueError('Outdoor analysis_overview required')
@@ -60,6 +64,10 @@ def build_packet(data):
     for key, field in [('moving', 'moving_min'), ('elapsed', 'duration_min')]:
         add('ride.'+key, data['activity'].get(field), 'min', 'whole_ride', 'activity.'+field)
     outdoor = data.get('outdoor_evidence', {})
+    pacing = data.get('outdoor_vt1_pacing') or {}
+    coverage = pacing.get('power_coverage') or {}
+    add('pacing.power_coverage', coverage.get('valid_pct'), '%', 'whole_recording',
+        'outdoor_vt1_pacing.power_coverage.valid_pct')
     add('ride.work', outdoor.get('observed_work_kj'), 'kJ', 'observed_recording', 'outdoor_evidence.observed_work_kj')
     for anchor in ('vt1', 'vt2'):
         add('anchor.'+anchor, data.get('provenance', {}).get('options', {}).get(anchor+'_watts'), 'W', 'caller_supplied_power_reference_not_verified_threshold', 'provenance.options.'+anchor+'_watts')
@@ -95,6 +103,11 @@ def build_packet(data):
     return {'schema_version':1,'reference_interpretation': 'Power options are caller-supplied references, not independently verified physiological thresholds. A configured training target does not establish VT1/VT2. Exposure cutoffs describe measured power only; require dated source evidence before interpreting threshold crossings.', 'activity':{k:data['activity'].get(k) for k in ('id','name','type')},
             'workload_interpretation': 'With usable power, prioritize measured work, duration and power distribution. Do not add climbing as a separate energetic load on top of measured work. Terrain is optional context when it explains cadence, coasting, posture or cooling beyond power; omission of elevation alone is not a defect.',
             'temperature_context': temperature_context(data),
+            'outdoor_vt1_pacing': {
+                'verdict': (pacing.get('assessment') or {}).get('verdict'),
+                'power_coverage': facts.get('pacing.power_coverage'),
+                'coverage_reasons': coverage.get('reasons'),
+            },
             'time_overview': {
                 'moving': facts.get('ride.moving'),
                 'elapsed': facts.get('ride.elapsed'),

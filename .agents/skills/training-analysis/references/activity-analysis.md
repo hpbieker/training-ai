@@ -122,6 +122,9 @@ it, rather than repeating an inventory of unknowns.
 - For outdoor endurance, inspect `outdoor_vt1_pacing`. Pass the caller-resolved
   anchor with `--vt1-watts`; use `--outdoor-vt1` or
   `--no-auto-outdoor-vt1` only to override detection deliberately.
+  Report `power_coverage.valid_pct` for the recording. When the verdict is
+  `power_pacing_unavailable`, explain the reported reason and assess other
+  eligible signals and any supported windows separately.
 - For pure indoor trainer VT1, inspect `indoor_vt1_quality` and pass
   `--vt1-watts`. Treat warm-up/cooldown as part of a selected workout unless
   explicitly modifying it.

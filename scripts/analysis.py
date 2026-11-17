@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import csv
 import json
+from collections import deque
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from statistics import median
-from physiological_evidence import numeric, timeline, quality, field_summary, matched_windows, prepare_windows
+from physiological_evidence import MAX_SAMPLE_INTERVAL, numeric, timeline, quality, field_summary, matched_windows, prepare_windows
 from typing import Any, Iterable
 
 
@@ -117,7 +118,13 @@ def load_activity(activity_dir: str | Path) -> SavedActivity:
     path = Path(activity_dir)
     metadata = load_activity_metadata(path)
     streams = load_streams_csv(path / "streams.csv")
-    return SavedActivity(activity_dir=path, metadata=metadata, streams=streams)
+    activity = SavedActivity(activity_dir=path, metadata=metadata, streams=streams)
+    # Mask unreliable channels before any effort search, matching or normalization.
+    # Keep the sample clock and the original saved files intact.
+    for field in activity.ignored_stream_fields:
+        for row in streams:
+            row.pop(field, None)
+    return activity
 
 
 def load_activity_metadata(activity_dir: str | Path) -> dict[str, Any]:
@@ -281,11 +288,15 @@ def summarize_block(
     start_time = value(rows[start_index], "time") if rows and start_index < len(rows) else None
     end_row_index = max(start_index, end_index - 1)
     end_time = value(rows[end_row_index], "time") if rows and end_row_index < len(rows) else None
-    duration_seconds = (
-        (timeline(block_rows)[2] if timeline(block_rows) else end_time - start_time)
-        if start_time is not None and end_time is not None and end_time >= start_time
-        else len(block_rows)
-    )
+    duration_seconds = (detection or {}).get("duration_seconds")
+    if duration_seconds is None:
+        clock = timeline(block_rows)
+        if clock is not None:
+            duration_seconds = clock[2]
+        elif start_time is not None and end_time is not None and end_time >= start_time:
+            duration_seconds = end_time - start_time
+        else:
+            duration_seconds = len(block_rows)
     fields = list(fields)
     comparison = matched_windows(block_rows, fields, window_context=(
         window_context if window_context is not None else prepare_windows(rows)))
@@ -479,22 +490,44 @@ def recovery_reoxygenation(activity: SavedActivity) -> list[dict[str, Any]]:
     for index, interval in enumerate(activity.intervals, start=1):
         if str(interval.get("type") or "").upper() != "RECOVERY":
             continue
-        rows = rows_with_values(interval_rows(activity, interval), "smo2")
+        rows = interval_rows(activity, interval)
         if not rows:
             continue
-        smo2 = stream_values(rows, "smo2")
-        thb = stream_values(rows, "thb")
+        coverage = quality(rows, "smo2")
+        start = int(interval.get("start_index") or 0)
+        previous = activity.intervals[index - 2] if index > 1 else {}
+        boundary = activity.streams[start - 1:start + 1] if start > 0 else []
+        boundary_ok = (
+            str(previous.get("type")).upper() == "WORK"
+            and previous.get("end_index") == start
+            and len(boundary) == 2 and quality(boundary, "smo2")["usable"]
+            and value(boundary[1], "time") - value(boundary[0], "time") <= MAX_SAMPLE_INTERVAL
+        )
+        result = {"index": index, "rows": len(rows), "quality": coverage,
+                  "work_end_boundary_observed": boundary_ok}
+        if not coverage["usable"] or not boundary_ok or value(rows[-1], "smo2") is None:
+            recoveries.append({**result, "status": "unavailable"})
+            continue
+        samples = [(value(row, "time"), level) for row in rows if (level := value(row, "smo2")) is not None]
+        smo2 = [level for _, level in samples]
+        nadir = smo2.index(min(smo2))
+        peak_after = max(range(nadir, len(samples)), key=smo2.__getitem__)
+        thb = field_summary(rows, "thb")
         recoveries.append(
             {
-                "index": index,
-                "rows": len(rows),
+                **result,
+                "status": "observed",
+                "work_end_smo2": value(boundary[0], "smo2"),
                 "smo2_start": smo2[0],
                 "smo2_min": min(smo2),
                 "smo2_peak": max(smo2),
                 "smo2_end": smo2[-1],
                 "smo2_rise_start_to_peak": max(smo2) - smo2[0],
-                "smo2_rise_min_to_peak": max(smo2) - min(smo2),
-                "thb_avg": sum(thb) / len(thb) if thb else None,
+                "smo2_min_at_s": samples[nadir][0],
+                "smo2_peak_after_min_at_s": samples[peak_after][0],
+                "smo2_peak_after_min": smo2[peak_after],
+                "smo2_rise_min_to_peak": smo2[peak_after] - smo2[nadir],
+                "thb_avg": thb["avg"] if thb else None,
             }
         )
     return recoveries
@@ -623,58 +656,89 @@ def detect_power_blocks(
     if target is not None and threshold is not None:
         raise ValueError("Use only one of target or threshold")
 
-    raw_values = [value(row, field) or 0.0 for row in rows]
-    values = rolling_mean(raw_values, smoothing_seconds)
-    blocks: list[PowerBlock] = []
-    start: int | None = None
-    last_match: int | None = None
-    gap = 0
+    clock = timeline(rows)
+    if clock is None:
+        return []
+    times, widths, _ = clock
+    watts = [value(row, field) for row in rows]
+    smoothed = _smooth_power(watts, times, widths, smoothing_seconds)
+    return _blocks_from_smoothed_power(
+        smoothed, times, widths, target=target, threshold=threshold,
+        tolerance=tolerance, min_seconds=min_seconds, max_gap_seconds=max_gap_seconds,
+        smoothing_seconds=smoothing_seconds,
+    )
 
-    def matches(sample: float) -> bool:
-        if target is not None:
-            return abs(sample - target) <= tolerance
-        return sample >= float(threshold)
 
-    for index, sample in enumerate(values):
-        if matches(sample):
+def _smooth_power(
+    watts: list[float | None], times: list[float], widths: list[float], window_seconds: int,
+) -> list[float | None]:
+    """Trailing time-weighted mean over covered time, evaluated at each sample's end."""
+    if window_seconds <= 0:
+        return watts
+    window = deque()
+    integral = 0.0
+    result = []
+    for index, (power, start, width) in enumerate(zip(watts, times, widths)):
+        if power is None or (index and start - times[index - 1] > widths[index - 1]):
+            window.clear()
+            integral = 0.0
+        if power is None:
+            result.append(None)
+            continue
+        end = start + width
+        window.append((start, end, power))
+        integral += width * power
+        cutoff = end - window_seconds
+        while window[0][1] <= cutoff:
+            left, right, old_power = window.popleft()
+            integral -= (right - left) * old_power
+        left, right, old_power = window[0]
+        if left < cutoff:
+            integral -= (cutoff - left) * old_power
+            window[0] = (cutoff, right, old_power)
+        result.append(integral / (end - window[0][0]))
+    return result
+
+
+def _blocks_from_smoothed_power(
+    smoothed: list[float | None], times: list[float], widths: list[float], *,
+    target: float | None, threshold: float | None, tolerance: float, min_seconds: int,
+    max_gap_seconds: int, smoothing_seconds: int,
+) -> list[PowerBlock]:
+    """Bridge short observed excursions, but never join across unrecorded time."""
+    blocks = []
+    start = None
+    last_match = None
+    label = f"target_{target:g}" if target is not None else f"threshold_{threshold:g}"
+
+    def finish_block(first: int, last: int) -> None:
+        duration = times[last] - times[first] + widths[last]
+        if duration >= min_seconds:
+            blocks.append(PowerBlock(
+                label=f"{label}_{len(blocks) + 1}",
+                start_index=first, end_index=last + 1,
+                detection={"target": target, "threshold": threshold, "tolerance": tolerance,
+                           "max_gap_seconds": max_gap_seconds, "smoothing_seconds": smoothing_seconds,
+                           "duration_seconds": duration},
+            ))
+
+    for index, (time, power) in enumerate(zip(times, smoothed)):
+        if start is not None:
+            recording_gap = time - times[index - 1] > widths[index - 1]
+            since_match = time - times[last_match] - widths[last_match]
+            if recording_gap or since_match > max_gap_seconds:
+                finish_block(start, last_match)
+                start = None
+        if power is None:
+            continue
+        matches = abs(power - target) <= tolerance if target is not None else power >= threshold
+        if matches:
             if start is None:
                 start = index
             last_match = index
-            gap = 0
-            continue
-        if start is None:
-            continue
-        gap += 1
-        if gap > max_gap_seconds:
-            assert last_match is not None
-            _append_power_block(
-                blocks,
-                start=start,
-                end=last_match + 1,
-                min_seconds=min_seconds,
-                target=target,
-                threshold=threshold,
-                tolerance=tolerance,
-                max_gap_seconds=max_gap_seconds,
-                smoothing_seconds=smoothing_seconds,
-            )
-            start = None
-            last_match = None
-            gap = 0
 
-    if start is not None and last_match is not None:
-        _append_power_block(
-            blocks,
-            start=start,
-            end=last_match + 1,
-            min_seconds=min_seconds,
-            target=target,
-            threshold=threshold,
-            tolerance=tolerance,
-            max_gap_seconds=max_gap_seconds,
-            smoothing_seconds=smoothing_seconds,
-        )
-
+    if start is not None:
+        finish_block(start, last_match)
     return blocks
 
 
@@ -697,26 +761,27 @@ def detect_stable_power_blocks(
 
     This is intentionally conservative and mainly targets structured indoor
     rides where ERG-like blocks cluster around repeated watt levels. It first
-    finds common rounded power targets by total time, then reuses
-    ``detect_power_blocks`` for each candidate target and removes overlapping
-    duplicate blocks.
+    finds common rounded power targets by covered time, detects sustained
+    blocks for each candidate, then resolves overlaps by duration.
     """
 
-    raw_values = [value(row, field) or 0.0 for row in rows]
-    if not raw_values:
+    clock = timeline(rows)
+    if clock is None:
         return []
-    smoothed = rolling_mean(raw_values, smoothing_seconds)
-    buckets: dict[int, int] = {}
-    for sample in smoothed:
-        if sample < min_power:
+    times, widths, _ = clock
+    watts = [value(row, field) for row in rows]
+    smoothed = _smooth_power(watts, times, widths, smoothing_seconds)
+    buckets: dict[int, float] = {}
+    for power, seconds in zip(smoothed, widths):
+        if power is None or power < min_power:
             continue
-        bucket = int(round(sample / bin_size) * bin_size)
-        buckets[bucket] = buckets.get(bucket, 0) + 1
+        bucket = int(round(power / bin_size) * bin_size)
+        buckets[bucket] = buckets.get(bucket, 0.0) + seconds
 
     target_candidates = [
         target
-        for target, count in sorted(buckets.items(), key=lambda item: item[1], reverse=True)
-        if count >= min_seconds
+        for target, seconds in sorted(buckets.items(), key=lambda item: item[1], reverse=True)
+        if seconds >= min_seconds
     ]
     selected_targets: list[int] = []
     for target in target_candidates:
@@ -728,19 +793,16 @@ def detect_stable_power_blocks(
 
     candidates: list[PowerBlock] = []
     for target in selected_targets:
-        for block in detect_power_blocks(
-            rows,
-            target=target,
+        for block in _blocks_from_smoothed_power(
+            smoothed, times, widths,
+            target=target, threshold=None,
             tolerance=tolerance,
             min_seconds=min_seconds,
             max_gap_seconds=max_gap_seconds,
             smoothing_seconds=smoothing_seconds,
-            field=field,
         ):
             if not stable_power_block(
-                rows,
-                block,
-                field=field,
+                watts, widths, block,
                 tolerance=raw_stability_tolerance,
                 min_fraction=min_stability_fraction,
                 max_stddev=max_power_stddev,
@@ -765,24 +827,25 @@ def detect_stable_power_blocks(
 
 
 def stable_power_block(
-    rows: list[dict[str, str]],
+    watts: list[float | None],
+    widths: list[float],
     block: PowerBlock,
     *,
-    field: str,
     tolerance: float,
     min_fraction: float,
     max_stddev: float,
 ) -> bool:
     """Return true when raw power is stable enough for a plateau label."""
 
-    samples = stream_values(rows[block.start_index : block.end_index], field)
+    indices = range(block.start_index, block.end_index)
+    samples = [(watts[i], widths[i]) for i in indices if watts[i] is not None]
     if not samples:
         return False
-    average = sum(samples) / len(samples)
-    variance = sum((sample - average) ** 2 for sample in samples) / len(samples)
-    stddev = variance**0.5
-    within_target = sum(1 for sample in samples if abs(sample - average) <= tolerance)
-    return stddev <= max_stddev and within_target / len(samples) >= min_fraction
+    seconds = sum(width for _, width in samples)
+    average = sum(power * width for power, width in samples) / seconds
+    variance = sum((power - average) ** 2 * width for power, width in samples) / seconds
+    within_target = sum(width for power, width in samples if abs(power - average) <= tolerance)
+    return variance**0.5 <= max_stddev and within_target / seconds >= min_fraction
 
 
 def remove_overlapping_power_blocks(blocks: list[PowerBlock]) -> list[PowerBlock]:
@@ -791,7 +854,7 @@ def remove_overlapping_power_blocks(blocks: list[PowerBlock]) -> list[PowerBlock
     selected: list[PowerBlock] = []
     for block in sorted(
         blocks,
-        key=lambda candidate: (candidate.end_index - candidate.start_index),
+        key=lambda candidate: candidate.detection["duration_seconds"],
         reverse=True,
     ):
         if any(blocks_overlap(block, existing) for existing in selected):
@@ -802,37 +865,6 @@ def remove_overlapping_power_blocks(blocks: list[PowerBlock]) -> list[PowerBlock
 
 def blocks_overlap(left: PowerBlock, right: PowerBlock) -> bool:
     return max(left.start_index, right.start_index) < min(left.end_index, right.end_index)
-
-
-def _append_power_block(
-    blocks: list[PowerBlock],
-    *,
-    start: int,
-    end: int,
-    min_seconds: int,
-    target: float | None,
-    threshold: float | None,
-    tolerance: float,
-    max_gap_seconds: int,
-    smoothing_seconds: int,
-) -> None:
-    if end - start < min_seconds:
-        return
-    label = f"target_{target:g}" if target is not None else f"threshold_{threshold:g}"
-    blocks.append(
-        PowerBlock(
-            label=f"{label}_{len(blocks) + 1}",
-            start_index=start,
-            end_index=end,
-            detection={
-                "target": target,
-                "threshold": threshold,
-                "tolerance": tolerance,
-                "max_gap_seconds": max_gap_seconds,
-                "smoothing_seconds": smoothing_seconds,
-            },
-        )
-    )
 
 
 def rolling_mean(values: list[float], window: int) -> list[float]:
