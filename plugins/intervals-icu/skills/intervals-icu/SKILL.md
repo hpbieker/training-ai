@@ -58,7 +58,9 @@ Choose the narrowest workflow that answers the request:
   compact identity summaries containing only `id`, `name`, and
   `start_date_local` by default. Use `includeFields` to add only selected
   allowed detail fields to each row; `search_activities` performs source text or tag
-  search with the same compact rows and `includeFields` choices.
+  search with the same compact rows and `includeFields` choices. With filters
+  or sorting, it requests at least 100 source results, then applies `limit`
+  locally. Check `source_limit` for the requested search window.
 - Use filters and sorting where supported. Inspect `source_count` and
   `matched_count`; searches are `source_limited`. See
   [athlete selection and list queries](references/field-semantics.md#athlete-selection-and-list-queries)
@@ -91,7 +93,19 @@ Choose the narrowest workflow that answers the request:
   inclusive local-date range; do not substitute its load or fitness fields for
   another platform's metrics.
 - `search_activity_intervals` passes explicit interval bounds to Intervals.icu's
-  source search endpoint and returns compact activity summaries.
+  source search endpoint and returns compact activity summaries. Optionally
+  supply paired, inclusive local `start_date` and `end_date`, exact
+  `sport_types`, or both. The MCP requests up to 100 recent source matches
+  for filtered searches and applies the caller's `limit` after filtering.
+  Check `source_count`, `source_limit`, and `source_limited`: older matches
+  can fall outside the source window, so an empty result is not exhaustive.
+- Curve tools accept `sport_types` for exact activity-type filtering and
+  `limit` (1–500) after filtering and ranking. For best efforts use
+  `rank_by_secs` for power and heart rate, or `rank_by_distance` for pace,
+  choosing one point already present in `secs` or `distances` respectively.
+  Highest watts or bpm and lowest pace times rank first. Missing values at
+  the ranked point are excluded. Without ranking, source order is preserved.
+  `source_count`, `matched_count` and `count` report the stages of the query.
 - `list_sport_settings` returns the selected athlete's source sport settings
   and resolves the authenticated athlete id internally when athlete is omitted.
 - `update_activity` patches supported metadata, tags, subtype, color, fueling,

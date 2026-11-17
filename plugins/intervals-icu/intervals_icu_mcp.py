@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import csv
 import hashlib
+import math
 from collections import Counter
 import os
 import sys
@@ -195,6 +196,26 @@ ANNOTATIONS = {
 }
 
 
+_SPORT_TYPES_PROPERTY = {
+    "type": "array", "minItems": 1, "uniqueItems": True,
+    "items": {"type": "string", "minLength": 1},
+    "description": "Keep activities with any of these exact Intervals.icu sport types.",
+}
+_CURVE_FILTER_PROPERTIES = {
+    "sport_types": _SPORT_TYPES_PROPERTY,
+    "limit": {
+        "type": "integer", "minimum": 1, "maximum": 500,
+        "description": "Maximum rows returned after filtering and optional ranking.",
+    },
+}
+_CURVE_COUNT_PROPERTIES = {
+    "source_count": {"type": "integer", "description": "Curve rows before filtering."},
+    "matched_count": {
+        "type": "integer",
+        "description": "Rows after sport filtering and ranking-value eligibility, before limit.",
+    },
+}
+
 TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_athletes": {
         "name": "list_athletes",
@@ -274,6 +295,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                **_CURVE_FILTER_PROPERTIES,
+                "rank_by_secs": {"type": "integer", "minimum": 1, "description": "Rank highest watts first for a duration in secs."},
                 "athlete": {
                     "type": ["string", "integer"], "default": "me",
                     "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
@@ -295,6 +318,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "outputSchema": {
             "type": "object",
             "properties": {
+                **_CURVE_COUNT_PROPERTIES,
                 "start_date": {"type": "string"},
                 "end_date": {"type": "string"},
                 "athlete": _object("Explicitly selected non-default athlete."),
@@ -302,7 +326,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "count": {"type": "integer"},
                 "curves": {"type": "array", "items": _object("Intervals.icu activity power-curve row.")},
             },
-            "required": ["start_date", "end_date", "secs", "count", "curves"],
+            "required": ["start_date", "end_date", "secs", "count", "source_count", "matched_count", "curves"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activity_power_curves"],
@@ -313,6 +337,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                **_CURVE_FILTER_PROPERTIES,
+                "rank_by_secs": {"type": "integer", "minimum": 1, "description": "Rank highest pulse first for a duration in secs."},
                 "athlete": {
                     "type": ["string", "integer"], "default": "me",
                     "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
@@ -327,12 +353,13 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "outputSchema": {
             "type": "object",
             "properties": {
+                **_CURVE_COUNT_PROPERTIES,
                 "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "athlete": _object("Explicitly selected non-default athlete."),
                 "secs": {"type": "array", "items": {"type": "integer"}},
                 "count": {"type": "integer"}, "curves": {"type": "array", "items": _object("Intervals.icu activity HR-curve row.")},
             },
-            "required": ["start_date", "end_date", "secs", "count", "curves"],
+            "required": ["start_date", "end_date", "secs", "count", "source_count", "matched_count", "curves"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activity_hr_curves"],
@@ -343,6 +370,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "inputSchema": {
             "type": "object",
             "properties": {
+                **_CURVE_FILTER_PROPERTIES,
+                "rank_by_distance": {"type": "number", "exclusiveMinimum": 0, "description": "Rank fastest first for a distance in distances."},
                 "athlete": {
                     "type": ["string", "integer"], "default": "me",
                     "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
@@ -357,19 +386,23 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "outputSchema": {
             "type": "object",
             "properties": {
+                **_CURVE_COUNT_PROPERTIES,
                 "start_date": {"type": "string"}, "end_date": {"type": "string"},
                 "athlete": _object("Explicitly selected non-default athlete."),
                 "distances": {"type": "array", "items": {"type": "number"}},
                 "count": {"type": "integer"}, "curves": {"type": "array", "items": _object("Intervals.icu activity pace-curve row.")},
             },
-            "required": ["start_date", "end_date", "distances", "count", "curves"],
+            "required": ["start_date", "end_date", "distances", "count", "source_count", "matched_count", "curves"],
             "additionalProperties": False,
         },
         "annotations": ANNOTATIONS["list_activity_pace_curves"],
     },
     "search_activity_intervals": {
         "name": "search_activity_intervals",
-        "description": "Find activities containing intervals within explicit duration, intensity, and repetition bounds.",
+        "description": (
+            "Find activities with matching intervals. Optional date and sport filters "
+            "apply to a bounded set of recent-first source results."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -377,6 +410,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": ["string", "integer"], "default": "me",
                     "description": "Optional athlete id. Omit, use 'me', or use 0 for the authenticated athlete.",
                 },
+                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date; requires end_date."},
+                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date; requires start_date."},
+                "sport_types": _SPORT_TYPES_PROPERTY,
                 "min_secs": {"type": "integer", "minimum": 1},
                 "max_secs": {"type": "integer", "minimum": 1},
                 "min_intensity": {"type": "integer", "minimum": 0},
@@ -394,6 +430,12 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "athlete": _object("Explicitly selected non-default athlete."),
+                "start_date": {"type": "string", "format": "date"},
+                "end_date": {"type": "string", "format": "date"},
+                "sport_types": {"type": "array", "items": {"type": "string"}},
+                "source_count": {"type": "integer"},
+                "source_limit": {"type": "integer"},
+                "source_limited": {"type": "boolean", "description": "Filtering is limited to the source result set; older matches may be omitted."},
                 "min_secs": {"type": "integer"}, "max_secs": {"type": "integer"},
                 "min_intensity": {"type": "integer"}, "max_intensity": {"type": "integer"},
                 "interval_type": {"type": ["string", "null"]},
@@ -440,7 +482,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "description": (
             "Search Intervals.icu activities through the source search endpoint. "
             "Returns compact identity summaries with optional includeFields. The result "
-            "is limited by Intervals.icu and preserves source order and duplicates."
+            "is limited to the source search window. Source order is preserved unless sorted."
         ),
         "inputSchema": {
             "type": "object",
@@ -455,7 +497,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 },
                 "limit": {
                     "type": "integer", "minimum": 1, "default": 10,
-                    "description": "Maximum number of source search results.",
+                    "description": "Maximum number of matches returned after filtering and sorting.",
                 },
                 "includeFields": {
                     "type": "array",
@@ -482,6 +524,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "matched_count": {"type": "integer"},
                 "filters": {"type": "array", "items": {}},
                 "sort": {"type": "array", "items": {}},
+                "source_limit": {"type": "integer", "description": "Requested size of the source search window."},
                 "source_limited": {"type": "boolean"},
             },
             "required": ["query", "limit", "includeFields", "count", "activities"],
@@ -1380,63 +1423,67 @@ class IntervalsIcuToolService:
                 if selected_athlete is not None:
                     result["athlete"] = selected_athlete
                 return result
-            if name == "list_activity_power_curves":
+            if name in {
+                "list_activity_power_curves", "list_activity_hr_curves", "list_activity_pace_curves",
+            }:
                 athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
                 start_date = _required_date(arguments, "start_date")
                 end_date = _required_date(arguments, "end_date")
                 if end_date < start_date:
                     raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
-                secs = _required_positive_int_array(arguments, "secs", maximum_items=100)
-                result = self._activity_power_curve_lister(
-                    oldest=start_date, newest=end_date, secs=secs,
-                    athlete_id=athlete_id, **auth,
+
+                is_pace = name == "list_activity_pace_curves"
+                value_key = "distances" if is_pace else "secs"
+                rank_key = "rank_by_distance" if is_pace else "rank_by_secs"
+                read_values = _required_positive_number_array if is_pace else _required_positive_int_array
+                values = read_values(arguments, value_key, maximum_items=100)
+                rank_value = None
+                if rank_key in arguments:
+                    rank_value = read_values(
+                        {rank_key: [arguments[rank_key]]}, rank_key, maximum_items=1
+                    )[0]
+                    if rank_value not in values:
+                        raise ToolFailure(f"{rank_key} must be in {value_key}", "invalid_arguments")
+                sport_types = (
+                    set(_required_unique_string_array(arguments, "sport_types"))
+                    if "sport_types" in arguments else None
                 )
-                curves = result.get("curves")
-                returned_secs = result.get("secs")
-                if not isinstance(curves, list) or not isinstance(returned_secs, list):
-                    raise ToolFailure(
-                        "Activity power curves response is missing secs or curves",
-                        "source_error",
-                    )
-                response = {
-                    "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
-                    "secs": returned_secs, "count": len(curves), "curves": curves,
-                }
-                if selected_athlete is not None:
-                    response["athlete"] = selected_athlete
-                return response
-            if name in {"list_activity_hr_curves", "list_activity_pace_curves"}:
-                athlete_id, selected_athlete = self._selected_athlete(arguments, auth)
-                start_date = _required_date(arguments, "start_date")
-                end_date = _required_date(arguments, "end_date")
-                if end_date < start_date:
-                    raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
-                if name == "list_activity_hr_curves":
-                    values = _required_positive_int_array(arguments, "secs", maximum_items=100)
-                    result = self._activity_hr_curve_lister(
-                        oldest=start_date, newest=end_date, secs=values,
-                        athlete_id=athlete_id, **auth,
-                    )
-                    value_key = "secs"
-                else:
-                    values = _required_positive_number_array(
-                        arguments, "distances", maximum_items=100
-                    )
-                    result = self._activity_pace_curve_lister(
-                        oldest=start_date, newest=end_date, distances=values,
-                        athlete_id=athlete_id, **auth,
-                    )
-                    value_key = "distances"
+                limit = _required_positive_int(arguments, "limit") if "limit" in arguments else None
+                if limit is not None and limit > 500:
+                    raise ToolFailure("limit must be from 1 to 500", "invalid_arguments")
+
+                lister, metric = {
+                    "list_activity_power_curves": (self._activity_power_curve_lister, "watts"),
+                    "list_activity_hr_curves": (self._activity_hr_curve_lister, "bpm"),
+                    "list_activity_pace_curves": (self._activity_pace_curve_lister, "secs"),
+                }[name]
+                source_args = dict(oldest=start_date, newest=end_date, athlete_id=athlete_id, **auth)
+                result = lister(**source_args, **{value_key: values})
                 curves = result.get("curves")
                 returned_values = result.get(value_key)
                 if not isinstance(curves, list) or not isinstance(returned_values, list):
                     raise ToolFailure(
-                        f"Activity curves response is missing {value_key} or curves",
-                        "source_error",
+                        f"Activity curves response is missing {value_key} or curves", "source_error"
                     )
+                source_count = len(curves)
+                if sport_types is not None and curves:
+                    matching_ids = {
+                        row.get("id") for row in self._activity_lister(**source_args)
+                        if row.get("type") in sport_types and row.get("id") is not None
+                    }
+                    curves = [row for row in curves if row.get("id") in matching_ids]
+                if rank_value is not None:
+                    if rank_value not in returned_values:
+                        raise ToolFailure(f"Activity curves response is missing {rank_key}", "source_error")
+                    curves = _rank_curve_rows(
+                        curves, metric, returned_values.index(rank_value), fastest_first=is_pace
+                    )
+                matched_count = len(curves)
+                curves = curves[:limit]
                 response = {
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     value_key: returned_values, "count": len(curves), "curves": curves,
+                    "source_count": source_count, "matched_count": matched_count,
                 }
                 if selected_athlete is not None:
                     response["athlete"] = selected_athlete
@@ -1462,12 +1509,41 @@ class IntervalsIcuToolService:
                 include_fields = _include_fields(
                     arguments.get("includeFields", []), _ACTIVITY_LIST_INCLUDE_FIELDS
                 )
+                date_range = None
+                if "start_date" in arguments or "end_date" in arguments:
+                    start_date = _required_date(arguments, "start_date")
+                    end_date = _required_date(arguments, "end_date")
+                    if end_date < start_date:
+                        raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+                    date_range = (start_date.isoformat(), end_date.isoformat())
+                sport_types = (
+                    _required_unique_string_array(arguments, "sport_types")
+                    if "sport_types" in arguments else None
+                )
+                filtered_search = date_range is not None or sport_types is not None
+                # Intervals.icu returns recent matches first and exposes no date
+                # bounds, sport filter, or cursor on interval-search.
+                source_limit = 100 if filtered_search else limit
                 activities = self._activity_interval_searcher(
                     min_secs=min_secs, max_secs=max_secs,
                     min_intensity=min_intensity, max_intensity=max_intensity,
                     interval_type=interval_type, min_reps=min_reps,
-                    max_reps=max_reps, limit=limit, athlete_id=athlete_id, **auth,
+                    max_reps=max_reps, limit=source_limit, athlete_id=athlete_id, **auth,
                 )
+                source_count = len(activities)
+                if date_range is not None:
+                    oldest, newest = date_range
+                    activities = [
+                        activity for activity in activities
+                        if oldest <= str(activity.get("start_date_local") or "")[:10] <= newest
+                    ]
+                if sport_types is not None:
+                    allowed_types = set(sport_types)
+                    activities = [
+                        activity for activity in activities if activity.get("type") in allowed_types
+                    ]
+                if filtered_search:
+                    activities = activities[:limit]
                 summaries = [
                     _activity_list_summary(activity, include_fields)
                     for activity in activities
@@ -1480,6 +1556,14 @@ class IntervalsIcuToolService:
                     "includeFields": list(include_fields),
                     "count": len(summaries), "activities": summaries,
                 }
+                if filtered_search:
+                    response.update(
+                        source_count=source_count, source_limit=source_limit, source_limited=True
+                    )
+                if date_range is not None:
+                    response.update(start_date=date_range[0], end_date=date_range[1])
+                if sport_types is not None:
+                    response["sport_types"] = sport_types
                 if selected_athlete is not None:
                     response["athlete"] = selected_athlete
                 return response
@@ -1499,8 +1583,9 @@ class IntervalsIcuToolService:
                 include_fields = _include_fields(
                     arguments.get("includeFields", []), _ACTIVITY_LIST_INCLUDE_FIELDS
                 )
+                source_limit = max(limit, 100) if arguments.get("filters") or arguments.get("sort") else limit
                 activities = self._activity_searcher(
-                    query=query, limit=limit, athlete_id=athlete_id, **auth,
+                    query=query, limit=source_limit, athlete_id=athlete_id, **auth,
                 )
                 query_include = tuple(
                     field for field in query_fields(arguments, _ACTIVITY_LIST_FILTER_FIELDS)
@@ -1519,6 +1604,7 @@ class IntervalsIcuToolService:
                     "query": query, "limit": limit,
                     "includeFields": list(include_fields),
                     "count": len(summaries), "activities": summaries,
+                    "source_limit": source_limit,
                     "source_limited": True,
                     **{key: value for key, value in query_meta.items() if key != "limit"},
                 }
@@ -2158,6 +2244,25 @@ def _athlete_summary(athlete: dict[str, Any]) -> dict[str, Any]:
     if isinstance(tags, list) and all(isinstance(tag, str) for tag in tags):
         summary["tags"] = tags
     return summary
+
+
+def _rank_curve_rows(
+    curves: list[dict[str, Any]], metric: str, index: int, *, fastest_first: bool,
+) -> list[dict[str, Any]]:
+    ranked = []
+    for row in curves:
+        values = row.get(metric)
+        if not isinstance(values, list) or len(values) <= index:
+            continue
+        value = values[index]
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            continue
+        ranked.append((value, row))
+    # Stable sorts keep ties deterministic without reversing the activity ID.
+    ranked.sort(key=lambda item: str(item[1].get("id") or ""))
+    ranked.sort(key=lambda item: str(item[1].get("start_date_local") or ""), reverse=True)
+    ranked.sort(key=lambda item: item[0], reverse=not fastest_first)
+    return [row for _, row in ranked]
 
 
 def _required_positive_int_array(

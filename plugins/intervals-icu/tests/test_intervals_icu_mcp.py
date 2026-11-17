@@ -331,7 +331,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
                 "secs": [30, 60], "curves": [{"id": "i1", "bpm": [170, 165]}],
             },
             activity_pace_curve_lister=lambda **kwargs: pace_calls.append(kwargs) or {
-                "distances": [1000, 5000], "curves": [{"id": "i2", "times": [220, 1200]}],
+                "distances": [1000, 5000], "curves": [{"id": "i2", "secs": [220, 1200]}],
             },
         )
         hr = service.call_tool("list_activity_hr_curves", {
@@ -374,6 +374,70 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(hr["athlete"]["id"], "i-other")
         self.assertEqual(pace["athlete"]["id"], "i-other")
 
+    def test_hr_curves_filter_then_rank_and_limit(self):
+        rows = [
+            {"id": "run", "bpm": [200, 195]},
+            {"id": "old", "start_date_local": "2026-08-01", "bpm": [170, 162]},
+            {"id": "z", "start_date_local": "2026-08-03", "bpm": [165, 162]},
+            {"id": "a", "start_date_local": "2026-08-03", "bpm": [166, 162]},
+            {"id": "incomplete", "bpm": [180]},
+            {"id": "slower", "bpm": [185, 155]},
+        ]
+        calls = []
+        service = self.service(
+            activity_hr_curve_lister=lambda **kwargs: {
+                "secs": [60, 1680], "curves": rows,
+            },
+            activity_lister=lambda **kwargs: calls.append(kwargs) or [
+                {"id": row["id"], "type": "Run" if row["id"] == "run" else "Ride"}
+                for row in rows
+            ],
+        )
+        result = service.call_tool("list_activity_hr_curves", {
+            "start_date": "2026-08-01", "end_date": "2026-08-17",
+            "secs": [1680, 60], "sport_types": ["Ride", "VirtualRide"],
+            "rank_by_secs": 1680, "limit": 2,
+        })
+        self.assertEqual(result["curves"], [rows[3], rows[2]])
+        self.assertEqual((result["source_count"], result["matched_count"], result["count"]), (6, 4, 2))
+        self.assertEqual(calls[0]["oldest"].isoformat(), "2026-08-01")
+        self.assertEqual(calls[0]["athlete_id"], 0)
+
+    def test_pace_curves_rank_lowest_time_first(self):
+        rows = [
+            {"id": "slow", "secs": [200, 1300]},
+            {"id": "missing", "secs": [180, 0]},
+            {"id": "fast", "secs": [220, 1050]},
+        ]
+        result = self.service(
+            activity_pace_curve_lister=lambda **kwargs: {
+                "distances": [1000, 5000], "curves": rows,
+            },
+        ).call_tool("list_activity_pace_curves", {
+            "start_date": "2026-08-01", "end_date": "2026-08-17",
+            "distances": [1000, 5000], "rank_by_distance": 5000, "limit": 1,
+        })
+        self.assertEqual(result["curves"], [rows[2]])
+        self.assertEqual(result["matched_count"], 2)
+
+    def test_power_curve_limit_preserves_source_order_without_ranking(self):
+        rows = [{"id": "i1", "watts": [200]}, {"id": "i2", "watts": [300]}]
+        result = self.service(
+            activity_power_curve_lister=lambda **kwargs: {"secs": [60], "curves": rows},
+        ).call_tool("list_activity_power_curves", {
+            "start_date": "2026-08-01", "end_date": "2026-08-17", "secs": [60], "limit": 1,
+        })
+        self.assertEqual(result["curves"], rows[:1])
+        self.assertEqual(result["matched_count"], 2)
+
+    def test_curve_query_rejects_invalid_options_before_fetching_curves(self):
+        service = self.service(activity_power_curve_lister=lambda **kwargs: self.fail("unexpected fetch"))
+        for options in ({"sport_types": []}, {"limit": 501}, {"rank_by_secs": 61}, {"rank_by_secs": True}):
+            with self.subTest(options=options), self.assertRaises(MCP.ToolFailure):
+                service.call_tool("list_activity_power_curves", {
+                    "start_date": "2026-08-01", "end_date": "2026-08-17", "secs": [60], **options,
+                })
+
     def test_activity_curve_tools_validate_values(self):
         for tool, key, value in (
             ("list_activity_hr_curves", "secs", []),
@@ -402,12 +466,40 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         })
         self.assertEqual(calls[0]["interval_type"], "POWER")
         self.assertEqual(calls[0]["min_reps"], 4)
+        self.assertEqual(calls[0]["limit"], 20)
         self.assertEqual(calls[0]["athlete_id"], 0)
         self.assertNotIn("athlete", result)
         self.assertEqual(result["activities"], [{
             "id": "i1", "name": "5x5", "start_date_local": "2026-08-10T10:00:00",
             "icu_training_load": 90,
         }])
+
+    def test_search_activity_intervals_filters_before_result_limit(self):
+        calls = []
+        source = [
+            {"id": "i4", "start_date_local": "2024-01-01T00:00:00", "type": "Ride"},
+            {"id": "i3", "start_date_local": "2023-12-31T23:59:59", "type": "Run"},
+            {"id": "i2", "start_date_local": "2023-12-31T23:59:59", "type": "VirtualRide"},
+            {"id": "i1", "start_date_local": "2023-01-01T00:00:00", "type": "Ride"},
+            {"id": "i0", "start_date_local": "2022-12-31T23:59:59", "type": "Ride"},
+        ]
+        service = self.service(
+            activity_interval_searcher=lambda **kwargs: calls.append(kwargs) or source
+        )
+        query = {
+            "min_secs": 1500, "max_secs": 1920,
+            "min_intensity": 90, "max_intensity": 110,
+            "start_date": "2023-01-01", "end_date": "2023-12-31",
+            "sport_types": ["Ride", "VirtualRide"], "limit": 1,
+        }
+        result = service.call_tool("search_activity_intervals", query)
+        self.assertGreater(calls[0]["limit"], query["limit"])
+        self.assertEqual(result["source_limit"], calls[0]["limit"])
+        self.assertEqual(result["source_count"], 5)
+        self.assertTrue(result["source_limited"])
+        self.assertEqual([row["id"] for row in result["activities"]], ["i2"])
+        result = service.call_tool("search_activity_intervals", query | {"limit": 10})
+        self.assertEqual([row["id"] for row in result["activities"]], ["i2", "i1"])
 
     def test_search_activity_intervals_validates_bounds(self):
         base = {"min_secs": 300, "max_secs": 300, "min_intensity": 100, "max_intensity": 110}
@@ -418,6 +510,10 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             ({"max_intensity": 99}, "max_intensity"),
             ({"min_reps": 3, "max_reps": 2}, "max_reps"),
             ({"interval_type": "CADENCE"}, "interval_type"),
+            ({"start_date": "2023-01-01"}, "end_date"),
+            ({"end_date": "2023-12-31"}, "start_date"),
+            ({"start_date": "2023-12-31", "end_date": "2023-01-01"}, "end_date"),
+            ({"sport_types": []}, "sport_types"),
         ):
             with self.subTest(updates=updates), self.assertRaisesRegex(MCP.ToolFailure, message):
                 self.service().call_tool("search_activity_intervals", base | updates)
@@ -788,6 +884,24 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(result["activities"][0], {
             "id": "i1", "name": "Ride", "start_date_local": "2026-08-17T10:00:00",
         })
+
+    def test_search_activities_limits_after_filtering_and_sorting(self):
+        source_rows = [
+            {"id": "i1", "type": "Run", "start_date_local": "2026-08-17T10:00:00"},
+            {"id": "i2", "type": "Ride", "start_date_local": "2026-08-16T10:00:00"},
+            {"id": "i3", "type": "Ride", "start_date_local": "2026-08-15T10:00:00"},
+        ]
+        service = self.service(activity_searcher=lambda **kwargs: source_rows[:kwargs["limit"]])
+        result = service.call_tool("search_activities", {
+            "query": "tempo",
+            "filters": [{"field": "type", "op": "eq", "value": "Ride"}],
+            "sort": [{"field": "start_date_local", "direction": "asc"}],
+            "limit": 1,
+        })
+        self.assertEqual([row["id"] for row in result["activities"]], ["i3"])
+        self.assertEqual(result["source_limit"], 100)
+        self.assertEqual(result["source_count"], 3)
+        self.assertEqual(result["matched_count"], 2)
 
     def test_search_activities_supports_same_include_fields_as_list(self):
         service = self.service(
