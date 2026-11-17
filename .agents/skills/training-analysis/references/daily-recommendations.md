@@ -310,6 +310,17 @@ the separate quality-base calculation, and the complete combined calculation
 through `--endurance-workout-json`. The helper checks the canonical timeline
 against the selected total and the quality-base duration; it does not extend it.
 
+Before choosing VT1 minutes, run `scripts/vt1_dose.py` with Python and
+`--state` set to the selected plan-state file. Set `--role` to today's aerobic
+purpose and `--as-of` to the decision cutoff with UTC offset. Pass `--watts`
+when today's chosen working power differs from the plan. Use `--activity-id`
+to include a specific older ride of the same purpose alongside the three latest.
+Compare moving time, measured time in the stated working-power band, valid power
+time, athlete feedback and the next recorded quality outcome when available.
+Review late response separately from whole-ride RPE. Explain which comparison
+supports repeating, shortening or extending the dose, or state the independent
+basis when none fits. A later quality result provides context for that review.
+
 Before passing a coaching-selected load or duration to a helper, state the
 original XATA dose, the chosen dose and the concrete reason for the adjustment.
 Explain why that amount fits the training purpose, including relevant evidence
