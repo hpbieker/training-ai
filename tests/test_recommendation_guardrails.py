@@ -1288,7 +1288,6 @@ class RecommendationSummaryTests(unittest.TestCase):
 
     def test_plan_state_progression_overrides_historical_advisor_step(self):
         decision = select_intensity_domain(
-            day="2026-08-01",
             readiness_ceiling="high_intensity_ok",
             intensity_goal="vo2max",
             progression_advice={
@@ -2774,7 +2773,6 @@ class PrimaryDecisionContractTests(unittest.TestCase):
 
     def test_readiness_caps_requested_hard_intensity(self):
         decision = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="easy_vt1",
             intensity_goal="vo2max",
             progression_advice={},
@@ -2787,7 +2785,6 @@ class PrimaryDecisionContractTests(unittest.TestCase):
 
     def test_normal_vt1_ceiling_does_not_raise_recovery_goal(self):
         decision = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="normal_vt1",
             intensity_goal="recovery",
             progression_advice={},
@@ -2798,7 +2795,6 @@ class PrimaryDecisionContractTests(unittest.TestCase):
 
     def test_easy_vt1_ceiling_does_not_raise_recovery_goal(self):
         decision = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="easy_vt1",
             intensity_goal="recovery",
             progression_advice={},
@@ -2807,25 +2803,23 @@ class PrimaryDecisionContractTests(unittest.TestCase):
         self.assertEqual(decision["selected_domain"], "active_recovery")
         self.assertEqual(decision["selection_reason"], "goal_within_readiness_ceiling")
 
-    def test_recent_same_family_stimulus_reduces_hard_goal_to_vt1(self):
+    def test_recent_named_candidate_without_reviewed_work_does_not_reduce_plan_goal(self):
         decision = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="high_intensity_ok",
             intensity_goal="vt2",
             progression_advice={
                 "vt2": {
                     "status": "progress",
-                    "sessions_considered": [{"date": "2026-07-22"}],
+                    "sessions_considered": [{"date": "2026-07-22", "name": "VT2 aborted during warm-up", "observed_work": None}],
                 }
             },
         )
 
-        self.assertEqual(decision["selected_domain"], "vt1")
-        self.assertEqual(decision["selection_reason"], "recent_same_family_stimulus")
+        self.assertEqual(decision["selected_domain"], "vt2")
+        self.assertEqual(decision["selection_reason"], "goal_within_readiness_ceiling")
 
     def test_progression_goal_is_selected_inside_intensity_ready_ceiling(self):
         decision = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="high_intensity_ok",
             intensity_goal="vt2",
             progression_advice={
@@ -2848,19 +2842,16 @@ class PrimaryDecisionContractTests(unittest.TestCase):
 
     def test_vt2_ceiling_caps_vo2max_but_allows_vt2_and_vt1(self):
         vt1 = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="vt2_ok",
             intensity_goal="vt1",
             progression_advice={},
         )
         vt2 = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="vt2_ok",
             intensity_goal="vt2",
             progression_advice={},
         )
         vo2max = select_intensity_domain(
-            day="2026-07-23",
             readiness_ceiling="vt2_ok",
             intensity_goal="vo2max",
             progression_advice={},
@@ -2874,7 +2865,6 @@ class PrimaryDecisionContractTests(unittest.TestCase):
         for goal in ("vt1", "vt2", "vo2max", "sprint", "mixed"):
             with self.subTest(goal=goal):
                 decision = select_intensity_domain(
-                    day="2026-07-23",
                     readiness_ceiling="high_intensity_ok",
                     intensity_goal=goal,
                     progression_advice={},

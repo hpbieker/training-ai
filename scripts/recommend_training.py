@@ -640,9 +640,9 @@ def main() -> None:
         day=args.date,
         source_files=source_files,
         plan_progression=plan_context.get("progression") or {},
+        plan_state_path=args.plan_selection_json["state"],
     )
     intensity_decision = select_intensity_domain(
-        day=args.date,
         readiness_ceiling=recommendation_bias_from_readiness_packet(
             readiness_packet,
         ),
@@ -2084,6 +2084,7 @@ def build_progression_advice(
     day: str,
     source_files: dict[str, Path],
     plan_progression: dict[str, Any],
+    plan_state_path: Path,
 ) -> dict[str, Any]:
     """Collect evidence without a competing progression ladder or default power."""
     advice = {}
@@ -2092,12 +2093,10 @@ def build_progression_advice(
         command = [
             sys.executable, "-B", "scripts/progression_advisor.py",
             "--type", workout_type, "--date", day,
+            "--plan-state", str(plan_state_path),
             "--plan-progression-json", json.dumps(family),
             "--output", str(source_files[key]),
         ]
-        reference_power = number(family.get("target_power_w"))
-        if reference_power is not None and reference_power > 0:
-            command.extend([f"--{workout_type}-watts", f"{reference_power:g}"])
         payload = run_json(command)
         write_json(source_files[key], payload)
         advice[workout_type] = payload
@@ -4123,7 +4122,6 @@ def split_allocation_guidance(
 
 def select_intensity_domain(
     *,
-    day: str,
     readiness_ceiling: str,
     intensity_goal: str,
     progression_advice: dict[str, Any],
@@ -4187,27 +4185,11 @@ def select_intensity_domain(
         if intensity_goal in {"vt2", "vo2max"}
         else {}
     )
-    latest_same_family_date = latest_progression_session_date(progression)
-    days_since_same_family = None
-    if latest_same_family_date is not None:
-        days_since_same_family = (date.fromisoformat(day) - latest_same_family_date).days
-    if (
-        selected in {"vt2", "vo2max"}
-        and days_since_same_family is not None
-        and days_since_same_family < 2
-    ):
-        selected = "vt1"
-        reason = "recent_same_family_stimulus"
-
     return {
         "readiness_ceiling": readiness_ceiling,
         "requested_goal": intensity_goal,
         "selected_domain": selected,
         "selection_reason": reason,
-        "latest_same_family_date": (
-            latest_same_family_date.isoformat() if latest_same_family_date else None
-        ),
-        "days_since_same_family": days_since_same_family,
         "progression_status": (
             state_progression.get("status") or progression.get("status")
         ),
@@ -4306,16 +4288,6 @@ def apply_execution_modality_constraint(
             "gym_bike_continuous_aerobic_only"
         )
         intensity_decision["quality_role_remains_queued"] = True
-
-
-def latest_progression_session_date(advice: dict[str, Any]) -> date | None:
-    dates = []
-    for session in advice.get("sessions_considered") or []:
-        try:
-            dates.append(date.fromisoformat(str(session.get("date"))))
-        except (TypeError, ValueError):
-            continue
-    return max(dates) if dates else None
 
 
 def build_primary_decision(
@@ -4429,7 +4401,7 @@ def build_primary_decision(
             "illness_and_return_to_training_rules",
             "readiness_intensity_ceiling",
             "resolved_intensity_goal",
-            "recent_same_family_stimulus",
+            "reviewed_plan_role_and_quality_spacing",
             "progression_next_step",
             "xert_recovery_vs_training",
             "available_time_and_modalities_for_execution",

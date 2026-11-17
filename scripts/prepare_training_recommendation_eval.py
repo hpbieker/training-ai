@@ -27,7 +27,7 @@ def build_packet(case):
         inputs['xert_recovery'].update(training_load={'low':121.258}, recovery_load={'low':112.769})
     ceiling = recommendation_bias(wellness=inputs['wellness'], xert=inputs['xert_recovery'],
                                   intervals_events=inputs['intervals_wellness_events'])
-    decision = select_intensity_domain(day=case.get('date', '2026-10-18'), readiness_ceiling=ceiling,
+    decision = select_intensity_domain(readiness_ceiling=ceiling,
         intensity_goal=case['goal'], progression_advice={}, plan_progression={'vt2': {
             'anchor':'3 x 28 min @ 295 W', 'status':'hold',
             'next_step':'Repeat achieved dose when current response permits; do not increase watts.'}})

@@ -637,10 +637,10 @@ normal recommendation.
      Distinguish no observed restriction from evidence supporting recovery;
      never translate the ceiling into a guarantee of physiological readiness.
   - `Training need`: report what the resolved goal, progression history,
-     and recent same-family stimulus/load indicate. Ground this in
-     `requested_goal`, `progression_status`, `progression_next_step`,
-     `latest_same_family_date`, `days_since_same_family`, and the packet's recent
-     load evidence when those fields are available. Name the selected active
+     and recent training load indicate. Use the reviewed plan state's
+     `next_role`, `last_quality_session` and `aerobic_days_since_quality`
+     for quality spacing. Historical candidates provide execution context.
+     Use the requested goal, progression status and next step to explain the dose. Name the selected active
      plan and current plan role. If no applicable plan exists, state that the
      training need is unresolved instead of presenting a generic helper goal as
      a plan.

@@ -531,7 +531,7 @@ class SpacingDayTests(unittest.TestCase):
             completed_role="rest"))
         context = recommendation_plan_context(state, intensity_goal="vo2max")
         self.assertTrue(context["goal_matches_state"])
-        decision = select_intensity_domain(day="2026-07-26", readiness_ceiling="easy_vt1",
+        decision = select_intensity_domain(readiness_ceiling="easy_vt1",
             intensity_goal="vo2max", progression_advice={}, plan_progression={})
         self.assertEqual(decision["selected_domain"], "easy_vt1")
 

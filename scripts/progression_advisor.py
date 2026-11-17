@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 import subprocess
@@ -14,8 +15,9 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from plan_state import DEFAULT_STATE_PATH, load_plan_state
 
-SCHEMA = "training-ai-progression-advisor-v2"
+SCHEMA = "training-ai-progression-advisor-v3"
 DEFAULT_ARTIFACTS_DIR = Path("outputs/intervals")
 
 
@@ -27,7 +29,9 @@ class CandidateActivity:
     start: datetime
     elapsed_seconds: float | None
     training_load: float | None
-    completed_prescription: dict[str, Any]
+    observed_work: dict[str, Any] | None
+    reviewed_event: dict[str, Any] | None = None
+    has_streams: bool = True
 
 
 def main() -> None:
@@ -42,22 +46,28 @@ def main() -> None:
     parser.add_argument("--lookback-days", type=int, default=90)
     parser.add_argument("--max-sessions", type=int, default=6)
     parser.add_argument("--artifacts-dir", type=Path, default=DEFAULT_ARTIFACTS_DIR)
+    parser.add_argument("--plan-state", type=Path,
+                        help="Selected plan state with reviewed roles (default: repository state when present).")
     parser.add_argument("--plan-progression-json", type=parse_plan_progression_json, default={},
                         help="Selected plan-family context, passed explicitly; never parsed from Markdown.")
-    parser.add_argument("--vt2-watts", type=float, help="Explicit reference for historical VT2 inspection.")
-    parser.add_argument("--vo2max-watts", type=float, help="Explicit reference for historical VO2 inspection.")
     parser.add_argument("--force-inspect", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
     day = parse_date(args.date)
+    state_path = args.plan_state or DEFAULT_STATE_PATH
+    reviewed_events = (
+        load_plan_state(state_path)["activity_events"]
+        if args.plan_state is not None or state_path.is_file() else []
+    )
     activities = recent_relevant_activities(
         workout_type=args.type,
         day=day,
         lookback_days=args.lookback_days,
         max_sessions=args.max_sessions,
         artifacts_dir=args.artifacts_dir,
-        target_power_w=(args.vt2_watts if args.type == "vt2" else args.vo2max_watts),
+        target_power_w=number(args.plan_progression_json.get("target_power_w")),
+        reviewed_events={event["activity_id"]: event for event in reviewed_events},
     )
     inspected = inspect_activities(activities, args=args)
     advice = progression_review(inspected, plan_progression=args.plan_progression_json)
@@ -86,6 +96,7 @@ def recent_relevant_activities(
     max_sessions: int,
     artifacts_dir: Path,
     target_power_w: float | None,
+    reviewed_events: dict[str, dict[str, Any]],
 ) -> list[CandidateActivity]:
     since = day - timedelta(days=lookback_days)
     activities_dir = artifacts_dir / "activities"
@@ -96,32 +107,31 @@ def recent_relevant_activities(
         except (OSError, json.JSONDecodeError):
             continue
         name = str(metadata.get("name") or "")
-        if not activity_matches_type(
-            metadata,
-            workout_type,
-            target_power_w=target_power_w,
-        ):
-            continue
         start = parse_optional_datetime(metadata.get("start_date_local"))
         if start is None or not (since <= start.date() <= day):
             continue
         activity_dir = activity_json.parent
-        if not (activity_dir / "streams.csv").exists():
+        activity_id = str(metadata.get("id") or activity_dir.name)
+        reviewed = reviewed_events.get(activity_id)
+        if reviewed is not None and reviewed["completed_role"] != workout_type:
+            continue
+        observed = observed_interval_work(
+            metadata, workout_type=workout_type, target_power_w=target_power_w,
+            reviewed_family=reviewed is not None,
+        )
+        if reviewed is None and not observed and not name_matches_type(name, workout_type):
             continue
         candidates.append(
             CandidateActivity(
                 activity_dir=activity_dir,
-                activity_id=str(metadata.get("id") or activity_dir.name),
+                activity_id=activity_id,
                 name=name,
                 start=start,
                 elapsed_seconds=number(metadata.get("elapsed_time")),
                 training_load=number(metadata.get("icu_training_load")),
-                completed_prescription=completed_prescription(
-                    name,
-                    metadata=metadata,
-                    workout_type=workout_type,
-                    target_power_w=target_power_w,
-                ),
+                observed_work=observed,
+                reviewed_event=reviewed,
+                has_streams=(activity_dir / "streams.csv").is_file(),
             )
         )
     return sorted(candidates, key=lambda item: item.start, reverse=True)[:max_sessions]
@@ -130,23 +140,20 @@ def recent_relevant_activities(
 def inspect_activities(
     activities: list[CandidateActivity], *, args: argparse.Namespace
 ) -> list[dict[str, Any]]:
-    if not activities:
-        return []
-    if args.type == "vt2" and args.vt2_watts is None:
-        # Do not let the analysis CLI silently supply a reference power.
+    recordings = [activity for activity in activities if activity.has_streams]
+    if not recordings:
         return [inspected_activity_payload(activity, {}, workout_type=args.type)
                 for activity in activities]
     command = [
         sys.executable,
         "-B",
         "scripts/activity_inspect_pipeline.py",
-        *(str(activity.activity_dir) for activity in activities),
+        *(str(activity.activity_dir) for activity in recordings),
         "--analysis-options-json",
         json.dumps(
             {
                 "mode": args.type,
                 "shape": "brief",
-                **({"vt2_watts": args.vt2_watts} if args.type == "vt2" else {}),
             },
             separators=(",", ":"),
         ),
@@ -163,15 +170,14 @@ def inspect_activities(
     )
     raw_results = json.loads(completed.stdout)
     results = raw_results if isinstance(raw_results, list) else [raw_results]
-    if len(results) != len(activities):
+    if len(results) != len(recordings):
         raise RuntimeError(
             "activity inspection returned "
-            f"{len(results)} results for {len(activities)} activities"
+            f"{len(results)} results for {len(recordings)} activities"
         )
-    return [
-        inspected_activity_payload(activity, result, workout_type=args.type)
-        for activity, result in zip(activities, results, strict=True)
-    ]
+    by_dir = {activity.activity_dir: result for activity, result in zip(recordings, results, strict=True)}
+    return [inspected_activity_payload(activity, by_dir.get(activity.activity_dir, {}), workout_type=args.type)
+            for activity in activities]
 
 
 def inspected_activity_payload(
@@ -185,10 +191,22 @@ def inspected_activity_payload(
         if activity.elapsed_seconds is not None
         else None,
         "training_load": activity.training_load,
-        "completed_prescription": activity.completed_prescription,
+        "streams_available": activity.has_streams,
+        "selection_basis": (
+            "reviewed_completed_role" if activity.reviewed_event is not None
+            else "activity_name" if name_matches_type(activity.name, workout_type)
+            else "interval_pattern_candidate"
+        ),
+        "reviewed_classification": (
+            {key: activity.reviewed_event[key] for key in
+             ("completed_role", "quality_stimulus", "quality_role_fulfilled", "planned_workout_completed")}
+            if activity.reviewed_event is not None else None
+        ),
+        "observed_work": activity.observed_work,
         "prescription_evidence_limit": (
-            "Historical structure inferred from title or intervals; title alone does not "
-            "prove completion. This is not a next-workout prescription."
+            "Laps describe recorded work and recoveries. Pattern and title matches "
+            "are candidates for review. Missing or unclassified laps leave the "
+            "achieved family dose unresolved."
         ),
         "inspect_summary": compact_inspect_summary(result, workout_type=workout_type),
     }
@@ -222,7 +240,7 @@ def progression_review(
     )
     return {
         "status": "requires_review",
-        "current_level": sessions[0].get("completed_prescription") if sessions else None,
+        "latest_observed_work": sessions[0].get("observed_work") if sessions else None,
         "plan_progression": dict(plan_progression),
         "next_step": {"prescription": None, "reason": reason},
         "avoid": [],
@@ -232,7 +250,8 @@ def progression_review(
 
 def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dict[str, Any]:
     beta_summary = result.get("beta_summary") or {}
-    vt2_quality = (result.get("vt2_quality") or {}).get("session_quality") or {}
+    vt2 = result.get("vt2_quality") or {}
+    vt2_quality = vt2.get("session_quality") or {}
     hardest = result.get("hardest_block") or {}
     total = result.get("total") or {}
     stability = "unknown"
@@ -264,6 +283,7 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
         "category": beta_summary.get("category"),
         "status": beta_summary.get("status"),
         "vt2_verdict": vt2_quality.get("verdict"),
+        "vt2_intensity_classification": vt2.get("intensity_classification"),
         "stability": stability,
         "physiological_cost": physiological_cost,
         "max_relative_drift_pct": round(max_drift, 1) if max_drift is not None else None,
@@ -279,204 +299,101 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
     }
 
 
-def vt2_prescription(*, sets: int, minutes: int, target_power_w: float | None) -> dict[str, Any]:
-    return {
-        "type": "vt2",
-        "structure": f"{sets}x{minutes} min",
-        "sets": sets,
-        "rep_minutes": minutes,
-        "total_work_minutes": sets * minutes,
-        "target_power_w": round(target_power_w) if target_power_w is not None else None,
-        "recoveries": None,
-        "summary": f"VT2 {sets}x{minutes} min @ {format_power(target_power_w)}",
-    }
-
-
-def vt2_bridge_prescription(
-    *,
-    sets: int,
-    minutes: int,
-    add_minutes: int,
-    target_power_w: float | None,
-) -> dict[str, Any]:
-    total = sets * minutes + add_minutes
-    structure = f"{sets}x{minutes} min + {add_minutes} min"
-    return {
-        "type": "vt2",
-        "structure": structure,
-        "sets": sets,
-        "rep_minutes": minutes,
-        "add_on_minutes": add_minutes,
-        "total_work_minutes": total,
-        "target_power_w": round(target_power_w) if target_power_w is not None else None,
-        "recoveries": None,
-        "summary": f"VT2 {structure} @ {format_power(target_power_w)}",
-    }
-
-
-def vo2max_prescription(*, sets: int, reps: int, seconds: int, target_power_w: float | None) -> dict[str, Any]:
-    total_reps = sets * reps
-    return {
-        "type": "vo2max",
-        "structure": f"{sets}x{reps}x{seconds}s",
-        "sets": sets,
-        "reps_per_set": reps,
-        "total_reps": total_reps,
-        "rep_seconds": seconds,
-        "target_power_w": round(target_power_w) if target_power_w is not None else None,
-        "recoveries": None,
-        "summary": f"VO2Max {sets}x{reps}x{seconds}s @ {format_power(target_power_w)}",
-    }
-
-
-def format_power(value: float | None) -> str:
-    return f"{round(value)}W" if value is not None else "unknown power"
-
-
-def parse_completed_prescription(name: str, *, workout_type: str) -> dict[str, Any]:
-    power_match = re.search(r"@\s*(\d+(?:\.\d+)?)\s*W", name, re.IGNORECASE)
-    title_power = float(power_match.group(1)) if power_match else None
-    if workout_type == "vt2":
-        bridge = re.search(
-            r"\bVT2\s+(\d+)x(\d+)\s*(?:min)?\s*\+\s*(\d+)\s*min\b",
-            name,
-            flags=re.IGNORECASE,
-        )
-        if bridge:
-            return vt2_bridge_prescription(
-                sets=int(bridge.group(1)),
-                minutes=int(bridge.group(2)),
-                add_minutes=int(bridge.group(3)),
-                target_power_w=title_power,
-            )
-        match = re.search(r"\bVT2\s+(\d+)x(\d+)\s*min\b", name, flags=re.IGNORECASE)
-        if match:
-            sets = int(match.group(1))
-            minutes = int(match.group(2))
-            return vt2_prescription(sets=sets, minutes=minutes, target_power_w=title_power)
-        plus = re.search(r"\bVT2\s+(\d+)\+(\d+)\s*min\b", name, flags=re.IGNORECASE)
-        if plus:
-            values = [int(plus.group(1)), int(plus.group(2))]
-            return {
-                **vt2_prescription(sets=len(values), minutes=round(sum(values) / len(values)), target_power_w=title_power),
-                "structure": "+".join(str(value) for value in values) + " min",
-                "total_work_minutes": sum(values),
-            }
-    else:
-        match = re.search(r"\bVO2Max\s+(\d+)x(\d+)x(\d+)", name, flags=re.IGNORECASE)
-        if match:
-            return vo2max_prescription(
-                sets=int(match.group(1)),
-                reps=int(match.group(2)),
-                seconds=int(match.group(3)),
-                target_power_w=title_power,
-            )
-        match = re.search(r"\bVO2Max\s+(\d+)x(\d+)\s*sec\b", name, flags=re.IGNORECASE)
-        if match:
-            return vo2max_prescription(
-                sets=1,
-                reps=int(match.group(1)),
-                seconds=int(match.group(2)),
-                target_power_w=title_power,
-            )
-    return {"type": workout_type, "summary": f"unparsed: {name}"}
-
-
-def completed_prescription(
-    name: str,
-    *,
-    metadata: dict[str, Any],
-    workout_type: str,
-    target_power_w: float | None,
-) -> dict[str, Any]:
-    """Use the title when structured, otherwise infer from real interval rows."""
-
-    parsed = parse_completed_prescription(name, workout_type=workout_type)
-    if not str(parsed.get("summary") or "").startswith("unparsed:"):
-        return parsed
-    return infer_prescription_from_intervals(
-        metadata,
-        workout_type=workout_type,
-        target_power_w=target_power_w,
-    ) or parsed
-
-
-def infer_prescription_from_intervals(
-    metadata: dict[str, Any],
-    *,
-    workout_type: str,
-    target_power_w: float | None = None,
+def observed_interval_work(
+    metadata: dict[str, Any], *, workout_type: str, target_power_w: float | None,
+    reviewed_family: bool = False,
 ) -> dict[str, Any] | None:
-    intervals = [
-        row
-        for row in metadata.get("icu_intervals") or []
-        if isinstance(row, dict)
-    ]
-    if workout_type == "vt2":
-        if target_power_w is None:
-            return None
-        # Saved outdoor laps are often labelled WORK even when they are long,
-        # easy route sections. Duration alone therefore cannot establish that
-        # an activity completed a VT2 prescription. Require the candidate work
-        # rows to carry threshold-like power as well.
-        work_rows = [
-            row
-            for row in intervals
-            if str(row.get("type") or "").upper() == "WORK"
-            and interval_seconds(row) is not None
-            and interval_seconds(row) >= 600
-            and number(row.get("average_watts")) is not None
-            and number(row.get("average_watts")) >= 0.8 * target_power_w
-        ]
-        if len(work_rows) < 2:
-            return None
-        work_seconds = [interval_seconds(row) for row in work_rows]
-        minutes = round(statistics.median(work_seconds) / 60)
-        return vt2_prescription(
-            sets=len(work_rows),
-            minutes=minutes,
-            target_power_w=median_or_default(
-                [
-                    watts
-                    for row in work_rows
-                    if (watts := number(row.get("average_watts"))) is not None
-                ],
-                target_power_w,
-            ),
-        )
+    """Retain measured laps and sum only identifiable family work.
 
-    groups: list[list[float]] = []
-    current: list[float] = []
-    for row in intervals:
-        kind = str(row.get("type") or "").upper()
+    The power screens select plausible laps for review. They do not establish
+    a physiological threshold or certify that the planned workout was finished.
+    """
+    named = name_matches_type(str(metadata.get("name") or ""), workout_type)
+    known_family = reviewed_family or named
+    rows = []
+    recoveries = []
+    for index, row in enumerate(metadata.get("icu_intervals") or []):
+        if not isinstance(row, dict):
+            continue
+        kind = str(row.get("type")).upper()
+        if kind not in {"WORK", "RECOVERY"}:
+            continue
         seconds = interval_seconds(row)
-        if kind == "WORK" and seconds is not None and 45 <= seconds <= 75:
-            current.append(seconds)
-        elif kind == "RECOVERY" and seconds is not None and seconds > 180 and current:
-            groups.append(current)
-            current = []
-    if current:
-        groups.append(current)
-    groups = [group for group in groups if len(group) >= 4]
-    total_reps = sum(len(group) for group in groups)
-    if total_reps < 6:
+        if seconds is None or not math.isfinite(seconds) or seconds <= 0:
+            continue
+        watts = None if metadata.get("icu_ignore_power") else number(row.get("average_watts"))
+        start_s = number(row.get("start_time"))
+        end_s = number(row.get("end_time"))
+        elapsed_s = number(row.get("elapsed_time"))
+        if end_s is None and start_s is not None and elapsed_s is not None and elapsed_s > 0:
+            end_s = start_s + elapsed_s
+        target_rows = rows if kind == "WORK" else recoveries
+        target_rows.append({
+            "interval_index": index,
+            "start_s": start_s,
+            "end_s": end_s,
+            "duration_s": seconds,
+            "average_watts": watts if watts is not None and math.isfinite(watts) else None,
+        })
+
+    if not rows:
         return None
-    return vo2max_prescription(
-        sets=len(groups),
-        reps=round(statistics.median([len(group) for group in groups])),
-        seconds=round(statistics.median([seconds for group in groups for seconds in group])),
-        target_power_w=median_or_default(
-            [
-                watts
-                for row in intervals
-                if str(row.get("type") or "").upper() == "WORK"
-                and interval_seconds(row) is not None
-                and 45 <= interval_seconds(row) <= 75
-                if (watts := number(row.get("average_watts"))) is not None
-            ],
-            target_power_w,
-        ),
-    )
+    reference = target_power_w
+    if named:
+        title_power = re.search(r"@\s*(\d+(?:\.\d+)?)\s*W\b", str(metadata["name"]), re.I)
+        if title_power:
+            reference = float(title_power.group(1))
+
+    matched = []
+    pattern_candidates = []
+    if reference is not None and math.isfinite(reference) and reference > 0:
+        if workout_type == "vt2":
+            # Long laps establish the work power for this ride. Short laps
+            # near that power can then be included without counting warm-up.
+            anchors = [r["average_watts"] for r in rows
+                       if r["duration_s"] >= (300 if known_family else 600)
+                       and r["average_watts"] is not None
+                       and 0.8 * reference <= r["average_watts"] <= 1.1 * reference]
+            if len(anchors) >= (1 if known_family else 2):
+                typical = statistics.median(anchors)
+                matched = [r for r in rows if r["average_watts"] is not None
+                           and abs(r["average_watts"] - typical) <= 0.10 * typical]
+        else:
+            matched = [r for r in rows if r["average_watts"] is not None
+                       and r["average_watts"] >= 0.9 * reference]
+            if not known_family:
+                # Retrieval heuristic for repeated efforts, independent of a named
+                # protocol. Preserve every recorded lap below for coaching review.
+                matched = [r for r in matched if r["duration_s"] >= 20]
+                if len(matched) < 3 or sum(r["duration_s"] for r in matched) < 180:
+                    matched = []
+    elif workout_type == "vo2max" and not known_family:
+        # Without a target, retrieve short-to-multiminute repetitions with
+        # observed easier recoveries. Their family and achieved dose stay open.
+        recovery_watts = {r["interval_index"]: r["average_watts"] for r in recoveries}
+        for row in rows:
+            index = row["interval_index"]
+            neighbors = (recovery_watts.get(index - 1), recovery_watts.get(index + 1))
+            if (20 <= row["duration_s"] <= 480 and row["average_watts"] is not None
+                    and any(w is not None and 0 <= w < row["average_watts"] for w in neighbors)):
+                pattern_candidates.append(row)
+        if len(pattern_candidates) < 3 or sum(r["duration_s"] for r in pattern_candidates) < 180:
+            pattern_candidates = []
+    if not known_family and not matched and not pattern_candidates:
+        return None
+    for current, following in zip(rows, rows[1:]):
+        end_s, next_start = current["end_s"], following["start_s"]
+        if end_s is not None and next_start is not None and next_start >= end_s:
+            current["gap_to_next_work_s"] = next_start - end_s
+    return {
+        "source": "icu_intervals",
+        "reference_power_w": reference,
+        "work_rows": rows,
+        "recovery_rows": recoveries,
+        "pattern_candidate_indices": [r["interval_index"] for r in pattern_candidates],
+        "matched_interval_indices": [r["interval_index"] for r in matched],
+        "matched_work_seconds": sum(r["duration_s"] for r in matched) if matched else None,
+    }
 
 
 def interval_seconds(row: dict[str, Any]) -> float | None:
@@ -485,26 +402,6 @@ def interval_seconds(row: dict[str, Any]) -> float | None:
         or number(row.get("moving_time"))
         or number(row.get("duration"))
     )
-
-
-def median_or_default(values: list[float], default: float | None) -> float | None:
-    return statistics.median(values) if values else default
-
-
-def activity_matches_type(
-    metadata: dict[str, Any],
-    workout_type: str,
-    *,
-    target_power_w: float | None,
-) -> bool:
-    name = str(metadata.get("name") or "")
-    if name_matches_type(name, workout_type):
-        return True
-    return infer_prescription_from_intervals(
-        metadata,
-        workout_type=workout_type,
-        target_power_w=target_power_w,
-    ) is not None
 
 
 def name_matches_type(name: str, workout_type: str) -> bool:
@@ -545,10 +442,6 @@ def number(raw: Any) -> float | None:
         return float(raw)
     except (TypeError, ValueError):
         return None
-
-
-def format_number(value: float) -> str:
-    return str(int(value)) if value.is_integer() else str(value)
 
 
 def repo_root() -> Path:
