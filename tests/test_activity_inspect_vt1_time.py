@@ -46,11 +46,14 @@ class Vt1TimeTests(unittest.TestCase):
         self.assertNotIn("quality_scores", result)
 
     def test_off_target_riding_has_no_stability_exposure(self):
-        rows = [{"time": t, "watts": 150, "heartrate": 120} for t in range(0, 1800, 5)]
-        result = indoor_vt1_quality(rows, vt1_watts=215, pauses=[], auto_triggered=False)
-        self.assertEqual(result["duration"]["session_moving_min"], 30)
-        self.assertEqual(result["duration"]["vt1_stability_min"], 0)
-        self.assertEqual(result["drift"]["comparison"]["status"], "unavailable")
+        for watts, expected_minutes in ((150, 0), (None, None)):
+            with self.subTest(watts=watts):
+                rows = [{"time": t, "watts": watts, "heartrate": 120} for t in range(0, 1800, 5)]
+                result = indoor_vt1_quality(rows, vt1_watts=215, pauses=[], auto_triggered=False)
+                self.assertEqual(result["duration"]["session_moving_min"], 30)
+                self.assertEqual(result["duration"]["vt1_stability_min"], expected_minutes)
+                self.assertEqual(result["duration"]["session_minutes_near_working_power"], expected_minutes)
+                self.assertEqual(result["drift"]["comparison"]["status"], "unavailable")
 
     def test_only_matching_work_intervals_contribute_to_work_metrics(self):
         rows = [{"time": t, "watts": 300 if 900 <= t < 1500 else 215,
@@ -67,6 +70,7 @@ class Vt1TimeTests(unittest.TestCase):
         parts = result["work_interval_response"]
         self.assertEqual([(p["start_s"], p["duration_min"]) for p in parts], [(0, 15), (1500, 15)])
         for part in parts:
+            self.assertEqual(part["minutes_near_working_power"], 15)
             response = part["response"]["comparison"]
             self.assertEqual(response["status"], "matched")
             self.assertGreaterEqual(response["early"]["start_s"], part["start_s"])

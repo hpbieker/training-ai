@@ -617,11 +617,12 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
     if include_indoor_vt1 and result["activity"].get("icu_ignore_power"):
         brief["indoor_vt1_quality"] = {"status": "unavailable", "reason": "source_ignored_power"}
     elif include_indoor_vt1 and isinstance(vt1_watts, (int, float)):
+        source_has_vt1 = any(indoor_vt1_work_block_candidate(block, vt1_watts)
+                             for block in saved_work_intervals)
         brief["indoor_vt1_quality"] = indoor_vt1_quality(
             rows,
             window_context=result.get("_window_context"),
-            work_blocks=(saved_work_intervals if any(indoor_vt1_work_block_candidate(block, vt1_watts)
-                        for block in saved_work_intervals) else work_blocks),
+            work_blocks=saved_work_intervals if source_has_vt1 else work_blocks,
             vt1_watts=float(vt1_watts),
             pauses=long_pauses,
             auto_triggered=not indoor_vt1_requested,
@@ -1531,7 +1532,17 @@ def indoor_vt1_quality(
         (chunk, window) for chunk, window in window_context["candidates"]
         if lower <= window["power_avg"] <= upper
     ]}
-    stability = descriptive_work_change(analysis_rows, window_context=vt1_context)
+    stability = descriptive_work_change(analysis_moving_rows, window_context=vt1_context)
+    work_responses = []
+    for start, end in ranges:
+        part = rows[start:end]
+        moving = [row for row in part if outdoor_moving_row(row, pause_ranges)]
+        work_responses.append({
+            "start_s": row_time_value(part[0]),
+            "duration_min": rounded(covered_seconds(part) / 60, digits=1),
+            "minutes_near_working_power": indoor_vt1_observed_minutes(moving, vt1_watts),
+            "response": descriptive_work_change(moving, window_context=vt1_context),
+        })
     assessment = indoor_vt1_assessment(
         vt1_watts=vt1_watts,
         rolling_60=rolling["60s"],
@@ -1548,14 +1559,13 @@ def indoor_vt1_quality(
             "analysis_window": analysis_window,
             "duration": {
                 "observation_band_w": [lower, upper],
-                "session_minutes_near_working_power": rounded(covered_seconds(
-                    indoor_vt1_power_window_rows(moving_rows, vt1_watts)) / 60, digits=1),
+                "session_minutes_near_working_power": indoor_vt1_observed_minutes(moving_rows, vt1_watts),
                 "session_valid_power_min": rounded(covered_seconds(
                     [row for row in moving_rows if numeric(row, "watts") is not None]) / 60, digits=1),
                 "session_moving_min": rounded(covered_seconds(moving_rows) / 60, digits=1),
                 "moving_min": rounded(covered_seconds(analysis_moving_rows) / 60, digits=1),
                 "pedaling_min": rounded(covered_seconds(pedaling_rows) / 60, digits=1),
-                "vt1_stability_min": rounded(covered_seconds(vt1_stability_rows) / 60, digits=1),
+                "vt1_stability_min": indoor_vt1_observed_minutes(analysis_moving_rows, vt1_watts),
             },
             "power_control": indoor_power_control(pedaling_rows, vt1_watts),
             "rolling_power_cap_compliance": {
@@ -1574,11 +1584,7 @@ def indoor_vt1_quality(
                 for window, series in rolling.items()
             },
             "segment_stability": segment_stats,
-            "work_interval_response": [
-                {"start_s": row_time_value(part[0]), "duration_min": covered_seconds(part) / 60,
-                 "response": descriptive_work_change(part, window_context=vt1_context)}
-                for part in parts if ranges
-            ],
+            "work_interval_response": work_responses,
             "vt1_filtered_segment_stability": vt1_segment_stats,
             "drift": stability,
             "assessment": assessment,
@@ -1744,6 +1750,12 @@ def indoor_vt1_power_window_rows(
         for row in rows
         if (watts := value(row, "watts")) is not None and lower <= watts <= upper
     ]
+
+
+def indoor_vt1_observed_minutes(rows, vt1_watts):
+    if not any(row.covered_seconds > 0 and numeric(row, "watts") is not None for row in rows):
+        return None
+    return rounded(covered_seconds(indoor_vt1_power_window_rows(rows, vt1_watts)) / 60, digits=1)
 
 
 def indoor_vt1_caps(vt1_watts: float) -> list[int]:
