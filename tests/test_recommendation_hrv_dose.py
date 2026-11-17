@@ -8,7 +8,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from recommend_training import (
-    apply_acute_readiness_target_guardrail, compose_garmin_source_overrides,
+    annotate_readiness_dose_review, compose_garmin_source_overrides,
     normalize_source_override_payload, parse_source_overrides_json, source_paths,
     validate_source_override_payload,
 )
@@ -37,7 +37,7 @@ class HrvDoseTests(unittest.TestCase):
     def run_guardrail(self, inputs):
         target = {'source': 'xert_training_advice_target_xss',
                   'target_minutes': 210, 'target_load': 219}
-        apply_acute_readiness_target_guardrail(target, {'recommendation_inputs': inputs})
+        annotate_readiness_dose_review(target, {'recommendation_inputs': inputs})
         return target
 
     def test_actual_day_and_missing_history_do_not_impose_fixed_dose(self):
@@ -71,13 +71,14 @@ class HrvDoseTests(unittest.TestCase):
         inputs['xert_recovery']['projected_recovery_hours_at_planned_time']['low'] = 18
         self.assertEqual(self.run_guardrail(inputs)['target_load'], 219)
 
-    def test_corrobated_poor_recovery_still_caps_dose(self):
+    def test_corroborated_poor_recovery_requires_review_without_exact_dose(self):
         inputs = self.inputs()
         inputs['wellness'].update(sleep_score=45, resting_hr=49)
         inputs['xert_recovery']['projected_recovery_hours_at_planned_time']['low'] = 18
         result = self.run_guardrail(inputs)
-        self.assertEqual(result['target_load'], 30)
-        self.assertEqual(result['acute_readiness_guardrail']['level'], 'recovery_day')
+        self.assertEqual(result['target_load'], 219)
+        self.assertTrue(result['readiness_dose_review']['required'])
+        self.assertIn('concordant_recovery_signals', result['readiness_dose_review']['intensity_blockers'])
 
     def test_raw_mcp_history_reaches_existing_readiness_consumer(self):
         raw = history()
@@ -115,6 +116,79 @@ class HrvDoseTests(unittest.TestCase):
         raw = history(('20', '21', '22', '23'), (71, False, float('nan'), 100))
         result = compact_hrv_history('2026-10-22', {'hrv_history': raw})
         self.assertEqual(result['nights_used_3d'], 1)
+
+
+class ReadinessDecisionTests(unittest.TestCase):
+    def healthy(self):
+        return {'hrv_3day_mean': 70, 'hrv_nights_used_3d': 3,
+                'hrv_last_night_avg': 70, 'hrv_balanced_low': 67,
+                'hrv_balanced_upper': 83, 'sleep_score': 90,
+                'resting_hr': 45, 'resting_hr_7day': 45}
+
+    def recovered(self):
+        return {'projected_recovery_hours_at_planned_time': {'low': 0, 'high': 0, 'peak': 0}}
+
+    def test_each_isolated_deviation_reviews_without_intensity_or_duration_cap(self):
+        from recommend_training import recommendation_bias, readiness_evidence_status, intensity_guardrails
+        for change in ({'hrv_last_night_avg': 50}, {'hrv_3day_mean': 50},
+                       {'sleep_score': 57}, {'resting_hr': 55}, {'sleep_time_seconds': 18000}):
+            with self.subTest(change=change):
+                wellness = self.healthy() | change
+                inputs = {'wellness': wellness, 'xert_recovery': self.recovered()}
+                self.assertEqual(recommendation_bias(wellness=wellness, xert=self.recovered(),
+                    intervals_events={}), 'high_intensity_ok')
+                evidence = readiness_evidence_status(inputs)
+                self.assertTrue(evidence['review_required'])
+                self.assertEqual(evidence['observed_limitations'], [])
+                target = {'source': 'xert', 'target_minutes': 180, 'target_load': 180}
+                annotate_readiness_dose_review(target, {'recommendation_inputs': inputs})
+                self.assertEqual(target['target_minutes'], 180)
+                self.assertEqual(target['target_load'], 180)
+                self.assertTrue(target['readiness_dose_review']['required'])
+                self.assertFalse(target['readiness_dose_review']['automatic_dose_cap'])
+                flags = intensity_guardrails(wellness=wellness, freshness={})
+                self.assertFalse(any(flag.startswith(('avoid_', 'limit_')) for flag in flags))
+
+    def test_single_night_fallback_is_not_two_votes(self):
+        from recommend_training import recommendation_bias, intensity_signal_agreement
+        wellness = self.healthy() | {'hrv_last_night_avg': 50, 'hrv_nights_used_3d': 2}
+        agreement = intensity_signal_agreement(wellness=wellness, xert=self.recovered(), intervals_events={})
+        self.assertTrue(agreement['review_required'])
+        self.assertEqual(agreement['blockers'], [])
+        self.assertEqual(recommendation_bias(wellness=wellness, xert=self.recovered(), intervals_events={}), 'high_intensity_ok')
+
+    def test_concordant_poor_recovery_lowers_intensity_but_does_not_quantify_dose(self):
+        from recommend_training import recommendation_bias
+        wellness = self.healthy() | {'sleep_score': 45, 'resting_hr': 55, 'hrv_3day_mean': 50}
+        self.assertEqual(recommendation_bias(wellness=wellness, xert=self.recovered(), intervals_events={}), 'easy_vt1')
+        target = {'source': 'xert', 'target_minutes': 180, 'target_load': 180}
+        annotate_readiness_dose_review(target, {'recommendation_inputs': {'wellness': wellness, 'xert_recovery': self.recovered()}})
+        self.assertEqual(target['target_minutes'], 180)
+        self.assertTrue(target['readiness_dose_review']['required'])
+        self.assertIn('concordant_recovery_signals', target['readiness_dose_review']['intensity_blockers'])
+
+    def test_illness_soreness_and_model_constraints_are_retained(self):
+        from recommend_training import recommendation_bias
+        self.assertEqual(recommendation_bias(wellness=self.healthy(), xert=self.recovered(),
+            intervals_events={'current_day_illness': True}), 'rest')
+        self.assertEqual(recommendation_bias(wellness=self.healthy(), xert=self.recovered(),
+            intervals_events={'current_day_soreness': 3}), 'normal_vt1')
+        self.assertEqual(recommendation_bias(wellness=self.healthy(),
+            xert={'projected_recovery_hours_at_planned_time': {'low': 0, 'high': 2, 'peak': 0}},
+            intervals_events={}), 'vt2_ok')
+
+    def test_explicit_dose_still_carries_review_requirement(self):
+        target = {'source': 'explicit_cli', 'target_minutes': 100, 'target_load': 90}
+        annotate_readiness_dose_review(target, {'recommendation_inputs': {'wellness': {'sleep_score': 45}}})
+        self.assertEqual(target['target_minutes'], 100)
+        self.assertTrue(target['readiness_dose_review']['required'])
+
+    def test_missing_measurements_are_unknown_not_adverse(self):
+        from recommend_training import readiness_evidence_status
+        evidence = readiness_evidence_status({})
+        self.assertEqual(evidence['direct_signal_coverage'], 'unavailable')
+        self.assertFalse(evidence['review_required'])
+        self.assertEqual(evidence['observed_limitations'], [])
 
 
 if __name__ == '__main__':

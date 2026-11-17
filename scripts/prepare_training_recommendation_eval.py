@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from recommend_training import (recommendation_bias, select_intensity_domain,
     apply_xert_endurance_duration_solution, apply_quality_workout_vt1_composition,
-    build_primary_decision, apply_acute_readiness_target_guardrail)
+    build_primary_decision, annotate_readiness_dose_review)
 
 ROOT = Path(__file__).resolve().parents[1]
 SUITE = ROOT / 'evals/training-analysis/recommendations'
@@ -32,14 +32,13 @@ def build_packet(case):
             'anchor':'3 x 28 min @ 295 W', 'status':'hold',
             'next_step':'Repeat achieved dose when current response permits; do not increase watts.'}})
     quality = decision['selected_domain'] == 'vt2'
-    target = {'source':'xert_training_advice_remaining_xss','target_minutes':0,
+    target = {'source':'explicit_coaching_selection','target_minutes':0,
               'target_load':260, 'xert_recommended_target_xss':{'low':260,'high':4.9,'peak':0.2}}
     if case.get('dose_review'):
         target.update(target_load=219, target_minutes=210, xert_recommended_target_xss={'low':219,'high':2.1,'peak':0.2})
-        apply_acute_readiness_target_guardrail(target, {'recommendation_inputs':inputs})
+        annotate_readiness_dose_review(target, {'recommendation_inputs':inputs})
     solution = json.loads((SUITE / 'fixtures' / ('hrv-endurance.json' if case.get('dose_review') else 'quality-plus-endurance.json' if quality else 'endurance.json')).read_text())
     # Frozen scenarios explicitly select a dose; XATA values remain comparison data.
-    target['source'] = 'explicit_coaching_selection'
     target['selected_low_xss'] = solution.get('target_low_xss', solution.get('target_value'))
     target['target_load'] = solution['achieved_xss']['total']
     target['reason'] = 'Synthetic coaching selection for offline composition evaluation'

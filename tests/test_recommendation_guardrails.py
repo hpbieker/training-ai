@@ -22,7 +22,7 @@ from recommend_training import (
     apply_quality_workout_vt1_composition,
     apply_recovery_protection_capacity,
     apply_xert_endurance_duration_solution,
-    apply_acute_readiness_target_guardrail,
+    annotate_readiness_dose_review,
     apply_readiness_domain_target_cap,
     body_battery_summary_line,
     build_endurance_solver_request,
@@ -2167,7 +2167,7 @@ class HrvDecisionTests(unittest.TestCase):
             agreement["high_intensity_blockers"],
         )
 
-    def test_severe_last_night_drop_can_block_alone(self):
+    def test_severe_last_night_drop_requires_review_without_overriding_mean(self):
         agreement = intensity_signal_agreement(
             wellness={
                 "hrv_3day_mean": 67,
@@ -2191,9 +2191,10 @@ class HrvDecisionTests(unittest.TestCase):
             intervals_events={},
         )
 
-        self.assertFalse(agreement["vt2_allowed"])
-        self.assertFalse(agreement["high_intensity_allowed"])
-        self.assertIn("severe_direct_signal", agreement["blockers"])
+        self.assertTrue(agreement["vt2_allowed"])
+        self.assertTrue(agreement["high_intensity_allowed"])
+        self.assertTrue(agreement["review_required"])
+        self.assertIn("hrv_last_night", agreement["review_signals"])
 
 
 class AcuteReadinessGuardrailTests(unittest.TestCase):
@@ -2203,7 +2204,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
             "target_minutes": 120.0,
             "target_load": 90.0,
         }
-        apply_acute_readiness_target_guardrail(
+        annotate_readiness_dose_review(
             target,
             {
                 "recommendation_inputs": {
@@ -2228,7 +2229,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         self.assertEqual(target["target_minutes"], 120.0)
         self.assertNotIn("acute_readiness_guardrail", target)
 
-    def test_caps_xert_dose_for_poor_direct_inputs_and_high_cumulative_load(self):
+    def test_poor_direct_inputs_require_dose_review_without_fixed_cap(self):
         target = {
             "source": "xert_training_advice_target_xss",
             "target_minutes": 221.3,
@@ -2265,33 +2266,17 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
             },
         }
 
-        apply_acute_readiness_target_guardrail(target, packet)
+        annotate_readiness_dose_review(target, packet)
         finalize_plan_trace(target)
 
-        self.assertEqual(target["target_minutes"], 45.0)
-        self.assertEqual(target["target_load"], 30.0)
-        self.assertEqual(target["acute_readiness_guardrail"]["level"], "recovery_day")
-        self.assertEqual(
-            target["dose_position_vs_typical"]["label"], "acute_readiness_capped"
-        )
-        self.assertFalse(
-            target["acute_readiness_guardrail"]["training_readiness_used_for_dose"]
-        )
-        self.assertEqual(
-            set(target["acute_readiness_guardrail"]["direct_domains"]),
-            {"autonomic_recovery"},
-        )
-        self.assertFalse(
-            target["acute_readiness_guardrail"][
-                "body_resources_used_as_independent_domain"
-            ]
-        )
-        self.assertEqual(target["plan_trace"]["base_plan"]["load_xss"], 221.3)
-        self.assertEqual(target["plan_trace"]["adjustment"]["status"], "reduced")
-        self.assertEqual(
-            target["plan_trace"]["final_plan"]["relationship_to_base"],
-            "reduced_by_guardrail",
-        )
+        self.assertEqual(target["target_minutes"], 221.3)
+        self.assertEqual(target["target_load"], 221.3)
+        self.assertNotIn("acute_readiness_guardrail", target)
+        self.assertTrue(target["readiness_dose_review"]["required"])
+        self.assertFalse(target["readiness_dose_review"]["automatic_dose_cap"])
+        self.assertIn("concordant_recovery_signals", target["readiness_dose_review"]["intensity_blockers"])
+        self.assertFalse(target["training_readiness_diagnostic"]["used_for_dose"])
+        self.assertEqual(target["plan_trace"]["adjustment"]["status"], "unchanged")
 
     def test_trace_says_xert_plan_is_unchanged_without_guardrail(self):
         target = {
@@ -2302,7 +2287,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         }
 
         initialize_plan_trace(target)
-        apply_acute_readiness_target_guardrail(
+        annotate_readiness_dose_review(
             target,
             {
                 "recommendation_inputs": {
@@ -2332,7 +2317,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         )
         self.assertIn("xert_recovery_training_diagnostic", target)
 
-    def test_low_cumulative_load_uses_easy_endurance_cap_independent_of_yesterday(self):
+    def test_dose_review_is_independent_of_yesterday_and_composite_score(self):
         target = {
             "source": "xert_training_advice_target_xss",
             "target_minutes": 221.3,
@@ -2362,20 +2347,14 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
             },
         }
 
-        apply_acute_readiness_target_guardrail(
+        annotate_readiness_dose_review(
             target, {"date": "2026-07-20", "recommendation_inputs": inputs}
         )
 
-        self.assertEqual(target["target_minutes"], 60.0)
-        self.assertEqual(target["target_load"], 45.0)
-        self.assertEqual(
-            target["acute_readiness_guardrail"]["level"], "easy_endurance_only"
-        )
-        self.assertEqual(target["acute_readiness_guardrail"]["cumulative_load_risk"], 0.0)
-        self.assertEqual(
-            target["acute_readiness_guardrail"]["cumulative_load_source"],
-            "xert_projected_low_recovery_hours",
-        )
+        self.assertEqual(target["target_minutes"], 221.3)
+        self.assertEqual(target["target_load"], 221.3)
+        self.assertTrue(target["readiness_dose_review"]["required"])
+        self.assertEqual(target["xert_recovery_training_diagnostic"]["modeled_recovery_risk"], 0.0)
 
         target_with_high_garmin_score = {
             "source": "xert_training_advice_target_xss",
@@ -2384,11 +2363,12 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         }
         inputs["garmin_recovery_readiness"]["training_readiness_score"] = 99
         inputs["latest_activity_load"]["xert_xss"] = 500.0
-        apply_acute_readiness_target_guardrail(
+        annotate_readiness_dose_review(
             target_with_high_garmin_score,
             {"date": "2026-07-20", "recommendation_inputs": inputs},
         )
-        self.assertEqual(target_with_high_garmin_score["target_minutes"], 60.0)
+        self.assertEqual(target_with_high_garmin_score["target_minutes"], 221.3)
+        self.assertEqual(target_with_high_garmin_score["readiness_dose_review"], target["readiness_dose_review"])
         self.assertFalse(
             target_with_high_garmin_score["training_readiness_diagnostic"]["used_for_dose"]
         )
@@ -2400,7 +2380,7 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
             "target_load": 80.0,
             "caution_score": 3.0,
         }
-        apply_acute_readiness_target_guardrail(target, {"recommendation_inputs": {}})
+        annotate_readiness_dose_review(target, {"recommendation_inputs": {}})
         self.assertEqual(target["target_minutes"], 90.0)
         self.assertNotIn("acute_readiness_guardrail", target)
 

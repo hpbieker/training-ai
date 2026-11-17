@@ -628,7 +628,7 @@ def main() -> None:
         history_context=history_context,
     )
     initialize_plan_trace(target_resolution)
-    apply_acute_readiness_target_guardrail(target_resolution, readiness_packet)
+    annotate_readiness_dose_review(target_resolution, readiness_packet)
     apply_intervals_illness_target_guardrail(
         target_resolution,
         (readiness_packet.get("recommendation_inputs") or {}).get(
@@ -4419,7 +4419,10 @@ def build_primary_decision(
         "llm_rule": (
             "Explain the coaching_selection reason and evidence, compare with Xert advice, "
             "and report capacity conflicts and their explicit resolution. "
-            "Use this action and executable_now as the default recommendation. "
+            "When readiness_evidence.review_required is true, assess body feel, recent "
+            "response and session demands before adopting the model dose; justify "
+            "retaining or adjusting it. Otherwise use action and executable_now as "
+            "the default recommendation. "
             "Any different recommendation must be labelled as a coaching override "
             "and justified by specific evidence not accounted for in the model "
             "decision. Such evidence may already appear as narrative context "
@@ -4447,7 +4450,8 @@ def readiness_evidence_status(inputs: dict[str, Any]) -> dict[str, Any]:
         "assessed_direct_signals": assessed,
         "unassessed_direct_signals": missing,
         "observed_limitations": agreement["blockers"],
-        "observed_cautions": agreement["moderate_signals"],
+        "observed_cautions": agreement["review_signals"],
+        "review_required": agreement["review_required"],
         "soreness_reported": agreement["soreness"] is not None,
         "interpretation": (
             "The intensity ceiling is a model screening result, not confirmed physiological "
@@ -4944,14 +4948,6 @@ def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
     reasons = []
     adjustment_types = []
 
-    acute = target_resolution.get("acute_readiness_guardrail") or {}
-    if acute.get("active"):
-        adjustment_types.append("acute_readiness_guardrail")
-        reasons.append(
-            "Direct physiological domains agreed sufficiently to cap the base plan "
-            f"at {acute.get('max_minutes')} min / {acute.get('max_load')} XSS."
-        )
-
     illness = target_resolution.get("illness_return_guardrail") or {}
     if illness.get("active"):
         adjustment_types.append("illness_return_guardrail")
@@ -5042,14 +5038,11 @@ def apply_intervals_illness_target_guardrail(
     }
 
 
-def apply_acute_readiness_target_guardrail(
+def annotate_readiness_dose_review(
     target_resolution: dict[str, Any],
     readiness_packet: dict[str, Any],
 ) -> None:
-    """Cap model-derived dose when several acute recovery signals agree."""
-
-    if str(target_resolution.get("source") or "").startswith("explicit_"):
-        return
+    """Expose dose-review evidence without translating wearable scores into minutes."""
 
     inputs = readiness_packet.get("recommendation_inputs") or {}
     readiness = inputs.get("garmin_recovery_readiness") or {}
@@ -5068,7 +5061,6 @@ def apply_acute_readiness_target_guardrail(
     direct_domains = {
         "autonomic_recovery": max_present(*autonomic_recovery_components.values()),
     }
-    caution = direct_domains["autonomic_recovery"] or 0.0
 
     acwr = number(load_focus.get("acwr"))
     recovery_load = xert.get("recovery_load") or {}
@@ -5119,12 +5111,6 @@ def apply_acute_readiness_target_guardrail(
             "diagnostic and never substitutes for missing Xert recovery context."
         ),
     }
-    strong_domains = [
-        key for key, value in direct_domains.items() if value is not None and value >= 0.6
-    ]
-    moderate_domains = [
-        key for key, value in direct_domains.items() if value is not None and value >= 0.4
-    ]
     grouped_risk = direct_domains["autonomic_recovery"]
     direct_signal = (
         "poor" if grouped_risk is not None and grouped_risk >= 0.75 else "caution"
@@ -5169,102 +5155,21 @@ def apply_acute_readiness_target_guardrail(
             "a physiological maximum or automatically validate the full XATA dose."
         ),
     }
-    if isolated_hrv:
-        return
-
-    cap = None
-    level = None
-    autonomic_recovery_risk = direct_domains["autonomic_recovery"]
-    if (
-        autonomic_recovery_risk is not None
-        and autonomic_recovery_risk >= 0.75
-        and cumulative_load_risk is not None
-        and cumulative_load_risk >= 0.6
-    ):
-        cap = {"minutes": 45.0, "load": 30.0}
-        level = "recovery_day"
-    elif (
-        autonomic_recovery_risk is not None
-        and autonomic_recovery_risk >= 0.75
-    ) or (
-        autonomic_recovery_risk is not None
-        and autonomic_recovery_risk >= 0.4
-        and cumulative_load_risk is not None
-        and cumulative_load_risk >= 0.35
-    ):
-        cap = {"minutes": 60.0, "load": 45.0}
-        level = "easy_endurance_only"
-
-    if not cap:
-        return
-
-    target_resolution["pre_acute_guardrail_target_minutes"] = target_resolution.get(
-        "target_minutes"
+    agreement = intensity_signal_agreement(
+        wellness=wellness, xert=xert,
+        intervals_events=inputs.get("intervals_wellness_events") or {},
     )
-    target_resolution["pre_acute_guardrail_target_load"] = target_resolution.get(
-        "target_load"
-    )
-    target_resolution["pre_acute_guardrail_dose_position_vs_typical"] = target_resolution.get(
-        "dose_position_vs_typical"
-    )
-    target_resolution["target_minutes"] = min(
-        number(target_resolution.get("target_minutes")) or cap["minutes"], cap["minutes"]
-    )
-    target_resolution["target_load"] = min(
-        number(target_resolution.get("target_load")) or cap["load"], cap["load"]
-    )
-    pre_minutes = number(target_resolution.get("pre_acute_guardrail_target_minutes"))
-    target_resolution["dose_position_vs_typical"] = {
-        "label": "acute_readiness_capped",
-        "phrase": "capped below the model dose by direct readiness inputs",
-        "ratio": round(target_resolution["target_minutes"] / pre_minutes, 2)
-        if pre_minutes
-        else None,
-        "reason": (
-            "grouped autonomic/recovery evidence and modeled load context supported a cap"
-        ),
-    }
-    target_resolution["acute_readiness_guardrail"] = {
-        "active": True,
-        "level": level,
-        "max_minutes": cap["minutes"],
-        "max_load": cap["load"],
-        "caution_score": round(caution, 2),
-        "decision_input": "direct_readiness_domains_and_xert_recovery_training_context",
-        "training_readiness_used_for_dose": False,
-        "direct_domains": rounded_optional_map(direct_domains),
-        "autonomic_recovery_components": rounded_optional_map(
-            autonomic_recovery_components
-        ),
-        "body_resources_support": round(body_battery_risk, 3)
-        if body_battery_risk is not None
-        else None,
-        "body_resources_used_as_independent_domain": False,
-        "strong_domains": strong_domains,
-        "cumulative_load_risk": round(cumulative_load_risk, 3)
-        if cumulative_load_risk is not None
-        else None,
-        "cumulative_load_source": cumulative_load_source,
-        "xert_recovery_components": rounded_optional_map(xert_recovery_components),
-        "xert_low_recovery_load": low_recovery_load,
-        "xert_low_training_load": low_training_load,
-        "xert_low_training_to_recovery_ratio": round(low_training_to_recovery_ratio, 3)
-        if low_training_to_recovery_ratio is not None
-        else None,
-        "xert_low_recovery_hours": low_recovery_hours,
-        "garmin_acwr_risk_diagnostic": round(acwr_risk, 3)
-        if acwr_risk is not None
-        else None,
-        "acwr": acwr,
+    target_resolution["readiness_dose_review"] = {
+        "required": agreement["review_required"],
+        "cautions": agreement["review_signals"],
+        "intensity_blockers": agreement["blockers"],
+        "automatic_dose_cap": False,
+        "dose_status": "requires_coaching_assessment" if agreement["review_required"] else "no_observed_readiness_adjustment",
         "meaning": (
-            "HRV, resting heart rate, and Sleep Score are grouped as one related "
-            "autonomic/recovery family. Body Battery is retained as supporting "
-            "diagnostic context rather than an additional independent vote. Xert "
-            "projected recovery hours remain the modeled-load gate; TL/RL is diagnostic. Garmin ACWR remains "
-            "diagnostic and does not replace missing Xert context. The previous "
-            "day's individual workout is "
-            "not a separate dose input. Garmin's composite Training "
-            "Readiness score is retained for diagnostics but is not a dose input."
+            "Assess body feel, symptoms, recent execution and recovery against this "
+            "session's demands. Explain any chosen dose change separately from intensity. "
+            "Wearable scores, alone or combined, do not determine minutes or XSS. "
+            "An unchanged model target is not approval of the full dose."
         ),
     }
 
@@ -5574,20 +5479,8 @@ def recommendation_bias(
         return "easy_vt1"
     if intervals_events.get("return_to_training_active"):
         return "easy_vt1"
-    sleep_score = number(wellness.get("sleep_score"))
-    hrv_risk = hrv_readiness_risk(wellness)
-    resting_hr_risk = resting_hr_readiness_risk(wellness)
-    body_battery_risk = body_battery_readiness_risk(wellness)
     xert_projected = xert.get("projected_recovery_hours_at_planned_time") or {}
     xert_low = number(xert_projected.get("low"))
-    caution_score = numeric_caution_score(
-        sleep_score=sleep_score,
-        hrv_risk=hrv_risk,
-        resting_hr_risk=resting_hr_risk,
-        body_battery_risk=body_battery_risk,
-    )
-    if caution_score >= 0.75:
-        return "easy_vt1"
     if xert_low is not None and xert_low > 4:
         return "rest"
     agreement = intensity_signal_agreement(
@@ -5595,6 +5488,8 @@ def recommendation_bias(
         xert=xert,
         intervals_events=intervals_events,
     )
+    if "concordant_recovery_signals" in agreement["blockers"]:
+        return "easy_vt1"
     if agreement["high_intensity_allowed"]:
         return "high_intensity_ok"
     if agreement["vt2_allowed"]:
@@ -6095,7 +5990,6 @@ def intensity_signal_agreement(
     }
     autonomic_recovery_risk = max_present(
         risks["hrv_3day"],
-        risks["hrv_last_night"],
         risks["sleep"],
         risks["resting_hr"],
     )
@@ -6115,8 +6009,12 @@ def intensity_signal_agreement(
     soreness = number(intervals_events.get("current_day_soreness"))
 
     direct_blockers = []
-    if autonomic_recovery_risk is not None and autonomic_recovery_risk >= 0.75:
-        direct_blockers.append("severe_direct_signal")
+    # Conservative screening policy, not independent votes or a validated
+    # physiological cutoff. Last night never overrides a complete three-night
+    # mean; without history it already enters once through hrv_readiness_risk.
+    decision_severe = [key for key in moderate if risks[key] >= 0.75]
+    if decision_severe and len(moderate) >= 2:
+        direct_blockers.append("concordant_recovery_signals")
     if soreness is not None and soreness >= 3:
         direct_blockers.append("high_soreness")
 
@@ -6128,7 +6026,16 @@ def intensity_signal_agreement(
     if xert_high_ready is False and "xert_low_system_recovery" not in high_intensity_blockers:
         high_intensity_blockers.append("xert_high_or_peak_system_recovery")
 
+    review_signals = list(moderate)
+    if risks["hrv_last_night"] is not None and risks["hrv_last_night"] >= 0.25:
+        review_signals.append("hrv_last_night")
+    sleep_hours = seconds_to_hours(wellness.get("sleep_time_seconds"))
+    if sleep_hours is not None and sleep_hours < 6:
+        review_signals.append("short_sleep")
+
     return {
+        "review_required": bool(review_signals or high_intensity_blockers),
+        "review_signals": review_signals,
         "vt2_allowed": not vt2_blockers,
         "high_intensity_allowed": not high_intensity_blockers,
         "blockers": high_intensity_blockers,
@@ -6151,8 +6058,12 @@ def intensity_signal_agreement(
         "soreness": soreness,
         "rule": (
             "HRV, resting heart rate, and Sleep Score are one overlapping "
-            "autonomic/recovery family; a severe family signal may block VT2 and "
-            "high intensity. Body Battery is supporting diagnostic context, not an "
+            "autonomic/recovery family. Isolated deviations require body-feel and "
+            "execution review, not automatic intensity rejection. A severe decision "
+            "signal with another adverse signal invokes conservative intensity "
+            "screening; this is a heuristic, not independent confirmation or a "
+            "validated physiological cutoff. It does not prescribe duration. "
+            "Body Battery is supporting diagnostic context, not an "
             "additional independent signal. Xert system recovery or high soreness "
             "can block independently. VT2 requires "
             "low-system recovery; high intensity additionally requires high- "
@@ -6275,14 +6186,13 @@ def intensity_guardrails(
     hrv_risk = hrv_readiness_risk(wellness)
     resting_hr_risk = resting_hr_readiness_risk(wellness)
     sleep_h = seconds_to_hours(wellness.get("sleep_time_seconds"))
-    if hrv_risk is not None and hrv_risk >= 0.75:
-        guardrails.append("avoid_intensity_hrv_well_below_baseline")
-    elif hrv_risk is not None and hrv_risk >= 0.25:
+    hrv_review_risk = max_present(hrv_risk, hrv_last_night_risk(wellness))
+    if hrv_review_risk is not None and hrv_review_risk >= 0.25:
         guardrails.append("caution_hrv_near_or_outside_baseline")
     if resting_hr_risk is not None and resting_hr_risk >= 0.75:
-        guardrails.append("avoid_intensity_elevated_resting_hr")
+        guardrails.append("review_elevated_resting_hr")
     if sleep_h is not None and sleep_h < 6:
-        guardrails.append("limit_duration_short_sleep")
+        guardrails.append("review_short_sleep_and_session_demands")
     if freshness.get("guidance") == "sync_watch_before_hard_session":
         guardrails.append("sync_watch_before_hard_session")
     return guardrails

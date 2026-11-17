@@ -202,12 +202,27 @@ episode disappearing from a source window must not silently clear the return.
   consecutive dates ending on the target day. Show last night and the mean
   separately. If history is unavailable or incomplete, disclose the single-night
   fallback; do not score missing nights negatively or reuse older nights as current.
-- An isolated HRV deviation calls for caution and an execution/body-feel check,
-  not an automatic fixed endurance-dose cap. Explain any dose reduction using
+- An isolated HRV, Sleep Score, or resting-HR deviation calls for caution and
+  an execution/body-feel check, not automatic rejection of intensity or a fixed
+  endurance-dose cap. A complete three-night HRV mean is the decision input;
+  last night remains visible for review without independently overriding it.
+  Several concordant adverse recovery signals can justify conservative
+  intensity screening, but related Garmin signals remain one evidence family.
+  The helper's numerical screening boundaries are heuristics, not validated
+  personal physiological cutoffs. Explain any dose reduction using
   the combined recovery evidence, current symptoms or reported response, and
   the demands of the proposed session. Retain illness and poor-recovery rules.
   A heuristic risk score is not a measured physiological maximum; removing a
   cap does not by itself establish that the full XATA dose is appropriate.
+- Read `primary_decision.readiness_evidence.review_required` and
+  `target_resolution.readiness_dose_review`. When review is required, assess
+  body feel, symptoms, recent execution/recovery and the planned session's
+  demands before adopting the model dose. Explain why the chosen duration is
+  appropriate separately from the intensity choice. No wearable score or
+  combination of scores establishes a fixed maximum in minutes or XSS;
+  retain illness and explicit recovery-session constraints; review model-capacity conflicts
+  under their own documented rules. An explicit coaching dose remains subject
+  to this review and must retain its evidence-based rationale in the answer.
 - Attribute the final dose to XATA, next-workout capacity, calendar constraints,
   or an explicit coaching adjustment, and state the concrete reason for each
   adjustment. Use planned-time Xert recovery hours for modeled recovery;
