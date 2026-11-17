@@ -17,7 +17,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from physiological_evidence import MAX_MISSING_FRACTION, timeline, quality, field_summary, matched_windows, prepare_windows, numeric
+from physiological_evidence import MAX_MISSING_FRACTION, vt1_power_band, timeline, quality, field_summary, matched_windows, prepare_windows, numeric
 from outdoor_evidence import outdoor_evidence
 
 from analysis import (
@@ -620,7 +620,8 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
         brief["indoor_vt1_quality"] = indoor_vt1_quality(
             rows,
             window_context=result.get("_window_context"),
-            work_blocks=work_blocks,
+            work_blocks=(saved_work_intervals if any(indoor_vt1_work_block_candidate(block, vt1_watts)
+                        for block in saved_work_intervals) else work_blocks),
             vt1_watts=float(vt1_watts),
             pauses=long_pauses,
             auto_triggered=not indoor_vt1_requested,
@@ -1524,10 +1525,11 @@ def indoor_vt1_quality(
         "middle_third": indoor_segment_stats(vt1_middle),
         "final_third": indoor_segment_stats(vt1_final),
     }
+    lower, upper = vt1_power_band(vt1_watts)
     # Keep the full recording's clock and work-run boundaries, including between repeats.
     vt1_context = {**window_context, "candidates": [
         (chunk, window) for chunk, window in window_context["candidates"]
-        if vt1_watts - 20 <= window["power_avg"] <= vt1_watts + 10
+        if lower <= window["power_avg"] <= upper
     ]}
     stability = descriptive_work_change(analysis_rows, window_context=vt1_context)
     assessment = indoor_vt1_assessment(
@@ -1545,6 +1547,11 @@ def indoor_vt1_quality(
             "auto_triggered": auto_triggered,
             "analysis_window": analysis_window,
             "duration": {
+                "observation_band_w": [lower, upper],
+                "session_minutes_near_working_power": rounded(covered_seconds(
+                    indoor_vt1_power_window_rows(moving_rows, vt1_watts)) / 60, digits=1),
+                "session_valid_power_min": rounded(covered_seconds(
+                    [row for row in moving_rows if numeric(row, "watts") is not None]) / 60, digits=1),
                 "session_moving_min": rounded(covered_seconds(moving_rows) / 60, digits=1),
                 "moving_min": rounded(covered_seconds(analysis_moving_rows) / 60, digits=1),
                 "pedaling_min": rounded(covered_seconds(pedaling_rows) / 60, digits=1),
@@ -1731,14 +1738,12 @@ def indoor_vt1_power_window_rows(
     rows: list[dict[str, str]],
     vt1_watts: float,
 ) -> list[dict[str, str]]:
-    lower = vt1_watts - 20
-    upper = vt1_watts + 10
-    filtered = [
+    lower, upper = vt1_power_band(vt1_watts)
+    return [
         row
         for row in rows
         if (watts := value(row, "watts")) is not None and lower <= watts <= upper
     ]
-    return filtered
 
 
 def indoor_vt1_caps(vt1_watts: float) -> list[int]:

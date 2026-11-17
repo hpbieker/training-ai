@@ -127,7 +127,13 @@ it, rather than repeating an inventory of unknowns.
   eligible signals and any supported windows separately.
 - For pure indoor trainer VT1, inspect `indoor_vt1_quality` and pass
   `--vt1-watts`. Treat warm-up/cooldown as part of a selected workout unless
-  explicitly modifying it.
+  explicitly modifying it. Report total moving minutes, the covered duration of
+  matching WORK intervals, and the measured time within the stated working-power
+  band separately. Inspect `work_interval_response` for each matching interval
+  and the early/late comparison for comparable work. Recovery and intervening
+  harder work fall outside the selected WORK intervals. When the full moving
+  window is the fallback, require positive measured exposure and usable response
+  windows before describing stability near the chosen watts.
 - For threshold-like work, inspect `vt2_quality`. Pass `--vt2-watts` for
   intensity classification and, separately, `--prescribed-watts` when a common
   prescribed target is known. Without a valid anchor, intensity classification

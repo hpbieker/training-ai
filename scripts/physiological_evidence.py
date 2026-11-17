@@ -28,6 +28,11 @@ DELTA_UNITS = {
 }
 
 
+def vt1_power_band(watts):
+    """Descriptive working-power band used for recorded VT1 exposure."""
+    return watts - 20, watts + 10
+
+
 def numeric(row, field):
     try:
         result = float(row.get(field))

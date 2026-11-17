@@ -45,6 +45,33 @@ class Vt1TimeTests(unittest.TestCase):
         self.assertIn("incomplete_activity_coverage", result["power_coverage"]["reasons"])
         self.assertNotIn("quality_scores", result)
 
+    def test_off_target_riding_has_no_stability_exposure(self):
+        rows = [{"time": t, "watts": 150, "heartrate": 120} for t in range(0, 1800, 5)]
+        result = indoor_vt1_quality(rows, vt1_watts=215, pauses=[], auto_triggered=False)
+        self.assertEqual(result["duration"]["session_moving_min"], 30)
+        self.assertEqual(result["duration"]["vt1_stability_min"], 0)
+        self.assertEqual(result["drift"]["comparison"]["status"], "unavailable")
+
+    def test_only_matching_work_intervals_contribute_to_work_metrics(self):
+        rows = [{"time": t, "watts": 300 if 900 <= t < 1500 else 215,
+                 "heartrate": 120 if t < 900 else 140} for t in range(0, 2400, 5)]
+        blocks = [{"start_index": a, "end_index": b, "duration_seconds": (b-a)*5,
+                   "summary": {"watts": {"avg": w}}}
+                  for a, b, w in [(0, 180, 215), (180, 300, 300), (300, 480, 215)]]
+        result = indoor_vt1_quality(rows, work_blocks=blocks, vt1_watts=215,
+                                    pauses=[], auto_triggered=False)
+        self.assertEqual(result["duration"]["session_moving_min"], 40)
+        self.assertEqual(result["analysis_window"]["duration_min"], 30)
+        self.assertEqual(result["duration"]["vt1_stability_min"], 30)
+        self.assertEqual(result["power_control"]["avg_w"], 215)
+        parts = result["work_interval_response"]
+        self.assertEqual([(p["start_s"], p["duration_min"]) for p in parts], [(0, 15), (1500, 15)])
+        for part in parts:
+            response = part["response"]["comparison"]
+            self.assertEqual(response["status"], "matched")
+            self.assertGreaterEqual(response["early"]["start_s"], part["start_s"])
+            self.assertLessEqual(response["late"]["end_s"], part["start_s"] + 900)
+
     def test_uniform_sample_rates_preserve_time_and_power_distribution(self):
         outputs = []
         for step in [1, 5, 10]:
