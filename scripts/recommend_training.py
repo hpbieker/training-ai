@@ -4160,7 +4160,10 @@ def select_intensity_domain(
         "mixed": "mixed",
     }.get(intensity_goal, "vt1")
 
-    if readiness_ceiling == "rest":
+    if readiness_ceiling == "review_recovery":
+        selected = goal_domain
+        reason = "planned_goal_pending_readiness_review"
+    elif readiness_ceiling == "rest":
         selected = "rest"
         reason = "readiness_requires_rest"
     elif goal_domain not in allowed:
@@ -4364,6 +4367,9 @@ def build_primary_decision(
     return {
         "action": action,
         "readiness_evidence": readiness_evidence_status(inputs),
+        "provisional": action == "train" and bool(
+            (inputs.get("intervals_wellness_events") or {}).get("current_day_review_signals")
+        ),
         "selected_intensity": intensity,
         "intensity_decision": intensity_decision,
         "physiological_remaining_dose": {
@@ -5293,8 +5299,10 @@ def build_llm_context(
     return {
         "purpose": (
             "Authoritative decision contract plus supporting data for an LLM-authored "
-            "training recommendation. Follow primary_decision by default; use the "
-            "remaining context to explain and execute it."
+            "training recommendation. When primary_decision is provisional, assess recent "
+            "execution, recovery and current body feel against the planned demands. "
+            "Explain whether to proceed, postpone or change the session. Keep the "
+            "recommendation conditional while material evidence is missing."
         ),
         "time_context": {
             "now_local": now.isoformat(timespec="seconds"),
@@ -5480,6 +5488,8 @@ def recommendation_bias(
     )
     if "concordant_recovery_signals" in agreement["blockers"]:
         return "easy_vt1"
+    if intervals_events.get("current_day_review_signals") and not agreement["blockers"]:
+        return "review_recovery"
     if agreement["high_intensity_allowed"]:
         return "high_intensity_ok"
     if agreement["vt2_allowed"]:
@@ -5587,7 +5597,9 @@ def coach_summary_reasons(
                 precip=weather.get("precipitation_range"),
             )
         )
-    if bias in {"vt2_ok", "high_intensity_ok"}:
+    if bias == "review_recovery":
+        reasons.insert(0, intervals_wellness_events_line(intervals_events))
+    elif bias in {"vt2_ok", "high_intensity_ok"}:
         reasons.append("No major readiness guardrail blocks intensity from the input packet.")
     return reasons[:6]
 
@@ -6016,7 +6028,8 @@ def intensity_signal_agreement(
     if xert_high_ready is False and "xert_low_system_recovery" not in high_intensity_blockers:
         high_intensity_blockers.append("xert_high_or_peak_system_recovery")
 
-    review_signals = list(moderate)
+    subjective_review = intervals_events.get("current_day_review_signals") or []
+    review_signals = [*moderate, *subjective_review]
     if risks["hrv_last_night"] is not None and risks["hrv_last_night"] >= 0.25:
         review_signals.append("hrv_last_night")
     sleep_hours = seconds_to_hours(wellness.get("sleep_time_seconds"))
@@ -6026,8 +6039,8 @@ def intensity_signal_agreement(
     return {
         "review_required": bool(review_signals or high_intensity_blockers),
         "review_signals": review_signals,
-        "vt2_allowed": not vt2_blockers,
-        "high_intensity_allowed": not high_intensity_blockers,
+        "vt2_allowed": None if subjective_review and not vt2_blockers else not vt2_blockers,
+        "high_intensity_allowed": None if subjective_review and not high_intensity_blockers else not high_intensity_blockers,
         "blockers": high_intensity_blockers,
         "vt2_blockers": vt2_blockers,
         "high_intensity_blockers": high_intensity_blockers,
@@ -6901,7 +6914,8 @@ def format_summary(packet: dict[str, Any]) -> str:
         "PRIMARY DECISION: {action}".format(
             action=str(primary.get("action") or "missing").upper()
         ),
-        "DO NOW: {dose}".format(dose=executable_now_line(primary)),
+        ("PROVISIONAL SESSION: " if primary.get("provisional")
+         else "DO NOW: ") + executable_now_line(primary),
         "READINESS CEILING: {ceiling} (model screening, not confirmed readiness)".format(
             ceiling=intensity_decision.get("readiness_ceiling") or "missing",
         ),
@@ -7244,6 +7258,14 @@ def intervals_wellness_events_line(events: dict[str, Any]) -> str:
             duration=guidance.get("duration_minutes"),
             intensity=guidance.get("intensity"),
         )
+    review = events.get("current_day_review_signals") or []
+    if "clarify_current_illness_comment" in review:
+        pending = events.get("unresolved_illness_comment") or current
+        return f"Clarify who has symptoms and whether they are present today ({pending.get('date')}, {pending.get('comments')})."
+    if review:
+        return ("Check whether unusual fatigue persists today before hard training. "
+                "If otherwise well, assess effort at familiar easy power during warm-up. "
+                "Defer hard work if easy power still feels unusually demanding.")
     recent_illness = events.get("recent_illness_events") or []
     if recent_illness:
         latest = recent_illness[-1]

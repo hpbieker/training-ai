@@ -7,6 +7,13 @@ sickness entries do not establish health. Preserve unresolved known episodes
 across source windows: retrieve earlier records or supply their dates in the
 assessment; do not infer recovery when an episode leaves a 14-day query.
 
+A structured SICK event or a clear account of the athlete's own current
+illness activates this workflow. Preserve the original wording of wellness
+notes. A denial or a report about a family member alone gives no evidence of
+current illness in the athlete. If the person, timing or meaning is uncertain,
+clarify it before recommending hard training. A free-text denial cannot clear
+an unresolved episode or override an active SICK event.
+
 For mild illness with symptoms resolved or only very mild local symptoms and no
 warning signs, consider an easy exercise challenge. Reassess after 10–20 minutes.
 The helper limits the initial prescription to 20 minutes pending review: this

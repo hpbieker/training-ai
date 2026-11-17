@@ -4,6 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from recommend_training import readiness_evidence_status, recommendation_bias, executable_timeline
+from readiness_snapshot import intervals_wellness_context
 
 
 class RecommendationEvidenceTests(unittest.TestCase):
@@ -34,6 +35,51 @@ class RecommendationEvidenceTests(unittest.TestCase):
         evidence = readiness_evidence_status(self.inputs({'sleep_score': 90}))
         self.assertEqual(evidence['direct_signal_coverage'], 'partial')
         self.assertEqual(evidence['assessed_direct_signals'], ['sleep'])
+
+    def test_athlete_report_reaches_intensity_selection(self):
+        from recommend_training import intensity_signal_agreement, intervals_wellness_events_line, select_intensity_domain
+        day = '2026-11-17'
+        inputs = self.inputs({'sleep_score': 92})
+        for report in ({'fatigue': 4}, {'comments': 'Uvanlig utmattet, orket knapt oppvarmingen i går'},
+                       {'comments': 'Muligens syk?'}):
+            with self.subTest(report=report):
+                events = intervals_wellness_context(day, [{'id': day, 'soreness': 0, **report}])
+                params = dict(wellness=inputs['wellness'], xert=inputs['xert_recovery'], intervals_events=events)
+                bias = recommendation_bias(**params)
+                self.assertEqual(bias, 'review_recovery')
+                self.assertIsNone(intensity_signal_agreement(**params)['high_intensity_allowed'])
+                prompt = intervals_wellness_events_line(events)
+                self.assertIn('who has symptoms' if 'illness_comment_status' in events['current_day']
+                              else 'easy power', prompt)
+                choice = select_intensity_domain(readiness_ceiling=bias, intensity_goal='vt2', progression_advice={})
+                self.assertEqual(choice['selection_reason'], 'planned_goal_pending_readiness_review')
+
+
+    def test_illness_subject_negation_and_structured_event(self):
+        day = '2026-11-17'
+        for comment, sick in [('Jeg er ikke syk', False), ('Barnet mitt er sykt', False),
+                              ('I am not sick today', False), ('Jeg er syk', True),
+                              ('Jeg har feber, hviler i dag', True),
+                              ('Jeg er syk og har vondt i halsen', True)]:
+            with self.subTest(comment=comment):
+                events = intervals_wellness_context(day, [{'id': day, 'comments': comment}])
+                self.assertEqual(events['current_day_illness'], sick)
+                self.assertEqual(events['current_day_review_signals'], [])
+        events = intervals_wellness_context(day, [{'id': day, 'comments': 'Jeg er ikke syk'}],
+            events_payload=[{'category': 'SICK', 'start_date_local': day, 'end_date_local': '2026-11-18'}])
+        self.assertTrue(events['current_day_illness'])
+        events = intervals_wellness_context(day, [
+            {'id': '2026-11-16', 'comments': 'Jeg er syk'},
+            {'id': day, 'comments': 'Jeg er ikke syk'},
+        ])
+        self.assertTrue(events['illness_training_blocked'])
+        self.assertTrue(events['illness_followup_needed'])
+        uncertain = {'id': '2026-11-16', 'comments': 'Muligens syk?'}
+        events = intervals_wellness_context(day, [uncertain])
+        self.assertIn('clarify_current_illness_comment', events['current_day_review_signals'])
+        events = intervals_wellness_context(day, [uncertain, {'id': day, 'comments': 'Jeg er frisk'}])
+        self.assertEqual(events['current_day_review_signals'], [])
+
 
     def target(self):
         return {'endurance_duration_solution': {'duration_seconds': 12437,

@@ -183,6 +183,13 @@ selected, the recommendation packet must use the advice fetched for that exact
 `planned_at`. Do not use current advice for this: it lacks the availability,
 deficit, and progression fields required to explain the XATA planning dose.
 
+Review an athlete's report of unusual fatigue even with reassuring sleep, HRV
+or soreness. Establish whether it persists today and how it compares with usual
+fatigue at this point in training. If otherwise well, check perceived effort at
+familiar easy power during warm-up and defer hard work if it still feels
+unusually demanding. The helper's fatigue flag prompts this review. Choosing
+watts or minutes requires additional evidence about the athlete and session.
+
 ## Illness And Return
 
 If Intervals.icu contains a current/recent sickness event, or prior context

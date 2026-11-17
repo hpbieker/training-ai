@@ -1860,10 +1860,52 @@ def recommendation_inputs(
     }
 
 
-ILLNESS_COMMENT_PATTERN = re.compile(
-    r"(?:^|\W)(?:syk|sykdom|forkjølet|influensa|feber|sick|ill|illness|flu|fever)(?:$|\W)",
-    re.IGNORECASE,
+ILLNESS_WORD = r"(?:syk|sykt|sykdom|forkjølet|forkjøla|influensa|feber|sick|ill|illness|flu|fever)"
+ILLNESS_COMMENT_PATTERN = re.compile(rf"\b{ILLNESS_WORD}\b", re.I)
+DIRECT_ILLNESS = re.compile(
+    rf"(?:(?:jeg (?:er|har)|i am|i'm|i have) )?(?:fortsatt |still )?"
+    rf"(?:a |the )?{ILLNESS_WORD}(?: i dag| today)?"
 )
+OTHER_OR_NEGATED_ILLNESS = re.compile(
+    rf"(?:(?:jeg er |jeg har |i am |i'm |i have )?(?:ikke |ingen |not |no )|"
+    rf"(?:barnet mitt|barnet|partneren min|my child|my partner) (?:er|har|is|has) )"
+    rf"(?:a |the )?{ILLNESS_WORD}(?: i dag| today)?"
+)
+CLEAR_PERSONAL_STATUS = re.compile(
+    r"(?:jeg er (?:ikke syk|frisk|symptomfri)|i am (?:not sick|well|symptom[- ]free))"
+    r"(?: i dag| today)?[.! ]*", re.I
+)
+SECOND_SYMPTOM = (
+    r"(?: og (?:har )?(?:vondt i halsen|sår hals|hoste|hodepine|feber)"
+    r"| and (?:a )?(?:sore throat|cough|headache|fever))"
+)
+PERSONAL_SYMPTOM_PAIR = re.compile(
+    rf"(?:jeg (?:er|har)|i am|i'm|i have) (?:a )?{ILLNESS_WORD}{SECOND_SYMPTOM}"
+)
+FATIGUE_COMMENT = re.compile(
+    r"\b(?:utmattet|utslitt|uvanlig sliten|tunge bein|tunge ben|orket knapt|"
+    r"exhausted|unusually tired|heavy legs)\b", re.I
+)
+
+
+def illness_comment_status(comment: str) -> str | None:
+    """Recognize short direct reports. Keep other symptom language for human review."""
+    if not ILLNESS_COMMENT_PATTERN.search(comment):
+        return None
+    clauses = re.split(r"[.!;,\n]+", comment.lower().replace("’", "'"))
+    mentions = [part.strip() for part in clauses if ILLNESS_COMMENT_PATTERN.search(part)]
+    status = "other_or_negated"
+    for part in mentions:
+        # Accept a direct first-person report followed by another current symptom.
+        if DIRECT_ILLNESS.fullmatch(part) or PERSONAL_SYMPTOM_PAIR.fullmatch(part):
+            return "self_report"
+        third_party = re.match(r"(?:barnet|partneren min|my child|my partner) ", part)
+        if OTHER_OR_NEGATED_ILLNESS.fullmatch(part) or (
+            third_party and OTHER_OR_NEGATED_ILLNESS.fullmatch(re.sub(SECOND_SYMPTOM + "$", "", part))
+        ):
+            continue
+        status = "needs_clarification"
+    return status
 
 
 def intervals_wellness_context(
@@ -1923,12 +1965,12 @@ def intervals_wellness_context(
             continue
         if parsed_day > end:
             continue
-        if parsed_day < start and not ILLNESS_COMMENT_PATTERN.search(str(row.get("comments") or "")):
+        comments = str(row.get("comments") or "").strip()
+        if parsed_day < start and not (ILLNESS_COMMENT_PATTERN.search(comments) or CLEAR_PERSONAL_STATUS.fullmatch(comments)):
             continue
         if row_day == day:
             current_wellness = row
-        comments = str(row.get("comments") or "").strip()
-        illness = bool(ILLNESS_COMMENT_PATTERN.search(comments))
+        comment_status = illness_comment_status(comments)
         subjective = {
             key: row.get(key)
             for key in (
@@ -1948,7 +1990,8 @@ def intervals_wellness_context(
             {
                 "date": row_day,
                 "comments": comments or None,
-                "illness": illness,
+                "illness": comment_status == "self_report",
+                **({"illness_comment_status": comment_status} if comment_status else {}),
                 "source": "wellness",
                 **subjective,
             }
@@ -1964,6 +2007,21 @@ def intervals_wellness_context(
         current_wellness.get("soreness") if isinstance(current_wellness, dict) else None
     )
     soreness_status_missing = current_day_soreness is None
+    subjective_review = []
+    fatigue = (current_wellness or {}).get("fatigue")
+    if isinstance(fatigue, (int, float)) and fatigue >= 3:
+        subjective_review.append("reported_fatigue")
+    current_comment = str((current_wellness or {}).get("comments") or "")
+    if FATIGUE_COMMENT.search(current_comment):
+        subjective_review.append("review_athlete_fatigue_comment")
+    pending_comment = None
+    for event in events:
+        if event.get("illness") or CLEAR_PERSONAL_STATUS.fullmatch(str(event.get("comments") or "").strip()):
+            pending_comment = None
+        elif event.get("illness_comment_status") == "needs_clarification":
+            pending_comment = event
+    if pending_comment:
+        subjective_review.append("clarify_current_illness_comment")
     illness_events = [row for row in events if row.get("illness")]
     latest_illness = illness_events[-1] if illness_events else None
     days_since_latest_illness = (
@@ -1982,6 +2040,8 @@ def intervals_wellness_context(
         "lookback_days": lookback_days,
         "current_day": current,
         "current_day_soreness": current_day_soreness,
+        "current_day_review_signals": subjective_review,
+        "unresolved_illness_comment": pending_comment,
         "soreness_status_missing": soreness_status_missing,
         "soreness_assumed_ok_when_missing": soreness_status_missing,
         "soreness_update_requested_for_vt2_plus": soreness_status_missing,
