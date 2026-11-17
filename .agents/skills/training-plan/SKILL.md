@@ -22,8 +22,11 @@ Each plan should state concisely:
 
 - creation date, status, goal, and current phase;
 - performance objective and time horizon;
+- demand analysis and evidence for the athlete's current limitations;
 - phase structure and weekly session roles;
+- rationale for total weekly volume, quality frequency, distribution and spacing;
 - progression, downgrade, interruption, and taper rules;
+- dated block review, performance measures and criteria for changing the plan;
 - open questions or assumptions.
 
 Plan files are LLM-readable context. Helper scripts must not parse them, and
@@ -31,12 +34,30 @@ volatile daily measurements must not become permanent plan rules.
 
 ## Create Or Update
 
-1. Read the relevant existing plan and inspect actual training history when it
-   affects the change.
-2. Define the goal in performance terms and set phases, weekly rhythm,
-   progression, downgrade, interruption, and taper rules.
-3. Preserve useful history while editing with `apply_patch`.
-4. Read the changed section back and verify internal consistency.
+When creating a plan or changing its training content, read
+[Planning method and evidence](references/planning-method.md). A wording-only
+edit does not require a new physiological assessment.
+
+1. Establish event/performance demands, time horizon, training background,
+   sustainable available time and documented strengths/limitations. Distinguish
+   measured findings, coaching hypotheses and missing evidence. Link each
+   priority session type to the capability it is intended to develop.
+2. Design phases and the week together: justify total hours, quality-session
+   frequency, intensity distribution, long rides and recovery spacing against
+   recent tolerated training and upcoming demands. Include other training and
+   competitions. Several individually justified sessions do not establish that
+   their combined week is appropriate.
+3. Specify each progression variable and the execution/response evidence needed
+   to increase it, repeat it or reduce it. Explain recovery weeks, interruption
+   handling and event taper; do not prescribe universal percentage increases,
+   fixed deload cycles or an intensity split solely because it is familiar.
+4. Set a dated block review with a relevant performance baseline, comparable
+   reassessment method and explicit continue/change criteria. Separate adherence
+   and workload from demonstrated performance improvement.
+5. Preserve useful history while editing with `apply_patch`. Verify that the
+   weekly totals, session placement, progression and review criteria agree.
+   For a scoped update, revise affected decisions rather than rebuilding the
+   entire plan. Record material unknowns and their effect on the prescription.
 
 Do not rewrite a medium-term plan because of one daily recommendation unless
 the user explicitly asks.
