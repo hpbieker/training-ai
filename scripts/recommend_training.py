@@ -2627,6 +2627,8 @@ def training_history_context(
             "end_date": target_day.isoformat(),
             "moving_hours": round(minutes / 60.0, 1),
             "weekly_equivalent_hours": round(minutes / 60.0 / days * 7.0, 1),
+            "activity_count": sum(1 for row in duration_rows if start <= row["date"] <= target_day),
+            "coverage": "local_recorded_activities_only",
         }
 
     xss_history_start = min((row["date"] for row in rows), default=None)
@@ -2699,39 +2701,33 @@ def annotate_volume_density(
     *,
     history_context: dict[str, Any],
 ) -> None:
+    """Describe recorded volume with its available coverage."""
     planned_hours = (number(target_resolution.get("target_minutes")) or 0.0) / 60.0
     windows = []
     for days in (14, 21):
         history = history_context.get(f"rolling_{days}d") or {}
-        prior_hours = number(history.get("moving_hours")) or 0.0
-        projected_hours = prior_hours + planned_hours
-        weekly_equivalent = projected_hours / days * 7.0
-        windows.append(
-            {
-                "days": days,
-                "prior_moving_hours": round(prior_hours, 1),
-                "planned_hours": round(planned_hours, 1),
-                "projected_moving_hours": round(projected_hours, 1),
-                "projected_weekly_equivalent_hours": round(weekly_equivalent, 1),
-            }
-        )
-    equivalents = [row["projected_weekly_equivalent_hours"] for row in windows]
-    if all(15.0 <= value <= 17.0 for value in equivalents):
-        classification = "normal_density"
-    elif max(equivalents) > 17.0:
-        classification = "expansion"
-    elif max(equivalents) < 15.0:
-        classification = "reduced_density"
-    else:
-        classification = "transition_between_density_bands"
+        prior_hours = number(history.get("moving_hours"))
+        if history.get("activity_count") == 0:
+            prior_hours = None
+        projected_hours = prior_hours + planned_hours if prior_hours is not None else None
+        windows.append({
+            "days": days,
+            "prior_moving_hours": prior_hours,
+            "planned_hours": round(planned_hours, 1),
+            "projected_moving_hours": round(projected_hours, 1) if projected_hours is not None else None,
+            "projected_weekly_equivalent_hours": (
+                round(projected_hours / days * 7, 1) if projected_hours is not None else None
+            ),
+            "coverage": "local_recorded_activities_only" if prior_hours is not None else "unavailable",
+        })
+    has_history = any(row["prior_moving_hours"] is not None for row in windows)
     target_resolution["volume_density"] = {
-        "classification": classification,
-        "normal_weekly_equivalent_hours": {"min": 15.0, "max": 17.0},
+        "classification": "recorded_volume_only" if has_history else "unavailable",
         "windows": windows,
         "dose_is_automatically_capped": False,
         "meaning": (
-            "Diagnostic 14-21 day moving-time density after adding the planned "
-            "session; readiness and response still decide whether expansion is appropriate."
+            "Recorded volume with unverified completeness. Missing history leaves volume unknown. "
+            "Compare with the athlete's reviewed plan."
         ),
     }
 
@@ -7780,6 +7776,8 @@ def volume_density_line(target_resolution: dict[str, Any]) -> str:
     windows = density.get("windows") or []
     if not density or not windows:
         return "missing"
+    if density.get("classification") == "unavailable":
+        return "unavailable: no usable recorded history; missing data is not zero training"
     equivalents = ", ".join(
         f"{row.get('days')}d={row.get('projected_weekly_equivalent_hours')} h/week"
         for row in windows

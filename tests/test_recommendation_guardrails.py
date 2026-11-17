@@ -93,7 +93,7 @@ class TrainingTargetContractTests(unittest.TestCase):
         ), 10800)
         self.assertEqual(structure["adjustable_segment_index"], 4)
 
-    def test_volume_density_classifies_projected_14_and_21_day_load(self):
+    def test_volume_density_describes_recorded_volume_without_personal_target(self):
         target = {"target_minutes": 270}
         annotate_volume_density(
             target,
@@ -103,11 +103,22 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(target["volume_density"]["classification"], "normal_density")
+        self.assertEqual(target["volume_density"]["classification"], "recorded_volume_only")
+        self.assertNotIn("normal_weekly_equivalent_hours", target["volume_density"])
         self.assertEqual(
             [row["projected_weekly_equivalent_hours"] for row in target["volume_density"]["windows"]],
             [15.0, 15.0],
         )
+        for history in ({}, {"moving_hours": 0, "activity_count": 0}):
+            with self.subTest(history=history):
+                annotate_volume_density(target, history_context={
+                    "rolling_14d": history, "rolling_21d": history,
+                })
+                density = target["volume_density"]
+                self.assertEqual(density["classification"], "unavailable")
+                self.assertTrue(all(row["projected_moving_hours"] is None for row in density["windows"]))
+                from recommend_training import volume_density_line
+                self.assertIn("unavailable", volume_density_line(target))
 
     def test_route_duration_match_improves_score_when_quality_is_equal(self):
         common = {
