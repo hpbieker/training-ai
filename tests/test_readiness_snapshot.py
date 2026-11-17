@@ -560,6 +560,40 @@ class GarminSignalValidationTests(unittest.TestCase):
 
 
 class DataCutoffTests(unittest.TestCase):
+    def test_activity_and_volume_history_use_only_completed_recordings(self):
+        from scripts.readiness_snapshot import latest_activity_on_or_before
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+        from recommend_training import training_history_context
+        cutoff = datetime.fromisoformat("2026-11-17T10:00:00+01:00")
+        local_timezone = ZoneInfo("Europe/Oslo")
+        recordings = {
+            "finished": {"start_date": "2026-11-17T08:00:00Z", "start_date_local": "2026-11-17T09:00:00", "elapsed_time": 1800},
+            "ongoing": {"start_date_local": "2026-11-17T09:45:00", "elapsed_time": 1800},
+            "future": {"start_date_local": "2026-11-17T11:00:00", "elapsed_time": 1800},
+            "unknown_duration": {"start_date_local": "2026-11-17T08:00:00", "moving_time": 1800},
+            "date_only": {"start_date_local": "2026-11-17", "elapsed_time": 1800},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for activity_id, values in recordings.items():
+                path = root / "activities" / activity_id
+                path.mkdir(parents=True)
+                metadata = {"id": activity_id, "name": activity_id, "type": "Ride", "xss": 20, **values}
+                (path / "activity.json").write_text(json.dumps({"activity": metadata}))
+            latest = latest_activity_on_or_before(
+                "2026-11-17", artifacts_dir=root, data_cutoff=cutoff, local_timezone=local_timezone,
+            )
+            history = training_history_context(
+                "2026-11-17", cutoff=cutoff, artifacts_dir=root, xert_activity_loads=None,
+                local_timezone=local_timezone,
+            )
+        self.assertEqual(latest["id"], "finished")
+        self.assertEqual(latest["end_utc"], "2026-11-17T08:30:00Z")
+        self.assertEqual(history["activity_history_count"], 1)
+        self.assertEqual(history["rolling_7d"]["xss"], 20)
+        self.assertEqual(history["rolling_14d"]["moving_hours"], 0.5)
+        self.assertEqual(history["completed_by"], cutoff.isoformat())
+
     def test_compact_garmin_input_exposes_all_six_readiness_drivers(self):
         fixture = Path(__file__).parent / "fixtures" / "garmin_readiness_status.json"
         raw_payload = json.loads(fixture.read_text(encoding="utf-8"))

@@ -30,6 +30,7 @@ from plan_state import (
 from readiness_snapshot import (
     ARTIFACTS_DIR,
     build_readiness_snapshot,
+    completed_activity_start,
     format_local,
     format_utc,
     load_garmin_input,
@@ -617,7 +618,7 @@ def main() -> None:
     )
     annotate_hrv_decision_context(readiness_packet)
     history_context = training_history_context(
-        args.date,
+        args.date, cutoff=min(now, planned_at),
         artifacts_dir=ARTIFACTS_DIR,
         xert_activity_loads=load_json_if_exists(source_files["xert_activity_loads"]),
         local_timezone=local_timezone,
@@ -2556,13 +2557,19 @@ def xert_start_datetime(raw: Any) -> datetime | None:
 def training_history_context(
     day: str,
     *,
+    cutoff: datetime,
     artifacts_dir: Path,
     xert_activity_loads: dict[str, Any] | None,
     local_timezone: Any,
 ) -> dict[str, Any]:
     activities_dir = artifacts_dir / "activities"
     target_day = date.fromisoformat(day)
-    xert_loads = xert_load_index(xert_activity_loads)
+    xert_loads = [
+        row for row in xert_load_index(xert_activity_loads)
+        if completed_activity_start(row.get("start_utc"), row.get("start_local"),
+                                    (number(row.get("elapsed_minutes")) or 0) * 60,
+                                    cutoff=cutoff, local_timezone=local_timezone) is not None
+    ]
     rows: list[dict[str, Any]] = []
     duration_rows: list[dict[str, Any]] = []
     if activities_dir.exists():
@@ -2570,13 +2577,13 @@ def training_history_context(
             metadata = load_json_if_exists(metadata_path)
             if not isinstance(metadata, dict):
                 continue
-            start = str(metadata.get("start_date_local") or "")
-            if len(start) < 10:
+            metadata = metadata.get("activity", metadata)
+            start = completed_activity_start(metadata.get("start_date"), metadata.get("start_date_local"),
+                                             metadata.get("elapsed_time"), cutoff=cutoff,
+                                             local_timezone=local_timezone)
+            if start is None:
                 continue
-            try:
-                activity_day = date.fromisoformat(start[:10])
-            except ValueError:
-                continue
+            activity_day = start.date()
             if activity_day > target_day:
                 continue
             elapsed_seconds = number(metadata.get("elapsed_time")) or number(metadata.get("moving_time"))
@@ -2657,6 +2664,7 @@ def training_history_context(
 
     return {
         "source": "local_intervals_activity_artifacts",
+        "completed_by": cutoff.isoformat(),
         "load_source": "xert_xss",
         "artifacts_dir": str(artifacts_dir),
         "rolling_7d": {
@@ -2691,8 +2699,8 @@ def training_history_context(
         "activity_history_count": len(duration_rows),
         "xss_activity_match_count": len(rows),
         "meaning": (
-            "Use rolling_7d and typical_training_day_baseline to scale endurance "
-            "duration relative to this rider's own recent history. Typical-day "
+            "Rolling volume and typical training days describe overall load. Choose VT1 duration "
+            "using reviewed rides of the same aerobic role and their response. Typical-day "
             "baseline aggregates multiple activities on the same calendar day "
             "before taking median/mean."
         ),

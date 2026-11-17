@@ -401,68 +401,37 @@ def latest_activity_on_or_before(
         metadata_path = activity_dir / "activity.json"
         if not metadata_path.exists():
             continue
-        metadata = load_json(metadata_path)
-        raw_start_local = str(metadata.get("start_date_local") or "")
-        if not raw_start_local or raw_start_local[:10] > day:
-            continue
-        start_datetime = parse_local_datetime(
-            raw_start_local,
-            local_timezone=local_timezone,
-        )
-        start_local = format_local(start_datetime, local_timezone=local_timezone)
-        start_utc = format_utc(start_datetime, local_timezone=local_timezone)
-        elapsed_seconds = number(metadata.get("elapsed_time")) or number(
-            metadata.get("moving_time")
-        )
-        end_local = add_seconds(
-            start_local,
-            elapsed_seconds,
-            local_timezone=local_timezone,
-        )
-        end_utc = (
-            format_utc(
-                parse_local_datetime(end_local, local_timezone=local_timezone),
-                local_timezone=local_timezone,
+        payload = load_json(metadata_path)
+        metadata = payload.get("activity", payload)
+        raw_local = metadata.get("start_date_local")
+        if data_cutoff is None:
+            stamp = activity_timestamp_utc(metadata.get("start_date"), raw_local,
+                                           local_timezone=local_timezone)
+        else:
+            stamp = completed_activity_start(
+                metadata.get("start_date"), raw_local, metadata.get("elapsed_time"),
+                cutoff=data_cutoff, local_timezone=local_timezone,
             )
-            if end_local
-            else None
-        )
-        if data_cutoff is not None:
-            activity_time = end_utc or start_utc
-            if parse_garmin_utc_datetime(activity_time) > data_cutoff:
-                continue
-        candidates.append((start_utc, activity_dir, metadata))
+        if stamp is None or stamp.astimezone(local_timezone).date().isoformat() > day:
+            continue
+        candidates.append((stamp.astimezone(timezone.utc), activity_dir, metadata))
 
     if not candidates:
         return None
 
-    _, activity_dir, metadata = candidates[-1]
+    start_datetime, activity_dir, metadata = max(candidates, key=lambda item: item[0])
     intervals = metadata.get("icu_intervals") or []
     work_intervals = [
         interval
         for interval in intervals
         if str(interval.get("type") or "").upper() == "WORK"
     ]
-    start_datetime = parse_local_datetime(
-        str(metadata.get("start_date_local") or ""),
-        local_timezone=local_timezone,
-    )
     start_local = format_local(start_datetime, local_timezone=local_timezone)
     start_utc = format_utc(start_datetime, local_timezone=local_timezone)
     elapsed_seconds = number(metadata.get("elapsed_time")) or number(metadata.get("moving_time"))
-    end_local = add_seconds(
-        start_local,
-        elapsed_seconds,
-        local_timezone=local_timezone,
-    )
-    end_utc = (
-        format_utc(
-            parse_local_datetime(end_local, local_timezone=local_timezone),
-            local_timezone=local_timezone,
-        )
-        if end_local
-        else None
-    )
+    end = start_datetime + timedelta(seconds=elapsed_seconds) if elapsed_seconds is not None else None
+    end_local = format_local(end, local_timezone=local_timezone)
+    end_utc = format_utc(end, local_timezone=local_timezone)
     return {
         "id": metadata.get("id"),
         "name": metadata.get("name"),
