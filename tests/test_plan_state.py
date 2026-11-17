@@ -460,6 +460,94 @@ class PlanStateTransitionTests(unittest.TestCase):
         self.assertEqual(context["next_quality_role"], "vo2max")
 
 
+class SpacingDayTests(unittest.TestCase):
+    def test_recovery_and_confirmed_rest_open_quality_without_advancing_queue(self):
+        for role in ("recovery", "rest"):
+            with self.subTest(role=role):
+                state = base_state()
+                updated = apply_activity_classification(state, event(
+                    activity_id=f"{role}:2026-07-25",
+                    started_at="2026-07-25T12:00:00+02:00", completed_role=role))
+                self.assertEqual(updated["next_role"], "vo2max")
+                self.assertEqual(updated["quality_queue"]["next_quality_step"], "vo2max")
+                self.assertEqual(updated["quality_queue"]["aerobic_dates_since_quality"], ["2026-07-25"])
+                self.assertEqual(updated["progression"], state["progression"])
+                self.assertEqual(updated["quality_queue"]["last_quality_session"], state["quality_queue"]["last_quality_session"])
+
+    def test_rest_requires_confirmation_evidence(self):
+        rest = event(activity_id="rest:2026-07-25",
+            started_at="2026-07-25T12:00:00+02:00", completed_role="rest")
+        for evidence in ([], [" "]):
+            with self.assertRaisesRegex(PlanStateError, "confirmed full-day rest"):
+                apply_activity_classification(base_state(), dict(rest, evidence=evidence))
+
+    def test_missing_days_do_not_count(self):
+        state = apply_activity_classification(base_state(), event(
+            activity_id="unknown", started_at="2026-07-29T12:00:00+02:00",
+            completed_role="unclassified"))
+        self.assertEqual(state["quality_queue"]["aerobic_days_since_quality"], 0)
+        self.assertEqual(state["next_role"], "easy_aerobic")
+
+    def test_recovery_same_day_as_quality_does_not_count(self):
+        state = apply_activity_classification(base_state(), event(
+            activity_id="recovery", started_at="2026-07-24T18:00:00+02:00",
+            completed_role="recovery"))
+        self.assertEqual(state["quality_queue"]["aerobic_days_since_quality"], 0)
+
+    def test_two_recovery_rides_count_once_and_two_distinct_days_meet_two_day_rule(self):
+        state = base_state()
+        state["quality_queue"]["minimum_aerobic_days_after_quality"] = 2
+        for hour in (8, 18):
+            state = apply_activity_classification(state, event(
+                activity_id=f"recovery-{hour}", started_at=f"2026-07-25T{hour:02}:00:00+02:00",
+                completed_role="recovery"))
+        self.assertEqual(state["quality_queue"]["aerobic_days_since_quality"], 1)
+        self.assertEqual(state["next_role"], "easy_aerobic")
+        rest = event(activity_id="rest:2026-07-26", started_at="2026-07-26T12:00:00+02:00",
+                     completed_role="rest")
+        state = apply_activity_classification(state, rest)
+        self.assertEqual(state["quality_queue"]["aerobic_days_since_quality"], 2)
+        self.assertEqual(state["next_role"], "vo2max")
+        self.assertEqual(apply_activity_classification(state, rest), state)
+        quality = apply_activity_classification(state, event(
+            activity_id="next-quality", started_at="2026-07-27T12:00:00+02:00",
+            completed_role="vo2max", quality_role_fulfilled=True))
+        self.assertEqual(quality["quality_queue"]["aerobic_days_since_quality"], 0)
+
+    def test_rest_and_activity_on_same_local_day_conflict_in_both_orders(self):
+        for first, second in (("rest", "recovery"), ("recovery", "rest")):
+            state = apply_activity_classification(base_state(), event(
+                activity_id="first", started_at="2026-07-24T22:05:00Z",
+                completed_role=first) | {"start_date_local": "2026-07-25T00:05:00"})
+            with self.assertRaisesRegex(PlanStateError, "conflicts with a recorded activity"):
+                apply_activity_classification(state, event(
+                    activity_id="second", started_at="2026-07-25T12:00:00Z",
+                    completed_role=second) | {"start_date_local": "2026-07-25T14:00:00"})
+
+    def test_spacing_does_not_override_readiness(self):
+        from recommend_training import select_intensity_domain
+        state = apply_activity_classification(base_state(), event(
+            activity_id="rest:2026-07-25", started_at="2026-07-25T12:00:00+02:00",
+            completed_role="rest"))
+        context = recommendation_plan_context(state, intensity_goal="vo2max")
+        self.assertTrue(context["goal_matches_state"])
+        decision = select_intensity_domain(day="2026-07-26", readiness_ceiling="easy_vt1",
+            intensity_goal="vo2max", progression_advice={}, plan_progression={})
+        self.assertEqual(decision["selected_domain"], "easy_vt1")
+
+    def test_cli_records_explicit_rest_and_survives_round_trip(self):
+        import subprocess
+        rest = event(activity_id="rest:2026-07-25", started_at="2026-07-25T12:00:00+02:00",
+                     completed_role="rest")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            write_plan_state(path, base_state())
+            output = subprocess.check_output([sys.executable, "-B", "scripts/plan_state.py",
+                "--state", str(path), "apply", "--classification-json", json.dumps(rest)], text=True)
+            self.assertEqual(json.loads(output)["next_role"], "vo2max")
+            self.assertEqual(load_plan_state(path)["activity_events"][-1]["completed_role"], "rest")
+
+
 class PlanStatePersistenceTests(unittest.TestCase):
     def test_replay_corrects_role_without_losing_later_aerobic_day(self):
         checkpoint = base_state()

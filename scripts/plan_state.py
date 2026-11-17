@@ -18,6 +18,7 @@ DEFAULT_STATE_PATH = Path("config/plan-state.json")
 DEFAULT_ARTIFACTS_DIR = Path("outputs/intervals/activities")
 QUALITY_ROLES = {"vt2", "vo2max", "sprint", "mixed"}
 AEROBIC_ROLES = {"easy_aerobic", "medium_aerobic", "long_aerobic", "vt1"}
+SPACING_ROLES = AEROBIC_ROLES | {"recovery", "rest"}
 COMPLETED_ROLES = QUALITY_ROLES | AEROBIC_ROLES | {
     "recovery",
     "rest",
@@ -296,6 +297,10 @@ def validate_event(event: dict[str, Any]) -> None:
     evidence = event.get("evidence")
     if not isinstance(evidence, list) or any(not isinstance(item, str) for item in evidence):
         raise PlanStateError("evidence must be a list of paths or references.")
+    if completed_role == "rest" and not any(item.strip() for item in evidence):
+        raise PlanStateError(
+            "rest requires evidence of confirmed full-day rest; missing activity data is not confirmation."
+        )
     progression_update = event.get("progression_update", {})
     if not isinstance(progression_update, dict) or any(
         key not in {"status", "next_step", "anchor", "last_result"}
@@ -341,6 +346,17 @@ def apply_activity_classification(
     activity_day = parse_iso_datetime(
         event.get("start_date_local", event["started_at"])
     ).date().isoformat()
+    for previous in updated["activity_events"]:
+        previous_day = parse_iso_datetime(
+            previous.get("start_date_local", previous["started_at"])
+        ).date().isoformat()
+        if previous_day == activity_day and (
+            (completed_role == "rest") != (previous["completed_role"] == "rest")
+        ):
+            raise PlanStateError(
+                "Confirmed full-day rest conflicts with a recorded activity on the same local date; "
+                "review and correct the classification before applying it."
+            )
     if event["quality_stimulus"]:
         queue["last_quality_session"] = {
             "activity_id": event["activity_id"],
@@ -357,11 +373,11 @@ def apply_activity_classification(
                 queue["steps"], queue["next_quality_step"]
             )
         queue["aerobic_dates_since_quality"] = []
-    elif completed_role in AEROBIC_ROLES:
+    elif completed_role in SPACING_ROLES:
         last_quality = queue.get("last_quality_session")
         last_quality_day = last_quality.get("date") if last_quality else None
         if (
-            activity_day != last_quality_day
+            (last_quality_day is None or activity_day > last_quality_day)
             and activity_day not in queue["aerobic_dates_since_quality"]
         ):
             queue["aerobic_dates_since_quality"].append(activity_day)
@@ -520,6 +536,11 @@ def plan_state_context(state: dict[str, Any]) -> dict[str, Any]:
         "aerobic_days_since_quality": state["quality_queue"][
             "aerobic_days_since_quality"
         ],
+        "spacing_meaning": (
+            "The v3 aerobic-day counter includes reviewed aerobic/recovery rides and "
+            "explicitly confirmed full-day rest. Unrecorded days remain unknown. "
+            "Satisfied spacing does not establish readiness for intensity."
+        ),
         "progression": deepcopy(state["progression"]),
     }
 

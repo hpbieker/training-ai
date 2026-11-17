@@ -84,6 +84,21 @@ evidence-based classification rather than a fixed completion percentage.
 Use the correction/replay workflow in training-analysis's activity-analysis
 reference when an already-applied classification needs to change.
 
+Spacing days include reviewed aerobic rides, `recovery` rides, and explicitly
+confirmed full-day `rest`. Missing activities never establish rest. For a rest
+day, first review pending activities and confirm that the whole local day has
+ended and contained no training. Apply a classification with a stable identity
+such as `rest:YYYY-MM-DD`, an offset-aware timestamp on that day, local date,
+`planned_role`/`completed_role: rest`, both quality booleans false,
+`planned_workout_completed: null`, `progression_effect: none`, and a reason and
+evidence reference identifying the athlete's confirmation. Apply it in
+chronological order with activities; never fabricate a source activity ID or
+infer rest from an empty source response. Correct conflicting records explicitly.
+The v3 `aerobic_days_since_quality` counter includes these spacing days. A day
+counts once, never on the same local date as quality work. Satisfying spacing
+only opens the queued role for consideration; current readiness is assessed
+separately and may still require easy training or rest.
+
 Plan state v3 requires explicit role fulfillment and workout completion.
 Whole-prescription completion remains unknown where the historical record only
 establishes quality completion. Replay affected classifications from a verified
