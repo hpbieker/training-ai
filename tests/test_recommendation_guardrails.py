@@ -219,9 +219,10 @@ class TrainingTargetContractTests(unittest.TestCase):
         with self.assertRaises(argparse.ArgumentTypeError):
             parse_endurance_workout_json(json.dumps({"calculation": {}}))
 
-    def test_xert_endurance_solution_replaces_mixed_history_duration(self):
+    def test_xert_endurance_solution_uses_selected_low_load(self):
         target = {
             "source": "xert_training_advice_target_xss",
+            "selected_low_xss": 259.0,
             "target_minutes": 220.2,
             "target_load": 264.2,
             "xert_recommended_target_xss": {
@@ -229,7 +230,7 @@ class TrainingTargetContractTests(unittest.TestCase):
                 "high": 5.0,
                 "peak": 0.2,
             },
-            "reason": "mixed-history estimate",
+            "reason": "Reviewed aerobic support",
         }
         initialize_plan_trace(target)
         solution = apply_xert_endurance_duration_solution(
@@ -263,7 +264,7 @@ class TrainingTargetContractTests(unittest.TestCase):
         self.assertEqual(target["target_load"], 259.0)
         self.assertEqual(solution["target_low_xss"], 259.0)
         self.assertEqual(solution["achieved_xss"]["high"], 0.0)
-        self.assertNotIn("mixed-history estimate", target["reason"])
+        self.assertIn("Reviewed aerobic support", target["reason"])
         self.assertEqual(
             target["dose_position_vs_typical"]["label"],
             "xert_solved_for_selected_domain",
@@ -337,18 +338,19 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
         )
 
+        apply_recovery_protection_capacity(target, capacity=target["recovery_protection_capacity"], selected_intensity="vo2max")
         self.assertEqual(solution["duration_minutes"], 235.0)
         self.assertEqual(
             target["recovery_protection_capacity"]["status"],
-            "fixed_quality_exceeds_capacity",
+            "model_conflict",
         )
         self.assertEqual(
             target["recovery_protection_capacity"]["exceeded_systems"],
             ["high"],
         )
-        self.assertFalse(
+        self.assertTrue(
             target["recovery_protection_capacity"][
-                "next_workout_freshness_protected"
+                "review_required"
             ]
         )
 
@@ -367,7 +369,7 @@ class TrainingTargetContractTests(unittest.TestCase):
         self.assertEqual(normalized["low_xss_error"], 0.01)
         self.assertEqual(normalized["tolerance_xss"], 0.05)
 
-    def test_recovery_protection_capacity_caps_endurance_before_solving(self):
+    def test_recovery_protection_capacity_flags_without_capping_endurance(self):
         target = {
             "target_minutes": 300.0,
             "target_load": 262.1,
@@ -393,12 +395,13 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(target["target_load"], 165.693)
-        self.assertEqual(applied["status"], "capped")
-        self.assertEqual(applied["limiting_system"], "low")
-        self.assertIn("reduced from 262.1 to 165.7 XSS", target["reason"])
+        self.assertEqual(target["target_load"], 262.1)
+        self.assertEqual(applied["status"], "model_conflict")
+        self.assertEqual(applied["exceeded_systems"], ["low"])
+        self.assertTrue(applied["review_required"])
+        self.assertFalse(applied["automatic_dose_cap"])
 
-    def test_recovery_protection_capacity_caps_quality_filler_target(self):
+    def test_recovery_protection_capacity_requires_complete_quality_evidence(self):
         target = {
             "target_load": 262.1,
             "xert_recommended_target_xss": {"low": 250.0},
@@ -416,8 +419,8 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(applied["status"], "quality_filler_capped")
-        self.assertEqual(applied["applied_target_low_xss"], 165.7)
+        self.assertEqual(applied["status"], "assessment_pending")
+        self.assertNotIn("applied_target_low_xss", applied)
         self.assertEqual(target["target_load"], 262.1)
         request = build_endurance_solver_request(
             target,
@@ -431,9 +434,9 @@ class TrainingTargetContractTests(unittest.TestCase):
                 "adjustable_segment_index": 1,
             },
         )
-        self.assertEqual(request["target_value"], 165.7)
+        self.assertEqual(request["target_value"], 262.1)
 
-    def test_recovery_protection_capacity_uses_fixed_quality_as_low_floor(self):
+    def test_recovery_protection_capacity_flags_quality_without_changing_target(self):
         target = {
             "target_load": 262.1,
             "xert_recommended_target_xss": {"low": 250.0},
@@ -452,10 +455,10 @@ class TrainingTargetContractTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(applied["status"], "fixed_quality_exceeds_capacity")
-        self.assertEqual(applied["applied_target_low_xss"], 70.0)
+        self.assertEqual(applied["status"], "model_conflict")
+        self.assertEqual(target["target_load"], 262.1)
         self.assertEqual(applied["exceeded_systems"], ["low"])
-        self.assertFalse(applied["next_workout_freshness_protected"])
+        self.assertTrue(applied["review_required"])
         request = build_endurance_solver_request(
             target,
             structure={
@@ -468,10 +471,10 @@ class TrainingTargetContractTests(unittest.TestCase):
                 "adjustable_segment_index": 1,
             },
         )
-        self.assertEqual(request["target_value"], 70.0)
+        self.assertEqual(request["target_value"], 262.1)
 
     def test_xert_endurance_solution_rejects_wrong_low_target(self):
-        with self.assertRaisesRegex(ValueError, "post-guardrail"):
+        with self.assertRaisesRegex(ValueError, "coach-selected"):
             apply_xert_endurance_duration_solution(
                 {
                     "target_minutes": 220.2,
@@ -575,18 +578,14 @@ class TrainingTargetContractTests(unittest.TestCase):
                 workout_type="vt2",
             )
 
-    def test_accepts_minutes_and_or_load(self):
-        self.assertEqual(
-            parse_training_target_json('{"minutes":75,"load":60}'),
-            {"minutes": 75.0, "load": 60.0},
-        )
-        self.assertEqual(
-            parse_training_target_json('{"minutes":75}'),
-            {"minutes": 75.0},
-        )
+    def test_accepts_justified_coaching_selection(self):
+        value = {"minutes": 75, "load": 60, "basis": "duration", "reason": "Aerobic support", "evidence": ["Reviewed plan and response"]}
+        self.assertEqual(parse_training_target_json(json.dumps(value)), value)
+        with self.assertRaisesRegex(argparse.ArgumentTypeError, "basis"):
+            parse_training_target_json('{"minutes":75,"load":60}')
 
     def test_rejects_empty_unknown_and_non_positive_values(self):
-        with self.assertRaisesRegex(argparse.ArgumentTypeError, "minutes and/or load"):
+        with self.assertRaisesRegex(argparse.ArgumentTypeError, "positive number"):
             parse_training_target_json("{}")
         with self.assertRaisesRegex(argparse.ArgumentTypeError, "unsupported"):
             parse_training_target_json('{"xss":60}')
@@ -1400,6 +1399,7 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
     def attach_solver_solution(
         target, *, minutes, adjustable_minutes, total_xss, low_xss
     ):
+        target["endurance_extension"] = {"reason": "Selected aerobic support", "evidence": ["Synthetic reviewed plan"]}
         total_seconds = round(minutes * 60)
         adjustable_seconds = round(adjustable_minutes * 60)
         target["endurance_duration_solution"] = {
@@ -1507,8 +1507,10 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
 
     def test_quality_capacity_solver_composition_integration(self):
         target = {
-            "target_minutes": 298.5,
-            "target_load": 253.7,
+            "target_minutes": 137.9,
+            "selected_low_xss": 155.456,
+            "endurance_extension": {"reason": "Reviewed aerobic support", "evidence": ["Plan"]},
+            "target_load": 161.403,
             "xert_recommended_target_xss": {
                 "low": 250.0,
                 "high": 3.5,
@@ -1888,8 +1890,7 @@ class QualityWorkoutDoseCompositionTests(unittest.TestCase):
 class XertRemainingDoseTests(unittest.TestCase):
     def test_remaining_xss_takes_precedence_over_target_xss(self):
         target = resolve_training_targets(
-            explicit_minutes=None,
-            explicit_load=None,
+            selection={"minutes": 75, "load": 60, "basis": "duration", "reason": "Aerobic support", "evidence": ["Reviewed plan and response"]},
             readiness_packet={
                 "date": "2026-08-01",
                 "recommendation_inputs": {
@@ -1934,7 +1935,7 @@ class XertRemainingDoseTests(unittest.TestCase):
             },
         )
 
-        self.assertEqual(target["target_load"], 120.5)
+        self.assertEqual(target["target_load"], 60)
         self.assertEqual(target["xert_dose_basis"], "remaining_xss")
         self.assertEqual(
             target["xert_recommended_target_xss"],
@@ -1948,8 +1949,8 @@ class XertRemainingDoseTests(unittest.TestCase):
         self.assertTrue(
             target["xert_planning_context"]["is_availability_restricted"]
         )
-        self.assertEqual(target["target_load"], 120.5)
-        self.assertIn("not added to today's dose", target["reason"])
+        self.assertEqual(target["target_load"], 60)
+        self.assertEqual(target["difference_from_xert_xss"], -60.5)
 
 class BodyBatteryPresentationTests(unittest.TestCase):
     def test_summary_exposes_wake_and_current_values(self):
@@ -2465,7 +2466,9 @@ class PrimaryDecisionContractTests(unittest.TestCase):
 
     def test_xert_remaining_dose_yields_train_and_does_not_double_subtract(self):
         target = {
-            "source": "xert_training_advice_target_xss",
+            "source": "explicit_coaching_selection",
+            "xert_dose_basis": "remaining_xss",
+            "xert_completed_xss": {"low": 82.5},
             "target_minutes": 140.2,
             "target_load": 140.2,
             "split": {

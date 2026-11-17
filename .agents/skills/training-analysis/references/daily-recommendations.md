@@ -248,10 +248,10 @@ episode disappearing from a source window must not silently clear the return.
   expected data as missing or stale when it should already have synced.
 - Use Xert recovery hours as the first model gate for low/high/peak load, then
   compare the corresponding Xert Recovery Load with Training Load. Use Xert
-  target XSS as the remaining recommended dose when available.
+  target XSS as a model suggestion for comparison, never as the automatic prescription.
 - Preserve XATA's `xss_deficit`, `xss_goal`, availability restriction,
   Improvement Rate, source, phase, and historical-day basis as planning
-  context. `targetXSS`/`remainingXSS` is the dose input; never replace it with
+  context. `targetXSS`/`remainingXSS` is comparison data; never replace it with
   the larger deficit or describe the deficit as today's physiological need.
 - When `is_availability_restricted` is true, say that the XATA planning dose is
   constrained by available time. Do not automatically schedule the difference
@@ -264,6 +264,28 @@ episode disappearing from a source window must not silently clear the return.
   normal load does not make mixed acute signals disappear.
 
 ## Preserve the origin of an adjusted dose
+
+Select the dose explicitly from the session purpose, achieved progression,
+recent response, current readiness and upcoming sessions. Pass
+`--training-target-json` with `minutes`, `load`, `basis` (`duration` or `load`),
+`reason` and a non-empty `evidence` list. Missing selection means dose assessment
+is required; it must not produce a finished training recommendation.
+
+For `basis: duration`, select minutes first and obtain `load` by calculating the
+complete workout. Pass that `calculate_workout` result in `--endurance-workout-json`
+for endurance; the helper verifies that the duration is unchanged. For
+`basis: load`, select total XSS and, for mixed workouts, `low_xss`; solve duration
+for that selected low load. `minutes` is the expected duration, updated from the
+solver. A solver result validates execution, not the reason for selecting a dose.
+
+An endurance addition requires `endurance_extension: {reason, evidence}` in the
+selection, justified separately from the quality workout. Without it, the
+addition is zero. A gap to XATA advice is not a reason to add training.
+For a duration-selected combined session, supply its complete fixed-duration
+rows/signature/adjustable-row index through `--quality-workout-json` alongside
+the separate quality-base calculation, and the complete combined calculation
+through `--endurance-workout-json`. The helper checks the canonical timeline
+against the selected total and the quality-base duration; it does not extend it.
 
 Before passing a coaching-selected load or duration to a helper, state the
 original XATA dose, the chosen dose and the concrete reason for the adjustment.
@@ -337,12 +359,12 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
 - Keep model-specific recovery, target-load, and capacity concepts distinct.
   Use source semantics rather than re-explaining private-model formulas here.
 - Resolve the plan role and concrete workout format before converting each
-  candidate's Xert dose to duration. For recovery, VT1, or a quality workout
+  candidate's explicitly selected load to duration. For recovery, VT1, or a quality workout
   with a flexible endurance extension, describe the complete workout once as
   canonical Xert `rows` together with the current `signature` and exactly one
   `adjustable_row_index` inside `--quality-workout-json`. With
   `--print-endurance-solver-request`, the helper expands repetitions, RIB, and
-  ramps, resolves the applicable post-guardrail Low-XSS target, and prints the
+  ramps, uses the coach-selected Low-XSS target, and prints the
   MCP request. The quality-workout object also accepts the optional fields
   `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`.
   When `progression.vt1.target_power_w` is present, use it as the fixed power
@@ -358,9 +380,10 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   recoveries, and cool-down, and pass its normalized result directly
   inside `--quality-workout-json` with status `planned` or `completed`. If the
   calculation is persisted, read the file first and pass its JSON content. For
-  the flexible VT1 filler, calculate the complete quality workout first, then
-  fill the compatible remaining Low XSS to the lower of the applicable
-  recovery-protection capacity and Xert’s remaining Low-XSS dose. Use MCP
+  a flexible VT1 addition, explicitly justify and select the combined dose.
+  Without a justified addition, prescribe only the complete quality workout.
+  Do not fill the difference to XATA advice or automatically cap it to model
+  recovery capacity. Use MCP
   `solve_segment_duration` with the current Fitness Signature and complete
   workout structure to convert the resulting Low-XSS dose to VT1 duration. The
   summary must show Xert's original recommended dose, the chosen daily target,
@@ -412,8 +435,8 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   `status: completed` inside `--quality-workout-json`. Keep its calculated metrics as evidence,
   but exclude its duration and XSS from the remaining plan. Use MCP
   `solve_segment_duration` with the current Fitness Signature and complete
-  remaining VT1 structure to convert Xert's remaining Low-XSS dose to VT1
-  duration.
+  remaining VT1 structure to convert the newly selected remaining load to VT1
+  duration. Completed quality never creates an automatic endurance addition.
 
 ### Xert workout feasibility
 
@@ -447,28 +470,23 @@ performed at the recommended `planned_at` while still reaching Xert's fresh
 boundary for the next day's workout. Keep this recovery-protection capacity
 separate from XATA's recommended daily dose and from the final coaching dose.
 
-The active plan selects the domain and structure; Xert `remainingXSS` (or
-`targetXSS` before any same-day activity) is the dose input. Treat the
-applicable recovery-protection capacity as the default upper limit. Direct
-readiness evidence may impose an explicit lower cap, but aggregate Garmin
-Training Readiness or Garmin Recovery Time alone must not do so. Do not replace
-the resulting XSS dose with an agent-rounded duration: solve the complete
-structure with the current Fitness Signature. If the next role is not explicit
+The active plan and coaching assessment select the domain, structure and dose.
+Xert advice and recovery capacity are separate model comparisons, not automatic
+targets or limits. Calculate the selected complete structure with the current
+Fitness Signature. If the next role is not explicit
 in state, derive it only from an unambiguous active-plan queue; otherwise label
 the capacity protection unresolved.
 
-- On an endurance-only day, solve the compatible portion of the Xert dose
-  through endurance, keeping each XSS system within its corresponding
-  recovery-protection capacity.
-- On a plan-selected quality day, calculate the complete quality structure
-  first. Preserve it when it fits the corresponding Low/High/Peak capacities,
-  then fill only the compatible remaining Low XSS with flexible VT1/endurance.
-  Apply capacity protection to that flexible filler before reducing quality.
-- Do not reduce a plan-selected quality structure solely to protect the next
-  day's workout. If the complete quality workout itself exceeds a relevant
-  capacity, report an explicit plan conflict rather than silently diluting it.
-  Direct readiness, illness, a failed execution gate, or an actual calendar
-  constraint may still justify a separate quality modification.
+- Compare the actual complete workout's Low/High/Peak XSS with each corresponding
+  model capacity. Report a conflict without changing the selected dose.
+- Resolve a conflict explicitly: reduce the selected dose and recalculate;
+  move the next workout and recalculate capacity for its new start; or justify
+  why the model conflict is accepted. Pass `capacity_decision` with `action`
+  (`reduce_dose`, `move_next_workout`, or `accept_model_conflict`), `reason`, and
+  `evidence`. The first two require a new calculation demonstrating the conflict
+  is resolved; a declaration alone is insufficient. Unresolved conflicts block
+  a finished recommendation. Accepting one is a coaching decision, not evidence
+  that Xert predicts freshness or that physiological readiness is guaranteed.
 
 - Resolve the next day's plan role from the active plan and authoritative
    `config/plan-state.json`. Do not invent the next role from Xert advice.
@@ -483,10 +501,9 @@ the capacity protection unresolved.
    additive workout quotas.
 - Persist the complete `calculate_workout_capacity` `structuredContent`
    unchanged and pass it as `xert_workout_capacity` in
-   `--source-overrides-json`. For an endurance-selected day,
-   `recommend_training.py` applies its Low-XSS capacity as an automatic upper
-   limit before solving the complete endurance structure. Do not manually copy
-   that capacity into `--training-target-json`.
+   `--source-overrides-json`. The helper compares capacity with the selected
+   complete workout and requires a decision on conflicts. It does not copy
+   capacity into the selected dose or change the solver target.
 - Align the capacity horizon with the interval from today's recommended
    `planned_at` to the next day's resolved workout start. When the current Xert
    state timestamp materially precedes today's `planned_at`, do not silently
@@ -497,7 +514,7 @@ the capacity protection unresolved.
    and the no-intervening-training assumption.
 - Select the limiting system for the actual proposed workout and next-day
    role. A VT1 workout is normally constrained by Low XSS; a quality workout
-   must respect every Low/High/Peak system it actually generates. Do not combine
+   must be compared with every Low/High/Peak system it actually generates. Do not combine
    the independent capacity values into an arbitrary realizable XSS split.
 - Convert the applicable capacity to duration only through the same current
    Fitness Signature and complete proposed workout structure used for the
@@ -510,12 +527,10 @@ the capacity protection unresolved.
    - `Maximum compatible with next-day Xert freshness`: duration,
      watts/structure, limiting
      XSS capacity, next workout role, and next workout start.
-   For endurance-only work, reduce the final recommendation when the Xert dose
-   exceeds the applicable recovery-protection capacity. For plan-selected
-   quality work, retain a capacity-compatible complete quality structure and
-   reduce flexible VT1/endurance filler first. If quality itself exceeds a
-   relevant capacity, state the plan conflict and whether the next-day quality
-   session is no longer protected.
+   Also show the selected dose's reason and evidence, XATA suggestion, difference
+   from that suggestion, and any capacity conflict with its explicit decision
+   and consequences for the next session. Neither automatic filling nor an
+   automatic cut follows from these comparisons.
 
 Use `Capacity before the next workout` as the canonical section label and
 translate it into the user's language. Explain that Xert's

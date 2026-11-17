@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import subprocess
 import sys
@@ -57,34 +58,41 @@ SOURCE_REFRESH_POLICY = {
 }
 
 
-def parse_training_target_json(raw: str) -> dict[str, float]:
+def parse_training_target_json(raw: str) -> dict[str, Any]:
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise argparse.ArgumentTypeError(
-            f"--training-target-json must be valid JSON: {exc.msg}"
-        ) from exc
+        raise argparse.ArgumentTypeError(f"--training-target-json must be valid JSON: {exc.msg}") from exc
     if not isinstance(payload, dict):
-        raise argparse.ArgumentTypeError(
-            "--training-target-json must contain one JSON object"
-        )
-    unknown = sorted(set(payload) - {"minutes", "load"})
+        raise argparse.ArgumentTypeError("--training-target-json must contain one JSON object")
+    unknown = set(payload) - {"minutes", "load", "low_xss", "basis", "reason", "evidence", "endurance_extension", "capacity_decision"}
     if unknown:
-        raise argparse.ArgumentTypeError(
-            f"unsupported training-target field: {unknown[0]}"
-        )
-    if not payload:
-        raise argparse.ArgumentTypeError(
-            "--training-target-json must contain minutes and/or load"
-        )
-    parsed: dict[str, float] = {}
-    for field, value in payload.items():
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
-            raise argparse.ArgumentTypeError(
-                f"training-target {field} must be a positive number"
-            )
-        parsed[field] = float(value)
-    return parsed
+        raise argparse.ArgumentTypeError(f"unsupported training-target field: {sorted(unknown)[0]}")
+    for field in ("minutes", "load"):
+        value = payload.get(field)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+            raise argparse.ArgumentTypeError(f"training-target {field} must be a finite positive number")
+    if "low_xss" in payload:
+        value = payload["low_xss"]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 < value <= payload["load"]:
+            raise argparse.ArgumentTypeError("training-target low_xss must be positive and no greater than load")
+    if payload.get("basis") not in {"duration", "load"}:
+        raise argparse.ArgumentTypeError("training-target basis must be duration or load")
+    def justification(obj, name):
+        if not isinstance(obj, dict) or not isinstance(obj.get("reason"), str) or not obj["reason"].strip():
+            raise argparse.ArgumentTypeError(f"{name} requires a non-empty reason")
+        evidence = obj.get("evidence")
+        if not isinstance(evidence, list) or not evidence or any(not isinstance(v, str) or not v.strip() for v in evidence):
+            raise argparse.ArgumentTypeError(f"{name} requires non-empty evidence strings")
+    justification(payload, "training-target")
+    if "endurance_extension" in payload:
+        justification(payload["endurance_extension"], "endurance_extension")
+    if "capacity_decision" in payload:
+        decision = payload["capacity_decision"]
+        justification(decision, "capacity_decision")
+        if decision.get("action") not in {"reduce_dose", "move_next_workout", "accept_model_conflict"}:
+            raise argparse.ArgumentTypeError("capacity_decision action must be reduce_dose, move_next_workout or accept_model_conflict")
+    return payload
 
 
 def expand_quality_workout_rows(
@@ -329,8 +337,9 @@ def main() -> None:
         "--training-target-json",
         type=parse_training_target_json,
         help=(
-            "Optional JSON object with minutes and/or load. Missing values are "
-            "derived from the supplied value; when omitted, both targets are derived."
+            "Coach-selected minutes, calculated load, basis (duration/load), reason and "
+            "evidence; optional low_xss, justified endurance_extension and capacity_decision. "
+            "Omission requires dose assessment, never an automatic Xert dose."
         ),
     )
     parser.add_argument(
@@ -614,8 +623,7 @@ def main() -> None:
         local_timezone=local_timezone,
     )
     target_resolution = resolve_training_targets(
-        explicit_minutes=(args.training_target_json or {}).get("minutes"),
-        explicit_load=(args.training_target_json or {}).get("load"),
+        selection=args.training_target_json,
         readiness_packet=readiness_packet,
         history_context=history_context,
     )
@@ -698,7 +706,8 @@ def main() -> None:
     if args.endurance_workout_json is not None:
         apply_xert_endurance_duration_solution(
             target_resolution,
-            calculation=args.endurance_workout_json["calculation"],
+            calculation={**args.endurance_workout_json["calculation"],
+                         "canonical_structure": endurance_solver_structure},
             selected_intensity=str(
                 intensity_decision.get("selected_domain") or ""
             ),
@@ -718,6 +727,14 @@ def main() -> None:
             ),
             quality_workout_status=args.quality_workout_json["status"],
         )
+    if "xert_workout_capacity" in args.source_overrides_json:
+        apply_recovery_protection_capacity(
+            target_resolution,
+            capacity=load_json_if_exists(source_files["xert_workout_capacity"]) or {},
+            selected_intensity=str(intensity_decision.get("selected_domain") or ""),
+        )
+        require_resolved_capacity_review(target_resolution)
+    finalize_plan_trace(target_resolution)
     if indoor_available or outdoor_available or indoor_gym_available:
         require_quality_workout_for_selected_domain(
             intensity_decision=intensity_decision,
@@ -2833,18 +2850,12 @@ def rounded_mean(values: list[float]) -> float | None:
 
 def resolve_training_targets(
     *,
-    explicit_minutes: float | None,
-    explicit_load: float | None,
+    selection: dict[str, Any] | None,
     readiness_packet: dict[str, Any],
     history_context: dict[str, Any],
 ) -> dict[str, Any]:
     inputs = readiness_packet.get("recommendation_inputs") or {}
-    readiness = inputs.get("garmin_recovery_readiness") or {}
-    readiness = inputs.get("garmin_recovery_readiness") or {}
-    wellness = inputs.get("wellness") or {}
     xert_training_advice = inputs.get("xert_training_advice") or {}
-    latest = inputs.get("latest_activity_load") or {}
-    planned_day = str(readiness_packet.get("date") or "")
     xert_remaining_xss = xert_training_advice.get("remaining_xss") or {}
     remaining_parts = {
         key: number(xert_remaining_xss.get(key))
@@ -2900,146 +2911,27 @@ def resolve_training_targets(
             "source of the workout's intensity role."
         )
 
-    if explicit_minutes is not None and explicit_load is not None:
-        return {
-            "source": "explicit_cli",
-            "target_minutes": round(explicit_minutes, 1),
-            "target_load": round(explicit_load, 1),
-            "xert_recommended_target_xss": xert_load_parts or None,
-            "xert_recommended_total_xss": rounded_number(
-                xert_recommended_total_xss
-            ),
-            "xert_dose_basis": xert_load_basis,
-            "xert_original_target_xss": original_parts or target_parts or None,
-            "xert_completed_xss": completed_parts or None,
-            "xert_planning_context": xert_planning_context,
-            "reason": (
-                "Both target minutes and target load were supplied by the caller; "
-                "they were not derived by the script."
-            ),
-        }
-
-    rolling = history_context.get("rolling_7d") or {}
-    day_baseline = (
-        history_context.get("typical_training_day_baseline")
-        or history_context.get("typical_session_baseline")
-        or {}
-    )
-    load_pct = number(rolling.get("xss_percentile"))
-    day_baseline_minutes = number(day_baseline.get("median_minutes")) or 90.0
-    xss_per_min = number(day_baseline.get("xss_per_min_from_available_xert_window")) or 0.85
-    caution = numeric_caution_score(
-        sleep_score=number(wellness.get("sleep_score")),
-        hrv_risk=hrv_readiness_risk(wellness),
-        resting_hr_risk=resting_hr_readiness_risk(wellness),
-        body_battery_risk=body_battery_readiness_risk(wellness),
-    )
-    latest_same_day = latest_activity_is_meaningful_same_day(latest, day=planned_day)
-
-    if explicit_minutes is not None:
-        minutes = explicit_minutes
-        load = explicit_load if explicit_load is not None else load_from_minutes(minutes)
-        source = "explicit_minutes_derived_load"
-        band = "explicit_minutes"
-        target_xss = None
-    elif explicit_load is not None:
-        load = explicit_load
-        minutes = explicit_minutes if explicit_minutes is not None else minutes_from_load(load)
-        source = "explicit_load_derived_minutes"
-        band = "explicit_load"
-    else:
-        if xert_recommended_total_xss is not None:
-            load = xert_recommended_total_xss
-            minutes = clamp(load / xss_per_min, 30.0, 300.0)
-            source = "xert_training_advice_target_xss"
-            band = "xert_training_advice"
-        else:
-            raise SystemExit(
-                "Xert recommended XSS is unavailable. Supply an explicit "
-                "--training-target-json instead of substituting a "
-                "historical baseline automatically."
-            )
-
-    dose_position = dose_position_vs_typical(
-        target_minutes=minutes,
-        typical_minutes=day_baseline_minutes,
-        caution=caution,
-        load_pct=load_pct,
-    )
-    if source == "xert_training_advice_target_xss":
-        dose_position["reason"] = (
-            f"target load comes from Xert's {xert_load_basis}; duration is estimated "
-            "from local Xert XSS/min for candidate ranking"
-        )
-
-    reasons = [
-        f"daily duration baseline median {day_baseline.get('median_minutes')} min",
-        f"XSS/min {round(xss_per_min, 3)} from {day_baseline.get('xss_match_count')} matched Xert activities",
-    ]
-    if source == "xert_training_advice_target_xss":
-        parts_text = ", ".join(
-            f"{key} {round(value, 1)}" for key, value in xert_load_parts.items()
-        )
-        reasons.insert(
-            0,
-            (
-                f"target load from Xert's {xert_load_basis} ({parts_text}; "
-                f"total {round(load, 1)} XSS)"
-            ),
-        )
-        reasons.append(
-            "duration is estimated from local Xert XSS/min only for route/workout ranking"
-        )
-        reasons.append(
-            "low high/peak XSS argues against over-TP/VO2/peak work, but does not by itself rule out subthreshold VT2"
-        )
-        if xert_training_advice.get("is_availability_restricted") is True:
-            reasons.append(
-                "XATA marks this planning dose as availability-restricted; the "
-                "larger deficit is context and is not added to today's dose"
-            )
-    if latest_same_day:
-        reasons.append("Xert's recommended XSS reflects activities Xert has already accounted for")
-
+    if selection is None:
+        raise SystemExit("Dose requires assessment: supply --training-target-json with a coach-selected dose, reason and evidence. Xert advice is comparison data only.")
+    selection = parse_training_target_json(json.dumps(selection))
     return {
-        "source": source,
-        "band": band,
-        "target_minutes": round(minutes, 1),
-        "target_load": round(load, 1),
+        "source": "explicit_coaching_selection",
+        "target_minutes": selection["minutes"],
+        "target_load": selection["load"],
+        "selected_low_xss": selection.get("low_xss"),
+        "coaching_selection": selection,
+        "endurance_extension": selection.get("endurance_extension"),
+        "capacity_decision": selection.get("capacity_decision"),
         "xert_recommended_target_xss": xert_load_parts or None,
-        "xert_recommended_total_xss": rounded_number(
-            xert_recommended_total_xss
-        ),
+        "xert_recommended_total_xss": rounded_number(xert_recommended_total_xss),
         "xert_dose_basis": xert_load_basis,
         "xert_original_target_xss": original_parts or target_parts or None,
         "xert_completed_xss": completed_parts or None,
         "xert_planning_context": xert_planning_context,
-        "caution_score": round(caution, 2),
-        "dose_position_vs_typical": dose_position,
-        "rolling_7d_xss": rolling.get("xss"),
-        "rolling_7d_load": rolling.get("xss"),
-        "rolling_7d_xss_percentile": rolling.get("xss_percentile"),
-        "rolling_7d_xss_percentile_status": rolling.get("percentile_status"),
-        "goal_assumption": "general endurance/VT1 support unless an explicit event or intensity goal is supplied",
-        "reason": "; ".join(reasons),
-        "xert_intensity_semantics": (
-            "Xert high/peak XSS primarily reflects work over threshold power/TP. "
-            "Controlled VT2/subthreshold work can still be appropriate with a "
-            "low high/peak split when readiness, progression, route/logistics, "
-            "and user intent support it."
-        )
-        if source == "xert_training_advice_target_xss"
-        else None,
-        "meaning": (
-            "This is the dose target used to rank indoor workouts and route "
-            "candidates. It is explicit when supplied by CLI; otherwise it is "
-            "taken from Xert's remaining_xss when available, with target_xss as "
-            "fallback. Xert deficit is preserved as progression context but is "
-            "never substituted for that planning dose. Duration may be estimated from "
-            "local Xert XSS/min only so route and workout candidates can be "
-            "ranked. Same-day activity context should scale ambition, but should "
-            "not be subtracted again from Xert's recommended XSS."
-        ),
+        "difference_from_xert_xss": round(selection["load"] - xert_recommended_total_xss, 1) if xert_recommended_total_xss is not None else None,
+        "reason": selection["reason"],
+        "evidence": selection["evidence"],
+        "meaning": "Coach-selected dose. Xert advice and capacity are model comparisons, not automatic targets or limits.",
     }
 
 
@@ -3096,18 +2988,19 @@ def apply_quality_workout_vt1_composition(
         raise ValueError("target_resolution has no numeric target_load")
 
     quality_xss_counted_in_remaining_plan = quality_workout_status == "planned"
+    extension = target_resolution.get("endurance_extension")
     required_filler_xss = (
         max(0.0, target_xss - quality_xss)
         if quality_xss_counted_in_remaining_plan
         else target_xss
-    )
+    ) if extension else 0.0
     solution = target_resolution.get("endurance_duration_solution")
     if required_filler_xss > 0 and not isinstance(solution, dict):
         raise SystemExit(
             "A quality workout with VT1 filler requires --endurance-workout-json "
             "from Xert solve_segment_duration for the complete structure."
         )
-    solution = solution or {}
+    solution = (solution or {}) if required_filler_xss > 0 else {}
     solution_xss = solution.get("achieved_xss") or {}
     if required_filler_xss > 0 and quality_xss_counted_in_remaining_plan:
         segments = solution.get("segments")
@@ -3160,12 +3053,12 @@ def apply_quality_workout_vt1_composition(
     composed_minutes = (
         number(solution.get("duration_minutes"))
         if required_filler_xss > 0
-        else quality_minutes
+        else quality_minutes if quality_xss_counted_in_remaining_plan else 0.0
     )
     estimated_total_xss = (
         number(solution_xss.get("total"))
         if required_filler_xss > 0
-        else quality_xss
+        else quality_xss if quality_xss_counted_in_remaining_plan else 0.0
     )
     filler_minutes = number(solution.get(
         "adjustable_duration_minutes"
@@ -3180,7 +3073,7 @@ def apply_quality_workout_vt1_composition(
     original_target_minutes = number(target_resolution.get("target_minutes"))
 
     composition = {
-        "method": "xert_calculated_quality_plus_vt1_filler",
+        "method": "xert_calculated_quality_plus_explicit_extension" if required_filler_xss > 0 else "quality_only",
         "selected_intensity": selected_intensity,
         "quality_workout_status": quality_workout_status,
         "daily_target_xss": round(target_xss, 1),
@@ -3222,19 +3115,21 @@ def apply_quality_workout_vt1_composition(
     }
     target_resolution["dose_composition"] = composition
     target_resolution["target_minutes"] = round(composed_minutes, 1)
+    target_resolution["target_load"] = round(estimated_total_xss, 1)
     target_resolution["duration_source"] = (
-        "Xert-calculated quality workout plus Xert-solved VT1 filler"
+        "Complete calculated quality and explicitly selected endurance addition"
     )
     target_resolution["reason"] = (
         f"{target_resolution.get('reason') or ''}; complete quality workout "
         f"calculated by Xert ({round(quality_xss, 1)} XSS) and "
         f"{'combined with' if quality_xss_counted_in_remaining_plan else 'already completed, not subtracted again from'} "
-        f"{round(filler_xss, 1)} low XSS in Xert-solved VT1 filler"
+        f"{round(filler_xss, 1)} low XSS in explicitly selected endurance addition"
     ).strip("; ")
 
     final_plan = (target_resolution.get("plan_trace") or {}).get("final_plan")
     if isinstance(final_plan, dict):
         final_plan["minutes"] = round(composed_minutes, 1)
+        final_plan["load_xss"] = round(estimated_total_xss, 1)
         final_plan["dose_composition"] = composition
     return composition
 
@@ -3247,6 +3142,9 @@ def apply_xert_endurance_duration_solution(
 ) -> dict[str, Any]:
     """Apply an Xert-solved endurance duration instead of mixed-history XSS/min."""
 
+    selection = target_resolution.get("coaching_selection") or {}
+    if selection.get("basis") == "duration" and calculation.get("source") != "local_xert_segment_duration_solver":
+        return apply_fixed_duration_calculation(target_resolution, calculation, selected_intensity)
     calculation = normalize_endurance_calculation(calculation)
     quality_domain = selected_intensity in {"vt2", "vo2max", "sprint", "mixed"}
     if selected_intensity not in {
@@ -3287,40 +3185,18 @@ def apply_xert_endurance_duration_solution(
     tolerance = number(calculation.get("tolerance_xss")) or 0.05
     if not quality_domain and (achieved_high > tolerance or achieved_peak > tolerance):
         raise ValueError("recovery/VT1 endurance solution must not add high/peak XSS")
-    if quality_domain:
-        recovery_capacity = target_resolution.get("recovery_protection_capacity") or {}
-        capacity_systems = recovery_capacity.get("workout_capacity_xss") or {}
-        exceeded_systems = [
-            system
-            for system, achieved_value in (
-                ("high", achieved_high),
-                ("peak", achieved_peak),
-            )
-            if number(capacity_systems.get(system)) is not None
-            and achieved_value > float(number(capacity_systems[system])) + tolerance
-        ]
-        if exceeded_systems:
-            recovery_capacity["status"] = "fixed_quality_exceeds_capacity"
-            recovery_capacity["exceeded_systems"] = list(dict.fromkeys(
-                [*(recovery_capacity.get("exceeded_systems") or []), *exceeded_systems]
-            ))
-            recovery_capacity["next_workout_freshness_protected"] = False
-            recovery_capacity["resolution"] = (
-                "preserve fixed quality, remove flexible VT1 filler first, and "
-                "report that next-workout Xert freshness is not protected"
-            )
-
-    recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
     expected_low = applicable_endurance_low_xss_target(target_resolution)
     if abs(target_low - expected_low) > tolerance:
         raise ValueError(
             "endurance-workout target_low_xss does not match the applicable "
-            "post-guardrail Xert low-XSS target"
+            "coach-selected low-XSS target"
         )
 
     illness_cap = target_resolution.get("illness_return_guardrail") or {}
     if illness_cap.get("active") and duration_seconds > float(illness_cap["max_minutes"]) * 60 + 1:
         raise ValueError("Solved workout exceeds the reviewed illness-return duration; revise the whole workout")
+    if selection.get("basis") == "duration" and abs(duration_seconds / 60 - target_resolution["target_minutes"]) > 0.02:
+        raise ValueError("Solver changed the coach-selected duration; calculate the selected complete workout instead")
     previous_minutes = number(target_resolution.get("target_minutes"))
     target_resolution["pre_endurance_solution_target_minutes"] = previous_minutes
     target_resolution["target_minutes"] = round(duration_seconds / 60.0, 1)
@@ -3369,18 +3245,67 @@ def apply_xert_endurance_duration_solution(
         "low_xss_error": calculation.get("low_xss_error"),
         "tolerance_xss": tolerance,
     }
-    parts_text = ", ".join(
-        f"{key} {round(value, 1)}"
-        for key, raw_value in recommended_parts.items()
-        if (value := number(raw_value)) is not None
-    )
     target_resolution["reason"] = (
-        f"Xert recommended remaining dose ({parts_text}); Xert solve_segment_duration "
-        f"calculated the selected {selected_intensity} plan structure: "
-        f"{round(achieved_low, 1)} low XSS in "
-        f"{round(duration_seconds / 60.0, 1)} min"
+        f"{target_resolution.get('reason') or ''}; complete {selected_intensity} structure calculated: "
+        f"{round(achieved_low, 1)} low XSS in {round(duration_seconds / 60.0, 1)} min"
     )
     return target_resolution["endurance_duration_solution"]
+
+
+def apply_fixed_duration_calculation(target, calculation, selected_intensity):
+    """Calculate load for an already selected complete duration; never solve a quota."""
+    compact = calculation.get("source") == "xert_workout_calculate"
+    stats = (calculation.get("result") or {}).get("stats") or {}
+    if compact:
+        minutes = number(calculation.get("duration_minutes"))
+        achieved = {key: number(calculation.get(field)) for key, field in
+                    (("total", "xss"), ("low", "low_xss"), ("high", "high_xss"), ("peak", "peak_xss"))}
+    elif calculation.get("submit") == "calculate" and stats:
+        minutes = xert_calculation_duration_minutes(stats.get("duration"))
+        achieved = {key: number(stats.get(field)) for key, field in
+                    (("total", "xss"), ("low", "xlss"), ("high", "xhss"), ("peak", "xpss"))}
+    else:
+        raise ValueError("Duration-selected workout requires a complete Xert calculate_workout result")
+    if minutes is None or not math.isfinite(minutes) or abs(minutes - target["target_minutes"]) > 0.02:
+        raise ValueError("Calculated workout does not match the coach-selected duration")
+    if any(v is None or not math.isfinite(v) or v < 0 for v in achieved.values()) or abs(achieved["total"] - sum(achieved[k] for k in ("low", "high", "peak"))) > 0.2:
+        raise ValueError("Calculated workout requires consistent finite XSS values")
+    if selected_intensity in {"vt1", "easy_vt1", "recovery", "active_recovery"} and (achieved["high"] > 0.05 or achieved["peak"] > 0.05):
+        raise ValueError("recovery/VT1 calculation must not add high/peak XSS")
+    if abs(achieved["total"] - target["target_load"]) > 0.2:
+        raise ValueError("Selected load must come from the complete duration-selected calculation")
+    structure = calculation.get("canonical_structure") or {}
+    segments = structure.get("segments") or []
+    index = structure.get("adjustable_segment_index")
+    canonical = {}
+    if segments:
+        durations = [number(segment.get("duration_seconds")) for segment in segments]
+        if any(value is None or not math.isfinite(value) or value < 0 for value in durations) or abs(sum(durations) - minutes * 60) > 1:
+            raise ValueError("Canonical structure does not match the calculated duration")
+        canonical = {"segments": segments, "signature": structure.get("signature")}
+        if isinstance(index, int) and not isinstance(index, bool) and 0 <= index < len(segments):
+            canonical.update(adjustable_segment_index=index,
+                adjustable_duration_seconds=durations[index], adjustable_duration_minutes=durations[index]/60)
+    target["target_load"] = achieved["total"]
+    target["endurance_duration_solution"] = {
+        **canonical,
+        "source": "xert_workout_calculate", "duration_minutes": minutes,
+        "duration_seconds": round(minutes * 60), "achieved_xss": achieved,
+        "selected_intensity": selected_intensity,
+    }
+    return target["endurance_duration_solution"]
+
+
+def validate_final_coaching_dose(target):
+    selection = target.get("coaching_selection")
+    if not selection:
+        return
+    # Explicit health caps can change the reviewed target, but cannot excuse a larger workout.
+    guarded = any((target.get(key) or {}).get("active") for key in ("illness_return_guardrail", "readiness_domain_cap"))
+    field, tolerance = ("minutes", 0.1) if selection["basis"] == "duration" else ("load", 0.2)
+    actual = target[f"target_{field}"]
+    if (guarded and actual > selection[field] + tolerance) or (not guarded and abs(actual - selection[field]) > tolerance):
+        raise ValueError("Complete workout differs from the coach-selected dose; revise the explicit selection or workout with evidence")
 
 
 def apply_recovery_protection_capacity(
@@ -3390,86 +3315,46 @@ def apply_recovery_protection_capacity(
     selected_intensity: str,
     quality_low_xss: float | None = None,
 ) -> dict[str, Any] | None:
-    """Cap endurance dose with Xert's next-workout fresh-boundary capacity."""
-
+    """Compare the selected workout with model capacity without modifying it."""
     systems = capacity.get("workout_capacity_xss")
-    if not isinstance(systems, dict):
-        raise ValueError(
-            "Xert workout-capacity result has no workout_capacity_xss object"
-        )
-    normalized_systems = {
-        key: number(systems.get(key)) for key in ("low", "high", "peak")
-    }
-    if normalized_systems["low"] is None:
+    if not isinstance(systems, dict) or number(systems.get("low")) is None:
         raise ValueError("Xert workout-capacity result has no numeric low capacity")
-    if selected_intensity not in {
-        "vt1",
-        "easy_vt1",
-        "recovery",
-        "active_recovery",
-    }:
-        recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
-        recommended_low = number(recommended_parts.get("low"))
-        low_cap = max(0.0, float(normalized_systems["low"]))
-        applied_low = (
-            min(recommended_low, low_cap)
-            if recommended_low is not None
-            else low_cap
-        )
-        fixed_quality_exceeds_low = (
-            quality_low_xss is not None and quality_low_xss > applied_low
-        )
-        if fixed_quality_exceeds_low:
-            applied_low = quality_low_xss
-        target_resolution["recovery_protection_capacity"] = {
-            "status": (
-                "fixed_quality_exceeds_capacity"
-                if fixed_quality_exceeds_low
-                else "quality_filler_capped"
-                if recommended_low is not None and applied_low < recommended_low
-                else "quality_within_capacity"
-            ),
-            "limiting_system": "low",
-            "pre_cap_target_low_xss": recommended_low,
-            "applied_target_low_xss": round(applied_low, 3),
-            "exceeded_systems": ["low"] if fixed_quality_exceeds_low else [],
-            "next_workout_freshness_protected": not fixed_quality_exceeds_low,
-            "workout_capacity_xss": normalized_systems,
-            "as_of": capacity.get("as_of"),
-            "fresh_at": capacity.get("fresh_at"),
-            "assumption": "fixed quality is preserved; capacity limits flexible VT1 filler",
-        }
-        if fixed_quality_exceeds_low:
-            target_resolution["recovery_protection_capacity"]["resolution"] = (
-                "preserve fixed quality, set flexible VT1 filler to zero, and "
-                "report that next-workout Xert freshness is not protected"
-            )
-        return target_resolution["recovery_protection_capacity"]
-
-    current_load = number(target_resolution.get("target_load"))
-    if current_load is None:
-        raise ValueError("target resolution has no numeric target_load")
-    low_cap = max(0.0, float(normalized_systems["low"]))
-    applied_load = min(current_load, low_cap)
-    capped = applied_load < current_load
-    target_resolution["target_load"] = round(applied_load, 3)
-    target_resolution["recovery_protection_capacity"] = {
-        "status": "capped" if capped else "within_capacity",
-        "limiting_system": "low",
-        "pre_cap_target_xss": round(current_load, 3),
-        "applied_target_xss": round(applied_load, 3),
-        "workout_capacity_xss": normalized_systems,
-        "as_of": capacity.get("as_of"),
-        "fresh_at": capacity.get("fresh_at"),
-        "assumption": "no_intervening_training",
+    normalized = {key: number(systems.get(key)) for key in ("low", "high", "peak")}
+    solution = target_resolution.get("endurance_duration_solution") or {}
+    composition = target_resolution.get("dose_composition") or {}
+    quality = composition.get("quality_base") or {}
+    if solution and (not composition or target_resolution.get("endurance_extension")):
+        actual = solution.get("achieved_xss") or {}
+    elif quality and quality.get("counted_in_remaining_plan"):
+        actual = {key: quality.get(f"{key}_xss") for key in normalized}
+    elif selected_intensity in {"vt1", "easy_vt1", "recovery", "active_recovery", "rest"}:
+        actual = {"low": number(target_resolution.get("target_load")), "high": 0.0, "peak": 0.0}
+    else:
+        actual = {"low": quality_low_xss}
+    exceeded = [key for key in normalized if number(actual.get(key)) is not None and normalized[key] is not None and actual[key] > normalized[key] + 0.05]
+    complete = all(number(actual.get(key)) is not None and normalized[key] is not None for key in normalized)
+    decision = target_resolution.get("capacity_decision") or {}
+    accepted = decision.get("action") == "accept_model_conflict" and bool(decision.get("reason")) and bool(decision.get("evidence"))
+    report = {
+        "status": "model_conflict" if exceeded else "within_model_capacity" if complete else "assessment_pending",
+        "review_required": (bool(exceeded) and not accepted) or not complete,
+        "automatic_dose_cap": False,
+        "workout_capacity_xss": normalized,
+        "selected_workout_xss": actual,
+        "exceeded_systems": exceeded,
+        "as_of": capacity.get("as_of"), "fresh_at": capacity.get("fresh_at"),
+        "decision": decision or None,
+        "resolution": "Reduce the selected dose and recalculate, move the next workout and recalculate capacity, or explicitly justify accepting the model conflict.",
+        "assumption": "Xert fresh boundary, no intervening training; not a physiological safety limit",
     }
-    if capped:
-        target_resolution["reason"] = (
-            f"{target_resolution.get('reason') or ''}; endurance dose reduced "
-            f"from {round(current_load, 1)} to {round(applied_load, 1)} XSS by "
-            "the next-workout Xert Low-XSS fresh-boundary capacity"
-        ).strip("; ")
-    return target_resolution["recovery_protection_capacity"]
+    target_resolution["recovery_protection_capacity"] = report
+    return report
+
+
+def require_resolved_capacity_review(target_resolution: dict[str, Any]) -> None:
+    report = target_resolution.get("recovery_protection_capacity") or {}
+    if report.get("review_required"):
+        raise SystemExit("Xert capacity conflict requires review: reduce dose, move next workout and recalculate, or justify accept_model_conflict. No automatic dose cut was applied.")
 
 
 def normalize_endurance_calculation(
@@ -3491,19 +3376,15 @@ def normalize_endurance_calculation(
 def applicable_endurance_low_xss_target(
     target_resolution: dict[str, Any],
 ) -> float:
-    """Return the guarded Low-XSS dose for an endurance solution."""
-
-    recommended_parts = target_resolution.get("xert_recommended_target_xss") or {}
-    target_low = number(recommended_parts.get("low"))
-    recovery_capacity = target_resolution.get("recovery_protection_capacity") or {}
-    protected_low = number(recovery_capacity.get("applied_target_low_xss"))
-    if target_low is not None and protected_low is not None:
-        target_low = min(target_low, protected_low)
+    """Use only the selected dose, never XATA advice or model capacity."""
+    target_low = number(target_resolution.get("selected_low_xss"))
+    if target_low is None:
+        target_low = number(target_resolution.get("target_load"))
     capped_load = number(target_resolution.get("target_load"))
-    if target_low is not None and capped_load is not None:
+    if capped_load is not None and target_low is not None:
         target_low = min(target_low, capped_load)
     if target_low is None or target_low <= 0:
-        raise ValueError("target resolution has no applicable Xert low-XSS target")
+        raise ValueError("target resolution has no coach-selected low-XSS target")
     return target_low
 
 
@@ -3512,8 +3393,10 @@ def build_endurance_solver_request(
     *,
     structure: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build the MCP solve_segment_duration request after local guardrails."""
+    """Build the MCP solve_segment_duration request for a selected load."""
 
+    if (target_resolution.get("coaching_selection") or {}).get("basis") == "duration":
+        raise ValueError("Duration is already selected; use calculate_workout for the complete structure")
     request = {
         "signature": structure.get("signature"),
         "segments": structure.get("segments"),
@@ -3541,7 +3424,7 @@ def require_endurance_solution_for_selected_domain(
         return
     raise SystemExit(
         "A recovery/VT1 recommendation requires --endurance-workout-json from "
-        "the Xert solve_segment_duration model. Mixed-history XSS/min cannot define "
+        "Xert calculate_workout (duration basis) or solve_segment_duration (load basis). Mixed-history XSS/min cannot define "
         "the prescribed endurance duration."
     )
 
@@ -4415,6 +4298,8 @@ def build_primary_decision(
     remainder_disposition: str = "unscheduled",
 ) -> dict[str, Any]:
     """Expose the physiological plan as an explicit LLM decision contract."""
+    validate_final_coaching_dose(target_resolution)
+    require_resolved_capacity_review(target_resolution)
     inputs = readiness_packet.get("recommendation_inputs") or {}
     events = inputs.get("intervals_wellness_events") or {}
     split = target_resolution.get("split") or {}
@@ -4457,9 +4342,7 @@ def build_primary_decision(
     elif action == "unavailable":
         intensity = "none_available"
 
-    xert_remaining = str(target_resolution.get("source") or "").startswith(
-        "xert_training_advice"
-    )
+    xert_remaining = bool(target_resolution.get("xert_completed_xss")) and target_resolution.get("xert_dose_basis") == "remaining_xss"
     executable_minutes = (
         number(split.get("first_session_minutes"))
         if split.get("available")
@@ -4497,6 +4380,10 @@ def build_primary_decision(
             "minutes": round(target_minutes, 1),
             "load_xss": round(target_load, 1),
         },
+        "coaching_selection": target_resolution.get("coaching_selection"),
+        "xert_comparison": {"suggested_xss": target_resolution.get("xert_recommended_total_xss"),
+            "difference_xss": round(target_load - target_resolution["xert_recommended_total_xss"], 1) if number(target_resolution.get("xert_recommended_total_xss")) is not None else None,
+            "capacity": target_resolution.get("recovery_protection_capacity")},
         "dose_composition": target_resolution.get("dose_composition"),
         "executable_now": {
             "minutes": round(executable_minutes or 0.0, 1),
@@ -4530,6 +4417,8 @@ def build_primary_decision(
             "available_time_and_modalities_for_execution",
         ],
         "llm_rule": (
+            "Explain the coaching_selection reason and evidence, compare with Xert advice, "
+            "and report capacity conflicts and their explicit resolution. "
             "Use this action and executable_now as the default recommendation. "
             "Any different recommendation must be labelled as a coaching override "
             "and justified by specific evidence not accounted for in the model "
@@ -4589,7 +4478,7 @@ def executable_timeline(
         cursor += seconds
     if abs(cursor - total) > 1:
         raise ValueError("canonical timeline duration does not match solver total")
-    return {"status": "complete", "source": "xert_solver_segments",
+    return {"status": "complete", "source": "xert_calculated_segments" if solution.get("source") == "xert_workout_calculate" else "xert_solver_segments",
             "duration_seconds": total, "segments": timeline,
             "meaning": "Execution order is authoritative; quality/filler totals are accounting groups, not additional segments."}
 
@@ -4897,14 +4786,6 @@ def latest_activity_is_meaningful_same_day(latest: dict[str, Any], *, day: str) 
     )
 
 
-def load_from_minutes(minutes: float) -> float:
-    return max(15.0, minutes * 0.85)
-
-
-def minutes_from_load(load: float) -> float:
-    return max(20.0, load / 0.85)
-
-
 def minutes_from_seconds(seconds: float | None) -> float | None:
     if seconds is None:
         return None
@@ -5093,9 +4974,8 @@ def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
     if endurance_solution:
         adjustment_types.append("xert_endurance_duration_recalculation")
         reasons.append(
-            "The provisional mixed-history duration estimate was replaced by "
-            "Xert's calculation of the selected endurance structure so low XSS "
-            "matches without targeting high or peak XSS."
+            "Xert calculated the complete structure for the coach-selected dose; "
+            "the calculation does not independently justify that dose."
         )
 
     base_minutes = number(base.get("minutes"))
@@ -7137,6 +7017,8 @@ def format_summary(packet: dict[str, Any]) -> str:
             quality=plan_context.get("next_quality_role") or "missing",
             matches=plan_context.get("goal_matches_state"),
         ),
+        "COACHING DOSE: " + json.dumps(primary.get("coaching_selection"), ensure_ascii=False),
+        "XERT COMPARISON: " + json.dumps(primary.get("xert_comparison"), ensure_ascii=False),
         *dose_composition_summary_lines(target_resolution),
         "DOSE SEMANTICS: {semantics}; completed activities already accounted for={accounted}".format(
             semantics=primary.get("dose_semantics"),
@@ -7863,7 +7745,8 @@ def dose_composition_summary_lines(
             high=quality.get("high_xss"),
             peak=quality.get("peak_xss"),
         ),
-        "VT1 FILLER: {minutes} min / {xss} low XSS (Xert-solved)".format(
+        "VT1 FILLER: {minutes} min / {xss} low XSS ({method})".format(
+            method="Xert-calculated" if filler.get("source") == "xert_workout_calculate" else "none selected" if not filler.get("duration_minutes") else "Xert-solved",
             minutes=filler.get("duration_minutes"),
             xss=filler.get("xss"),
         ),

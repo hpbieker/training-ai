@@ -79,7 +79,7 @@ class RecommendationScenarioTests(unittest.TestCase):
         remaining = packets['remaining_after_quality']['primary_decision']
         self.assertEqual(remaining['selected_intensity'], 'vt1')
         self.assertEqual(remaining['physiological_remaining_dose']['load_xss'], 260)
-        self.assertTrue(remaining['completed_activities_already_accounted_for'])
+        self.assertFalse(remaining['completed_activities_already_accounted_for'])  # No completed-activity source in this frozen fixture.
         self.assertEqual(remaining['executable_now']['timeline']['duration_seconds'], 14729)
         for name in ('isolated_hrv_drop', 'isolated_hrv_missing_history'):
             packet = packets[name]

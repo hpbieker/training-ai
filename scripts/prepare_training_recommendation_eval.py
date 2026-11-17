@@ -38,6 +38,15 @@ def build_packet(case):
         target.update(target_load=219, target_minutes=210, xert_recommended_target_xss={'low':219,'high':2.1,'peak':0.2})
         apply_acute_readiness_target_guardrail(target, {'recommendation_inputs':inputs})
     solution = json.loads((SUITE / 'fixtures' / ('hrv-endurance.json' if case.get('dose_review') else 'quality-plus-endurance.json' if quality else 'endurance.json')).read_text())
+    # Frozen scenarios explicitly select a dose; XATA values remain comparison data.
+    target['source'] = 'explicit_coaching_selection'
+    target['selected_low_xss'] = solution.get('target_low_xss', solution.get('target_value'))
+    target['target_load'] = solution['achieved_xss']['total']
+    target['reason'] = 'Synthetic coaching selection for offline composition evaluation'
+    target['coaching_selection'] = {'basis':'load', 'load':target['target_load'],
+        'minutes':solution['duration_seconds']/60, 'reason':target['reason'], 'evidence':[case['context']]}
+    if quality:
+        target['endurance_extension'] = {'reason':'Explicit synthetic aerobic extension', 'evidence':['Frozen evaluation scenario']}
     apply_xert_endurance_duration_solution(target, calculation=solution, selected_intensity=decision['selected_domain'])
     if quality:
         apply_quality_workout_vt1_composition(target,

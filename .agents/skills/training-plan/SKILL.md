@@ -41,6 +41,12 @@ volatile daily measurements must not become permanent plan rules.
 Do not rewrite a medium-term plan because of one daily recommendation unless
 the user explicitly asks.
 
+Choose session dose from its purpose, achieved progression, recent response and
+the surrounding training. Xert advice and next-workout capacity are comparison
+data, not automatic volume targets or dose limits. Do not add endurance to fill
+an XSS gap. Justify any addition separately. Use training-analysis's explicit
+dose-selection and capacity-conflict workflow for the same-day prescription.
+
 ## Apply A Plan Today
 
 Discover candidate plans under `config/plans/`, choose the active or most
