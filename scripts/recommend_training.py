@@ -5193,7 +5193,6 @@ def build_coach_summary(
     xert = decision.get("xert_recovery") or {}
     workouts = decision.get("indoor_workouts") or {}
     route = decision.get("top_route") or {}
-    routes_packet = packet.get("routes") or {}
     target_resolution = decision.get("target_resolution") or {}
     freshness = decision.get("freshness_summary") or {}
     home_weather = decision.get("weather_home_hourly") or []
@@ -5206,12 +5205,8 @@ def build_coach_summary(
     )
 
     bias = recommendation_bias(
-        readiness=readiness,
         wellness=wellness,
         xert=xert,
-        latest=latest,
-        freshness=freshness,
-        same_day_activity=same_day_activity,
         intervals_events=intervals_events,
     )
     current_illness = bool(intervals_events.get("current_day_illness"))

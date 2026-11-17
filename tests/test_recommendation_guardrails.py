@@ -1083,6 +1083,16 @@ class PlanningContextTests(unittest.TestCase):
 
 
 class RecommendationSummaryTests(unittest.TestCase):
+    def test_coach_summary_runs_with_current_recommendation_bias_interface(self):
+        from recommend_training import build_coach_summary
+        now = datetime.fromisoformat("2026-11-17T10:00:00+01:00")
+        summary = build_coach_summary(
+            {}, fueling_defaults={}, readiness_notes=[], now=now,
+            planned_at=now, planned_at_source="test",
+        )
+        self.assertEqual(summary["recommended_bias"], "readiness_unknown")
+        self.assertIn("Provisional plan", summary["why"][0])
+
     def test_allocated_aerobic_workout_uses_selected_intensity_in_summary(self):
         from recommend_training import executable_dose_segments
         for role in ("vt1", "easy_vt1", "recovery", "vt2"):
