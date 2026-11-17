@@ -99,16 +99,21 @@ class CoachingDoseTests(unittest.TestCase):
                 apply_xert_endurance_duration_solution(self.target(), calculation=calculation, selected_intensity='vt1')
 
     def test_duration_first_quality_extension_keeps_canonical_structure(self):
-        selection = self.selection(endurance_extension={'reason':'Selected aerobic support', 'evidence':['Reviewed plan']})
-        target = self.target(selection)
-        calculation = self.calculation()
-        calculation['canonical_structure'] = {'signature':{'tp':300}, 'adjustable_segment_index':1,
+        from xert_strain_model import calculate_workout
+        from recommendation_binding import bind_workout_calculation
+        structure = {'signature':{'tp':300, 'hie':14000, 'pp':900}, 'adjustable_segment_index':1,
             'segments':[{'duration_seconds':2400, 'power':250}, {'duration_seconds':1200, 'power':200}]}
-        apply_xert_endurance_duration_solution(target, calculation=calculation, selected_intensity='vt2')
-        quality = {'submit':'calculate', 'result':{'stats':{'duration':2400, 'xss':35, 'xlss':35, 'xhss':0, 'xpss':0}}}
+        native = calculate_workout(signature=structure['signature'], segments=structure['segments'], include_series=False)
+        selection = self.selection(endurance_extension={'reason':'Selected aerobic support', 'evidence':['Reviewed plan']})
+        selection['load'] = native['xss']['total']
+        target = self.target(selection)
+        native['canonical_structure'] = structure
+        apply_xert_endurance_duration_solution(target, calculation=native, selected_intensity='vt2')
+        base = {**structure, 'segments':structure['segments'][:1]}
+        quality = bind_workout_calculation(calculate_workout(signature=base['signature'], segments=base['segments'], include_series=False), base)
         composition = apply_quality_workout_vt1_composition(target, quality_calculation=quality, selected_intensity='vt2')
         self.assertEqual(composition['vt1_filler']['duration_minutes'], 20)
-        self.assertEqual(composition['estimated_total'], {'duration_minutes':60, 'xss':50})
+        self.assertEqual(composition['estimated_total'], {'duration_minutes':60, 'xss':round(selection['load'],1)})
         primary = build_primary_decision(target_resolution=target, readiness_packet={}, intensity_decision={'selected_domain':'vt2'})
         self.assertEqual(primary['executable_now']['timeline']['status'], 'complete')
 

@@ -303,7 +303,7 @@ recent response, current readiness and upcoming sessions. Pass
 is required; it must not produce a finished training recommendation.
 
 For `basis: duration`, select minutes first and obtain `load` by calculating the
-complete workout. Pass that `calculate_workout` result in `--endurance-workout-json`
+complete workout. Pass the complete native `calculate_strain` result in `--endurance-workout-json`
 for endurance; the helper verifies that the duration is unchanged. For
 `basis: load`, select total XSS and, for mixed workouts, `low_xss`; solve duration
 for that selected low load. `minutes` is the expected duration, updated from the
@@ -318,16 +318,25 @@ the separate quality-base calculation, and the complete combined calculation
 through `--endurance-workout-json`. The helper checks the canonical timeline
 against the selected total and the quality-base duration; it does not extend it.
 
-Before choosing VT1 minutes, run `scripts/vt1_dose.py` with Python and
-`--state` set to the selected plan-state file. Set `--role` to today's aerobic
-purpose and `--as-of` to the decision cutoff with UTC offset. Pass `--watts`
-when today's chosen working power differs from the plan. Use `--activity-id`
-to include a specific older ride of the same purpose alongside the three latest.
-Compare moving time, measured time in the stated working-power band, valid power
-time, athlete feedback and the next recorded quality outcome when available.
-Review late response separately from whole-ride RPE. Explain which comparison
-supports repeating, shortening or extending the dose, or state the independent
-basis when none fits. A later quality result provides context for that review.
+Calculation binding is required at the recommendation CLI boundary. Supply
+canonical rows/signature/adjustable-row index for a quality-only prescription.
+For endurance-only work, pass `--endurance-workout-json` with both `calculation`
+and an independent `structure` object containing `signature`, ordered `segments`
+and `adjustable_segment_index`. Do not supply a planned quality-workout object
+just to carry endurance structure. For a planned combined workout, the rows describe
+the whole workout; the quality-base calculation must match the same structure
+with only the adjustable endurance segment removed. For completed quality,
+retain its original calculation inputs as historical evidence.
+
+Pass the complete native `calculate_strain` or `solve_segment_duration` result,
+including signature and ordered segments, unchanged inside `calculation`.
+Summary-only live Calculate results cannot establish the input identity and are
+not accepted as recommendation calculation evidence. The helper compares the
+proposed structure with the result, permits only the selected solver segment's
+duration to change, and independently recalculates XSS. Labels may change;
+power, ramps, fixed durations, recovery segments, order and signature must match.
+Use a fresh native calculation after changing these inputs. The output retains
+`calculation_binding` with a fingerprint of the verified inputs.
 
 Before passing a coaching-selected load or duration to a helper, state the
 original XATA dose, the chosen dose and the concrete reason for the adjustment.
@@ -404,23 +413,45 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   candidate's explicitly selected load to duration. For recovery, VT1, or a quality workout
   with a flexible endurance extension, describe the complete workout once as
   canonical Xert `rows` together with the current `signature` and exactly one
-  `adjustable_row_index` inside `--quality-workout-json`. With
+  `adjustable_row_index` inside `--quality-workout-json` for quality/composed
+  work. Endurance-only work uses `structure` inside `--endurance-workout-json`
+  as described above. With
   `--print-endurance-solver-request`, the helper expands repetitions, RIB, and
   ramps, uses the coach-selected Low-XSS target, and prints the
   MCP request. The quality-workout object also accepts the optional fields
   `minimum_duration_seconds`, `maximum_duration_seconds`, and `tolerance_xss`.
-  When `progression.vt1.target_power_w` is present, use it as the fixed power
-  for the endurance structure unless current evidence explicitly justifies a deviation.
-  Call MCP `solve_segment_duration` with the printed request, then pass its
-  normalized result through
-  `--endurance-workout-json '{"calculation": <normalized-result>}'`.
+  Before choosing VT1 minutes, run `scripts/vt1_dose.py` with Python,
+  `--role easy_aerobic|medium_aerobic|long_aerobic|vt1` and `--as-of` set to
+  the decision cutoff with UTC offset. Use the plan state supplied for the
+  recommendation. Pass `--watts` when today's chosen working power differs.
+  Use `--activity-id` to examine a specific older ride of the same purpose.
+  The output gives the three latest reviewed rides of that purpose, moving
+  time, measured minutes in the stated power band, valid power time, athlete
+  feedback and the next recorded quality outcome when available. Compare the
+  late response separately from whole-ride RPE. A later quality result gives
+  context and cannot establish the effect of the earlier ride on its own.
+  Explain why today's role, response and upcoming quality favor repeating,
+  shortening or extending the selected comparison. If none fits, explain the
+  independent basis for the dose. Mixed-sport daily medians describe volume.
+  In `--training-target-json`, set `vt1_role` if the queue does not specify
+  today's aerobic purpose. When candidates exist, supply
+  `"vt1_comparison":{"activity_id":"…","reason":"…"}`, omitting the ID only
+  when the reason explains why none is representative.
+  Use `progression.vt1.target_power_w` for the main step. To select another
+  power, supply `"vt1_power_choice":{"watts":…,"reason":"…","evidence":["…"]}`.
+  For a load-selected VT1 ride, pass the independent structure to print the
+  solver request. Call MCP `solve_segment_duration` with that request. For
+  the final run, include both `structure` and the full native `calculation`
+  in `--endurance-workout-json`. A quality workout can instead supply its
+  independent structure through the quality rows described above.
   Preserve fixed quality, warm-up, recovery, and cool-down segments. Never derive prescribed duration from
   XSS/minute across activities of mixed intensity domains, and never add
   high/peak work merely to match high/peak advice on a plan-selected VT1 day.
 - For a structured quality session followed by easy volume, calculate the
-  complete quality workout with MCP `calculate_workout`, including warm-up,
+  complete quality workout with MCP `calculate_strain`, including warm-up,
   recoveries, and cool-down, and pass its normalized result directly
-  inside `--quality-workout-json` with status `planned` or `completed`. If the
+  inside `--quality-workout-json` with status `planned` or `completed`. Preserve
+  the complete native result rather than reducing it to a metrics summary. If the
   calculation is persisted, read the file first and pass its JSON content. For
   a flexible VT1 addition, explicitly justify and select the combined dose.
   Without a justified addition, prescribe only the complete quality workout.
@@ -546,6 +577,18 @@ the capacity protection unresolved.
    `--source-overrides-json`. The helper compares capacity with the selected
    complete workout and requires a decision on conflicts. It does not copy
    capacity into the selected dose or change the solver target.
+- Independently supply `next_workout_at` as an offset-aware timestamp in
+   `--planning-context-json`, resolved from the actual plan/calendar rather than
+   copied from the capacity result. The helper requires all three capacities to
+   be finite nonnegative numbers and compares `as_of`/`fresh_at` in UTC with
+   today's effective start and the next planned start. Moving either workout
+   requires recalculation. Scheduling today's session into a later window also
+   triggers this check before the final recommendation.
+- If exact scheduled projection is unavailable and an equivalent-horizon
+   approximation is justified, pass `capacity_approximation: {reason, evidence}`
+   in the planning context. Both calculated timestamps may be shifted only if
+   their interval exactly matches the planned recovery interval. The report
+   labels this as an approximation; documentation cannot waive a changed interval.
 - Align the capacity horizon with the interval from today's recommended
    `planned_at` to the next day's resolved workout start. When the current Xert
    state timestamp materially precedes today's `planned_at`, do not silently

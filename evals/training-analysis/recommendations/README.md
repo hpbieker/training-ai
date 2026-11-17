@@ -82,3 +82,10 @@ The expected behavior is justified coaching with explicit uncertainty, not
 automatic acceptance of either 45 or 219 Low XSS. These are composition evals;
 source ingestion and three-consecutive-night validation have deterministic
 coverage in `tests/test_recommendation_hrv_dose.py`.
+
+## Real CLI regression suite
+
+The [CLI regression tests](../../../tests/test_recommendation_cli.py) run the
+actual command offline using synthetic sources and plan state. They check a
+normal quality workout and verify that moving the next workout requires capacity
+calculated for the updated schedule.

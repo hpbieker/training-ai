@@ -1,0 +1,211 @@
+{
+  "sources": {
+    "garmin": {
+      "date": "2026-11-17",
+      "source_time_local": "2026-11-17T09:50:00+01:00",
+      "sources": {
+        "summary": {
+          "calendarDate": "2026-11-17",
+          "lastSyncTimestampGMT": "2026-11-17T08:50:00Z"
+        },
+        "heart_rate": {
+          "calendarDate": "2026-11-17",
+          "restingHeartRate": 45,
+          "lastSevenDaysAvgRestingHeartRate": 45
+        },
+        "sleep": {
+          "dailySleepDTO": {
+            "calendarDate": "2026-11-17",
+            "sleepStartTimestampGMT": 1794866400000,
+            "sleepEndTimestampGMT": 1794895200000,
+            "sleepEndTimestampLocal": 1794898800000,
+            "sleepTimeSeconds": 28800,
+            "sleepScores": {
+              "overall": {
+                "value": 85
+              }
+            }
+          }
+        },
+        "hrv": {
+          "endTimestampGMT": "2026-11-17T06:00:00Z",
+          "endTimestampLocal": "2026-11-17T07:00:00",
+          "hrvSummary": {
+            "calendarDate": "2026-11-17",
+            "lastNightAvg": 70,
+            "weeklyAvg": 70,
+            "status": "BALANCED",
+            "baseline": {
+              "balancedLow": 60,
+              "balancedUpper": 85,
+              "lowUpper": 50
+            }
+          }
+        }
+      }
+    },
+    "garmin_hrv_history": {
+      "days": [
+        {
+          "date": "2026-11-11",
+          "sources": {
+            "hrv": {
+              "lastNightAvg": 70
+            }
+          }
+        },
+        {
+          "date": "2026-11-12",
+          "sources": {
+            "hrv": {
+              "lastNightAvg": 70
+            }
+          }
+        },
+        {
+          "date": "2026-11-13",
+          "sources": {
+            "hrv": {
+              "lastNightAvg": 70
+            }
+          }
+        },
+        {
+          "date": "2026-11-14",
+          "sources": {
+            "hrv": {
+              "lastNightAvg": 70
+            }
+          }
+        },
+        {
+          "date": "2026-11-15",
+          "sources": {
+            "hrv": {
+              "lastNightAvg": 70
+            }
+          }
+        },
+        {
+          "date": "2026-11-16",
+          "sources": {
+            "hrv": {
+              "lastNightAvg": 70
+            }
+          }
+        },
+        {
+          "date": "2026-11-17",
+          "sources": {
+            "hrv": {
+              "lastNightAvg": 70
+            }
+          }
+        }
+      ]
+    },
+    "xert": {
+      "training_state": {
+        "state": {
+          "as_of": "2026-11-17T08:50:00Z",
+          "recovery_hours": {
+            "low": -12,
+            "high": -24,
+            "peak": -24
+          },
+          "training_load": {
+            "low": 70,
+            "high": 5,
+            "peak": 1
+          },
+          "recovery_load": {
+            "low": 60,
+            "high": 3,
+            "peak": 0.5
+          }
+        }
+      }
+    },
+    "xert_recommended_training": {
+      "date": "2026-11-17",
+      "training_advice_as_of": "2026-11-17T09:00:00Z",
+      "remaining_xss": {
+        "low": 160,
+        "high": 5,
+        "peak": 1
+      },
+      "target_xss": {
+        "low": 160,
+        "high": 5,
+        "peak": 1
+      },
+      "source": "synthetic XATA"
+    },
+    "xert_workout_capacity": {
+      "as_of": "2026-11-17T10:00:00+01:00",
+      "fresh_at": "2026-11-18T10:00:00+01:00",
+      "workout_capacity_xss": {
+        "low": 180,
+        "high": 15,
+        "peak": 3
+      }
+    },
+    "intervals_wellness": {
+      "wellness": [
+        {
+          "id": "2026-11-17",
+          "soreness": 1
+        }
+      ]
+    },
+    "intervals_events": {
+      "events": []
+    },
+    "xert_activity_loads": {
+      "activities": []
+    },
+    "weather_home": {
+      "source": "synthetic MET",
+      "properties": {
+        "timeseries": []
+      }
+    }
+  },
+  "plan_state": {
+    "schema": "training-ai-plan-state-v3",
+    "updated_at": "2026-11-17T08:00:00Z",
+    "active_plan": {
+      "id": "synthetic-cli",
+      "path": "config/plans/synthetic.md"
+    },
+    "activity_cursor": {},
+    "next_role": "vt2",
+    "quality_queue": {
+      "steps": [
+        {
+          "id": "threshold",
+          "intensity_goal": "vt2"
+        },
+        {
+          "id": "aerobic_power",
+          "intensity_goal": "vo2max"
+        }
+      ],
+      "next_quality_step": "threshold",
+      "minimum_aerobic_days_after_quality": 1,
+      "aerobic_dates_since_quality": [
+        "2026-11-16"
+      ],
+      "aerobic_days_since_quality": 1
+    },
+    "progression": {
+      "vt2": {
+        "target_power_w": 270,
+        "anchor": "2 x 8 min at 270 W",
+        "status": "hold",
+        "next_step": "Repeat only after current response review"
+      }
+    },
+    "activity_events": []
+  }
+}

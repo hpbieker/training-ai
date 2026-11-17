@@ -20,8 +20,12 @@ XERT_PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "xert"
 if str(XERT_PLUGIN) not in sys.path:
     sys.path.insert(0, str(XERT_PLUGIN))
 
+from recommendation_binding import (bind_workout_calculation, canonical_structure, validate_capacity_values,
+                                    validate_capacity_horizon, instant)
 from illness_return import parse_illness_return_json
+from vt1_dose import dose_comparisons
 from plan_state import (
+    AEROBIC_ROLES,
     DEFAULT_STATE_PATH,
     PlanStateError,
     load_plan_state,
@@ -66,7 +70,8 @@ def parse_training_target_json(raw: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(f"--training-target-json must be valid JSON: {exc.msg}") from exc
     if not isinstance(payload, dict):
         raise argparse.ArgumentTypeError("--training-target-json must contain one JSON object")
-    unknown = set(payload) - {"minutes", "load", "low_xss", "basis", "reason", "evidence", "endurance_extension", "capacity_decision"}
+    unknown = set(payload) - {"minutes", "load", "low_xss", "basis", "reason", "evidence", "endurance_extension", "capacity_decision",
+                              "vt1_role", "vt1_power_choice", "vt1_comparison"}
     if unknown:
         raise argparse.ArgumentTypeError(f"unsupported training-target field: {sorted(unknown)[0]}")
     for field in ("minutes", "load"):
@@ -86,6 +91,20 @@ def parse_training_target_json(raw: str) -> dict[str, Any]:
         if not isinstance(evidence, list) or not evidence or any(not isinstance(v, str) or not v.strip() for v in evidence):
             raise argparse.ArgumentTypeError(f"{name} requires non-empty evidence strings")
     justification(payload, "training-target")
+    if "vt1_role" in payload and payload["vt1_role"] not in sorted(AEROBIC_ROLES):
+        raise argparse.ArgumentTypeError("vt1_role must be a reviewed aerobic role")
+    if "vt1_power_choice" in payload:
+        choice = payload["vt1_power_choice"]
+        justification(choice, "vt1_power_choice")
+        watts = choice.get("watts")
+        if type(watts) not in (int, float) or not math.isfinite(watts) or watts <= 0:
+            raise argparse.ArgumentTypeError("vt1_power_choice requires finite positive watts")
+    if "vt1_comparison" in payload:
+        review = payload["vt1_comparison"]
+        if not isinstance(review, dict) or not isinstance(review.get("reason"), str) or not review["reason"].strip():
+            raise argparse.ArgumentTypeError("vt1_comparison requires a dose comparison reason")
+        if "activity_id" in review and not isinstance(review["activity_id"], str):
+            raise argparse.ArgumentTypeError("vt1_comparison activity_id must be a string")
     if "endurance_extension" in payload:
         justification(payload["endurance_extension"], "endurance_extension")
     if "capacity_decision" in payload:
@@ -280,16 +299,17 @@ def parse_endurance_workout_json(raw: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(
             "--endurance-workout-json must contain one JSON object"
         )
-    unknown = sorted(set(payload) - {"calculation"})
+    unknown = sorted(set(payload) - {"calculation", "structure"})
     if unknown:
         raise argparse.ArgumentTypeError(
             f"unsupported endurance-workout field: {unknown[0]}"
         )
     calculation = payload.get("calculation")
-    if not isinstance(calculation, dict) or not calculation:
-        raise argparse.ArgumentTypeError(
-            "endurance-workout calculation must be a non-empty JSON object"
-        )
+    if "calculation" in payload or "structure" not in payload:
+        if not isinstance(calculation, dict) or not calculation:
+            raise argparse.ArgumentTypeError("endurance-workout calculation must be a non-empty JSON object")
+    if "structure" in payload and not isinstance(payload["structure"], dict):
+        raise argparse.ArgumentTypeError("endurance-workout structure must be an object")
     return payload
 
 
@@ -315,6 +335,29 @@ def parse_plan_selection_json(raw: str) -> dict[str, Any]:
     return {"intensity_goal": goal, "state": Path(state), "role_mismatch_reason": reason}
 
 
+def review_vt1_working_power(structure, reference, choice, *, extension_only=False):
+    """Verify the working step in the independent prescription before strain modelling."""
+    watts = choice["watts"] if choice else reference
+    if watts is None:
+        raise ValueError("Missing VT1 working power: supply an evidence-backed vt1_power_choice")
+    segments = canonical_structure(structure)["segments"]
+    index = structure.get("adjustable_segment_index")
+    if index is None and not extension_only:
+        steady = [i for i, row in enumerate(segments)
+                  if row["duration_seconds"] and row["power"] == row["end_power"] == watts]
+        index = max(steady, key=lambda i: segments[i]["duration_seconds"], default=None)
+    if type(index) is not int or not 0 <= index < len(segments):
+        raise ValueError(f"VT1 prescription requires a steady working segment at the chosen {watts:g} W")
+    work = segments[index]
+    if work["power"] != watts or work["end_power"] != watts:
+        raise ValueError(f"VT1 working segment must use the chosen {watts:g} W; justify a deviation with vt1_power_choice")
+    if not extension_only and any(row["duration_seconds"] and max(row["power"], row["end_power"]) > watts
+                                  for row in segments):
+        raise ValueError("Pure VT1 structure contains work above the chosen working power")
+    return {"plan_reference_w": reference, "working_power_w": watts,
+            "working_segment_index": index, "choice": choice}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Fetch Garmin/Xert/Yr inputs and build one recommendation packet.",
@@ -329,7 +372,8 @@ def main() -> None:
         help=(
             "Normalized JSON object containing date, local_timezone, absolute "
             "now and optional planned_at timestamps, availability windows, "
-            "cycling modalities and unavailable reasons, plus optional route "
+            "cycling modalities and unavailable reasons, next_workout_at for capacity "
+            "checks, optional documented capacity_approximation, and route "
             "context."
         ),
     )
@@ -339,7 +383,8 @@ def main() -> None:
         type=parse_training_target_json,
         help=(
             "Coach-selected minutes, calculated load, basis (duration/load), reason and "
-            "evidence; optional low_xss, justified endurance_extension and capacity_decision. "
+            "evidence. VT1 uses vt1_role, vt1_comparison and optional vt1_power_choice. "
+            "Optional low_xss, justified endurance_extension and capacity_decision. "
             "Omission requires dose assessment, never an automatic Xert dose."
         ),
     )
@@ -347,17 +392,17 @@ def main() -> None:
         "--quality-workout-json",
         type=parse_quality_workout_json,
         help=(
-            "Optional JSON object with status, the complete inline Xert calculation, "
-            "and canonical rows/signature/adjustable_row_index when a duration "
-            "solver request is required."
+            "Optional JSON object with status, the complete native calculate_strain result, "
+            "and canonical rows/signature/adjustable_row_index for calculation binding."
         ),
     )
     parser.add_argument(
         "--endurance-workout-json",
         type=parse_endurance_workout_json,
         help=(
-            "Optional normalized solve_segment_duration result from Xert's "
-            "offline MCP calculation. The flexible endurance segment must match the "
+            "Optional complete native calculate_strain or solve_segment_duration result from Xert's "
+            "offline MCP calculation, plus independent structure (signature, segments, "
+            "adjustable_segment_index) for endurance-only work. The flexible segment must match the "
             "applicable low-XSS target."
         ),
     )
@@ -617,8 +662,10 @@ def main() -> None:
         illness_return_assessment=args.illness_return_json,
     )
     annotate_hrv_decision_context(readiness_packet)
+    data_cutoff = min(now, planned_at)
     history_context = training_history_context(
-        args.date, cutoff=min(now, planned_at),
+        args.date,
+        cutoff=data_cutoff,
         artifacts_dir=ARTIFACTS_DIR,
         xert_activity_loads=load_json_if_exists(source_files["xert_activity_loads"]),
         local_timezone=local_timezone,
@@ -628,6 +675,13 @@ def main() -> None:
         readiness_packet=readiness_packet,
         history_context=history_context,
     )
+    if "xert_workout_capacity" in args.source_overrides_json:
+        target_resolution["capacity_horizon"] = validate_capacity_horizon(
+            load_json_if_exists(source_files["xert_workout_capacity"]) or {},
+            planned_at=max(planned_at, now).isoformat(),
+            next_workout_at=planning_context.get("next_workout_at"),
+            approximation=planning_context.get("capacity_approximation"),
+        )
     initialize_plan_trace(target_resolution)
     annotate_readiness_dose_review(target_resolution, readiness_packet)
     apply_intervals_illness_target_guardrail(
@@ -638,7 +692,7 @@ def main() -> None:
         or {},
     )
     progression_advice = build_progression_advice(
-        day=args.date, cutoff=min(now, planned_at), local_timezone=local_timezone,
+        day=args.date, cutoff=data_cutoff, local_timezone=local_timezone,
         source_files=source_files,
         plan_progression=plan_context.get("progression") or {},
         plan_state_path=args.plan_selection_json["state"],
@@ -680,8 +734,40 @@ def main() -> None:
             ),
         )
     endurance_solver_structure = (
-        (args.quality_workout_json or {}).get("solver_structure")
+        (args.endurance_workout_json or {}).get("structure")
+        or (args.quality_workout_json or {}).get("solver_structure")
     )
+    selected_domain = intensity_decision.get("selected_domain")
+    completed_quality_only = ((args.quality_workout_json or {}).get("status") == "completed"
+                              and not target_resolution.get("endurance_extension"))
+    pure_vt1 = selected_domain in {"vt1", "easy_vt1"} and not completed_quality_only
+    extension = selected_domain in {"vt2", "vo2max", "sprint", "mixed"} and target_resolution.get("endurance_extension")
+    if endurance_solver_structure is not None and (pure_vt1 or extension):
+        selection = args.training_target_json
+        reference = (plan_context["progression"].get("vt1") or {}).get("target_power_w")
+        try:
+            power_review = review_vt1_working_power(
+                endurance_solver_structure, reference, selection.get("vt1_power_choice"), extension_only=bool(extension)
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        target_resolution["vt1_power_review"] = power_review
+        if pure_vt1:
+            role = selection.get("vt1_role") or plan_context["next_role"]
+            if role not in AEROBIC_ROLES:
+                parser.error("Specify vt1_role for the selected aerobic session purpose")
+            review = selection.get("vt1_comparison")
+            comparisons = dose_comparisons(
+                plan_state, role, power_review["working_power_w"], data_cutoff,
+                selected_id=(review or {}).get("activity_id"),
+            )
+            if comparisons["candidates"] and not review:
+                parser.error("Review same-role rides with scripts/vt1_dose.py and supply vt1_comparison")
+            if review and review.get("activity_id") is not None and review["activity_id"] not in {
+                ride["activity_id"] for ride in comparisons["candidates"]
+            }:
+                parser.error("vt1_comparison activity_id must identify an eligible same-role ride")
+            target_resolution["vt1_dose_comparison"] = {**comparisons, "selection_review": review}
     if endurance_solver_structure is not None:
         if split_preference is not None:
             endurance_solver_structure = split_endurance_structure(
@@ -692,8 +778,8 @@ def main() -> None:
         if endurance_solver_structure is None:
             raise SystemExit(
                 "--print-endurance-solver-request requires "
-                "--quality-workout-json with signature, rows, and "
-                "adjustable_row_index"
+                "an independent structure in --endurance-workout-json or "
+                "--quality-workout-json rows/signature/adjustable_row_index"
             )
         print(json.dumps(
             build_endurance_solver_request(
@@ -704,7 +790,22 @@ def main() -> None:
             sort_keys=True,
         ))
         return
+    if args.quality_workout_json is not None:
+        native_quality = args.quality_workout_json["calculation"]
+        expected_quality = endurance_solver_structure
+        if args.quality_workout_json["status"] == "completed":
+            expected_quality = native_quality
+        elif expected_quality is not None and target_resolution.get("endurance_extension"):
+            expected_quality = {**expected_quality, "segments":[
+                segment for index, segment in enumerate(expected_quality["segments"])
+                if index != expected_quality["adjustable_segment_index"]]}
+        args.quality_workout_json["calculation"] = bind_workout_calculation(
+            native_quality, expected_quality or {})
     if args.endurance_workout_json is not None:
+        if "calculation" not in args.endurance_workout_json:
+            parser.error("Final endurance prescription requires a completed calculation")
+        args.endurance_workout_json["calculation"] = bind_workout_calculation(
+            args.endurance_workout_json["calculation"], endurance_solver_structure or {})
         apply_xert_endurance_duration_solution(
             target_resolution,
             calculation={**args.endurance_workout_json["calculation"],
@@ -713,6 +814,17 @@ def main() -> None:
                 intensity_decision.get("selected_domain") or ""
             ),
         )
+        if pure_vt1:
+            solution = target_resolution["endurance_duration_solution"]
+            watts = power_review["working_power_w"]
+            rows = canonical_structure(solution)["segments"]
+            work_seconds = sum(row["duration_seconds"] for row in rows
+                               if row["power"] == watts and row["end_power"] == watts)
+            if work_seconds == 0:
+                parser.error("Final VT1 prescription contains no work at the chosen power")
+            comparison = target_resolution["vt1_dose_comparison"]
+            comparison["prescribed_total_minutes"] = solution["duration_seconds"] / 60
+            comparison["prescribed_steady_work_minutes"] = work_seconds / 60
     require_endurance_solution_for_selected_domain(
         intensity_decision=intensity_decision,
         target_resolution=target_resolution,
@@ -795,9 +907,7 @@ def main() -> None:
         route_session_target_minutes,
         1,
     )
-    workout_bias = recommendation_bias_from_readiness_packet(
-        readiness_packet,
-    )
+    workout_bias = intensity_decision["readiness_ceiling"]
     recommended_training_raw = (
         None if not indoor_available else load_json_if_exists(source_files["xert_recommended_training"])
     )
@@ -845,6 +955,21 @@ def main() -> None:
             available_windows=available_windows,
         )
         write_json(source_files["xert_workouts"], indoor_workouts_packet)
+
+    if "xert_workout_capacity" in args.source_overrides_json:
+        effective_start = max(planned_at, now)
+        sessions = (target_resolution.get("split") or {}).get("sessions") or []
+        if sessions:
+            scheduled_start = instant(sessions[0]["start"], "scheduled workout start")
+            # Scheduler displays minute precision; retain known seconds in the same minute.
+            if scheduled_start.replace(second=0, microsecond=0) != effective_start.astimezone(timezone.utc).replace(second=0, microsecond=0):
+                effective_start = scheduled_start
+        target_resolution["capacity_horizon"] = validate_capacity_horizon(
+            load_json_if_exists(source_files["xert_workout_capacity"]) or {},
+            planned_at=effective_start.isoformat(),
+            next_workout_at=planning_context.get("next_workout_at"),
+            approximation=planning_context.get("capacity_approximation"))
+        target_resolution["recovery_protection_capacity"]["horizon"] = target_resolution["capacity_horizon"]
 
     primary_decision = build_primary_decision(
         readiness_packet=readiness_packet,
@@ -1190,14 +1315,7 @@ def validate_source_override_payload(
             )
 
     if source_name == "xert_workout_capacity":
-        capacity = payload.get("workout_capacity_xss")
-        if not isinstance(capacity, dict) or not isinstance(
-            capacity.get("low"), (int, float)
-        ):
-            raise ValueError(
-                "source override xert_workout_capacity requires numeric "
-                "workout_capacity_xss.low after MCP normalization"
-            )
+        validate_capacity_values(payload)
 
     if source_name == "xert" and not (
         isinstance(payload.get("training_state"), dict)
@@ -1376,6 +1494,8 @@ def parse_planning_context_json(raw: str) -> dict[str, Any]:
             "route",
             "calendar",
             "split_preference",
+            "next_workout_at",
+            "capacity_approximation",
         }
     )
     if unknown_top_level:
@@ -1419,6 +1539,14 @@ def parse_planning_context_json(raw: str) -> dict[str, Any]:
         raise argparse.ArgumentTypeError(
             "--planning-context-json planned_at must belong to date"
         )
+
+    if payload.get("next_workout_at") is not None:
+        try:
+            instant(payload["next_workout_at"], "next_workout_at")
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(str(exc)) from exc
+    if payload.get("capacity_approximation") is not None and not isinstance(payload["capacity_approximation"], dict):
+        raise argparse.ArgumentTypeError("capacity_approximation must be an object with reason and evidence")
 
     availability = payload.get("availability", {"windows": []})
     windows = parse_availability_payload(
@@ -1505,6 +1633,8 @@ def parse_planning_context_json(raw: str) -> dict[str, Any]:
         )
 
     return {
+        "next_workout_at": payload.get("next_workout_at"),
+        "capacity_approximation": payload.get("capacity_approximation"),
         "date": day,
         "local_timezone": timezone_name,
         "now": now.isoformat(timespec="seconds"),
@@ -3084,6 +3214,8 @@ def apply_quality_workout_vt1_composition(
         "quality_workout_status": quality_workout_status,
         "daily_target_xss": round(target_xss, 1),
         "quality_base": {
+            "calculation_binding": quality_calculation.get("calculation_binding"),
+            "canonical_structure": quality_calculation.get("canonical_structure"),
             "source": "xert_workout_calculate",
             "status": quality_workout_status,
             "counted_in_remaining_plan": quality_xss_counted_in_remaining_plan,
@@ -3148,6 +3280,8 @@ def apply_xert_endurance_duration_solution(
 ) -> dict[str, Any]:
     """Apply an Xert-solved endurance duration instead of mixed-history XSS/min."""
 
+    if calculation.get("canonical_structure") and not calculation.get("calculation_binding"):
+        calculation = bind_workout_calculation(calculation, calculation["canonical_structure"])
     selection = target_resolution.get("coaching_selection") or {}
     if selection.get("basis") == "duration" and calculation.get("source") != "local_xert_segment_duration_solver":
         return apply_fixed_duration_calculation(target_resolution, calculation, selected_intensity)
@@ -3234,6 +3368,7 @@ def apply_xert_endurance_duration_solution(
         ),
     }
     target_resolution["endurance_duration_solution"] = {
+        "calculation_binding": calculation.get("calculation_binding"),
         "source": calculation.get("source"),
         "selected_intensity": selected_intensity,
         "signature": calculation.get("signature"),
@@ -3301,6 +3436,7 @@ def apply_fixed_duration_calculation(target, calculation, selected_intensity):
                 adjustable_duration_seconds=durations[index], adjustable_duration_minutes=durations[index]/60)
     target["target_load"] = achieved["total"]
     target["endurance_duration_solution"] = {
+        "calculation_binding": calculation.get("calculation_binding"),
         **canonical,
         "source": "xert_workout_calculate", "duration_minutes": minutes,
         "duration_seconds": round(minutes * 60), "achieved_xss": achieved,
@@ -3329,10 +3465,7 @@ def apply_recovery_protection_capacity(
     quality_low_xss: float | None = None,
 ) -> dict[str, Any] | None:
     """Compare the selected workout with model capacity without modifying it."""
-    systems = capacity.get("workout_capacity_xss")
-    if not isinstance(systems, dict) or number(systems.get("low")) is None:
-        raise ValueError("Xert workout-capacity result has no numeric low capacity")
-    normalized = {key: number(systems.get(key)) for key in ("low", "high", "peak")}
+    normalized = validate_capacity_values(capacity)
     solution = target_resolution.get("endurance_duration_solution") or {}
     composition = target_resolution.get("dose_composition") or {}
     quality = composition.get("quality_base") or {}
@@ -3352,6 +3485,7 @@ def apply_recovery_protection_capacity(
         "status": "model_conflict" if exceeded else "within_model_capacity" if complete else "assessment_pending",
         "review_required": (bool(exceeded) and not accepted) or not complete,
         "automatic_dose_cap": False,
+        "horizon": target_resolution.get("capacity_horizon"),
         "workout_capacity_xss": normalized,
         "selected_workout_xss": actual,
         "exceeded_systems": exceeded,
@@ -4385,6 +4519,8 @@ def build_primary_decision(
             "load_xss": round(target_load, 1),
         },
         "coaching_selection": target_resolution.get("coaching_selection"),
+        **{key: target_resolution[key] for key in ("vt1_power_review", "vt1_dose_comparison")
+           if key in target_resolution},
         "xert_comparison": {"suggested_xss": target_resolution.get("xert_recommended_total_xss"),
             "difference_xss": round(target_load - target_resolution["xert_recommended_total_xss"], 1) if number(target_resolution.get("xert_recommended_total_xss")) is not None else None,
             "capacity": target_resolution.get("recovery_protection_capacity")},
@@ -4471,6 +4607,13 @@ def executable_timeline(
 ) -> dict[str, Any]:
     """Expose exact solver order only when the full solved workout is executable."""
     solution = target.get("endurance_duration_solution") or {}
+    composition = target.get("dose_composition") or {}
+    quality = composition.get("quality_base") or {}
+    if quality.get("counted_in_remaining_plan") and not (composition.get("vt1_filler") or {}).get("duration_minutes"):
+        structure = quality.get("canonical_structure") or {}
+        if structure.get("segments"):
+            solution = {**structure, "source":"xert_workout_calculate",
+                        "duration_seconds":sum(segment["duration_seconds"] for segment in structure["segments"])}
     segments = solution.get("segments") or []
     total = number(solution.get("duration_seconds"))
     if action != "train" or total is None or not segments:
@@ -6963,6 +7106,10 @@ def format_summary(packet: dict[str, Any]) -> str:
             matches=plan_context.get("goal_matches_state"),
         ),
         "COACHING DOSE: " + json.dumps(primary.get("coaching_selection"), ensure_ascii=False),
+        *(["VT1 WORKING POWER: " + json.dumps(primary["vt1_power_review"], ensure_ascii=False)]
+          if "vt1_power_review" in primary else []),
+        *(["VT1 DOSE COMPARISON: " + json.dumps(primary["vt1_dose_comparison"], ensure_ascii=False)]
+          if "vt1_dose_comparison" in primary else []),
         "XERT COMPARISON: " + json.dumps(primary.get("xert_comparison"), ensure_ascii=False),
         *dose_composition_summary_lines(target_resolution),
         "DOSE SEMANTICS: {semantics}; completed activities already accounted for={accounted}".format(
