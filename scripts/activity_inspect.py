@@ -18,7 +18,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from physiological_evidence import MAX_MISSING_FRACTION, MAX_SAMPLE_INTERVAL, vt1_power_band, timeline, quality, field_summary, matched_windows, prepare_windows, numeric
+from physiological_evidence import MAX_MISSING_FRACTION, vt1_power_band, timeline, quality, field_summary, matched_windows, prepare_windows, numeric
 from outdoor_evidence import outdoor_evidence
 
 from analysis import (
@@ -1531,9 +1531,11 @@ def has_gps_like_stream(rows: list[dict[str, str]]) -> bool:
 class TimedSample(dict):
     """Internal row copy retaining source coverage when subsets are filtered."""
 
-    def __init__(self, row, seconds):
+    def __init__(self, row, seconds, nominal_seconds):
         super().__init__(row)
         self.covered_seconds = seconds
+        # Fixed windows must not fill a missed sample with the preceding value.
+        self.continuous_seconds = min(seconds, nominal_seconds)
 
 
 def timed_rows(rows):
@@ -1542,7 +1544,8 @@ def timed_rows(rows):
         return rows
     clock = timeline(rows)
     weights = clock[1] if clock else [0.0] * len(rows)
-    return [TimedSample(row, weight) for row, weight in zip(rows, weights)]
+    nominal = weights[-1]  # timeline assigns the nominal sample period to the last row.
+    return [TimedSample(row, weight, nominal) for row, weight in zip(rows, weights)]
 
 
 def covered_seconds(rows):
@@ -2291,7 +2294,9 @@ def outdoor_vt1_block_quality(
     pedaling_rows = [row for row in moving_rows if outdoor_pedaling_row(row)]
     if covered_seconds(pedaling_rows) < duration_seconds * 0.75:
         return None
-    rolling_60 = rolling_power_by_time(rows, 60, [])
+    rolling_60 = rolling_power_by_time(moving_rows, 60, [])
+    if not any(rolling_60.get(numeric(row, "time")) is not None for row in pedaling_rows):
+        return None
     caps = outdoor_vt1_caps(vt1_watts)
     compliance = {
         str(cap): rolling_cap_summary(
@@ -2979,10 +2984,10 @@ def row_time_value(row: dict[str, str]) -> int | None:
 def rolling_power_by_time(rows, window_seconds, pauses):
     """Time-weighted power over a complete uninterrupted trailing window."""
     return {start: average for start, _, average in
-            rolling_window_averages(rows, "watts", window_seconds, pauses=pauses)}
+            rolling_window_averages(rows, "watts", window_seconds, pauses=pauses, require_continuous=True)}
 
 
-def rolling_window_averages(rows, field, window_seconds, *, pauses=()):
+def rolling_window_averages(rows, field, window_seconds, *, pauses=(), require_continuous=False):
     # Keys are source sample starts. Each trailing window ends at the end of
     # that sample's coverage, retaining the original clock when rows are sliced.
     window = deque()
@@ -2993,7 +2998,8 @@ def rolling_window_averages(rows, field, window_seconds, *, pauses=()):
             window.clear()
             integral = 0.0
             continue
-        end = start + row.covered_seconds
+        width = row.continuous_seconds if require_continuous else row.covered_seconds
+        end = start + width
         sample = numeric(row, field)
         if (window_seconds <= 0 or row.covered_seconds <= 0 or sample is None
                 or any(start < stop + 1 and end > begin for begin, stop in pauses)):
@@ -3005,7 +3011,7 @@ def rolling_window_averages(rows, field, window_seconds, *, pauses=()):
             window.clear()
             integral = 0.0
         window.append([start, end, sample])
-        integral += row.covered_seconds * sample
+        integral += width * sample
         left = end - window_seconds
         while window and window[0][1] <= left:
             a, b, v = window.popleft()
@@ -3045,10 +3051,10 @@ def rolling_cap_summary(
 
 
 def rolling_time_over(series, rows, cap):
-    pairs = [(sample, row.covered_seconds) for row in timed_rows(rows)
+    pairs = [(sample, row.continuous_seconds) for row in timed_rows(rows)
              if (sample := series.get(numeric(row, "time"))) is not None]
     seconds = sum(w for sample, w in pairs if sample >= cap)
-    return {"min": rounded(seconds / 60, digits=1),
+    return {"min": rounded(seconds / 60, digits=1) if pairs else None,
             "pct": weighted_pct(pairs, lambda sample: sample >= cap)}
 
 
@@ -3063,7 +3069,7 @@ def rolling_bouts_over(series, rows, cap, pauses, *, min_seconds=20, max_gap_sec
             if start is not None and last_end - start >= min_seconds:
                 bouts.append((start, last_end - 1))
             start = last_end = None
-        end = time + row.covered_seconds
+        end = time + row.continuous_seconds
         sample = series.get(numeric(row, "time"))
         over = outdoor_moving_row(row, pauses) and isinstance(sample, (int, float)) and sample >= cap
         if over:
@@ -4517,7 +4523,7 @@ def hr_recovery_after_block(
     window_seconds: int = 60,
 ) -> dict[str, Any] | None:
     end_index = block.get("end_index")
-    if type(end_index) is not int or not 0 < end_index < len(rows):
+    if window_seconds <= 0 or type(end_index) is not int or not 0 < end_index < len(rows):
         return None
     rows = timed_rows(rows)
     previous = rows[end_index - 1]
@@ -4527,7 +4533,7 @@ def hr_recovery_after_block(
     if start_hr is None or previous_time is None or boundary is None:
         return {"status": "unavailable", "reason": "invalid_work_end_sample"}
     gap = boundary - previous_time
-    if not 0 < gap <= min(previous.covered_seconds, MAX_SAMPLE_INTERVAL) + 1e-6:
+    if not 0 < gap <= previous.continuous_seconds + 1e-6:
         return {"status": "unavailable", "reason": "discontinuous_work_to_recovery",
                 "last_work_sample_s": previous_time, "first_recovery_sample_s": boundary,
                 "boundary_gap_s": gap}
@@ -4543,7 +4549,7 @@ def hr_recovery_after_block(
             break
         window.append(row)
         times.append(t)
-        widths.append(min(row.covered_seconds, MAX_SAMPLE_INTERVAL, stop - t))
+        widths.append(min(row.continuous_seconds, stop - t))
     clock = (times, widths, window_seconds)
     q = quality(window, "heartrate", clock=clock)
     if not math.isclose(q["valid_seconds"], window_seconds, rel_tol=0, abs_tol=1e-6):

@@ -287,7 +287,16 @@ fall from the start to the minimum over the entire recovery block; use its
 fall. A `fixed_post_work_window` instead reports the fall from the last work
 sample to the minimum within `window_s`; it is not necessarily the difference
 at the exact window endpoint. Neither metric establishes whole-body recovery
-or unusually fast recovery without suitable comparison context.
+or unusually fast recovery without suitable comparison context. Report a fixed-window
+pulse drop only when the work-end sample connects to the first recovery sample and
+valid heart-rate observations cover the full window. Read the reported reason
+when coverage is incomplete.
+
+For VT1 pacing, 30- and 60-second rolling power require continuous valid power
+for the stated duration. Start a new window after a recording gap, invalid power
+or pause. Both fixed-window checks credit each observation with at most the
+recording's nominal sample period. An irregularly sampled stretch can therefore
+have insufficient coverage even when the elapsed time is long enough.
 
 ## Measurement Eligibility And Comparison Windows
 

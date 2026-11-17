@@ -362,6 +362,30 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(result['start_s'], 600)
             self.assertNotIn('recovery_score',result)
 
+    def test_recovery_cannot_start_after_a_recording_gap(self):
+        times = list(range(60)) + list(range(359, 419))
+        rows = [{"time": t, "heartrate": 170 if t < 60 else 115} for t in times]
+        result = hr_recovery_after_block(rows, {"end_index": 60})
+        self.assertEqual(result["status"], "unavailable")
+        self.assertEqual(result["reason"], "discontinuous_work_to_recovery")
+        self.assertEqual(result["boundary_gap_s"], 300)
+        self.assertNotIn("drop_bpm", result)
+
+    def test_recovery_needs_valid_hr_throughout_the_full_window(self):
+        for step in (1, 5, 10):
+            baseline = [{"time": t, "heartrate": 160 if t < 120 else 140}
+                        for t in range(0, 180, step)]
+            end_index = 120 // step
+            self.assertEqual(hr_recovery_after_block(baseline, {"end_index": end_index})["drop_bpm"], 20)
+            for rows in (baseline[:-1], [row for row in baseline if row["time"] != 150],
+                         [dict(row, heartrate=None) if row["time"] == 150 else row
+                                         for row in baseline]):
+                with self.subTest(step=step):
+                    result = hr_recovery_after_block(rows, {"end_index": end_index})
+                    self.assertEqual(result["status"], "unavailable")
+                    self.assertFalse(result["data_quality"]["usable"])
+                    self.assertNotIn("drop_bpm", result)
+
     def test_whole_pause_hr_drop_is_distinct_from_fixed_window(self):
         from activity_inspect import brief_recovery
         for step in [1, 5]:

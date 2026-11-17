@@ -102,6 +102,35 @@ class Vt1TimeTests(unittest.TestCase):
         series = {int(r['time']): float(r['watts']) for r in rows}
         self.assertEqual(rolling_time_over(series, pedaling, 230)['pct'], 45.5)
 
+    def test_rolling_windows_require_full_uninterrupted_coverage(self):
+        for seconds in (30, 60):
+            for step in (1, 5, 10):
+                rows = [{"time": t, "watts": 200 if t < seconds else 260}
+                        for t in range(0, 2 * seconds, step)]
+                rolled = rolling_power_by_time(rows, seconds, [])
+                self.assertTrue(all(rolled[t] is None for t in range(0, seconds-step, step)))
+                self.assertEqual(rolled[seconds-step], 200)
+                self.assertAlmostEqual(rolled[seconds], 200 + 60*step/seconds)
+                self.assertEqual(rolled[2*seconds-step], 260)
+
+    def test_gap_pause_or_invalid_power_restarts_the_rolling_window(self):
+        rows = [{"time": t, "watts": 240} for t in range(180)]
+        for interrupted, pauses, restart in (
+            ([row for row in rows if not 60 <= row["time"] < 90], [], 90),
+            ([row for row in rows if row["time"] != 60], [], 61),
+            ([dict(row, watts="nan") if row["time"] == 60 else row for row in rows], [], 61),
+            (rows, [(60, 69)], 70),
+        ):
+            rolled = rolling_power_by_time(interrupted, 60, pauses)
+            self.assertEqual(rolled[59], 240)
+            self.assertIsNone(rolled[restart+58])
+            self.assertEqual(rolled[restart+59], 240)
+        short = outdoor_vt1_pacing(rows[:30], vt1_watts=240, pauses=[], auto_triggered=False)
+        self.assertEqual(short["assessment"]["verdict"], "power_pacing_unavailable")
+        self.assertNotIn("quality_scores", short)
+        self.assertIsNone(rolling_time_over(rolling_power_by_time(rows[:30], 60, []),
+                                            rows[:30], 230)["min"])
+
     def test_missing_time_is_not_work_and_splits_bouts(self):
         rows = timed_rows([{'time': str(t), 'watts': '240'}
                            for t in list(range(0, 60, 5)) + list(range(120, 180, 5))])
