@@ -4970,10 +4970,19 @@ def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
 
     base_minutes = number(base.get("minutes"))
     base_load = number(base.get("load_xss"))
-    changed = final_minutes != base_minutes or final_load != base_load
-    recalculated = bool(endurance_solution)
+    # Composition rounds display values; that is not a prescription change.
+    changed = any(
+        before != after if before is None or after is None
+        else not math.isclose(before, after, rel_tol=0, abs_tol=0.05)
+        for before, after in ((base_minutes, final_minutes), (base_load, final_load))
+    )
+    recalculated = bool(endurance_solution) and changed
+    reduced_by_guardrail = changed and bool(illness.get("active") or domain_cap.get("active"))
     trace["adjustment"] = {
-        "status": "recalculated" if recalculated else "reduced" if changed else "unchanged",
+        "status": (
+            "recalculated" if recalculated else "reduced" if reduced_by_guardrail
+            else "adjusted" if changed else "unchanged"
+        ),
         "types": adjustment_types,
         "reasons": reasons
         or [
@@ -4989,8 +4998,8 @@ def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
             "recalculated_for_selected_domain"
             if recalculated
             else "reduced_by_guardrail"
-            if changed
-            else "same_as_base"
+            if reduced_by_guardrail
+            else "adjusted_prescription" if changed else "same_as_base"
         ),
     }
 

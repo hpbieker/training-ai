@@ -2325,6 +2325,26 @@ class AcuteReadinessGuardrailTests(unittest.TestCase):
         )
         self.assertIn("xert_recovery_training_diagnostic", target)
 
+    def test_trace_distinguishes_rounding_adjustment_and_guardrail_reduction(self):
+        for final_load, solver, guardrail, status, relationship in (
+            (35.0, False, False, "unchanged", "same_as_base"),
+            (35.0, True, False, "unchanged", "same_as_base"),
+            (40.0, False, False, "adjusted", "adjusted_prescription"),
+            (40.0, True, False, "recalculated", "recalculated_for_selected_domain"),
+            (30.0, False, True, "reduced", "reduced_by_guardrail"),
+        ):
+            with self.subTest(final_load=final_load, solver=solver, guardrail=guardrail):
+                target = {"target_minutes": 34, "target_load": 34.9689}
+                initialize_plan_trace(target)
+                target["target_load"] = final_load
+                if solver:
+                    target["endurance_duration_solution"] = {"duration_seconds": 2040}
+                if guardrail:
+                    target["readiness_domain_cap"] = {"active": True, "max_minutes": 34, "max_load": 30}
+                finalize_plan_trace(target)
+                self.assertEqual(target["plan_trace"]["adjustment"]["status"], status)
+                self.assertEqual(target["plan_trace"]["final_plan"]["relationship_to_base"], relationship)
+
     def test_dose_review_is_independent_of_yesterday_and_composite_score(self):
         target = {
             "source": "xert_training_advice_target_xss",
