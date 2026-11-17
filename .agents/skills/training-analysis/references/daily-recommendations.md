@@ -187,6 +187,8 @@ fatigue at this point in training. If otherwise well, check perceived effort at
 familiar easy power during warm-up and defer hard work if it still feels
 unusually demanding. The helper's fatigue flag prompts this review. Choosing
 watts or minutes requires additional evidence about the athlete and session.
+A multiday cycling study supports tracking changes in perceived fatigue and
+readiness together. [Ten Haaf et al.](https://pubmed.ncbi.nlm.nih.gov/27834554/)
 
 ## Illness And Return
 
@@ -280,6 +282,12 @@ episode disappearing from a source window must not silently clear the return.
   constrained by available time. Do not automatically schedule the difference
   to `xss_deficit`, and do not let XATA phase, focus, or suitability replace the
   active plan's selected intensity role or workout structure.
+- Count completed activities through the earlier of the decision time and
+  the planned start. Apply the same cutoff to rolling volume, XSS matches,
+  the typical-day baseline and historical progression sessions. A workout in
+  progress has yet to contribute its completed dose. Add the proposed
+  remaining volume separately. For a historical replay use the plan state
+  and source snapshots available at the time of the decision.
 - Treat rolling seven-day totals as descriptive context. Do not use a historical
   percentile unless its metric, coverage period, complete-window count, and
   validation status are explicit. Never mix XSS with Intervals or Garmin load.
