@@ -113,6 +113,10 @@ class GarminConnectMcpTests(unittest.TestCase):
     @patch.object(MCP, "compact_recent_payload")
     @patch.object(MCP, "fetch_recent_days")
     def test_list_health_days_filters_nested_metrics(self, fetch_recent, compact_recent) -> None:
+        schemas = {tool["name"]: tool["inputSchema"]["properties"] for tool in self.service.list_tools()}
+        query_fields = {"filters", "sort", "limit"}
+        self.assertTrue(query_fields <= schemas["list_health_days"].keys())
+        self.assertTrue(query_fields.isdisjoint(schemas["get_health_day"]))
         fetch_recent.return_value = {"days": []}
         compact_recent.return_value = {"days": [
             {"date": "2026-08-16", "sources": {"hrv": {"lastNightAvg": 45}}},

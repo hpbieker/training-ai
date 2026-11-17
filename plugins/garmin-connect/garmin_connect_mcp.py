@@ -138,7 +138,6 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "date": {"type": "string", "format": "date"},
                 "sources": _SOURCE_ARRAY,
                 "tolerate_errors": {"type": "boolean", "default": True},
-                **query_properties(_HEALTH_DAY_FILTER_FIELDS),
                 "save_full": {
                     "type": "boolean",
                     "default": False,
@@ -168,6 +167,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "days": {"type": "integer", "minimum": 1, "maximum": 31, "default": 7},
                 "sources": _SOURCE_ARRAY,
                 "tolerate_errors": {"type": "boolean", "default": True},
+                **query_properties(_HEALTH_DAY_FILTER_FIELDS),
             },
             "required": ["until"],
             "additionalProperties": False,
