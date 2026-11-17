@@ -4518,7 +4518,7 @@ def executable_dose_segments(
         if allocated_segments:
             return [
                 {
-                    "role": str(segment.get("role") or fallback_intensity),
+                    "role": fallback_intensity if segment.get("role") in (None, "workout") else str(segment["role"]),
                     "duration_minutes": round(
                         number(segment.get("duration_minutes")) or 0.0,
                         1,
@@ -6991,8 +6991,8 @@ def format_summary(packet: dict[str, Any]) -> str:
                 if no_training_today
                 else "FORM CHECK REQUIRED; illness return unresolved; review symptoms and exercise response before training"
                 if form_check_needed
-                else "RETURN-TO-TRAINING RAMP DAY {day}; use {guidance}, no intensity".format(
-                    day=health_constraints.get("illness_return_phase"),
+                else "RETURN-TO-TRAINING PHASE {phase}; use {guidance} min, no quality intensity".format(
+                    phase=health_constraints.get("illness_return_phase"),
                     guidance=(health_constraints.get("return_to_training_guidance") or {}).get(
                         "duration_minutes"
                     ),
@@ -7616,8 +7616,8 @@ def executable_now_line(primary: dict[str, Any]) -> str:
             )
         elif role == "active_recovery":
             labels.append(f"{minutes} min ACTIVE_RECOVERY")
-        elif role == "vt1":
-            labels.append(f"{minutes} min VT1")
+        elif role in {"vt1", "easy_vt1", "recovery"}:
+            labels.append(f"{minutes} min {role.upper()}")
         else:
             labels.append(f"{minutes} min {role.upper()} quality workout")
     return " + ".join(labels)

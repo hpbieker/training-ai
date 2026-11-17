@@ -1083,6 +1083,27 @@ class PlanningContextTests(unittest.TestCase):
 
 
 class RecommendationSummaryTests(unittest.TestCase):
+    def test_allocated_aerobic_workout_uses_selected_intensity_in_summary(self):
+        from recommend_training import executable_dose_segments
+        for role in ("vt1", "easy_vt1", "recovery", "vt2"):
+            with self.subTest(role=role):
+                segments = executable_dose_segments(
+                    None, executable_minutes=30, fallback_intensity=role,
+                    allocated_segments=[{"role": "workout", "duration_minutes": 30}],
+                )
+                self.assertEqual(segments[0]["role"], role)
+                line = executable_now_line({"executable_now": {"segments": segments}})
+                self.assertIn(role.upper(), line)
+                self.assertEqual("quality workout" in line, role == "vt2")
+
+    def test_illness_return_summary_names_the_phase_and_duration(self):
+        summary = format_summary({"llm_context": {"health_constraints": {
+            "return_to_training_active": True,
+            "illness_return_phase": "exercise_challenge",
+            "return_to_training_guidance": {"duration_minutes": 15},
+        }}})
+        self.assertIn("RETURN-TO-TRAINING PHASE exercise_challenge; use 15 min", summary)
+
     def test_future_freshness_separates_current_sources_from_tomorrow_signals(self):
         freshness = compact_freshness_summary(
             {},
