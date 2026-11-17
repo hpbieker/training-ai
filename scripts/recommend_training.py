@@ -628,9 +628,7 @@ def main() -> None:
     progression_advice = build_progression_advice(
         day=args.date,
         source_files=source_files,
-        recommendations_dir=args.output_dir,
         plan_progression=plan_context.get("progression") or {},
-        preferred_workout_name_contains=preferred_workout_name,
     )
     intensity_decision = select_intensity_domain(
         day=args.date,
@@ -2065,45 +2063,29 @@ def build_progression_advice(
     *,
     day: str,
     source_files: dict[str, Path],
-    recommendations_dir: Path,
     plan_progression: dict[str, Any],
-    preferred_workout_name_contains: str | None = None,
 ) -> dict[str, Any]:
-    """Run workout-family progression advisors as context, not as day readiness."""
-
+    """Collect evidence without a competing progression ladder or default power."""
     advice = {}
     for workout_type, key in (("vt2", "progression_vt2"), ("vo2max", "progression_vo2max")):
+        family = plan_progression.get(workout_type) or {}
         command = [
-            sys.executable,
-            "-B",
-            "scripts/progression_advisor.py",
-            "--type",
-            workout_type,
-            "--date",
-            day,
-            "--recommendations-dir",
-            str(recommendations_dir),
-            "--xert-recommended-training-json",
-            str(source_files["xert_recommended_training"]),
-            "--output",
-            str(source_files[key]),
+            sys.executable, "-B", "scripts/progression_advisor.py",
+            "--type", workout_type, "--date", day,
+            "--plan-progression-json", json.dumps(family),
+            "--output", str(source_files[key]),
         ]
-        if preferred_workout_name_contains:
-            command.append(f"--preferred-workout-name-contains={preferred_workout_name_contains}")
-        if workout_type == "vt2":
-            target_power_w = required_plan_target_power(
-                plan_progression,
-                workout_type="vt2",
-            )
-            command.extend(["--vt2-watts", f"{target_power_w:g}"])
+        reference_power = number(family.get("target_power_w"))
+        if reference_power is not None and reference_power > 0:
+            command.extend([f"--{workout_type}-watts", f"{reference_power:g}"])
         payload = run_json(command)
         write_json(source_files[key], payload)
         advice[workout_type] = payload
     return {
         "meaning": (
-            "Progression advisors do not decide whether the athlete is fresh enough "
-            "today. They only describe the next sensible progression step if that "
-            "workout family is chosen by the coach/LLM layer."
+            "Historical evidence requires coaching synthesis. The selected plan and "
+            "explicit quality workout own the next dose; these helpers never prescribe "
+            "progression or establish current readiness."
         ),
         **advice,
     }

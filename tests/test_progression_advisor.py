@@ -14,6 +14,9 @@ from progression_advisor import (
     CandidateActivity,
     infer_prescription_from_intervals,
     inspect_activities,
+    compact_inspect_summary,
+    parse_completed_prescription,
+    progression_review,
 )
 
 
@@ -68,34 +71,90 @@ class BatchedActivityInspectionTests(unittest.TestCase):
             )
 
 
-class PreferredWorkoutNameTests(unittest.TestCase):
-    def test_cli_prefers_name_text_and_falls_back_to_a_matching_workout(self):
-        script = Path(__file__).resolve().parents[1] / "scripts" / "progression_advisor.py"
-        library = "Library VT2 2x12 min @ 250W"
-        preferred = "VT2 2x13 min @ 250W (Personal)"
-        unrelated = "VO2Max (Personal)"
+class ProgressionReviewTests(unittest.TestCase):
+    def test_unknown_or_mechanical_response_never_prescribes_a_dose(self):
+        for family, current in (("vt2", {"sets": 3, "rep_minutes": 23}),
+                                ("vo2max", {"sets": 1, "reps_per_set": 5, "rep_seconds": 180})):
+            for stability in ("unknown", "stable", "unstable_or_failed"):
+                with self.subTest(family=family, stability=stability):
+                    summary = compact_inspect_summary({}, workout_type=family)
+                    summary["stability"] = stability
+                    result = progression_review(
+                        [{"completed_prescription": current, "inspect_summary": summary}],
+                        plan_progression={})
+                    self.assertEqual(result["status"], "requires_review")
+                    self.assertIsNone(result["next_step"]["prescription"])
+                    self.assertNotIn("looked controlled", result["coach_summary"])
+                    self.assertEqual(result["current_level"], current)
+
+    def test_plan_anchor_and_conditional_next_step_are_preserved(self):
+        plan = {"anchor": "3 x 28 min @ 300 W", "target_power_w": 295,
+                "next_step": "Review recovery before choosing consolidation or 3x30 at 300 W."}
+        result = progression_review([], plan_progression=plan)
+        self.assertEqual(result["plan_progression"], plan)
+        self.assertIsNone(result["next_step"]["prescription"])
+        self.assertEqual(result["status"], "requires_review")
+
+    def test_cli_without_history_or_power_does_not_invent_workout(self):
+        script = Path(__file__).resolve().parents[1] / "scripts/progression_advisor.py"
         with TemporaryDirectory() as folder:
-            directory = Path(folder)
-            source = directory / "workouts.json"
-            command = [
-                sys.executable, "-B", str(script), "--type", "vt2", "--date", "2026-01-15",
-                "--vt2-watts", "250", "--artifacts-dir", str(directory),
-                "--xert-recommended-training-json", str(source),
-            ]
-            for preferred_name, names, expected in (
-                ("personal", [library, preferred, unrelated], preferred),
-                (None, [library, preferred, unrelated], library),
-                ("personal", [library, unrelated], library),
-            ):
-                with self.subTest(preferred_name=preferred_name, expected=expected):
-                    source.write_text(json.dumps({
-                        "exercises": [{"exerciseType": "Workout", "name": name} for name in names],
-                    }))
-                    args = command + (
-                        ["--preferred-workout-name-contains", preferred_name] if preferred_name else []
-                    )
-                    result = json.loads(subprocess.check_output(args))
-                    self.assertEqual(result["matching_existing_workouts"]["best"]["name"], expected)
+            for family in ("vt2", "vo2max"):
+                result = json.loads(subprocess.check_output([
+                    sys.executable, "-B", str(script), "--type", family,
+                    "--date", "2026-01-15", "--artifacts-dir", folder,
+                    "--plan-progression-json", '{"next_step":"Review recovery"}',
+                ]))
+                self.assertEqual(result["status"], "requires_review")
+                self.assertIsNone(result["next_step"]["prescription"])
+                self.assertEqual(result["plan_progression"]["next_step"], "Review recovery")
+
+    def test_history_does_not_invent_power_or_recoveries(self):
+        for family, name in (("vt2", "VT2 3x23 min"), ("vo2max", "VO2Max 1x5x180")):
+            result = parse_completed_prescription(name, workout_type=family)
+            self.assertIsNone(result["target_power_w"])
+            self.assertIsNone(result["recoveries"])
+            powered = parse_completed_prescription(name + " @ 350 W", workout_type=family)
+            self.assertEqual(powered["target_power_w"], 350)
+
+    def test_plan_structure_survives_recommendation_selection(self):
+        from recommend_training import select_intensity_domain
+        plan = {"anchor": "8 x 3 min @ 350 W",
+                "next_step": "After recovery review, consider 6 x 3 min @ 355 W."}
+        advice = progression_review([], plan_progression=plan)
+        decision = select_intensity_domain(day="2026-11-17", readiness_ceiling="high_intensity_ok",
+            intensity_goal="vo2max", progression_advice={"vo2max": advice},
+            plan_progression={"vo2max": plan})
+        self.assertEqual(decision["selected_domain"], "vo2max")
+        self.assertEqual(decision["progression_next_step"]["summary"], plan["next_step"])
+        self.assertEqual(decision["progression_next_step"]["anchor"], plan["anchor"])
+        self.assertEqual(decision["progression_next_step"]["source"], "plan_state")
+
+    @patch("progression_advisor.subprocess.run")
+    def test_missing_vt2_reference_does_not_use_analysis_default(self, run):
+        activity = BatchedActivityInspectionTests().activity("one")
+        result = inspect_activities([activity], args=Namespace(type="vt2", vt2_watts=None))
+        run.assert_not_called()
+        self.assertEqual(result[0]["inspect_summary"]["stability"], "unknown")
+
+    @patch("recommend_training.write_json")
+    @patch("recommend_training.run_json", return_value={"status": "requires_review"})
+    def test_orchestration_passes_both_plan_references_without_defaults(self, run, write):
+        from recommend_training import build_progression_advice
+        for power in (350, None):
+            run.reset_mock()
+            plan = {"vt2": {"target_power_w": 300}, "vo2max": {"next_step": "Review recovery"}}
+            if power is not None:
+                plan["vo2max"]["target_power_w"] = power
+            build_progression_advice(day="2026-11-17", plan_progression=plan,
+                source_files={"progression_vt2": Path("vt2.json"), "progression_vo2max": Path("vo2.json")})
+            commands = [call.args[0] for call in run.call_args_list]
+            self.assertEqual(commands[0][commands[0].index("--vt2-watts") + 1], "300")
+            self.assertEqual(json.loads(commands[1][commands[1].index("--plan-progression-json") + 1]), plan["vo2max"])
+            if power is None:
+                self.assertNotIn("--vo2max-watts", commands[1])
+            else:
+                self.assertEqual(commands[1][commands[1].index("--vo2max-watts") + 1], "350")
+            self.assertNotIn("380", commands[1])
 
 
 class InferredVt2PrescriptionTests(unittest.TestCase):
@@ -108,7 +167,7 @@ class InferredVt2PrescriptionTests(unittest.TestCase):
         }
 
         self.assertIsNone(
-            infer_prescription_from_intervals(metadata, workout_type="vt2")
+            infer_prescription_from_intervals(metadata, workout_type="vt2", target_power_w=295)
         )
 
     def test_accepts_multiple_threshold_power_work_rows(self):
@@ -120,7 +179,7 @@ class InferredVt2PrescriptionTests(unittest.TestCase):
         }
 
         prescription = infer_prescription_from_intervals(
-            metadata, workout_type="vt2"
+            metadata, workout_type="vt2", target_power_w=295
         )
 
         self.assertEqual(prescription["sets"], 2)
