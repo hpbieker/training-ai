@@ -9,6 +9,7 @@ instead of ad hoc one-off snippets or oversized terminal output.
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import hashlib
 from datetime import datetime, timezone
 import json
@@ -17,7 +18,7 @@ from pathlib import Path
 import re
 from typing import Any
 
-from physiological_evidence import MAX_MISSING_FRACTION, vt1_power_band, timeline, quality, field_summary, matched_windows, prepare_windows, numeric
+from physiological_evidence import MAX_MISSING_FRACTION, MAX_SAMPLE_INTERVAL, vt1_power_band, timeline, quality, field_summary, matched_windows, prepare_windows, numeric
 from outdoor_evidence import outdoor_evidence
 
 from analysis import (
@@ -37,7 +38,6 @@ from analysis import (
 )
 
 
-MAX_RECOVERY_INTERVAL = 10
 ANALYSIS_FORMAT_VERSION = 2
 
 DEFAULT_FIELDS = [
@@ -2028,7 +2028,7 @@ def outdoor_vt1_pacing(
         "30s": rolling_power_by_time(rows, 30, pause_ranges),
         "60s": rolling_power_by_time(rows, 60, pause_ranges),
     }
-    if not any(rolling["60s"].get(row_time_value(row)) is not None for row in pedaling_rows):
+    if not any(rolling["60s"].get(numeric(row, "time")) is not None for row in pedaling_rows):
         coverage["reasons"].append("no_evaluable_pedaling_windows")
         return result
     rolling_compliance = {
@@ -2719,7 +2719,7 @@ def restart_spike_after_stop(
         time = row_time_value(row)
         if time is None:
             continue
-        power = rolling_30.get(time)
+        power = rolling_30.get(numeric(row, "time"))
         if not isinstance(power, (int, float)):
             continue
         if best_power is None or power > best_power:
@@ -2977,25 +2977,44 @@ def row_time_value(row: dict[str, str]) -> int | None:
 
 
 def rolling_power_by_time(rows, window_seconds, pauses):
-    queue = []
-    rolled = {}
+    """Time-weighted power over a complete uninterrupted trailing window."""
+    return {start: average for start, _, average in
+            rolling_window_averages(rows, "watts", window_seconds, pauses=pauses)}
+
+
+def rolling_window_averages(rows, field, window_seconds, *, pauses=()):
+    # Keys are source sample starts. Each trailing window ends at the end of
+    # that sample's coverage, retaining the original clock when rows are sliced.
+    window = deque()
+    integral = 0.0
     for row in timed_rows(rows):
-        time = row_time_value(row)
-        if time is None:
+        start = numeric(row, "time")
+        if start is None:
+            window.clear()
+            integral = 0.0
             continue
-        end = time + row.covered_seconds
-        watts = value(row, 'watts')
-        if not outdoor_moving_row(row, pauses):
-            queue.clear()
-        elif watts is not None:
-            queue.append((time, end, watts))
-        cutoff = end - window_seconds
-        while queue and queue[0][1] <= cutoff:
-            queue.pop(0)
-        pairs = [(w, max(0, stop - max(start, cutoff))) for start, stop, w in queue]
-        duration = sum(weight for _, weight in pairs)
-        rolled[time] = weighted_mean(pairs) if duration >= window_seconds / 2 else None
-    return rolled
+        end = start + row.covered_seconds
+        sample = numeric(row, field)
+        if (window_seconds <= 0 or row.covered_seconds <= 0 or sample is None
+                or any(start < stop + 1 and end > begin for begin, stop in pauses)):
+            window.clear()
+            integral = 0.0
+            yield start, end, None
+            continue
+        if window and not math.isclose(start, window[-1][1], rel_tol=0, abs_tol=1e-6):
+            window.clear()
+            integral = 0.0
+        window.append([start, end, sample])
+        integral += row.covered_seconds * sample
+        left = end - window_seconds
+        while window and window[0][1] <= left:
+            a, b, v = window.popleft()
+            integral -= (b - a) * v
+        if window[0][0] < left:
+            integral -= (left - window[0][0]) * window[0][2]
+            window[0][0] = left
+        average = integral / window_seconds if window[0][0] <= left + 1e-6 else None
+        yield start, end, average
 
 
 def rolling_cap_summary(
@@ -3026,8 +3045,8 @@ def rolling_cap_summary(
 
 
 def rolling_time_over(series, rows, cap):
-    pairs = [(series[row_time_value(row)], row.covered_seconds) for row in timed_rows(rows)
-             if isinstance(series.get(row_time_value(row)), (int, float))]
+    pairs = [(sample, row.covered_seconds) for row in timed_rows(rows)
+             if (sample := series.get(numeric(row, "time"))) is not None]
     seconds = sum(w for sample, w in pairs if sample >= cap)
     return {"min": rounded(seconds / 60, digits=1),
             "pct": weighted_pct(pairs, lambda sample: sample >= cap)}
@@ -3045,7 +3064,7 @@ def rolling_bouts_over(series, rows, cap, pauses, *, min_seconds=20, max_gap_sec
                 bouts.append((start, last_end - 1))
             start = last_end = None
         end = time + row.covered_seconds
-        sample = series.get(time)
+        sample = series.get(numeric(row, "time"))
         over = outdoor_moving_row(row, pauses) and isinstance(sample, (int, float)) and sample >= cap
         if over:
             if start is None:
@@ -4446,36 +4465,10 @@ def rolling_best(
     *,
     digits: int,
 ) -> dict[str, Any] | None:
-    from collections import deque
-    clock = timeline(rows)
-    if clock is None or window_seconds <= 0:
-        return None
-    # Integrate contiguous source-time intervals; never stitch across missing
-    # samples or a paused clock. Works for regular and irregular recordings.
-    window = deque()
-    integral = 0.0
     best = None
-    for row, start, width in zip(rows, clock[0], clock[1]):
-        sample = numeric(row, field)
-        if sample is None or (window and start > window[-1][1] + 1e-6):
-            window.clear()
-            integral = 0.0
-        if sample is None:
-            continue
-        end = start + width
-        window.append([start, end, sample])
-        integral += width * sample
-        left = end - window_seconds
-        while window and window[0][1] <= left:
-            a, b, v = window.popleft()
-            integral -= (b - a) * v
-        if window and window[0][0] < left:
-            integral -= (left - window[0][0]) * window[0][2]
-            window[0][0] = left
-        if window and end - window[0][0] >= window_seconds - 1e-6:
-            average = integral / window_seconds
-            if best is None or average > best[0]:
-                best = (average, left, end, start)
+    for start, end, average in rolling_window_averages(rows, field, window_seconds):
+        if average is not None and (best is None or average > best[0]):
+            best = (average, end - window_seconds, end, start)
     if best is None:
         return None
     average, start, end, last_sample = best
@@ -4524,19 +4517,42 @@ def hr_recovery_after_block(
     window_seconds: int = 60,
 ) -> dict[str, Any] | None:
     end_index = block.get("end_index")
-    if not isinstance(end_index, int) or end_index >= len(rows):
+    if type(end_index) is not int or not 0 < end_index < len(rows):
         return None
-    boundary = value(rows[end_index], "time")
-    previous = rows[max(0, end_index - 1)]
-    start_hr = value(previous, "heartrate")
-    if boundary is None or start_hr is None or not timeline(rows[max(0, end_index-1):end_index+1]):
-        return None
-    window = [row for row in rows[end_index:] if (t := value(row, "time")) is not None and boundary <= t < boundary + window_seconds]
-    q = quality(window, "heartrate")
-    if not q["usable"] or q.get("duration_seconds", 0) < window_seconds - MAX_RECOVERY_INTERVAL:
+    rows = timed_rows(rows)
+    previous = rows[end_index - 1]
+    previous_time = numeric(previous, "time")
+    boundary = numeric(rows[end_index], "time")
+    start_hr = numeric(previous, "heartrate")
+    if start_hr is None or previous_time is None or boundary is None:
+        return {"status": "unavailable", "reason": "invalid_work_end_sample"}
+    gap = boundary - previous_time
+    if not 0 < gap <= min(previous.covered_seconds, MAX_SAMPLE_INTERVAL) + 1e-6:
+        return {"status": "unavailable", "reason": "discontinuous_work_to_recovery",
+                "last_work_sample_s": previous_time, "first_recovery_sample_s": boundary,
+                "boundary_gap_s": gap}
+
+    window = []
+    times = []
+    widths = []
+    stop = boundary + window_seconds
+    for index in range(end_index, len(rows)):
+        row = rows[index]
+        t = numeric(row, "time")
+        if t is None or t >= stop:
+            break
+        window.append(row)
+        times.append(t)
+        widths.append(min(row.covered_seconds, MAX_SAMPLE_INTERVAL, stop - t))
+    clock = (times, widths, window_seconds)
+    q = quality(window, "heartrate", clock=clock)
+    if not math.isclose(q["valid_seconds"], window_seconds, rel_tol=0, abs_tol=1e-6):
+        q["usable"] = False
+        q["reasons"].append("incomplete_fixed_window_coverage")
+    if not q["usable"]:
         return {"status": "unavailable", "data_quality": q, "reason": "incomplete_or_invalid_recovery_window"}
-    summary = field_summary(window, "heartrate")
-    low_row = min((row for row in window if value(row, "heartrate") is not None), key=lambda row: value(row, "heartrate"))
+    low_row = min(window, key=lambda row: numeric(row, "heartrate"))
+    low_hr = numeric(low_row, "heartrate")
     return {
         "status": "observed", "interpretation": "HR decline only; not whole-body recovery",
         "statistics_scope": "fixed_post_work_window",
@@ -4544,9 +4560,9 @@ def hr_recovery_after_block(
         "window_s": window_seconds, "start_s": boundary,
         "end_s_exclusive": boundary + window_seconds,
         "minimum_at_s": value(low_row, "time"),
-        "start_hr": rounded(start_hr, digits=0), "low_hr": rounded(summary["min"], digits=0),
-        "drop_bpm": rounded(start_hr - summary["min"], digits=0),
-        "recovery_power": field_summary(window, "watts"), "data_quality": q,
+        "start_hr": rounded(start_hr, digits=0), "low_hr": rounded(low_hr, digits=0),
+        "drop_bpm": rounded(start_hr - low_hr, digits=0),
+        "recovery_power": field_summary(window, "watts", clock=clock), "data_quality": q,
     }
 
 
