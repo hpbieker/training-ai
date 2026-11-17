@@ -637,7 +637,7 @@ def main() -> None:
         or {},
     )
     progression_advice = build_progression_advice(
-        day=args.date,
+        day=args.date, cutoff=min(now, planned_at), local_timezone=local_timezone,
         source_files=source_files,
         plan_progression=plan_context.get("progression") or {},
         plan_state_path=args.plan_selection_json["state"],
@@ -2082,6 +2082,8 @@ def run_json_to_file(command: list[str], path: Path) -> None:
 def build_progression_advice(
     *,
     day: str,
+    cutoff: datetime,
+    local_timezone: Any,
     source_files: dict[str, Path],
     plan_progression: dict[str, Any],
     plan_state_path: Path,
@@ -2093,6 +2095,7 @@ def build_progression_advice(
         command = [
             sys.executable, "-B", "scripts/progression_advisor.py",
             "--type", workout_type, "--date", day,
+            "--as-of", cutoff.isoformat(), "--local-timezone", str(local_timezone),
             "--plan-state", str(plan_state_path),
             "--plan-progression-json", json.dumps(family),
             "--output", str(source_files[key]),

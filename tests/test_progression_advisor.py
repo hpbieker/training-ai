@@ -7,6 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
@@ -72,6 +73,30 @@ class BatchedActivityInspectionTests(unittest.TestCase):
 
 
 class ProgressionReviewTests(unittest.TestCase):
+    def test_history_cutoff_requires_a_known_completed_ride(self):
+        recordings = {
+            "finished": {"start_date_local": "2026-11-17T09:00:00", "elapsed_time": 1800},
+            "ongoing": {"start_date_local": "2026-11-17T09:45:00", "elapsed_time": 1800},
+            "future": {"start_date_local": "2026-11-17T11:00:00", "elapsed_time": 1800},
+            "unknown_duration": {"start_date_local": "2026-11-17T08:00:00"},
+            "date_only": {"start_date_local": "2026-11-17", "elapsed_time": 1800},
+        }
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            for activity_id, values in recordings.items():
+                path = root / "activities" / activity_id
+                path.mkdir(parents=True)
+                (path / "activity.json").write_text(json.dumps({
+                    "id": activity_id, "name": "VT2", **values,
+                }))
+            candidates = recent_relevant_activities(
+                workout_type="vt2", day=date(2026, 11, 17), lookback_days=10, max_sessions=6,
+                artifacts_dir=root, target_power_w=None, reviewed_events={},
+                cutoff=datetime.fromisoformat("2026-11-17T10:00:00+01:00"),
+                local_timezone=ZoneInfo("Europe/Oslo"),
+            )
+        self.assertEqual([candidate.activity_id for candidate in candidates], ["finished"])
+
     def test_neutral_titles_preserve_short_and_long_reps_and_recoveries(self):
         for count, work, rest in [(13, 30, 15), (6, 60, 60), (4, 240, 180)]:
             with self.subTest(work=work):
@@ -229,12 +254,15 @@ class ProgressionReviewTests(unittest.TestCase):
     def test_recommendation_passes_plan_targets_as_plan_context(self, run, write):
         from recommend_training import build_progression_advice
         plan = {"vt2": {"target_power_w": 295}, "vo2max": {"next_step": "Review recovery"}}
-        build_progression_advice(day="2026-11-17", plan_progression=plan, plan_state_path=Path("selected-state.json"),
+        build_progression_advice(day="2026-11-17", cutoff=datetime.fromisoformat("2026-11-17T09:00:00+01:00"),
+            local_timezone="Europe/Oslo", plan_progression=plan, plan_state_path=Path("selected-state.json"),
             source_files={"progression_vt2": Path("vt2.json"), "progression_vo2max": Path("vo2.json")})
         for call in run.call_args_list:
             command = call.args[0]
             family = command[command.index("--type") + 1]
             self.assertEqual(command[command.index("--plan-state") + 1], "selected-state.json")
+            self.assertEqual(command[command.index("--as-of") + 1], "2026-11-17T09:00:00+01:00")
+            self.assertEqual(command[command.index("--local-timezone") + 1], "Europe/Oslo")
             self.assertEqual(json.loads(command[command.index("--plan-progression-json") + 1]), plan[family])
             self.assertNotIn("--vt2-watts", command)
             self.assertNotIn("--vo2max-watts", command)

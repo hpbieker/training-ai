@@ -2770,6 +2770,28 @@ def activity_timestamp_utc(
     )
 
 
+def completed_activity_start(raw_utc, raw_local, elapsed_seconds, *, cutoff, local_timezone):
+    """Return local start only when the recorded ride has ended by the decision instant."""
+    if cutoff.tzinfo is None:
+        raise ValueError("Activity cutoff must include a UTC offset")
+    # A date without a clock cannot pin a workout to midnight.
+    if isinstance(raw_utc, str) and len(raw_utc.strip()) <= 10:
+        raw_utc = None
+    if isinstance(raw_local, str) and len(raw_local.strip()) <= 10:
+        raw_local = None
+    seconds = number(elapsed_seconds)
+    if seconds is None or not 0 < seconds < float("inf"):
+        return None
+    try:
+        start = activity_timestamp_utc(raw_utc, raw_local, local_timezone=local_timezone)
+    except (ValueError, OverflowError, OSError):
+        return None
+    if start is None or seconds > (cutoff.astimezone(timezone.utc) - start).total_seconds():
+        return None
+    return start.astimezone(local_timezone)
+
+
+
 def same_local_date(left: Any, right: Any) -> bool:
     return bool(left and right and str(left)[:10] == str(right)[:10])
 

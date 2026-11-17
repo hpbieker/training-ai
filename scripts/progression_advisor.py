@@ -15,7 +15,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from plan_state import DEFAULT_STATE_PATH, load_plan_state
+from plan_state import DEFAULT_STATE_PATH, load_plan_state, parse_datetime
+from readiness_snapshot import completed_activity_start, parse_timezone
 
 SCHEMA = "training-ai-progression-advisor-v3"
 DEFAULT_ARTIFACTS_DIR = Path("outputs/intervals")
@@ -43,6 +44,8 @@ def main() -> None:
     )
     parser.add_argument("--type", choices=("vt2", "vo2max"), required=True)
     parser.add_argument("--date", required=True)
+    parser.add_argument("--as-of", help="Include only rides completed by this offset-aware instant")
+    parser.add_argument("--local-timezone", type=parse_timezone)
     parser.add_argument("--lookback-days", type=int, default=90)
     parser.add_argument("--max-sessions", type=int, default=6)
     parser.add_argument("--artifacts-dir", type=Path, default=DEFAULT_ARTIFACTS_DIR)
@@ -55,6 +58,9 @@ def main() -> None:
     args = parser.parse_args()
 
     day = parse_date(args.date)
+    if args.as_of and args.local_timezone is None:
+        parser.error("--as-of requires --local-timezone for local recording timestamps")
+    cutoff = parse_datetime(args.as_of, require_offset=True) if args.as_of else None
     state_path = args.plan_state or DEFAULT_STATE_PATH
     reviewed_events = (
         load_plan_state(state_path)["activity_events"]
@@ -62,7 +68,7 @@ def main() -> None:
     )
     activities = recent_relevant_activities(
         workout_type=args.type,
-        day=day,
+        day=day, cutoff=cutoff, local_timezone=args.local_timezone,
         lookback_days=args.lookback_days,
         max_sessions=args.max_sessions,
         artifacts_dir=args.artifacts_dir,
@@ -92,6 +98,8 @@ def recent_relevant_activities(
     *,
     workout_type: str,
     day: date,
+    cutoff: datetime | None = None,
+    local_timezone=None,
     lookback_days: int,
     max_sessions: int,
     artifacts_dir: Path,
@@ -108,6 +116,9 @@ def recent_relevant_activities(
             continue
         name = str(metadata.get("name") or "")
         start = parse_optional_datetime(metadata.get("start_date_local"))
+        if cutoff is not None:
+            start = completed_activity_start(metadata.get("start_date"), metadata.get("start_date_local"),
+                                             metadata.get("elapsed_time"), cutoff=cutoff, local_timezone=local_timezone)
         if start is None or not (since <= start.date() <= day):
             continue
         activity_dir = activity_json.parent
