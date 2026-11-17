@@ -644,7 +644,7 @@ def main() -> None:
     )
     intensity_decision = select_intensity_domain(
         readiness_ceiling=recommendation_bias_from_readiness_packet(
-            readiness_packet,
+            readiness_packet, intensity_goal=args.plan_selection_json["intensity_goal"],
         ),
         intensity_goal=args.plan_selection_json["intensity_goal"],
         progression_advice=progression_advice,
@@ -4156,7 +4156,7 @@ def select_intensity_domain(
         "mixed": "mixed",
     }.get(intensity_goal, "vt1")
 
-    if readiness_ceiling == "review_recovery":
+    if readiness_ceiling in {"readiness_unknown", "review_recovery"}:
         selected = goal_domain
         reason = "planned_goal_pending_readiness_review"
     elif readiness_ceiling == "rest":
@@ -4363,8 +4363,9 @@ def build_primary_decision(
     return {
         "action": action,
         "readiness_evidence": readiness_evidence_status(inputs),
-        "provisional": action == "train" and bool(
-            (inputs.get("intervals_wellness_events") or {}).get("current_day_review_signals")
+        "provisional": action == "train" and (
+            intensity_decision.get("readiness_ceiling") in {"readiness_unknown", "review_recovery"}
+            or bool((inputs.get("intervals_wellness_events") or {}).get("current_day_review_signals"))
         ),
         "selected_intensity": intensity,
         "intensity_decision": intensity_decision,
@@ -4438,6 +4439,7 @@ def readiness_evidence_status(inputs: dict[str, Any]) -> dict[str, Any]:
         intervals_events=inputs.get("intervals_wellness_events") or {},
     )
     return {
+        "readiness_status": agreement["readiness_status"],
         "direct_signal_coverage": "complete" if not missing else "partial" if assessed else "unavailable",
         "assessed_direct_signals": assessed,
         "unassessed_direct_signals": missing,
@@ -5097,7 +5099,7 @@ def annotate_readiness_dose_review(
         if acwr_risk is not None
         else None,
         "meaning": (
-            "Xert low-system recovery hours at the planned start are the modeled-load gate. "
+            "Xert low-system recovery hours at the planned start describe modeled load recovery. "
             "Training Load / Recovery Load is diagnostic only; increasing it must not "
             "increase recovery concern. Garmin ACWR is retained as a separate "
             "diagnostic and never substitutes for missing Xert recovery context."
@@ -5105,7 +5107,7 @@ def annotate_readiness_dose_review(
     }
     grouped_risk = direct_domains["autonomic_recovery"]
     direct_signal = (
-        "poor" if grouped_risk is not None and grouped_risk >= 0.75 else "caution"
+        "unknown" if grouped_risk is None else "poor" if grouped_risk >= 0.75 else "caution"
         if grouped_risk is not None and grouped_risk >= 0.4 else "normal"
     )
     garmin_score = number(readiness.get("training_readiness_score"))
@@ -5466,6 +5468,7 @@ def recommendation_bias(
     wellness: dict[str, Any],
     xert: dict[str, Any],
     intervals_events: dict[str, Any],
+    intensity_goal: str | None = None,
 ) -> str:
     if intervals_events.get("current_day_illness") or intervals_events.get("illness_training_blocked"):
         return "rest"
@@ -5473,10 +5476,6 @@ def recommendation_bias(
         return "easy_vt1"
     if intervals_events.get("return_to_training_active"):
         return "easy_vt1"
-    xert_projected = xert.get("projected_recovery_hours_at_planned_time") or {}
-    xert_low = number(xert_projected.get("low"))
-    if xert_low is not None and xert_low > 4:
-        return "rest"
     agreement = intensity_signal_agreement(
         wellness=wellness,
         xert=xert,
@@ -5484,22 +5483,28 @@ def recommendation_bias(
     )
     if "concordant_recovery_signals" in agreement["blockers"]:
         return "easy_vt1"
-    if intervals_events.get("current_day_review_signals") and not agreement["blockers"]:
+    if agreement["blockers"]:
+        return "normal_vt1"
+    if agreement["readiness_status"] == "unknown":
+        return "readiness_unknown"
+    if intervals_events.get("current_day_review_signals"):
         return "review_recovery"
-    if agreement["high_intensity_allowed"]:
-        return "high_intensity_ok"
-    if agreement["vt2_allowed"]:
-        return "vt2_ok"
-    return "normal_vt1"
+    systems = agreement["xert_recovery_systems_to_review"]
+    if systems:
+        if intensity_goal in {"recovery", "vt1", "vt2"} and "low" not in systems:
+            return "vt2_ok"
+        return "review_recovery"
+    return "high_intensity_ok"
 
 
 def recommendation_bias_from_readiness_packet(
-    readiness_packet: dict[str, Any],
+    readiness_packet: dict[str, Any], *, intensity_goal: str | None = None,
 ) -> str:
     """Resolve the workout-selection bias before workout candidates are ranked."""
 
     inputs = readiness_packet.get("recommendation_inputs") or {}
     return recommendation_bias(
+        intensity_goal=intensity_goal,
         wellness=inputs.get("wellness") or {},
         xert=inputs.get("xert_recovery") or {},
         intervals_events=inputs.get("intervals_wellness_events") or {},
@@ -5593,8 +5598,11 @@ def coach_summary_reasons(
                 precip=weather.get("precipitation_range"),
             )
         )
-    if bias == "review_recovery":
-        reasons.insert(0, intervals_wellness_events_line(intervals_events))
+    if bias in {"readiness_unknown", "review_recovery"}:
+        if intervals_events.get("current_day_review_signals"):
+            reasons.insert(0, intervals_wellness_events_line(intervals_events))
+        else:
+            reasons.insert(0, "Provisional plan: review current body feel and recovery after recent work against the planned effort.")
     elif bias in {"vt2_ok", "high_intensity_ok"}:
         reasons.append("No major readiness guardrail blocks intensity from the input packet.")
     return reasons[:6]
@@ -6016,30 +6024,43 @@ def intensity_signal_agreement(
     if soreness is not None and soreness >= 3:
         direct_blockers.append("high_soreness")
 
-    vt2_blockers = list(direct_blockers)
-    if xert_vt2_ready is False:
-        vt2_blockers.append("xert_low_system_recovery")
-
-    high_intensity_blockers = list(vt2_blockers)
-    if xert_high_ready is False and "xert_low_system_recovery" not in high_intensity_blockers:
-        high_intensity_blockers.append("xert_high_or_peak_system_recovery")
-
+    systems_to_review = [
+        system for system in ("low", "high", "peak")
+        if (hours := number(projected.get(system))) is not None and hours > 0
+    ]
     subjective_review = intervals_events.get("current_day_review_signals") or []
     review_signals = [*moderate, *subjective_review]
+    if autonomic_recovery_risk is None:
+        review_signals.append("direct_recovery_evidence_unavailable")
+    review_signals.extend(f"xert_{system}_recovery" for system in systems_to_review)
     if risks["hrv_last_night"] is not None and risks["hrv_last_night"] >= 0.25:
         review_signals.append("hrv_last_night")
     sleep_hours = seconds_to_hours(wellness.get("sleep_time_seconds"))
     if sleep_hours is not None and sleep_hours < 6:
         review_signals.append("short_sleep")
 
+    readiness_status = "screened"
+    if direct_blockers:
+        readiness_status = "limited"
+    elif subjective_review:
+        readiness_status = "review"
+    elif autonomic_recovery_risk is None:
+        readiness_status = "unknown"
+    elif systems_to_review:
+        readiness_status = "review"
+    direct_permission = not direct_blockers
+    if direct_permission and (readiness_status == "unknown" or subjective_review):
+        direct_permission = None
     return {
-        "review_required": bool(review_signals or high_intensity_blockers),
+        "readiness_status": readiness_status,
+        "review_required": bool(review_signals or direct_blockers),
         "review_signals": review_signals,
-        "vt2_allowed": None if subjective_review and not vt2_blockers else not vt2_blockers,
-        "high_intensity_allowed": None if subjective_review and not high_intensity_blockers else not high_intensity_blockers,
-        "blockers": high_intensity_blockers,
-        "vt2_blockers": vt2_blockers,
-        "high_intensity_blockers": high_intensity_blockers,
+        "xert_recovery_systems_to_review": systems_to_review,
+        "vt2_allowed": None if "low" in systems_to_review and not direct_blockers else direct_permission,
+        "high_intensity_allowed": None if systems_to_review and not direct_blockers else direct_permission,
+        "blockers": direct_blockers,
+        "vt2_blockers": list(direct_blockers),
+        "high_intensity_blockers": list(direct_blockers),
         "moderate_signals": moderate,
         "severe_signals": severe,
         "risks": rounded_optional_map(risks),
@@ -6063,10 +6084,9 @@ def intensity_signal_agreement(
             "screening; this is a heuristic, not independent confirmation or a "
             "validated physiological cutoff. It does not prescribe duration. "
             "Body Battery is supporting diagnostic context, not an "
-            "additional independent signal. Xert system recovery or high soreness "
-            "can block independently. VT2 requires "
-            "low-system recovery; high intensity additionally requires high- "
-            "and peak-system recovery."
+            "additional independent signal. High soreness can limit intensity. "
+            "Review projected Xert hours for the systems relevant to the planned "
+            "effort alongside actual load, recovery and current body feel."
         ),
     }
 

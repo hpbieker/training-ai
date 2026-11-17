@@ -20,7 +20,24 @@ class RecommendationEvidenceTests(unittest.TestCase):
         self.assertEqual(evidence['assessed_direct_signals'], [])
         self.assertEqual(evidence['observed_limitations'], [])
         self.assertEqual(recommendation_bias(wellness={}, xert=inputs['xert_recovery'],
-                                            intervals_events={}), 'high_intensity_ok')
+                                            intervals_events={}), 'readiness_unknown')
+
+    def test_xert_timer_keeps_plan_available_on_both_sides_of_four_hours(self):
+        from recommend_training import select_intensity_domain
+        for hours in (0.1, 4, 4.1, 18):
+            with self.subTest(hours=hours):
+                inputs = self.inputs({'sleep_score': 90})
+                inputs['xert_recovery']['projected_recovery_hours_at_planned_time']['low'] = hours
+                bias = recommendation_bias(wellness=inputs['wellness'], xert=inputs['xert_recovery'],
+                                           intervals_events={})
+                self.assertEqual(bias, 'review_recovery')
+                evidence = readiness_evidence_status(inputs)
+                self.assertIn('xert_low_recovery', evidence['observed_cautions'])
+                self.assertEqual(evidence['observed_limitations'], [])
+                choice = select_intensity_domain(readiness_ceiling=bias,
+                                                 intensity_goal='vt2', progression_advice={})
+                self.assertEqual(choice['selected_domain'], 'vt2')
+                self.assertEqual(choice['selection_reason'], 'planned_goal_pending_readiness_review')
 
     def test_valid_signals_and_soreness_are_separate(self):
         inputs = self.inputs({'sleep_score': 90, 'hrv_last_night_avg': 70,
@@ -54,7 +71,6 @@ class RecommendationEvidenceTests(unittest.TestCase):
                 choice = select_intensity_domain(readiness_ceiling=bias, intensity_goal='vt2', progression_advice={})
                 self.assertEqual(choice['selection_reason'], 'planned_goal_pending_readiness_review')
 
-
     def test_illness_subject_negation_and_structured_event(self):
         day = '2026-11-17'
         for comment, sick in [('Jeg er ikke syk', False), ('Barnet mitt er sykt', False),
@@ -79,7 +95,6 @@ class RecommendationEvidenceTests(unittest.TestCase):
         self.assertIn('clarify_current_illness_comment', events['current_day_review_signals'])
         events = intervals_wellness_context(day, [uncertain, {'id': day, 'comments': 'Jeg er frisk'}])
         self.assertEqual(events['current_day_review_signals'], [])
-
 
     def target(self):
         return {'endurance_duration_solution': {'duration_seconds': 12437,

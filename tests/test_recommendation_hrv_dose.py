@@ -175,7 +175,7 @@ class ReadinessDecisionTests(unittest.TestCase):
             intervals_events={'current_day_soreness': 3}), 'normal_vt1')
         self.assertEqual(recommendation_bias(wellness=self.healthy(),
             xert={'projected_recovery_hours_at_planned_time': {'low': 0, 'high': 2, 'peak': 0}},
-            intervals_events={}), 'vt2_ok')
+            intervals_events={}), 'review_recovery')
 
     def test_explicit_dose_still_carries_review_requirement(self):
         target = {'source': 'explicit_cli', 'target_minutes': 100, 'target_load': 90}
@@ -187,7 +187,7 @@ class ReadinessDecisionTests(unittest.TestCase):
         from recommend_training import readiness_evidence_status
         evidence = readiness_evidence_status({})
         self.assertEqual(evidence['direct_signal_coverage'], 'unavailable')
-        self.assertFalse(evidence['review_required'])
+        self.assertTrue(evidence['review_required'])
         self.assertEqual(evidence['observed_limitations'], [])
 
 

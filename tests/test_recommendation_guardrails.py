@@ -2146,7 +2146,7 @@ class HrvDecisionTests(unittest.TestCase):
         self.assertEqual(agreement["grouped_families"]["body_resources_support"], 1.0)
         self.assertFalse(agreement["body_resources_used_as_independent_signal"])
 
-    def test_low_system_recovery_allows_vt2_but_not_high_intensity(self):
+    def test_high_system_recovery_requests_review_for_high_intensity(self):
         agreement = intensity_signal_agreement(
             wellness={
                 "hrv_3day_mean": 70,
@@ -2171,11 +2171,9 @@ class HrvDecisionTests(unittest.TestCase):
         )
 
         self.assertTrue(agreement["vt2_allowed"])
-        self.assertFalse(agreement["high_intensity_allowed"])
-        self.assertIn(
-            "xert_high_or_peak_system_recovery",
-            agreement["high_intensity_blockers"],
-        )
+        self.assertIsNone(agreement["high_intensity_allowed"])
+        self.assertEqual(agreement["high_intensity_blockers"], [])
+        self.assertIn("xert_high_recovery", agreement["review_signals"])
 
     def test_severe_last_night_drop_requires_review_without_overriding_mean(self):
         agreement = intensity_signal_agreement(

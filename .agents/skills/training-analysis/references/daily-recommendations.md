@@ -35,8 +35,8 @@ and time horizon, and practical fueling defaults. When the user has not
 specified a time, use the workout-placement preference and any earliest-start
 constraint in `config/coaching-preferences.md`. Resolve the plan role and its
 complete workout before choosing `planned_at`. For a quality role, check
-readiness and the relevant Xert recovery gate at each candidate start. If
-those checks rule out the planned quality work, assess the appropriate
+readiness and the relevant Xert recovery projections at candidate starts. If
+recent execution, subsequent recovery and current body feel warrant a change, assess the appropriate
 downgrade. Select one winning session. When both indoor and outdoor
 cycling are available, retain one concrete alternative for the final answer
 without letting it replace the winner. Resolve modality availability from
@@ -68,12 +68,10 @@ Before finalizing a calendar-backed workout time, run these checks:
    setup buffer and its end backward by the cleanup buffer. Test calendar
    availability against the complete occupied window—setup, workout, and
    cleanup—while keeping the displayed workout start and duration distinct from
-   the buffers. Apply readiness and Xert recovery gates to `planned_at`, the
-   start of physical training, not to the start of setup; setup may occur before
-   the gate when it lies within the calendar window. First derive the exact
-   instant when every required readiness and recovery gate is clear, then round
-   it up—never down—to the first clock time divisible by five minutes and use
-   that as the earliest `planned_at` candidate.
+   the buffers. Evaluate recovery at the start of physical training. Base the
+   earliest candidate on availability and actual readiness constraints. Round
+   that time up to the next five-minute boundary if needed. A projected Xert
+   recovery time alone does not require delaying the session.
 - Verify that `availability.windows` includes every positive-duration interval
    after event classification, and that the workout was neither limited to the
    interval containing `planned_at` nor delayed solely by an event that personal
@@ -268,7 +266,10 @@ episode disappearing from a source window must not silently clear the return.
   Readiness forward as if they were observations for the future date. Describe
   those signals as pending until the relevant day or time has occurred. Report
   expected data as missing or stale when it should already have synced.
-- Use Xert recovery hours as the first model gate for low/high/peak load, then
+- Review remaining Xert hours for the systems relevant to the planned role.
+  Weigh a conflict against actual recent load, subsequent recovery and current
+  body feel before choosing to proceed, move or downgrade the session. Keep
+  the planned role provisional when evidence is missing. For context,
   compare the corresponding Xert Recovery Load with Training Load. Use Xert
   target XSS as a model suggestion for comparison, never as the automatic prescription.
 - Preserve XATA's `xss_deficit`, `xss_goal`, availability restriction,
