@@ -2431,7 +2431,7 @@ class PrimaryDecisionContractTests(unittest.TestCase):
         self.assertNotIn("264.1 min ACTIVE_RECOVERY", summary)
 
     def test_active_recovery_primary_decision_rejects_uncapped_long_dose(self):
-        with self.assertRaisesRegex(SystemExit, "cannot exceed 60 minutes"):
+        with self.assertRaisesRegex(ValueError, "active_recovery minutes limit"):
             build_primary_decision(
                 readiness_packet={
                     "recommendation_inputs": {"intervals_wellness_events": {}}

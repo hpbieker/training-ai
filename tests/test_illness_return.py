@@ -116,7 +116,7 @@ class IllnessReturnTests(unittest.TestCase):
         target = {'target_minutes': 200, 'target_load': 180}
         apply_intervals_illness_target_guardrail(target, result)
         target['target_minutes'] = 30
-        with self.assertRaisesRegex(ValueError, 'reviewed illness-return dose'):
+        with self.assertRaisesRegex(ValueError, 'illness_return_guardrail minutes limit'):
             build_primary_decision(readiness_packet={'recommendation_inputs': {'intervals_wellness_events': result}},
                 target_resolution=target, intensity_decision={'selected_domain': 'easy_vt1'})
 

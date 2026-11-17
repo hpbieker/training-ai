@@ -3172,21 +3172,28 @@ def apply_xert_endurance_duration_solution(
         raise ValueError("endurance-workout calculation is not Xert-feasible")
 
     achieved = calculation.get("achieved_xss") or {}
-    achieved_low = number(achieved.get("low"))
-    achieved_high = number(achieved.get("high"))
-    achieved_peak = number(achieved.get("peak"))
-    achieved_total = number(achieved.get("total"))
-    duration_seconds = number(calculation.get("duration_seconds"))
-    target_low = number(calculation.get("target_low_xss"))
-    if None in (achieved_low, achieved_high, achieved_peak, achieved_total, duration_seconds, target_low):
-        raise ValueError("endurance-workout calculation is missing numeric fields")
-    if duration_seconds <= 0:
-        raise ValueError("endurance-workout duration must be positive")
-    tolerance = number(calculation.get("tolerance_xss")) or 0.05
-    if not quality_domain and (achieved_high > tolerance or achieved_peak > tolerance):
+    def checked_number(raw, field, *, positive=False):
+        value = number(raw)
+        if isinstance(raw, bool) or value is None or not math.isfinite(value) or value < 0 or (positive and value == 0):
+            raise ValueError(f"endurance-workout {field} must be a finite {'positive' if positive else 'nonnegative'} number")
+        return value
+
+    achieved_low = checked_number(achieved.get("low"), "low XSS")
+    achieved_high = checked_number(achieved.get("high"), "high XSS")
+    achieved_peak = checked_number(achieved.get("peak"), "peak XSS")
+    achieved_total = checked_number(achieved.get("total"), "total XSS")
+    duration_seconds = checked_number(calculation.get("duration_seconds"), "duration", positive=True)
+    target_low = checked_number(calculation.get("target_low_xss"), "target low XSS", positive=True)
+    tolerance = checked_number(calculation.get("tolerance_xss", 0.05), "tolerance", positive=True)
+    if abs(achieved_low - target_low) > tolerance + 1e-9:
+        raise ValueError("endurance-workout achieved low XSS does not match target within tolerance")
+    # Allow display rounding of components, independently of the solver's target tolerance.
+    if abs(achieved_total - (achieved_low + achieved_high + achieved_peak)) > 0.2 + 1e-9:
+        raise ValueError("endurance-workout XSS components do not sum to total")
+    if not quality_domain and (achieved_high > 0.05 or achieved_peak > 0.05):
         raise ValueError("recovery/VT1 endurance solution must not add high/peak XSS")
     expected_low = applicable_endurance_low_xss_target(target_resolution)
-    if abs(target_low - expected_low) > tolerance:
+    if abs(target_low - expected_low) > tolerance + 1e-9 or abs(achieved_low - expected_low) > tolerance + 1e-9:
         raise ValueError(
             "endurance-workout target_low_xss does not match the applicable "
             "coach-selected low-XSS target"
@@ -4216,6 +4223,32 @@ def select_intensity_domain(
     }
 
 
+READINESS_DOMAIN_CAPS = {
+    "rest": {"minutes": 0.0, "load": 0.0},
+    "active_recovery": {"minutes": 45.0, "load": 30.0},
+}
+
+
+def validate_final_dose_limits(target: dict[str, Any], selected_domain: str) -> None:
+    values = {field: number(target.get(f"target_{field}")) for field in ("minutes", "load")}
+    if any(isinstance(target.get(f"target_{field}"), bool) or value is None or not math.isfinite(value) or value < 0 for field, value in values.items()):
+        raise ValueError("Final workout requires finite nonnegative duration and load")
+    limits = []
+    if selected_domain in READINESS_DOMAIN_CAPS:
+        limits.append((selected_domain, READINESS_DOMAIN_CAPS[selected_domain]))
+    for key in ("readiness_domain_cap", "illness_return_guardrail"):
+        guard = target.get(key) or {}
+        if guard.get("active"):
+            limits.append((key, {"minutes": guard.get("max_minutes"), "load": guard.get("max_load")}))
+    for name, limit in limits:
+        for field, slack in (("minutes", 0.02), ("load", 0.05)):
+            maximum = number(limit.get(field))
+            if maximum is None or not math.isfinite(maximum) or maximum < 0:
+                raise ValueError(f"Invalid {name} {field} limit")
+            if values[field] > maximum + slack:
+                raise ValueError(f"Final workout exceeds {name} {field} limit ({maximum})")
+
+
 def apply_readiness_domain_target_cap(
     target_resolution: dict[str, Any],
     *,
@@ -4224,11 +4257,7 @@ def apply_readiness_domain_target_cap(
     """Keep a readiness downgrade from retaining an incompatible model dose."""
 
     selected = str(intensity_decision.get("selected_domain") or "")
-    caps = {
-        "rest": {"minutes": 0.0, "load": 0.0},
-        "active_recovery": {"minutes": 45.0, "load": 30.0},
-    }
-    cap = caps.get(selected)
+    cap = READINESS_DOMAIN_CAPS.get(selected)
     if cap is None:
         return
 
@@ -4298,6 +4327,7 @@ def build_primary_decision(
     remainder_disposition: str = "unscheduled",
 ) -> dict[str, Any]:
     """Expose the physiological plan as an explicit LLM decision contract."""
+    validate_final_dose_limits(target_resolution, str(intensity_decision.get("selected_domain") or "easy_vt1"))
     validate_final_coaching_dose(target_resolution)
     require_resolved_capacity_review(target_resolution)
     inputs = readiness_packet.get("recommendation_inputs") or {}
@@ -4307,18 +4337,6 @@ def build_primary_decision(
     target_load = number(target_resolution.get("target_load")) or 0.0
 
     selected_intensity = str(intensity_decision.get("selected_domain") or "easy_vt1")
-    illness_limit = target_resolution.get("illness_return_guardrail") or {}
-    if illness_limit.get("active") and (
-        target_minutes > illness_limit["max_minutes"] + 0.02
-        or target_load > illness_limit["max_load"] + 0.05
-    ):
-        raise ValueError("Final workout exceeds the reviewed illness-return dose")
-
-    if selected_intensity == "active_recovery" and target_minutes > 60.0:
-        raise SystemExit(
-            "active_recovery primary decision cannot exceed 60 minutes; "
-            "apply the readiness-domain dose cap before calendar allocation"
-        )
     if events.get("current_day_illness") or events.get("illness_training_blocked") or selected_intensity == "rest" or target_minutes <= 0:
         action = "rest"
     elif events.get("illness_followup_needed"):
