@@ -186,6 +186,15 @@ Fueling is both an intervention and a confounder in cycling analysis.
 - When late-session power, HR/W, BR/W, VE/W, RPE, SmO2, or durability differs,
   compare pre-ride intake, on-bike carbohydrate, elapsed time, fluid intake,
   heat, and likely glycogen context before attributing the change to fitness.
+- For each focal effort, record time since the start, prior measured work in kJ
+  when available, and confirmed grams consumed before the effort. Keep pre-ride
+  intake separate. Use timing or cumulative intake at the start of the effort.
+  Planned intake, intake afterward and whole-ride g/h cannot establish that
+  exposure. If only a ride total is known, leave the pre-effort amount unknown.
+  In 12 trained cyclists and triathletes, VT1 power after 150 minutes fell by
+  about 3% with carbohydrate and 6% without. The between-condition difference
+  in five-minute power was inconclusive. Use this finding as a reason to match
+  fueling context across rides. [Dudley-Rode et al.](https://doi.org/10.1007/s00421-024-05687-w)
 - Distinguish logged intake, confirmed consumed intake, and inferred
   carbohydrate availability. EatMyRide owns product and food-plan field
   semantics; this reference owns only the cross-source analysis context.
@@ -220,7 +229,7 @@ For a long or composed cycling session, add this endurance-specific context:
 
 | Source | Supports | Strength and limitation |
 | --- | --- | --- |
-| [Maunder et al. 2024: Durability of the moderate-to-heavy transition](https://doi.org/10.1007/s00421-024-05459-6) | VT1 power and five-minute performance after 150 minutes of moderate cycling; association between their deterioration | Peer-reviewed cycling study in 13 well-trained cyclists/triathletes. Direct support for durability as a distinct parameter, but no personal cutoff |
+| [Hamilton et al. 2024: Durability of the moderate-to-heavy transition](https://doi.org/10.1007/s00421-024-05459-6) | VT1 power and five-minute performance after 150 minutes of moderate cycling; association between their deterioration | Peer-reviewed cycling study in 13 well-trained cyclists/triathletes. Direct support for durability as a distinct parameter, but no personal cutoff |
 | [Rothschild et al. 2025: Decoupling markers and real-time VT1](https://doi.org/10.1007/s00421-025-05815-0) | Relationships between HR/respiratory-frequency decoupling and within-session VT1 deterioration | Peer-reviewed pooled work in trained cyclists. Supports monitoring hypotheses, not universal field thresholds or causal diagnosis |
 | [Jones et al. 2010: Critical power as a fatigue threshold](https://doi.org/10.1249/MSS.0b013e3181d9cf7f) | Physiological intensity-domain basis of CP and W prime | Peer-reviewed physiology synthesis. Does not establish equivalence with FTP, VT2, MLSS, or Xert TP |
 | [Chorley and Lamb 2020: CP, W prime, and reconstitution in cycling](https://doi.org/10.3390/sports8090123) | Cycling application of CP/W prime and limitations of recovery modelling | Peer-reviewed review; individual reconstitution kinetics remain uncertain |
@@ -228,7 +237,7 @@ For a long or composed cycling session, add this endurance-specific context:
 | [Lai et al. 2021: Lower-limb muscle function under changing cycling demands](https://doi.org/10.1242/jeb.228221) | Different muscle activation, work, and muscle-tendon function as crank torque and cadence change | Peer-reviewed experimental and musculoskeletal-modelling study across 60-140 rpm and 13-44 Nm. Supports distinct mechanical context, not a universally optimal cadence or training outcome |
 | [Hansen and Ronnestad 2017: Training at imposed low cadence](https://doi.org/10.1123/ijspp.2016-0574) | No strong general evidence that imposed low-cadence training improves cycling performance | Systematic review of seven heterogeneous training studies. Supports restraint, not a claim that low-cadence work can never serve a specific purpose |
 | [Barsumyan et al. 2026: Cadence decline and aerobic decoupling](https://doi.org/10.1186/s13102-026-01678-w) | Association of cadence decline with cardiovascular drift and aerobic decoupling during repeated standardized submaximal cycling | Peer-reviewed repeated-measures study in 17 trained cyclists. Cadence decline is supporting context, not a validated standalone fatigue marker |
-| [Bossi et al. 2020: Variable versus constant power](https://doi.org/10.3389/fphys.2020.01098) | Higher VO2, HR, and lactate during variable versus constant cycling at matched average power in elite cyclists | Peer-reviewed acute study with 15 elite cyclists and a specific two-minute fluctuation protocol. Supports inspecting variability, not a universal penalty for all variable riding |
+| [Kolsung et al. 2020: Variable versus constant power](https://doi.org/10.3389/fphys.2020.01098) | Higher VO2, HR, and lactate during variable versus constant cycling at matched average power in elite cyclists | Peer-reviewed acute study with 15 elite cyclists and a specific two-minute fluctuation protocol. Supports inspecting variability, not a universal penalty for all variable riding |
 | [Brown et al. 2024: Exercise heat acclimatisation](https://doi.org/10.1007/s40279-023-01972-4) | Core-temperature, HR, and sweat-response changes after heat acclimatisation | Systematic review with heterogeneous protocols; no universal exposure dose or safety cutoff |
 | [Gejl and Nybo 2021: Periodized carbohydrate restriction](https://doi.org/10.1186/s12970-021-00435-3) | No overall endurance-performance advantage from periodized carbohydrate restriction; potential quality tradeoff | Systematic review with varying protocols; does not exclude selected purposeful low-availability sessions |
 

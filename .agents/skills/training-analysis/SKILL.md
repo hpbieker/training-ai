@@ -41,6 +41,10 @@ this entrypoint selects the workflow, the activity reference directs the
 analysis, specialist references qualify the measurements, and the synthesis
 reference integrates the findings.
 
+For late efforts on long rides, compare elapsed time, work already completed and
+carbohydrate actually consumed before the effort. Use the
+[cycling physiology reference](references/cycling-endurance-physiology.md) when interpreting durability.
+
 ### Activity comparison
 
 Read [references/activity-analysis.md](references/activity-analysis.md) for
