@@ -17,6 +17,11 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 ARTIFACTS_DIR = Path("outputs/intervals")
 
 
+if __package__:
+    from .illness_return import assess_return, parse_illness_return_json
+else:
+    from illness_return import assess_return, parse_illness_return_json
+
 def parse_timezone(timezone_name: str) -> ZoneInfo:
     """Resolve one explicit IANA timezone without mutating process state."""
 
@@ -129,6 +134,7 @@ def main() -> None:
             "object when no external source files are supplied."
         ),
     )
+    parser.add_argument("--illness-return-json", type=parse_illness_return_json)
     args = parser.parse_args()
     time_context = args.time_context_json
     source_inputs = args.source_inputs_json
@@ -155,6 +161,7 @@ def main() -> None:
             (source_inputs.get("intervals") or {}).get("events")
         ),
         local_timezone=local_timezone,
+        illness_return_assessment=args.illness_return_json,
     )
     print(json.dumps(
         readiness_summary(snapshot) if args.summary else snapshot,
@@ -277,6 +284,7 @@ def build_readiness_snapshot(
     garmin_input: dict[str, Any] | None = None,
     intervals_wellness_input: dict[str, Any] | list[Any] | None = None,
     intervals_events_input: dict[str, Any] | list[Any] | None = None,
+    illness_return_assessment: dict[str, Any] | None = None,
     local_timezone: ZoneInfo,
 ) -> dict[str, Any]:
     now = now or datetime.now(timezone.utc).astimezone(local_timezone)
@@ -328,6 +336,7 @@ def build_readiness_snapshot(
     intervals_wellness = intervals_wellness_context(
         day, intervals_wellness_input, events_payload=intervals_events_input
     )
+    assess_return(intervals_wellness, illness_return_assessment, day=day, cutoff=data_cutoff)
     return {
         "date": day,
         "snapshot_time_local": format_local(now, local_timezone=local_timezone),
@@ -1890,6 +1899,10 @@ def intervals_wellness_context(
         except ValueError:
             continue
         cursor = max(start, event_start)
+        if event_end <= start:
+            events.append({"date": (event_end - timedelta(days=1)).isoformat(),
+                           "comments": event.get("description") or event.get("name"),
+                           "illness": True, "source": "calendar_event", "event_id": event.get("id")})
         while cursor < min(end + timedelta(days=1), event_end):
             events.append({
                 "date": cursor.isoformat(),
@@ -1908,7 +1921,9 @@ def intervals_wellness_context(
             parsed_day = date.fromisoformat(row_day)
         except ValueError:
             continue
-        if parsed_day < start or parsed_day > end:
+        if parsed_day > end:
+            continue
+        if parsed_day < start and not ILLNESS_COMMENT_PATTERN.search(str(row.get("comments") or "")):
             continue
         if row_day == day:
             current_wellness = row
@@ -1956,28 +1971,11 @@ def intervals_wellness_context(
         if latest_illness is not None
         else None
     )
-    illness_followup_needed = bool(
-        not (current and current.get("illness")) and days_since_latest_illness == 1
-    )
-    return_to_training_day = (
-        days_since_latest_illness
-        if not (current and current.get("illness"))
-        and days_since_latest_illness is not None
-        and 1 <= days_since_latest_illness <= 2
-        else None
-    )
+    illness_followup_needed = bool(latest_illness and not (current and current.get("illness")))
     return_to_training_guidance = {
-        1: {
-            "phase": "first_unmarked_day",
-            "duration_minutes": "20-45",
-            "intensity": "rest_or_very_easy_recovery",
-        },
-        2: {
-            "phase": "return_day_2",
-            "duration_minutes": "30-60",
-            "intensity": "easy_endurance_only",
-        },
-    }.get(return_to_training_day)
+        "phase": "awaiting_review", "duration_minutes": 0,
+        "intensity": "rest_pending_review", "max_minutes": 0, "max_load": 0,
+    } if latest_illness else None
     return {
         "window_start": start.isoformat(),
         "window_end": day,
@@ -1999,11 +1997,12 @@ def intervals_wellness_context(
         "latest_illness_event": latest_illness,
         "days_since_latest_illness": days_since_latest_illness,
         "illness_followup_needed": illness_followup_needed,
-        "return_to_training_active": return_to_training_day is not None,
-        "return_to_training_day": return_to_training_day,
+        "return_to_training_active": latest_illness is not None,
+        "illness_training_blocked": latest_illness is not None,
+        "illness_return_phase": "awaiting_review" if latest_illness else "not_applicable",
         "return_to_training_guidance": return_to_training_guidance,
         "followup_question": (
-            "Hvordan er formen i dag: er du fortsatt syk, eller er dette første friske dag?"
+            "Avklar aktuelle symptomer, sykdomsforløp og respons på eventuell returøkt."
             if illness_followup_needed
             else None
         ),
@@ -2011,9 +2010,8 @@ def intervals_wellness_context(
         "meaning": (
             "Structured Intervals.icu calendar events and legacy wellness annotations supplement Garmin and training load. "
             "A current-day SICK event should override model readiness and block training. "
-            "If yesterday was marked sick but today is unmarked, ask whether illness continues or "
-            "this is the first healthy day before finalizing training. Keep the first two "
-            "unmarked days on a gradual return-to-training ramp. When today's Intervals soreness "
+            "Elapsed days do not establish recovery; require a current symptom and exercise-response "
+            "assessment before resuming or progressing training. When today's Intervals soreness "
             "is missing, assume it is non-limiting and still provide the appropriate recommendation; "
             "if recommending VT2 or harder, ask the user to set today's soreness value."
         ),

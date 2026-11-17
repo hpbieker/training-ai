@@ -19,6 +19,7 @@ XERT_PLUGIN = Path(__file__).resolve().parents[1] / "plugins" / "xert"
 if str(XERT_PLUGIN) not in sys.path:
     sys.path.insert(0, str(XERT_PLUGIN))
 
+from illness_return import parse_illness_return_json
 from plan_state import (
     DEFAULT_STATE_PATH,
     PlanStateError,
@@ -323,6 +324,7 @@ def main() -> None:
             "context."
         ),
     )
+    parser.add_argument("--illness-return-json", type=parse_illness_return_json)
     parser.add_argument(
         "--training-target-json",
         type=parse_training_target_json,
@@ -602,6 +604,7 @@ def main() -> None:
         ),
         intervals_wellness_input=load_json_if_exists(source_files["intervals_wellness"]),
         intervals_events_input=load_json_if_exists(source_files["intervals_events"]),
+        illness_return_assessment=args.illness_return_json,
     )
     annotate_hrv_decision_context(readiness_packet)
     history_context = training_history_context(
@@ -3315,6 +3318,9 @@ def apply_xert_endurance_duration_solution(
             "post-guardrail Xert low-XSS target"
         )
 
+    illness_cap = target_resolution.get("illness_return_guardrail") or {}
+    if illness_cap.get("active") and duration_seconds > float(illness_cap["max_minutes"]) * 60 + 1:
+        raise ValueError("Solved workout exceeds the reviewed illness-return duration; revise the whole workout")
     previous_minutes = number(target_resolution.get("target_minutes"))
     target_resolution["pre_endurance_solution_target_minutes"] = previous_minutes
     target_resolution["target_minutes"] = round(duration_seconds / 60.0, 1)
@@ -4416,12 +4422,19 @@ def build_primary_decision(
     target_load = number(target_resolution.get("target_load")) or 0.0
 
     selected_intensity = str(intensity_decision.get("selected_domain") or "easy_vt1")
+    illness_limit = target_resolution.get("illness_return_guardrail") or {}
+    if illness_limit.get("active") and (
+        target_minutes > illness_limit["max_minutes"] + 0.02
+        or target_load > illness_limit["max_load"] + 0.05
+    ):
+        raise ValueError("Final workout exceeds the reviewed illness-return dose")
+
     if selected_intensity == "active_recovery" and target_minutes > 60.0:
         raise SystemExit(
             "active_recovery primary decision cannot exceed 60 minutes; "
             "apply the readiness-domain dose cap before calendar allocation"
         )
-    if events.get("current_day_illness") or selected_intensity == "rest" or target_minutes <= 0:
+    if events.get("current_day_illness") or events.get("illness_training_blocked") or selected_intensity == "rest" or target_minutes <= 0:
         action = "rest"
     elif events.get("illness_followup_needed"):
         action = "form_check"
@@ -5062,8 +5075,8 @@ def finalize_plan_trace(target_resolution: dict[str, Any]) -> None:
     if illness.get("active"):
         adjustment_types.append("illness_return_guardrail")
         reasons.append(
-            "Return-to-training day "
-            f"{illness.get('day')} capped the base plan at "
+            "Reviewed return phase "
+            f"{illness.get('phase')} capped the base plan at "
             f"{illness.get('max_minutes')} min / {illness.get('max_load')} XSS."
         )
 
@@ -5116,16 +5129,15 @@ def apply_intervals_illness_target_guardrail(
     target_resolution: dict[str, Any],
     intervals_events: dict[str, Any],
 ) -> None:
-    """Cap model-derived dose during the first two days after sickness."""
-
-    day = intervals_events.get("return_to_training_day")
-    caps = {
-        1: {"minutes": 45.0, "load": 25.0},
-        2: {"minutes": 60.0, "load": 45.0},
-    }
-    cap = caps.get(day)
-    if not cap:
+    """Enforce the reviewed return dose, never a calendar-day progression."""
+    if not intervals_events.get("return_to_training_active"):
         return
+    guidance = intervals_events.get("return_to_training_guidance") or {}
+    minutes = number(guidance.get("max_minutes"))
+    load = number(guidance.get("max_load"))
+    if minutes is None or load is None:
+        raise ValueError("Illness return requires a reviewed duration and load before scheduling")
+    cap = {"minutes": minutes, "load": load}
     target_resolution["pre_illness_guardrail_target_minutes"] = target_resolution.get(
         "target_minutes"
     )
@@ -5140,13 +5152,12 @@ def apply_intervals_illness_target_guardrail(
     )
     target_resolution["illness_return_guardrail"] = {
         "active": True,
-        "day": day,
+        "phase": intervals_events.get("illness_return_phase"),
         "max_minutes": cap["minutes"],
         "max_load": cap["load"],
         "avoid_intensity": True,
         "meaning": (
-            "The model-derived dose is capped for a gradual return during the first "
-            "two unmarked days after sickness."
+            "The model dose is limited by the explicit symptom- and response-based return assessment."
         ),
     }
 
@@ -5526,10 +5537,10 @@ def build_llm_context(
         "same_day_activity_context": same_day_activity,
         "intervals_wellness_events": intervals_events,
         "health_constraints": {
-            "no_training_today": current_illness,
+            "no_training_today": current_illness or bool(intervals_events.get("illness_training_blocked")),
             "form_check_needed": illness_followup_needed,
             "return_to_training_active": return_to_training_active,
-            "return_to_training_day": intervals_events.get("return_to_training_day"),
+            "illness_return_phase": intervals_events.get("illness_return_phase"),
             "return_to_training_guidance": intervals_events.get("return_to_training_guidance"),
             "followup_question": intervals_events.get("followup_question"),
             "soreness_status_missing": intervals_events.get("soreness_status_missing"),
@@ -5546,16 +5557,16 @@ def build_llm_context(
             "reason": (
                 "current_day_sickness_annotation"
                 if current_illness
-                else "sick_yesterday_today_unmarked"
+                else "illness_return_requires_review"
                 if illness_followup_needed
                 else None
             ),
             "meaning": (
                 "An explicit current-day sickness annotation overrides Garmin/Xert readiness, "
-                "training-load targets, workout candidates, and route candidates. If yesterday "
-                "was sick and today is unmarked, ask for current form and keep the provisional "
-                "recommendation to rest or a very easy return session. Keep days 1-2 after the "
-                "last sick day on a progressive low-intensity return ramp. If today's Intervals "
+                "training-load targets, workout candidates, and route candidates. For unresolved "
+                "illness return, ask for current form and keep the provisional "
+                "recommendation to rest until symptom and response assessment is resolved. "
+                "Use the reviewed return phase and dose, never elapsed days, to progress. If today's Intervals "
                 "soreness is missing, assume soreness is non-limiting and still provide the "
                 "appropriate recommendation. When that recommendation is VT2, VO2Max, threshold, "
                 "peak-power, or harder work, ask the user to set today's Intervals soreness value. "
@@ -5677,7 +5688,7 @@ def recommendation_bias(
     xert: dict[str, Any],
     intervals_events: dict[str, Any],
 ) -> str:
-    if intervals_events.get("current_day_illness"):
+    if intervals_events.get("current_day_illness") or intervals_events.get("illness_training_blocked"):
         return "rest"
     if intervals_events.get("illness_followup_needed"):
         return "easy_vt1"
@@ -5761,8 +5772,8 @@ def coach_summary_reasons(
     elif intervals_events.get("return_to_training_active"):
         guidance = intervals_events.get("return_to_training_guidance") or {}
         reasons.append(
-            "Return-to-training day {day}: {duration} min, {intensity}.".format(
-                day=intervals_events.get("return_to_training_day"),
+            "Return-to-training phase {day}: {duration} min, {intensity}.".format(
+                day=intervals_events.get("illness_return_phase"),
                 duration=guidance.get("duration_minutes"),
                 intensity=guidance.get("intensity"),
             )
@@ -6375,11 +6386,11 @@ def intensity_guardrails(
         guardrails.extend(["no_training_current_illness", "avoid_intensity_current_illness"])
     elif (intervals_events or {}).get("illness_followup_needed"):
         guardrails.extend(
-            ["ask_current_form_after_sickness", "avoid_intensity_first_unmarked_day_after_sickness"]
+            ["ask_current_form_after_sickness", "avoid_intensity_until_illness_review"]
         )
     elif (intervals_events or {}).get("return_to_training_active"):
         guardrails.extend(
-            ["return_to_training_ramp_after_illness", "avoid_intensity_during_return_ramp"]
+            ["return_to_training_ramp_after_illness", "avoid_intensity_during_graded_return"]
         )
     hrv_risk = hrv_readiness_risk(wellness)
     resting_hr_risk = resting_hr_readiness_risk(wellness)
@@ -7157,10 +7168,10 @@ def format_summary(packet: dict[str, Any]) -> str:
             constraint=(
                 "NO TRAINING TODAY; explicit Intervals.icu sickness annotation overrides dose and candidates"
                 if no_training_today
-                else "FORM CHECK REQUIRED; sick yesterday and today unmarked, ask whether still sick or first healthy day; avoid intensity meanwhile"
+                else "FORM CHECK REQUIRED; illness return unresolved; review symptoms and exercise response before training"
                 if form_check_needed
                 else "RETURN-TO-TRAINING RAMP DAY {day}; use {guidance}, no intensity".format(
-                    day=health_constraints.get("return_to_training_day"),
+                    day=health_constraints.get("illness_return_phase"),
                     guidance=(health_constraints.get("return_to_training_guidance") or {}).get(
                         "duration_minutes"
                     ),
@@ -7441,13 +7452,13 @@ def intervals_wellness_events_line(events: dict[str, Any]) -> str:
         )
     if events.get("illness_followup_needed"):
         latest = events.get("latest_illness_event") or {}
-        return "sick yesterday, today unmarked; form check required" + (
+        return "illness return unresolved; symptom and exercise-response review required" + (
             f" ({latest.get('comments')})" if latest.get("comments") else ""
         )
     if events.get("return_to_training_active"):
         guidance = events.get("return_to_training_guidance") or {}
-        return "return ramp day {day}: {duration}, {intensity}".format(
-            day=events.get("return_to_training_day"),
+        return "return phase {day}: {duration}, {intensity}".format(
+            day=events.get("illness_return_phase"),
             duration=guidance.get("duration_minutes"),
             intensity=guidance.get("intensity"),
         )

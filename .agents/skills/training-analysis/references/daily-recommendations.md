@@ -185,8 +185,12 @@ deficit, and progression fields required to explain the XATA planning dose.
 
 ## Illness And Return
 
-If Intervals.icu contains a sickness event today or yesterday, follow
+If Intervals.icu contains a current/recent sickness event, or prior context
+contains an unresolved illness episode, follow
 [illness-and-return.md](illness-and-return.md) before selecting intensity or dose.
+Pass the current evidence-based assessment through `--illness-return-json` to
+both readiness and recommendation helpers when available. Calendar age or an
+episode disappearing from a source window must not silently clear the return.
 
 ## Readiness Composition
 
