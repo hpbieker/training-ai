@@ -137,10 +137,37 @@ it, rather than repeating an inventory of unknowns.
 - For threshold-like work, inspect `vt2_quality`. Pass `--vt2-watts` for
   intensity classification and, separately, `--prescribed-watts` when a common
   prescribed target is known. Without a valid anchor, intensity classification
-  is unresolved. Without a prescription, report descriptive stability rather
-  than target attainment. Current VT2 diagnostics select blocks by observed
-  power near the anchor; inspect the remaining work blocks before judging
-  completion of the whole prescription.
+  is unresolved. The VT2 pipeline (or `--vt2-work-series --brief`) includes
+  every recorded WORK interval, including short or off-target efforts. Use
+  `series_scope` to distinguish recorded laps, detected candidates and a
+  series mapped to the prescription. Review duration, power, RPE, physiological
+  response and subsequent recovery before progressing.
+- When the historical prescription or a dated anchor can be verified, save
+  reviewed inputs in `vt2-evidence.json` next to that ride's `activity.json`.
+  Both the activity inspector and progression helper use these inputs. Example
+  for three prescribed efforts with the last one lacking a mapped recording:
+
+  ```json
+  {
+    "activity_id": "i123",
+    "anchor": {"watts": 295, "valid_on": "2026-11-16", "source": "dated threshold assessment"},
+    "prescription_source": "original workout",
+    "prescribed_watts": 300,
+    "series": [
+      {"source_interval": 2, "duration_s": 1200},
+      {"source_interval": 4, "duration_s": 1200},
+      {"source_interval": null, "duration_s": 1200}
+    ]
+  }
+  ```
+
+  Omit unknown fields. `valid_on` is the local ride date for which the
+  assessment applies. Supply each known target in `series[].watts` for a
+  variable prescription. Interval numbers start at one in the full saved
+  interval list, including recoveries. A null mapping preserves that effort
+  as unobserved. Use the reviewed workout record to establish whether the
+  athlete skipped it. Without a verified prescription, summarize the recorded
+  laps and leave completion of the planned set open.
 - Standard output excludes beta diagnostics. Use `--brief --debug-beta` only
   for explicitly requested development/debugging. Do not use `beta_summary`,
   `beta_stability`, or `beta_vo2` as the basis of a coaching verdict or progression.

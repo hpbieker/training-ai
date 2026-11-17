@@ -15,6 +15,8 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from analysis import SavedActivity
+from activity_inspect import read_vt2_evidence, vt2_quality
 from plan_state import DEFAULT_STATE_PATH, load_plan_state, parse_datetime
 from readiness_snapshot import completed_activity_start, parse_timezone
 
@@ -130,7 +132,8 @@ def recent_relevant_activities(
             metadata, workout_type=workout_type, target_power_w=target_power_w,
             reviewed_family=reviewed is not None,
         )
-        if reviewed is None and not observed and not name_matches_type(name, workout_type):
+        session_evidence = workout_type == "vt2" and (activity_dir / "vt2-evidence.json").is_file()
+        if reviewed is None and not observed and not session_evidence and not name_matches_type(name, workout_type):
             continue
         candidates.append(
             CandidateActivity(
@@ -194,6 +197,18 @@ def inspect_activities(
 def inspected_activity_payload(
     activity: CandidateActivity, result: dict[str, Any], *, workout_type: str
 ) -> dict[str, Any]:
+    path = activity.activity_dir / "vt2-evidence.json"
+    if workout_type == "vt2" and not activity.has_streams and path.is_file():
+        metadata = load_activity_metadata(activity.activity_dir / "activity.json")
+        saved = SavedActivity(activity.activity_dir, metadata, [])
+        evidence = read_vt2_evidence(path, saved)
+        laps = [{"index": i, "elapsed_time": interval_seconds(row)} for i, row in enumerate(saved.intervals, 1)
+                if str(row.get("type")).upper() == "WORK"]
+        diagnostic = vt2_quality(metadata, [], laps, [],
+                                 vt2_watts=(evidence.get("anchor") or {}).get("watts"),
+                                 prescribed_watts=evidence.get("prescribed_watts"),
+                                 recorded_series=True, prescription=evidence.get("series"))
+        result = {"vt2_quality": {**(diagnostic or {}), "session_evidence": evidence}}
     return {
         "activity_id": activity.activity_id,
         "name": activity.name,
@@ -205,12 +220,14 @@ def inspected_activity_payload(
         "streams_available": activity.has_streams,
         "selection_basis": (
             "reviewed_completed_role" if activity.reviewed_event is not None
+            else "session_evidence" if workout_type == "vt2" and path.is_file()
             else "activity_name" if name_matches_type(activity.name, workout_type)
             else "interval_pattern_candidate"
         ),
         "reviewed_classification": (
             {key: activity.reviewed_event[key] for key in
-             ("completed_role", "quality_stimulus", "quality_role_fulfilled", "planned_workout_completed")}
+             ("completed_role", "quality_stimulus", "quality_role_fulfilled", "planned_workout_completed",
+              "reason", "evidence") if key in activity.reviewed_event}
             if activity.reviewed_event is not None else None
         ),
         "observed_work": activity.observed_work,
@@ -265,15 +282,6 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
     vt2_quality = vt2.get("session_quality") or {}
     hardest = result.get("hardest_block") or {}
     total = result.get("total") or {}
-    stability = "unknown"
-    physiological_cost = "unknown"
-
-    verdict = str(vt2_quality.get("verdict") or "").lower()
-    if any(token in verdict for token in ("failed", "unstable", "variable")):
-        stability = "unstable_or_failed"
-    elif any(token in verdict for token in ("controlled", "stable")):
-        stability = "stable"
-
     drift_values = [
         number(hardest.get("hr_per_watt_drift_pct")),
         number(hardest.get("ve_per_watt_drift_pct")),
@@ -294,8 +302,14 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
         "category": beta_summary.get("category"),
         "status": beta_summary.get("status"),
         "vt2_verdict": vt2_quality.get("verdict"),
+        "vt2_series_scope": vt2.get("series_scope"),
+        "vt2_session_evidence": vt2.get("session_evidence"),
+        "vt2_mechanical_execution": vt2_quality or None,
+        "vt2_series": [{key: block[key] for key in (
+            "n", "source_interval", "duration_s", "prescribed_duration_s", "duration_difference_s",
+            "watts_avg", "target_watts", "verdict", "within_anchor_candidate_band", "reason"
+        ) if key in block} for block in vt2.get("blocks", [])],
         "vt2_intensity_classification": vt2.get("intensity_classification"),
-        "stability": stability,
         "physiological_cost": physiological_cost,
         "max_relative_drift_pct": round(max_drift, 1) if max_drift is not None else None,
         "core_temp_max": round(max_core, 2) if max_core is not None else None,

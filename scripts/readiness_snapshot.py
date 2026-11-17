@@ -541,20 +541,11 @@ def xert_activities_from_input(
         start_utc = normalized.get("start_utc")
         if not start_local or str(start_local)[:10] > day:
             continue
-        if data_cutoff is not None:
-            elapsed_minutes = number(normalized.get("elapsed_minutes"))
-            start_timestamp = activity_timestamp_utc(
-                start_utc,
-                start_local,
-                local_timezone=local_timezone,
-            )
-            end_timestamp = (
-                start_timestamp + timedelta(minutes=elapsed_minutes)
-                if start_timestamp is not None and elapsed_minutes is not None
-                else start_timestamp
-            )
-            if end_timestamp is not None and end_timestamp > data_cutoff:
-                continue
+        if data_cutoff is not None and completed_activity_start(
+            payload.get("start_utc"), start_local, (number(normalized.get("elapsed_minutes")) or 0) * 60,
+            cutoff=data_cutoff, local_timezone=local_timezone,
+        ) is None:
+            continue
         result.append(normalized)
     return sorted(result, key=lambda item: str(item.get("start_local") or ""))
 
@@ -2758,7 +2749,6 @@ def completed_activity_start(raw_utc, raw_local, elapsed_seconds, *, cutoff, loc
     if start is None or seconds > (cutoff.astimezone(timezone.utc) - start).total_seconds():
         return None
     return start.astimezone(local_timezone)
-
 
 
 def same_local_date(left: Any, right: Any) -> bool:

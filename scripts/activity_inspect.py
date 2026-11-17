@@ -132,6 +132,8 @@ def main() -> None:
         "--prescribed-watts", type=float,
         help="Explicit common power target for assessed VT2 blocks; independent of the VT2 anchor",
     )
+    parser.add_argument("--vt2-work-series", action="store_true",
+                        help="Describe every recorded WORK interval for a VT2 session")
     parser.add_argument(
         "--fields",
         default=",".join(DEFAULT_FIELDS),
@@ -319,6 +321,10 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
         result["_indoor_vt1_requested"] = args.indoor_vt1
         result["_indoor_vt1_disabled"] = args.no_auto_indoor_vt1
         result["_vt1_watts"] = args.vt1_watts
+        evidence_path = activity.activity_dir / "vt2-evidence.json"
+        if evidence_path.is_file():
+            result["_vt2_evidence"] = read_vt2_evidence(evidence_path, activity)
+        result["_vt2_work_series"] = getattr(args, "vt2_work_series", False)
         result["_vt2_watts"] = args.vt2_watts
         result["_prescribed_watts"] = getattr(args, "prescribed_watts", None)
         result = brief_result(result, debug_beta=getattr(args, "debug_beta", False))
@@ -332,6 +338,9 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
 def analysis_provenance(activity: SavedActivity, args: argparse.Namespace) -> dict[str, Any]:
     """Fingerprint raw inputs, effective options and the local calculation code."""
     inputs = [activity.activity_dir / "activity.json", activity.activity_dir / "streams.csv"]
+    evidence = activity.activity_dir / "vt2-evidence.json"
+    if getattr(args, "brief", False) and evidence.is_file():
+        inputs.append(evidence)
     if getattr(args, "garmin_json", None) is not None:
         inputs.append(Path(args.garmin_json))
     scripts = [Path(__file__).resolve().parent / name for name in
@@ -632,15 +641,26 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
             "error": "missing_vt1_anchor_watts",
             "message": "Pass --vt1-watts from caller-level preferences.",
         }
+    evidence = result.get("_vt2_evidence") or {}
+    anchor = (evidence.get("anchor") or {}).get("watts")
+    target = evidence.get("prescribed_watts")
+    for label, supplied, recorded in (("anchor", result.get("_vt2_watts"), anchor),
+                                     ("prescription", result.get("_prescribed_watts"), target)):
+        if supplied is not None and recorded is not None and supplied != recorded:
+            raise ValueError(f"Supplied VT2 {label} conflicts with activity-specific evidence")
+    anchor = anchor if anchor is not None else result.get("_vt2_watts")
+    target = target if target is not None else result.get("_prescribed_watts")
+    inspect_series = bool(result.get("_vt2_work_series") or target is not None or evidence
+                          or vt2_candidate_blocks(saved_work_intervals, anchor))
     vt2_quality_result = vt2_quality(
-        result["activity"],
-        rows,
-        work_blocks,
-        recoveries,
-        vt2_watts=result.get("_vt2_watts"),
-        prescribed_watts=result.get("_prescribed_watts"),
+        result["activity"], rows, saved_work_intervals if saved_work_intervals else work_blocks,
+        recoveries, vt2_watts=anchor, prescribed_watts=target,
+        recorded_series=inspect_series and bool(saved_work_intervals),
+        prescription=evidence.get("series"), detected_only=not saved_work_intervals,
     )
     if vt2_quality_result:
+        if evidence:
+            vt2_quality_result["session_evidence"] = evidence
         brief["vt2_quality"] = vt2_quality_result
     if "garmin" in result:
         brief["garmin"] = result["garmin"]
@@ -938,6 +958,43 @@ def garmin_blind_spot_control(
     }
 
 
+def read_vt2_evidence(path, activity):
+    """Load reviewed session-specific evidence without inferring targets from observed power."""
+    evidence = json.loads(path.read_text())
+    if not isinstance(evidence, dict) or evidence.get("activity_id") != activity.id:
+        raise ValueError("VT2 evidence must identify the recorded activity")
+    anchor = evidence.get("anchor")
+    if anchor is not None:
+        day = str(activity.metadata.get("start_date_local") or "")[:10]
+        if (not isinstance(anchor, dict) or not valid_vt2_anchor(anchor.get("watts"))
+                or not day or anchor.get("valid_on") != day or not str(anchor.get("source") or "").strip()):
+            raise ValueError("VT2 anchor requires watts, source and validity on the activity date")
+    series = evidence.get("series")
+    target = evidence.get("prescribed_watts")
+    if target is not None and not valid_vt2_anchor(target):
+        raise ValueError("Invalid VT2 prescribed watts")
+    if (target is not None or series is not None) and not str(evidence.get("prescription_source") or "").strip():
+        raise ValueError("VT2 prescription requires its source")
+    if series is not None:
+        if not isinstance(series, list) or not series:
+            raise ValueError("VT2 series requires one row per prescribed effort")
+        last_index = 0
+        for rep in series:
+            if not isinstance(rep, dict) or "source_interval" not in rep:
+                raise ValueError("Map each VT2 effort to a source interval number or null")
+            idx = rep["source_interval"]
+            if idx is not None:
+                if type(idx) is not int or not last_index < idx <= len(activity.intervals):
+                    raise ValueError("VT2 interval numbers must identify ordered, distinct source intervals")
+                if str(activity.intervals[idx-1].get("type")).upper() != "WORK":
+                    raise ValueError("VT2 prescription must map to WORK intervals")
+                last_index = idx
+            for field in ("watts", "duration_s"):
+                if field in rep and not valid_vt2_anchor(rep[field]):
+                    raise ValueError(f"Invalid prescribed VT2 {field}")
+    return evidence
+
+
 def vt2_quality(
     activity: dict[str, Any],
     rows: list[dict[str, str]],
@@ -946,6 +1003,9 @@ def vt2_quality(
     *,
     vt2_watts: Any,
     prescribed_watts: float | None = None,
+    recorded_series: bool = False,
+    prescription: list[dict] | None = None,
+    detected_only: bool = False,
 ) -> dict[str, Any] | None:
     """Return VT2/threshold-control diagnostics without touching VT1 scoring."""
 
@@ -953,46 +1013,75 @@ def vt2_quality(
         raise ValueError("Prescribed power must be finite and positive")
     name = str(activity.get("name") or "").lower().replace("₂", "2")
     intended_session = "vt2" if "vt2" in name else "unspecified"
-    if not valid_vt2_anchor(vt2_watts):
-        return {
-            "status": "unresolved",
-            "reason": "missing_or_invalid_vt2_anchor",
-            "intended_session_from_name": intended_session,
-            "intensity_classification": "unresolved",
-            "blocks": [],
-            "meaning": "The activity name describes intent; supply a valid VT2 anchor to assess observed intensity.",
-        }
-    candidates = vt2_candidate_blocks(work_blocks, vt2_watts)
-    if not candidates:
+    anchored = valid_vt2_anchor(vt2_watts)
+    by_index = {block.get("index"): block for block in work_blocks} if not detected_only else {}
+    if prescription is not None:
+        scope = "mapped_prescribed_series"
+        entries = [(rep, by_index.get(rep["source_interval"])) for rep in prescription]
+    elif recorded_series or (prescribed_watts is not None and not detected_only):
+        scope = "recorded_work_intervals"
+        entries = [({}, block) for block in work_blocks]
+    elif anchored or prescribed_watts is not None:
+        scope = "power_selected_candidates"
+        reference = vt2_watts if anchored else prescribed_watts
+        entries = [({}, block) for _, block in vt2_candidate_blocks(work_blocks, reference)]
+    else:
+        return {"status": "unresolved", "reason": "missing_or_invalid_vt2_anchor",
+                "intended_session_from_name": intended_session, "intensity_classification": "unresolved",
+                "blocks": []}
+    if not entries:
         return None
 
-    blocks = [
-        vt2_block_quality(
-            rows,
-            block,
-            index=index,
-            target_watts=prescribed_watts,
-            anchor_watts=vt2_watts,
-        )
-        for index, block in candidates
-    ]
-    blocks = [block for block in blocks if block]
-    if not blocks:
-        return None
+    blocks = []
+    for n, (rep, block) in enumerate(entries, start=1):
+        target = rep.get("watts", prescribed_watts)
+        measured = vt2_block_quality(rows, block, index=n, target_watts=target,
+                                     anchor_watts=vt2_watts) if block is not None else None
+        item = measured or {"n": n, "verdict": "execution_unavailable", "target_attainment": "unresolved",
+                            "reason": "no_mapped_recording" if block is None else "insufficient_recording"}
+        if target is not None:
+            item["target_watts"] = target
+        if block is not None:
+            item["source_interval"] = block.get("index")
+            if measured is None and block.get("elapsed_time") is not None:
+                item["duration_s"] = block["elapsed_time"]
+                item["duration_source"] = "recorded_interval_metadata"
+        if "duration_s" in rep:
+            item["prescribed_duration_s"] = rep["duration_s"]
+            if item.get("duration_s") is not None:
+                item["duration_difference_s"] = item["duration_s"] - rep["duration_s"]
+        if anchored and item.get("watts_avg") is not None:
+            item["within_anchor_candidate_band"] = vt2_candidate_power(
+                item["watts_avg"], vt2_watts, duration=item.get("duration_s"))
+        blocks.append(item)
 
-    best = max(blocks, key=lambda block: block.get("duration_s") or 0)
+    best = max((b for b in blocks if b.get("duration_s") is not None),
+               key=lambda b: b["duration_s"], default=None)
     session_quality = vt2_session_quality(blocks, recoveries)
+    if prescription is not None:
+        session_quality["prescribed_repetitions"] = len(blocks)
+        session_quality["mapped_repetitions"] = sum(block is not None for _, block in entries)
+        session_quality["planned_work_seconds"] = (
+            sum(rep["duration_s"] for rep in prescription)
+            if all("duration_s" in rep for rep in prescription) else None
+        )
+        session_quality["observed_mapped_work_seconds"] = sum(
+            item["duration_s"] for item in blocks if item.get("duration_s") is not None
+        ) if any(item.get("duration_s") is not None for item in blocks) else None
 
     return drop_none(
         {
             "status": "experimental",
             "intended_session_from_name": intended_session,
-            "intensity_classification": "within_anchor_candidate_band",
+            "intensity_classification": ("unresolved" if not anchored else
+                                         "within_anchor_candidate_band" if scope == "power_selected_candidates"
+                                         else "see_individual_blocks"),
+            "series_scope": scope,
             "meaning": (
                 "Mechanical execution diagnostics and descriptive physiological evidence. "
                 "No physiological cost, recovery, or combined score is assigned."
             ),
-            "anchor_watts": rounded(vt2_watts, digits=0) if isinstance(vt2_watts, (int, float)) else None,
+            "anchor_watts": rounded(vt2_watts, digits=0) if anchored else None,
             "mode": "trainer" if activity.get("trainer") else "outdoor_or_variable",
             "block_count": len(blocks),
             "best_duration_block": best,
@@ -1012,13 +1101,14 @@ def vt2_session_quality(
         block
         for block in blocks
         if isinstance(block.get("watts_avg"), (int, float))
+        and block.get("verdict") != "execution_unavailable"
         and isinstance(block.get("duration_s"), (int, float))
     ]
     if not comparable:
-        return None
-
-    first = comparable[0]
-    last = comparable[-1]
+        return {"verdict": "execution_incomplete_evidence", "block_count": len(blocks),
+                "valid_power_block_count": 0, "target_attainment": "unresolved"}
+    first = blocks[0]
+    last = blocks[-1]
     total_duration = sum(float(block["duration_s"]) for block in comparable)
     weighted_watts = (
         sum(float(block["watts_avg"]) * float(block["duration_s"]) for block in comparable)
@@ -1026,11 +1116,11 @@ def vt2_session_quality(
         if total_duration > 0
         else None
     )
-    watts_start = float(first["watts_avg"])
-    watts_end = float(last["watts_avg"])
+    watts_start = first.get("watts_avg") if first in comparable else None
+    watts_end = last.get("watts_avg") if last in comparable else None
     power_fade_pct = (
         (watts_start - watts_end) / watts_start * 100
-        if watts_start
+        if watts_start and watts_end is not None
         else None
     )
     worst = min(comparable, key=vt2_block_control_key)
@@ -1052,7 +1142,8 @@ def vt2_session_quality(
             "watts_end": rounded(watts_end, digits=0),
             "power_fade_pct": rounded(power_fade_pct, digits=1),
             "power_change_context": "descriptive first-to-last block means; targets and durations may differ",
-            "execution_score": minimum_numeric(comparable, "execution_score"),
+            "execution_score": (minimum_numeric(comparable, "execution_score")
+                                if all(b.get("execution_score") is not None for b in blocks) else None),
             "worst_execution_block": ({"n": worst.get("n"), "execution_score": worst.get("execution_score")}
                                       if worst.get("execution_score") is not None else None),
             "target_attainment": ("assessed" if all(b.get("execution_score") is not None for b in blocks)
@@ -1122,7 +1213,7 @@ def vt2_block_quality(
         return None
     segment = rows[start:end]
     pedaling = [row for row in segment if outdoor_pedaling_row(row)]
-    if not timeline(segment) or timeline(segment)[2] < 5 * 60:
+    if not timeline(segment):
         return None
 
     stats = indoor_segment_stats(pedaling)
@@ -1251,7 +1342,7 @@ def vt2_power_stability(
     if abs(avg_delta) > 15:
         limiter_hints.append("target_mismatch")
     if isinstance(within_20, (int, float)) and within_20 < 65:
-        limiter_hints.append("variable_power")
+        limiter_hints.append("time_outside_target_band")
     return drop_none(
         {
             **descriptive,

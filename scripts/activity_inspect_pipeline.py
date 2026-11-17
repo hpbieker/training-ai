@@ -222,7 +222,7 @@ def build_inspect_args(options: dict[str, Any]) -> list[str]:
 
     mode = options["mode"]
     if mode == "vt2":
-        inspect_args.extend(["--auto-blocks"])
+        inspect_args.extend(["--auto-blocks", "--vt2-work-series"])
     elif mode == "vo2max":
         inspect_args.extend(["--auto-blocks"])
     elif mode == "indoor-vt1":
@@ -314,7 +314,7 @@ def fresh_cached_payload(
     if payload.get("schema") != PIPELINE_SCHEMA or payload.get("cache_key") != cache_key:
         return None
     cached_sources = payload.get("source_files")
-    if not isinstance(cached_sources, dict):
+    if not isinstance(cached_sources, dict) or cached_sources.keys() != source_files.keys():
         return None
     for name, metadata in source_files.items():
         cached_metadata = cached_sources.get(name)
@@ -330,6 +330,8 @@ def fresh_cached_payload(
 def source_file_metadata(activity_dir: Path) -> dict[str, dict[str, Any]]:
     return {
         "activity_json": file_metadata(activity_dir / "activity.json"),
+        **({"vt2_evidence": file_metadata(activity_dir / "vt2-evidence.json")}
+           if (activity_dir / "vt2-evidence.json").is_file() else {}),
         "streams_csv": file_metadata(activity_dir / "streams.csv"),
         "activity_inspect_py": file_metadata(activity_inspect_script()),
         "analysis_py": file_metadata(activity_inspect_script().with_name("analysis.py")),
