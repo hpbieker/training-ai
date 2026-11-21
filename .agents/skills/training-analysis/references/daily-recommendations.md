@@ -48,7 +48,20 @@ as a `planning_context.calendar.events` row (`subject`, `start`, `end`,
 `fixed_blocker`, `open_training`, `tentative_nonblocking`, `movable_event`,
 `flexible_appointment`, `indoor_overlap_candidate`, and `unknown`; unknowns
 block time. Include local-offset `day_start`/`day_end` and setup/cleanup
-buffers. For movable events, pass the minimum duration and whether shortening
+buffers. Take day bounds from the athlete's availability or normal planning
+hours before selecting a duration. A proposed ride's end plus cleanup is
+only its occupied time. Use actual commitments to limit the window. If
+the calendar was checked and is empty, pass `events: []` with the checked
+bounds. If availability is unverified, state the assumption when it matters.
+With event rows, pass `calendar.open_training_subjects` from the
+current coaching preferences (an empty list when none are configured).
+Resolve these titles before applying calendar busy status, including when
+reusing a saved request. Classify matching titles as `open_training`.
+If the athlete assigns the time to a specific commitment, include that
+commitment with its actual time and subject. A change to a former blocker
+requires reviewing both ride lengths and the rationale carried into the answer.
+Only quote margins to commitments that actually constrain the athlete.
+For movable events, pass the minimum duration and whether shortening
 is permitted; use the placement returned by the helper.
 
 Consider the earliest feasible start in each availability window and any

@@ -48,6 +48,47 @@ class RecommendationEvidenceTests(unittest.TestCase):
         self.assertIn('high_soreness', evidence['observed_limitations'])
         self.assertTrue(evidence['soreness_reported'])
 
+    def test_movable_event_only_cancels_its_own_practical_stop(self):
+        from zoneinfo import ZoneInfo
+        from recommend_training import parse_calendar_context_payload
+        timezone = ZoneInfo("Europe/Oslo")
+        at = "2026-11-19T17:00:00+01:00"
+        end = "2026-11-19T18:00:00+01:00"
+        event = dict(subject="Dinner", classification="movable_event", start=at, end=end)
+        hard = dict(subject="Departure", at=end)
+        payload = dict(day_start=at, day_end=end, events=[event], hard_stop=hard)
+        for subject, expected in [("dinner", None), ("Other", dict(subject="Other", at=at))]:
+            calendar = parse_calendar_context_payload(
+                dict(payload, practical_stop=dict(subject=subject, at=at)), local_timezone=timezone)
+            self.assertEqual(calendar["practical_stop"], expected)
+            self.assertEqual(calendar["hard_stop"], hard)
+
+    def test_movable_meal_respects_setup_and_cleanup_for_each_session(self):
+        from zoneinfo import ZoneInfo
+        from recommend_training import parse_calendar_context_payload, place_movable_events
+        timezone = ZoneInfo("Europe/Oslo")
+        day = "2026-11-20"
+
+        def at(clock):
+            return f"{day}T{clock}:00+01:00"
+
+        sessions = [dict(start=at("10:40"), end=at("11:43")),
+                    dict(start=at("13:00"), end=at("13:30"))]
+        for original, end, expected in [("11:30", "12:15", "11:58"),
+                                        ("12:15", "13:00", "11:58"),
+                                        ("13:35", "14:20", "13:45")]:
+            with self.subTest(original=original):
+                meal = dict(subject="Lunch", classification="movable_event",
+                            start=at(original), end=at(end))
+                calendar = parse_calendar_context_payload(
+                    dict(day_start=at("10:25"), day_end=at("16:00"), events=[meal],
+                         setup_buffer_minutes=15, cleanup_buffer_minutes=15),
+                    local_timezone=timezone)
+                result = place_movable_events(calendar, sessions=sessions, local_timezone=timezone, day=day)
+                placed, = result["placements"]
+                self.assertEqual(placed["start"], at(expected))
+                self.assertEqual(placed["duration_minutes"], 45)
+
     def test_partial_observations_stay_partial(self):
         evidence = readiness_evidence_status(self.inputs({'sleep_score': 90}))
         self.assertEqual(evidence['direct_signal_coverage'], 'partial')

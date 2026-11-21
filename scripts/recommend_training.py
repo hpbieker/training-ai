@@ -1753,6 +1753,7 @@ def parse_calendar_context_payload(
             "hard_stop",
             "remainder_disposition",
             "events",
+            "open_training_subjects",
             "day_start",
             "day_end",
             "setup_buffer_minutes",
@@ -1834,11 +1835,32 @@ def parse_calendar_context_payload(
             )
         if datetime.fromisoformat(day_bounds["day_end"]) <= datetime.fromisoformat(day_bounds["day_start"]):
             raise argparse.ArgumentTypeError("calendar.day_end must be after day_start")
+    subjects = payload.get("open_training_subjects", [])
+    if not isinstance(subjects, list) or any(not isinstance(s, str) or not s.strip() for s in subjects):
+        raise argparse.ArgumentTypeError("calendar.open_training_subjects must be a list of non-empty titles")
+    open_titles = {s.strip().casefold() for s in subjects}
+    for event in events or []:
+        if event["subject"].casefold() in open_titles and event["classification"] != "open_training":
+            raise argparse.ArgumentTypeError(
+                f"Classify {event['subject']!r} as open_training per the resolved coaching preferences. "
+                "Reassess the window, dose and rationale; record any separate commitment as its own event."
+            )
+    for field, stop in stops.items():
+        if stop and stop["subject"].casefold() in open_titles:
+            raise argparse.ArgumentTypeError(f"An open training title cannot supply calendar.{field}")
+    practical = stops["practical_stop"]
+    if practical and any(
+        event["classification"] == "movable_event" and event["start"] == practical["at"]
+        and event["subject"].casefold() == practical["subject"].casefold()
+        for event in events or []
+    ):
+        stops["practical_stop"] = None
     return {
         "cleanup_buffer_minutes": float(cleanup),
         "setup_buffer_minutes": float(setup),
         **day_bounds,
         "events": events,
+        "open_training_subjects": [s.strip() for s in subjects],
         "assumptions": [value.strip() for value in assumptions],
         **stops,
         "remainder_disposition": disposition,
@@ -1921,7 +1943,13 @@ def place_movable_events(calendar: dict[str, Any], *, sessions: list[dict[str, A
         for event in calendar["events"]
         if event["classification"] in {"fixed_blocker", "flexible_appointment", "unknown"}
     ]
-    occupied += [(datetime.fromisoformat(s["start"]), datetime.fromisoformat(s["end"])) for s in sessions if s.get("start") and s.get("end")]
+    setup = timedelta(minutes=calendar["setup_buffer_minutes"])
+    cleanup = timedelta(minutes=calendar["cleanup_buffer_minutes"])
+    occupied.extend(
+        (datetime.fromisoformat(session["start"]) - setup,
+         datetime.fromisoformat(session["end"]) + cleanup)
+        for session in sessions if session.get("start") and session.get("end")
+    )
     placements = []
     for movable in sorted(movable_events, key=lambda item: item["start"]):
         original, minimum = (datetime.fromisoformat(movable["end"]) - datetime.fromisoformat(movable["start"])), timedelta(minutes=movable["minimum_duration_minutes"])
