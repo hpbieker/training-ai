@@ -1,6 +1,6 @@
 ---
 name: route-planner
-description: Plan cycling routes through ordered waypoints.
+description: Plan and update cycling routes through ordered waypoints.
 ---
 
 # Route Planner
@@ -8,4 +8,8 @@ description: Plan cycling routes through ordered waypoints.
 Use `plan_route` with verified coordinates for the start, end and any stops
 or roads the user wants to pass. Put waypoints in travel order. If the route
 misses a required waypoint, verify the point on the intended road before
-retrying. The planner sends coordinates to BRouter and saves the route locally.
+retrying.
+
+Use `update_route` to change a saved route. Pass the route ID and revision from
+the latest successful call, preserve waypoint IDs for points the user wants
+to keep, and check the returned points after updating.

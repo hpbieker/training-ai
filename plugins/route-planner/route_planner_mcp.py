@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stdio MCP entry point for the Route Planner plugin."""
+import fcntl
 import hashlib
 import json
 import os
@@ -25,6 +26,7 @@ BROUTER_URL = "https://brouter.de/brouter"
 MAX_ROUTING_REPLY = 20 * 1024 * 1024
 MAX_ENDPOINT_SNAP_M = 100
 MAX_VIA_SNAP_M = 15
+MAX_EDITED_WAYPOINT_SNAP_M = 50
 POINT = {
     "type": "object",
     "properties": {
@@ -33,6 +35,18 @@ POINT = {
     },
     "required": ["lat", "lon"],
     "additionalProperties": False,
+}
+ID = {"type": "string", "pattern": "^[0-9a-f]{32}$"}
+SNAP_TO_ROUTE = {
+    "type": "boolean",
+    "description": "Save the routed position up to 50 m from the requested point.",
+}
+WAYPOINT = {
+    **POINT,
+    "properties": {**POINT["properties"], "waypoint_id": ID},
+    "anyOf": [{"required": ["lat", "lon"]}, {"required": ["waypoint_id"]}],
+    "required": [],
+    "dependentRequired": {"lat": ["lon"], "lon": ["lat"]},
 }
 TOOL = types.Tool(
     name="plan_route",
@@ -55,6 +69,60 @@ TOOL = types.Tool(
     annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
 )
 
+UPDATE_ROUTE = types.Tool(
+    name="update_route",
+    description=(
+        "Update a saved route using its ID and the revision you last read. "
+        "Route coordinates are sent to an external routing service. "
+        "Use move_waypoint with waypoint_id, lat and lon to move one point in place, "
+        "or remove_waypoint_id to remove it. Use add_waypoint to insert a point after a waypoint "
+        "or after the start. Use waypoints to replace or reorder the full list. "
+        "You can also change the start or end. Omitted fields are kept. "
+        "Returns the new revision and verified points."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "route_id": ID,
+            "expected_revision": {"type": "integer", "minimum": 1},
+            "remove_waypoint_id": ID,
+            "move_waypoint": {
+                **WAYPOINT,
+                "properties": {
+                    **WAYPOINT["properties"],
+                    "snap_to_route": SNAP_TO_ROUTE,
+                },
+                "required": ["waypoint_id", "lat", "lon"],
+            },
+            "add_waypoint": {
+                **POINT,
+                "properties": {
+                    **POINT["properties"],
+                    "after_waypoint_id": {**ID, "description": "Omit to insert after the start."},
+                    "snap_to_route": SNAP_TO_ROUTE,
+                },
+            },
+            "waypoints": {"type": "array", "items": WAYPOINT, "maxItems": 500},
+            "start": POINT,
+            "end": POINT,
+        },
+        "required": ["route_id", "expected_revision"],
+        "anyOf": [{"required": [key]} for key in (
+            "add_waypoint", "remove_waypoint_id", "move_waypoint", "waypoints", "start", "end",
+        )],
+        "not": {"anyOf": [
+            {"required": ["remove_waypoint_id", "waypoints"]},
+            {"required": ["move_waypoint", "waypoints"]},
+            {"required": ["move_waypoint", "remove_waypoint_id"]},
+            {"required": ["add_waypoint", "waypoints"]},
+            {"required": ["add_waypoint", "move_waypoint"]},
+            {"required": ["add_waypoint", "remove_waypoint_id"]},
+        ]},
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
+)
+
 
 def route_directory():
     return Path(os.environ.get("ROUTE_PLANNER_ROUTES", tempfile.gettempdir())).resolve()
@@ -64,6 +132,15 @@ def route_folder(route_id):
     if not re.fullmatch(r"[0-9a-f]{32}", route_id):
         raise ValueError("Invalid route_id")
     return route_directory() / f"route-planner-{route_id}"
+
+
+def load_route(route_id):
+    try:
+        saved = json.loads((route_folder(route_id) / "current.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise ValueError(f"Unknown or expired route_id: {route_id}") from None
+    saved.pop("experimental", None)
+    return saved
 
 
 def brouter_json(url, data=None):
@@ -104,12 +181,15 @@ def run_brouter(requested, profile):
     return brouter_json(BROUTER_URL + "?" + query), profile_id
 
 
-def verify_matches(requested, geometry):
+def verify_matches(requested, geometry, snap_waypoint_index=None):
     matches = []
     previous = -1
     for i, point in enumerate(requested):
         role = "start" if i == 0 else "end" if i == len(requested) - 1 else "waypoint"
+        snap_waypoint = i == snap_waypoint_index
         limit = MAX_VIA_SNAP_M if role == "waypoint" else MAX_ENDPOINT_SNAP_M
+        if snap_waypoint:
+            limit = MAX_EDITED_WAYPOINT_SNAP_M
         if role == "start":
             j = 0
         elif role == "end":
@@ -130,6 +210,8 @@ def verify_matches(requested, geometry):
                 )
             raise ValueError(detail)
         previous = j
+        if snap_waypoint:
+            point, gap = snap, 0
         matches.append((j, {
             "index": i, "role": role, "requested": {"lat": point[1], "lon": point[0]},
             "on_route": {"lat": snap[1], "lon": snap[0]}, "offset_m": round(gap, 2),
@@ -141,24 +223,64 @@ def route_point(point):
     return coordinate(point["lat"], point["lon"])
 
 
-def calculate_route(arguments, route_id):
-    waypoints = arguments.get("waypoints", [])
-    requested = [
-        route_point(arguments["start"]),
-        *(route_point(point) for point in waypoints),
-        route_point(arguments["end"]),
-    ]
+def route_inputs(arguments, saved):
+    old = saved["points"] if saved else []
+    waypoint_map = {point["waypoint_id"]: point["requested"] for point in old[1:-1]}
+    removed = arguments.get("remove_waypoint_id")
+    if removed is not None:
+        if removed not in waypoint_map:
+            raise ValueError(f"Unknown waypoint_id for this route: {removed}")
+        del waypoint_map[removed]
+    moved = arguments.get("move_waypoint")
+    if moved is not None:
+        key = moved["waypoint_id"]
+        if key not in waypoint_map:
+            raise ValueError(f"Unknown waypoint_id for this route: {key}")
+        waypoint_map[key] = {"lat": moved["lat"], "lon": moved["lon"]}
+    start = arguments["start"] if "start" in arguments else old[0]["requested"]
+    end = arguments["end"] if "end" in arguments else old[-1]["requested"]
+    via = arguments.get("waypoints", [{"waypoint_id": key} for key in waypoint_map])
+    snap_index = None
+    added = arguments.get("add_waypoint")
+    if added is not None:
+        prior = added.get("after_waypoint_id")
+        if prior is not None and prior not in waypoint_map:
+            raise ValueError(f"Unknown after_waypoint_id for this route: {prior}")
+        if len(via) >= 500:
+            raise ValueError("Routes support up to 500 waypoints.")
+        index = list(waypoint_map).index(prior) + 1 if prior is not None else 0
+        via.insert(index, added)
+        if added.get("snap_to_route"):
+            snap_index = index + 1
+    coords, ids = [route_point(start)], []
+    for point in via:
+        key = point.get("waypoint_id")
+        if key is None:
+            key = uuid4().hex
+        elif key not in waypoint_map:
+            raise ValueError(f"Unknown waypoint_id for this route: {key}")
+        ids.append(key)
+        coords.append(route_point(point if "lat" in point else waypoint_map[key]))
+    if len(ids) != len(set(ids)):
+        raise ValueError("Duplicate waypoint_id")
+    if moved and moved.get("snap_to_route"):
+        snap_index = ids.index(moved["waypoint_id"]) + 1
+    return [*coords, route_point(end)], ids, snap_index
+
+
+def calculate_route(arguments, route_id, saved):
+    requested, waypoint_ids, snap_index = route_inputs(arguments, saved)
     profile = PROFILE.read_bytes()
     payload, profile_id = run_brouter(requested, profile)
     geometry = validate_route(payload, requested[0], requested[-1], MAX_ENDPOINT_SNAP_M)
-    matches = verify_matches(requested, geometry)
-    for _, point in matches[1:-1]:
-        point["waypoint_id"] = uuid4().hex
+    matches = verify_matches(requested, geometry, snap_waypoint_index=snap_index)
+    for (_, point), waypoint_id in zip(matches[1:-1], waypoint_ids):
+        point["waypoint_id"] = waypoint_id
     props = payload["features"][0]["properties"]
     summary = {
         "route_id": route_id,
-        "revision": 1,
-        "title": "Route",
+        "revision": saved["revision"] + 1 if saved else 1,
+        "title": saved.get("title", "Route") if saved else "Route",
         "profile": PROFILE.stem,
         "profile_sha256": hashlib.sha256(profile).hexdigest(),
         "distance_km": round(sum(distance(a, b) for a, b in zip(geometry, geometry[1:])) / 1000, 2),
@@ -175,26 +297,55 @@ def calculate_route(arguments, route_id):
     return summary, payload
 
 
-def save_route(summary, payload):
-    folder = route_folder(summary["route_id"])
-    folder.mkdir(mode=0o700, parents=True)
+def save_route(summary, payload, previous_revision):
+    route_id = summary["route_id"]
+    folder = route_folder(route_id)
+    if previous_revision is None:
+        folder.mkdir(mode=0o700, parents=True)
+    output = None
     try:
         output = Path(tempfile.mkdtemp(prefix="revision-", dir=folder))
         geojson = output / "route.geojson"
         geojson.write_text(json.dumps(payload), encoding="utf-8")
-        saved = {**summary, "geojson_file": str(geojson)}
+        stored = {**summary, "geojson_file": str(geojson)}
         pending = output / "current.json"
-        pending.write_text(json.dumps(saved), encoding="utf-8")
-        pending.replace(folder / "current.json")
+        pending.write_text(json.dumps(stored), encoding="utf-8")
+        with (folder / ".lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if previous_revision is not None:
+                check_revision(previous_revision, load_route(route_id))
+            pending.replace(folder / "current.json")
     except Exception:
-        shutil.rmtree(folder)
+        if previous_revision is None:
+            shutil.rmtree(folder)
+        elif output is not None:
+            shutil.rmtree(output)
         raise
     return summary
 
 
 def plan_route(arguments):
-    summary, payload = calculate_route(arguments, uuid4().hex)
-    return save_route(summary, payload)
+    summary, payload = calculate_route(arguments, uuid4().hex, saved=None)
+    return save_route(summary, payload, previous_revision=None)
+
+
+def check_revision(expected, saved):
+    current = saved["revision"]
+    if current != expected:
+        raise ValueError(
+            f"Route revision conflict: expected {expected}, current revision is {current}."
+        )
+
+
+def update_route(arguments):
+    route_id = arguments["route_id"]
+    saved = load_route(route_id)
+    check_revision(arguments["expected_revision"], saved)
+    summary, payload = calculate_route(arguments, route_id, saved)
+    result = save_route(summary, payload, saved["revision"])
+    return {key: result[key] for key in (
+        "route_id", "revision", "distance_km", "estimated_time_s", "points",
+    )}
 
 
 def create_server():
@@ -202,14 +353,15 @@ def create_server():
 
     @server.list_tools()
     async def list_tools():
-        return [TOOL]
+        return [TOOL, UPDATE_ROUTE]
 
     @server.call_tool()
     async def call_tool(name, arguments):
         try:
-            if name != TOOL.name:
+            handler = {TOOL.name: plan_route, UPDATE_ROUTE.name: update_route}.get(name)
+            if handler is None:
                 raise ValueError(f"Unknown tool: {name}")
-            result = await anyio.to_thread.run_sync(plan_route, arguments)
+            result = await anyio.to_thread.run_sync(handler, arguments)
             return types.CallToolResult(
                 content=[types.TextContent(type="text", text=json.dumps(result))],
                 structuredContent=result,
