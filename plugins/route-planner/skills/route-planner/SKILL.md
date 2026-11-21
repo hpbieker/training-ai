@@ -20,3 +20,7 @@ Use `export_route` only when the user requests a route file.
 Use `inspect_route` to check road types, surfaces or access tags on a saved
 route. Filter by kilometre range or by two waypoint IDs in travel order for a
 specific section. Report gaps where the saved metadata is missing.
+
+Use `locate_on_route` to find where a saved route passes near a coordinate.
+Compare kilometre markers, offsets and bearings for all passages. Use
+`inspect_route` to check road metadata around a passage when needed.

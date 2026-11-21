@@ -46,4 +46,11 @@ the route start. Filtered tag totals are prorated by overlap with the
 saved geometry. Sections with missing or unmatched metadata are marked
 `unknown`.
 
+Call `locate_on_route` with a saved `route_id` and a coordinate in `near`.
+The optional `radius_m` defaults to 100 m and accepts values up to 1,000 m.
+The tool returns the closest point for each separate passage, in travel
+order, with distance from the route start, offset from the lookup point and
+bearing clockwise from true north. Road names and references come from
+saved metadata when available.
+
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.

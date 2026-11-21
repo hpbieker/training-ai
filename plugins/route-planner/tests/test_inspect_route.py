@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from route_planner_mcp import inspect_route
+from route_planner_mcp import inspect_route, locate_on_route
 
 
 class InspectionRangeTests(unittest.TestCase):
@@ -74,3 +74,25 @@ class InspectionRangeTests(unittest.TestCase):
         with patch("route_planner_mcp.load_route", return_value=self.saved):
             with self.assertRaisesRegex(ValueError, "travel order"):
                 inspect_route({"route_id": self.saved["route_id"], "waypoint_range": waypoint_range})
+
+    def test_locate_passages_projects_between_vertices_in_travel_order(self):
+        args = {"route_id": self.saved["route_id"], "near": {"lat": 60, "lon": 10.0005}}
+        with patch("route_planner_mcp.load_route", return_value=self.saved):
+            result = locate_on_route({**args, "radius_m": 10})
+            outside = locate_on_route({**args, "near": {"lat": 60.01, "lon": 10.0005}})
+        self.assertEqual(result["revision"], 1)
+        outbound, inbound = result["passages"]
+        self.assertEqual([outbound["distance_km"], inbound["distance_km"]], [0.0278, 0.1946])
+        self.assertEqual([outbound["bearing_deg"], inbound["bearing_deg"]], [90, 270])
+        self.assertEqual(outbound["road_name"], "Test Road")
+        self.assertEqual(outbound["road_ref"], "165")
+        self.assertEqual(inbound["road_type"], "cycleway")
+        self.assertNotIn("road_name", inbound)
+        self.assertEqual(outside["passages"], [])
+
+    def test_locate_counts_contiguous_edges_as_one_visit(self):
+        with patch("route_planner_mcp.load_route", return_value=self.saved):
+            result = locate_on_route({
+                "route_id": self.saved["route_id"], "near": {"lat": 60, "lon": 10.001}, "radius_m": 25,
+            })
+        self.assertEqual([p["distance_km"] for p in result["passages"]], [0.0556, 0.1668])

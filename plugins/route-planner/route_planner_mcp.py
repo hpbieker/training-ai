@@ -19,7 +19,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from route_geometry import coordinate, distance, validate_route, write_gpx
-from route_inspection import inspect_route_file
+from route_inspection import inspect_route_file, locate_passages
 
 PLUGIN = Path(__file__).resolve().parent
 PROFILE = PLUGIN / "assets/profiles/fastbike-road-flow.brf"
@@ -28,6 +28,8 @@ MAX_ROUTING_REPLY = 20 * 1024 * 1024
 MAX_ENDPOINT_SNAP_M = 100
 MAX_VIA_SNAP_M = 15
 MAX_EDITED_WAYPOINT_SNAP_M = 50
+DEFAULT_ROUTE_LOOKUP_RADIUS_M = 100
+MAX_ROUTE_LOOKUP_RADIUS_M = 1000
 POINT = {
     "type": "object",
     "properties": {
@@ -186,6 +188,31 @@ INSPECT_ROUTE = types.Tool(
     annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
 
+LOCATE_ON_ROUTE = types.Tool(
+    name="locate_on_route",
+    description=(
+        "Find where a saved route passes near a coordinate. "
+        "Returns the closest point for each separate visit within the search radius, in travel order, "
+        "with kilometres from the route start, offset in metres, compass bearing in degrees clockwise "
+        "from true north, and road name or reference when available in saved metadata. "
+        "Use a smaller radius to distinguish closely spaced passages. Reads the saved route locally."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "route_id": ID,
+            "near": POINT,
+            "radius_m": {
+                "type": "number", "exclusiveMinimum": 0, "maximum": MAX_ROUTE_LOOKUP_RADIUS_M,
+                "default": DEFAULT_ROUTE_LOOKUP_RADIUS_M,
+            },
+        },
+        "required": ["route_id", "near"],
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+)
+
 
 def route_directory():
     return Path(os.environ.get("ROUTE_PLANNER_ROUTES", tempfile.gettempdir())).resolve()
@@ -246,6 +273,20 @@ def inspect_route(arguments):
     if waypoint_range is not None:
         raise ValueError("Use route_id with waypoint_range.")
     return inspect_route_file(arguments["route_file"], distance_range=distance_range)
+
+
+def locate_on_route(arguments):
+    near = route_point(arguments["near"])
+    radius = arguments.get("radius_m", DEFAULT_ROUTE_LOOKUP_RADIUS_M)
+    if not 0 < radius <= MAX_ROUTE_LOOKUP_RADIUS_M:
+        raise ValueError(f"radius_m must be greater than 0 and at most {MAX_ROUTE_LOOKUP_RADIUS_M}")
+    saved = load_route(arguments["route_id"])
+    return {
+        "route_id": saved["route_id"],
+        "revision": saved["revision"],
+        "radius_m": radius,
+        "passages": locate_passages(saved["geojson_file"], near, radius),
+    }
 
 
 def brouter_json(url, data=None):
@@ -459,7 +500,7 @@ def create_server():
 
     @server.list_tools()
     async def list_tools():
-        return [TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE]
+        return [TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE, LOCATE_ON_ROUTE]
 
     @server.call_tool()
     async def call_tool(name, arguments):
@@ -470,6 +511,7 @@ def create_server():
                 GET_ROUTE.name: get_route,
                 EXPORT_ROUTE.name: export_route,
                 INSPECT_ROUTE.name: inspect_route,
+                LOCATE_ON_ROUTE.name: locate_on_route,
             }.get(name)
             if handler is None:
                 raise ValueError(f"Unknown tool: {name}")

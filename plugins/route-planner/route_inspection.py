@@ -1,5 +1,5 @@
 """Locate and summarize road metadata from a BRouter GeoJSON result."""
-from bisect import bisect_left
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from itertools import accumulate, pairwise
 import json
@@ -209,3 +209,80 @@ def inspect_route_file(route_file, *, distance_range=None, waypoint_range=None, 
             "Unlocated metadata is reported as unknown. Missing access tags do not establish a cycling prohibition."
         ),
     }
+
+
+def wrap_longitude(value):
+    return (value + 180) % 360 - 180
+
+
+def closest_point_on_edge(near, start, end, longitude_scale):
+    # Project into local east/north coordinates around the query. Unwrap both
+    # the edge and the query around the edge midpoint at the date line.
+    delta_lon = wrap_longitude(end[0] - start[0])
+    start_lon = wrap_longitude(start[0] + delta_lon / 2 - near[0]) - delta_lon / 2
+    delta_lat = end[1] - start[1]
+    east, north = delta_lon * longitude_scale, delta_lat
+    length_squared = east**2 + north**2
+    if length_squared == 0:
+        return 0, start[:2]
+    fraction = -(start_lon * longitude_scale * east + (start[1] - near[1]) * north) / length_squared
+    fraction = max(0, min(1, fraction))
+    return fraction, [wrap_longitude(start[0] + fraction * delta_lon), start[1] + fraction * delta_lat]
+
+
+def edge_bearing(start, end):
+    lat1, lat2, delta_lon = map(math.radians, (start[1], end[1], end[0] - start[0]))
+    east = math.sin(delta_lon) * math.cos(lat2)
+    north = math.cos(lat1) * math.sin(lat2) - math.sin(lat1) * math.cos(lat2) * math.cos(delta_lon)
+    return round(math.degrees(math.atan2(east, north)) % 360, 1) % 360
+
+
+def locate_passages(route_file, near, radius_m):
+    feature = read_route_feature(route_file)
+    points = feature["geometry"]["coordinates"]
+    offsets = route_offsets(points)
+    longitude_scale = math.cos(math.radians(near[1]))
+    visits = []
+    closest = None
+    for index, (start, end) in enumerate(pairwise(points)):
+        edge_length = offsets[index + 1] - offsets[index]
+        if edge_length == 0:
+            continue
+        fraction, position = closest_point_on_edge(near, start, end, longitude_scale)
+        gap = distance(near, position)
+        # Two edges whose shared vertex lies outside the radius are separate
+        # visits, even when both edges cross the search circle.
+        if closest is not None and distance(near, start) > radius_m:
+            visits.append(closest)
+            closest = None
+        if gap <= radius_m and (closest is None or gap < closest[0]):
+            closest = (gap, index, fraction, position)
+    if closest is not None:
+        visits.append(closest)
+    if not visits:
+        return []
+
+    messages = feature.get("properties", {}).get("messages") or []
+    has_locations = bool(messages) and {"Longitude", "Latitude"} <= set(messages[0])
+    spans = merge_spans(offsets, locate_rows(points, offsets, brouter_rows(messages), has_locations=has_locations))
+    span_starts = [start for start, _, _ in spans]
+    passages = []
+    for gap, index, fraction, (lon, lat) in visits:
+        metres = offsets[index] + fraction * (offsets[index + 1] - offsets[index])
+        passage = {
+            "distance_km": round(metres / 1000, 4),
+            "offset_m": round(gap, 1),
+            "on_route": {"lon": lon, "lat": lat},
+            "bearing_deg": edge_bearing(points[index], points[index + 1]),
+        }
+        span_index = bisect_right(span_starts, index) - 1
+        if span_index >= 0:
+            _, end, metadata = spans[span_index]
+            if index < end:
+                for tag, key in (("name", "road_name"), ("ref", "road_ref")):
+                    if tag in metadata["tags"]:
+                        passage[key] = metadata["tags"][tag]
+                if metadata["road_type"] != "unknown":
+                    passage["road_type"] = metadata["road_type"]
+        passages.append(passage)
+    return passages
