@@ -75,9 +75,10 @@ class FakeXertService:
         self.calls.append(("set_note", note_date, text))
         return {"date": note_date, "exists": bool(text), "text": text or None, "success": True}
 
-    def get_training_state(self, *, view="summary"):
-        self.calls.append(("get_training_state", view))
-        return {"as_of": "2026-08-17T09:00:00+02:00"} if view == "summary" else {"training_info": {}}
+    def get_training_state(self, *, view="summary", capacity_for=None):
+        self.calls.append(("get_training_state", view, capacity_for))
+        state = {"as_of": "2026-08-17T09:00:00+02:00"} if view == "summary" else {"training_info": {}}
+        return {"view": view, "state": state}
 
     def get_training_advice(self, *, at=None, view="summary"):
         self.calls.append(("get_training_advice", at, view))
@@ -480,6 +481,11 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertEqual(result["view"], "full")
         self.assertEqual(result["state"], {"training_info": {}})
 
+    def test_training_state_dispatches_capacity_horizon(self) -> None:
+        horizon = {"as_of": "2026-08-17T10:00:00+02:00", "fresh_at": "2026-08-18T09:00:00+02:00"}
+        self.tools.call_tool("get_training_state", {"capacity_for": horizon})
+        self.assertEqual(self.fake.calls[-1], ("get_training_state", "summary", horizon))
+
     def test_training_advice_dispatches_optional_time_and_view(self) -> None:
         result = self.tools.call_tool(
             "get_training_advice",
@@ -875,8 +881,8 @@ class XertServiceTests(unittest.TestCase):
             patch.object(SERVICE, "_request_json", return_value=training_info),
             patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value=recovery_model),
         ):
-            summary = service.get_training_state()
-            full = service.get_training_state(view="full")
+            summary = service.get_training_state()["state"]
+            full = service.get_training_state(view="full")["state"]
         self.assertEqual(summary["signature"]["tp_watts"], 300)
         self.assertEqual(summary["training_load"], {"low": 70, "high": 8, "peak": 2})
         self.assertEqual(summary["recovery_hours"]["high"], 4)
@@ -885,6 +891,24 @@ class XertServiceTests(unittest.TestCase):
             "all": "2026-08-17T13:00:00+02:00",
         })
         self.assertEqual(full["training_info"], training_info)
+
+        horizon = {"as_of": "2026-08-17T10:00:00+02:00", "fresh_at": "2026-08-18T09:00:00+02:00"}
+        recovery_model["ir_params"] = {
+            "ftp": {"tau1": 60, "tau2": 5},
+            "hie": {"tau1": 22, "tau2": 12},
+            "pp": {"tau1": 22, "tau2": 12},
+        }
+        recovery_model["recovery_offset"] = 0
+        with (
+            patch.object(SERVICE, "_request_json", return_value=training_info),
+            patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value=recovery_model) as fetch,
+        ):
+            combined = service.get_training_state(capacity_for=horizon)
+            fetch.assert_called_once()
+            self.assertEqual(combined["workout_capacity"], service.calculate_workout_capacity(**horizon))
+        self.assertEqual(combined["state"], summary)
+        self.assertEqual(combined["workout_capacity"]["source_state_as_of"], recovery_model["at_state"]["start_date"])
+        self.assertEqual(combined["workout_capacity"]["state_as_of"], horizon["as_of"])
 
     def test_training_advice_selects_current_or_planned_source(self) -> None:
         credentials = SERVICE.XertCredentials(username="user", password="secret")

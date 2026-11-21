@@ -731,6 +731,24 @@ class ExecutionOptionsContractTests(unittest.TestCase):
         self.assertEqual(normalized["as_of"], "2026-08-22T12:30:00+02:00")
         validate_source_override_payload("xert_workout_capacity", normalized)
 
+    def test_combined_xert_response_can_supply_both_source_overrides(self):
+        payload = {
+            "view": "summary",
+            "state": {"training_status": "Fresh"},
+            "workout_capacity": {
+                "source_state_as_of": "2026-08-22T09:00:00+02:00",
+                "state_as_of": "2026-08-22T12:30:00+02:00",
+                "fresh_at": "2026-08-23T09:00:00+02:00",
+                "workout_capacity_xss": {"low": 165.7, "high": 15.2, "peak": 3.4},
+            },
+        }
+        state = normalize_source_override_payload("xert", payload)
+        capacity = normalize_source_override_payload("xert_workout_capacity", payload)
+        validate_source_override_payload("xert", state)
+        validate_source_override_payload("xert_workout_capacity", capacity)
+        self.assertEqual(state, {"training_state": {"state": payload["state"]}})
+        self.assertEqual(capacity, {**payload["workout_capacity"], "as_of": payload["workout_capacity"]["state_as_of"]})
+
     def test_normalizes_xert_state_mcp_envelope(self):
         normalized = normalize_source_override_payload(
             "xert",

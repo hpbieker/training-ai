@@ -403,17 +403,30 @@ class XertService:
             "success": bool(result.get("success")),
         }
 
-    def get_training_state(self, *, view: str = "summary") -> dict[str, Any]:
+    def get_training_state(
+        self, *, view: str = "summary", capacity_for: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
         if view not in {"summary", "full"}:
             raise ValueError("view must be 'summary' or 'full'")
+        if capacity_for is not None:
+            for field in ("as_of", "fresh_at"):
+                if datetime.fromisoformat(capacity_for[field]).utcoffset() is None:
+                    raise ValueError(f"capacity_for.{field} requires an explicit UTC offset")
         token = self._auth.bearer_token()
         training_info = _request_json("/oauth/training_info", token)
         if not isinstance(training_info, dict):
             raise TypeError("Expected Xert training_info endpoint to return an object")
         recovery_model = fetch_recovery_model_with_opener(self._auth.web_opener())
-        if view == "full":
-            return {"training_info": training_info, "recovery_model": recovery_model}
-        return compact_training_state(training_info, recovery_model)
+        state = (
+            {"training_info": training_info, "recovery_model": recovery_model}
+            if view == "full" else compact_training_state(training_info, recovery_model)
+        )
+        result = {"view": view, "state": state}
+        if capacity_for is not None:
+            result["workout_capacity"] = _workout_capacity_from_model(
+                recovery_model, **capacity_for,
+            )
+        return result
 
     def get_training_advice(
         self,
@@ -461,32 +474,7 @@ class XertService:
 
     def calculate_workout_capacity(self, *, as_of: str, fresh_at: str) -> dict[str, Any]:
         model = fetch_recovery_model_with_opener(self._auth.web_opener())
-        at_state = model.get("at_state") or {}
-        source_at = _aware_datetime(at_state.get("start_date"), "Xert state time")
-        capacity_at = _aware_datetime(as_of, "as_of")
-        fresh = _aware_datetime(fresh_at, "fresh_at")
-        if capacity_at < source_at or fresh < capacity_at:
-            raise ValueError("require Xert state <= as_of <= fresh_at")
-        projected = _project_at_state_without_training(
-            at_state=at_state,
-            ir_params=model["ir_params"],
-            days=(capacity_at - source_at).total_seconds() / 86400,
-            start_date=capacity_at.isoformat(),
-        )
-        capacity = calculate_workout_capacity(
-            next_workout_days=(fresh - capacity_at).total_seconds() / 86400,
-            ir_params=model["ir_params"],
-            recovery_offset=float(model["recovery_offset"]),
-            at_state=projected,
-        )
-        return {
-            "source": "xert_plugin_explicit_workout_capacity",
-            "source_state_as_of": source_at.isoformat(),
-            "state_as_of": capacity_at.isoformat(),
-            "fresh_at": fresh.isoformat(),
-            "workout_capacity_xss": {"low": capacity["lo"], "high": capacity["hi"], "peak": capacity["pk"]},
-            "assumption": "no_intervening_training_before_or_after_the_modeled_impulse",
-        }
+        return _workout_capacity_from_model(model, as_of=as_of, fresh_at=fresh_at)
 
     def calculate_strain(self, *, signature: dict[str, Any], segments: list[dict[str, Any]]) -> dict[str, Any]:
         return calculate_strain_workout(signature=signature, segments=segments, include_series=False)
@@ -809,6 +797,37 @@ def _duration_text(seconds: int) -> str:
     hours, remainder = divmod(seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes:02d}:{seconds:02d}"
+
+
+def _workout_capacity_from_model(
+    model: dict[str, Any], *, as_of: str, fresh_at: str,
+) -> dict[str, Any]:
+    at_state = model.get("at_state") or {}
+    source_at = _aware_datetime(at_state.get("start_date"), "Xert state time")
+    capacity_at = _aware_datetime(as_of, "as_of")
+    fresh = _aware_datetime(fresh_at, "fresh_at")
+    if capacity_at < source_at or fresh < capacity_at:
+        raise ValueError("require Xert state <= as_of <= fresh_at")
+    projected = _project_at_state_without_training(
+        at_state=at_state,
+        ir_params=model["ir_params"],
+        days=(capacity_at - source_at).total_seconds() / 86400,
+        start_date=capacity_at.isoformat(),
+    )
+    capacity = calculate_workout_capacity(
+        next_workout_days=(fresh - capacity_at).total_seconds() / 86400,
+        ir_params=model["ir_params"],
+        recovery_offset=float(model["recovery_offset"]),
+        at_state=projected,
+    )
+    return {
+        "source": "xert_plugin_explicit_workout_capacity",
+        "source_state_as_of": source_at.isoformat(),
+        "state_as_of": capacity_at.isoformat(),
+        "fresh_at": fresh.isoformat(),
+        "workout_capacity_xss": {"low": capacity["lo"], "high": capacity["hi"], "peak": capacity["pk"]},
+        "assumption": "no_intervening_training_before_or_after_the_modeled_impulse",
+    }
 
 
 def compact_training_state(

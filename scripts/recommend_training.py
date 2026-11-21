@@ -1257,11 +1257,12 @@ def normalize_source_override_payload(
         return dict(payload)
 
     if source_name == "xert_workout_capacity":
-        normalized = dict(payload)
-        normalized.setdefault("as_of", payload.get("state_as_of"))
-        capacity = payload.get("capacity")
+        workout_capacity = payload.get("workout_capacity")
+        normalized = dict(workout_capacity if isinstance(workout_capacity, dict) else payload)
+        normalized.setdefault("as_of", normalized.get("state_as_of"))
+        capacity = normalized.get("capacity")
         if isinstance(capacity, dict) and not isinstance(
-            payload.get("workout_capacity_xss"), dict
+            normalized.get("workout_capacity_xss"), dict
         ):
             normalized["workout_capacity_xss"] = capacity
         return normalized

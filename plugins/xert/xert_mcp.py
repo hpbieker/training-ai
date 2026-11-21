@@ -951,8 +951,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "description": (
             "Get current Xert Fitness Signature, Training and Recovery Load, form, "
             "recovery hours and exact Low/all-system fresh times, training status, "
-            "and target XSS. This is current state, "
-            "not a future projection or activity-specific readiness calculation."
+            "and target XSS. Optionally set capacity_for to calculate future workout "
+            "capacity from the same fetched recovery model."
         ),
         "inputSchema": {
             "type": "object",
@@ -963,6 +963,16 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "default": "summary",
                     "description": "summary returns normalized state, not raw model parameters; full returns both source payloads including model parameters. project_load_model fetches its own inputs.",
                 },
+                "capacity_for": {
+                    "type": "object",
+                    "description": "Optional workout and freshness times for an explicit capacity calculation.",
+                    "properties": {
+                        "as_of": {"type": "string", "format": "date-time", "description": "Proposed workout start with UTC offset."},
+                        "fresh_at": {"type": "string", "format": "date-time", "description": "Time with UTC offset when Xert freshness must be restored."},
+                    },
+                    "required": ["as_of", "fresh_at"],
+                    "additionalProperties": False,
+                },
             },
             "additionalProperties": False,
         },
@@ -971,6 +981,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "properties": {
                 "view": {"type": "string", "description": "Returned state representation."},
                 "state": _object("Normalized current state or complete source payloads."),
+                "workout_capacity": _object("Explicit workout-capacity result when capacity_for is supplied."),
             },
             "required": ["view", "state"],
             "additionalProperties": False,
@@ -1536,8 +1547,17 @@ class XertToolService:
         if name == "set_note":
             return service.set_note(arguments["date"], arguments["text"])
         if name == "get_training_state":
-            view = arguments.get("view", "summary")
-            return {"view": view, "state": service.get_training_state(view=view)}
+            capacity_for = arguments.get("capacity_for")
+            if "capacity_for" in arguments and (
+                not isinstance(capacity_for, dict)
+                or capacity_for.keys() != {"as_of", "fresh_at"}
+                or any(not isinstance(value, str) for value in capacity_for.values())
+            ):
+                raise ValueError("capacity_for requires as_of and fresh_at date-time strings")
+            return service.get_training_state(
+                view=arguments.get("view", "summary"),
+                capacity_for=capacity_for,
+            )
         if name == "get_training_advice":
             view = arguments.get("view", "summary")
             return {

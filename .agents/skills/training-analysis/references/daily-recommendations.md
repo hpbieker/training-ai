@@ -571,16 +571,18 @@ the capacity protection unresolved.
    input or calendar context. Apply the configured earliest start, fixed-event
    conflicts, setup buffer, and the user's open/tentative/movable-event rules.
    Never run a capacity calculation against an unspecified horizon.
-- Use Xert MCP `calculate_workout_capacity` with a fresh live state for every
-   candidate. Set `as_of` to that candidate's start and `fresh_at` to the next
-   workout's resolved start. The result is three
-   independent fresh-boundary capacities—Low, High, and Peak XSS—not three
-   additive workout quotas.
-- Persist the complete `calculate_workout_capacity` `structuredContent`
-   unchanged and pass it as `xert_workout_capacity` in
-   `--source-overrides-json`. The helper compares capacity with the selected
-   complete workout and requires a decision on conflicts. It does not copy
-   capacity into the selected dose or change the solver target.
+- When collecting fresh Xert state for a candidate, use
+   `get_training_state(view="summary", capacity_for={as_of, fresh_at})` to get
+   both results from the same model. Set `as_of` to the candidate's start and
+   `fresh_at` to the next workout's resolved start. Save the complete
+   `structuredContent` unchanged and use that file for both `xert` and
+   `xert_workout_capacity` in the source overrides, with the same `read_at`
+   in a saved request.
+- Use standalone `calculate_workout_capacity` when only capacity needs to be
+   recomputed or the installed Xert tool lacks `capacity_for`. Save that
+   response unchanged as `xert_workout_capacity`. The helper compares the
+   independent Low, High, and Peak XSS capacities with the complete workout
+   and requires a decision on conflicts.
 - Independently supply `next_workout_at` as an offset-aware timestamp in
    `--planning-context-json`, resolved from the actual plan/calendar rather than
    copied from the capacity result. The helper requires all three capacities to

@@ -137,6 +137,10 @@ workout rows and coverage of Xert's beta interface.
 - Use MCP `list_activities` and `get_activity` for activity discovery and
   details. Keep list discovery to fields supplied by the activity-list response;
   use `get_activity` for load, signature, and other calculated detail fields.
+- For current state and capacity together, use `get_training_state` with
+  `capacity_for: {as_of, fresh_at}`. The response includes `workout_capacity`
+  in the same format as `calculate_workout_capacity` and uses the recovery
+  model fetched for `state`. Use the standalone tool for capacity alone.
 - When a local strain calculation needs the current Fitness Signature, use MCP
   `get_training_state`, then pass its normalized TP, HIE, and PP to MCP
   `calculate_strain`. Do not call live `calculate_workout` solely to obtain a
