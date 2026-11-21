@@ -4,7 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "python3 ../scripts/build_ui.py"
+    "build": "python3 ../scripts/build_ui.py",
+    "build:preview": "python3 ../scripts/build_ui.py --preview"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "2.0.0",

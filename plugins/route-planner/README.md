@@ -115,3 +115,19 @@ To enable Street View, save the browser key in `~/.route_planner_mcp.json`.
 Restrict the browser key to the
 [Maps Embed API](https://developers.google.com/maps/documentation/embed/embedding-map)
 and the URL that hosts the Codex map. The map UI uses the key in the Embed URL.
+
+### Local map preview
+
+Run from the Route Planner plugin directory after installing Node.js and `uv`.
+The preview loads the MCP map resource and serves it through the MCP Apps
+bridge on loopback. To test changes to a saved route, use a disposable route
+ID in the arguments file. Map edits recalculate and save that route.
+
+```sh
+npm --prefix web ci
+npm --prefix web run build:preview
+uv run --no-project --with-requirements requirements.txt python -B scripts/preview.py --arguments /absolute/path/to/arguments.json
+```
+
+Open `http://127.0.0.1:8767/`. The arguments file is a JSON object with the
+same inputs as `show_route`.
