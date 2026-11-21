@@ -180,10 +180,13 @@ def activity_dir_from_path(path: Path) -> Path:
             for candidate in (activity_json, streams_csv)
             if not candidate.exists()
         ]
-        raise FileNotFoundError(
+        message = (
             f"Expected an activity directory with activity.json and streams.csv; missing: "
             f"{', '.join(missing)}"
         )
+        if (activity_dir / "activities").is_dir():
+            message += ". Pass the activity_dir returned by save_intervals_activity.py."
+        raise FileNotFoundError(message)
     return activity_dir
 
 
