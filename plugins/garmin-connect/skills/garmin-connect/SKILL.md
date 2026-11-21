@@ -47,6 +47,11 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   [Recovery Time reference](references/training-effect-and-stamina-models.md#recovery-time)
   for how to interpret the estimate.
 - Use `sources` when only selected daily sources are needed.
+- Set `hrv_days=3` on `get_health_day` to return the day's readiness data
+  together with compact HRV history for three dates ending on that day.
+  The `hrv_history` field uses the same dated HRV rows as `list_health_days`
+  with `sources=["hrv"]`. The tool reuses the end-day reading when it is
+  already among the daily sources.
 - Use `list_health_days` when trend context across several days matters. Pass
   `sources=["hrv"]` when the caller needs actual nightly HRV values without fetching
   unrelated daily sources or Body Battery history.

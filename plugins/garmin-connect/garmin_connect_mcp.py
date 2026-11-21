@@ -128,6 +128,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "Get compact normalized Garmin health and readiness data for one local date. "
             "Returns all timestamped Training Readiness observations, its six drivers, "
             "Recovery Time, VO2max context, and compact supporting-source summaries. "
+            "Set hrv_days to also return compact nightly HRV history ending on date. "
             "Set save_full=true to save the complete fetched health-day payload to a "
             "private temporary JSON file. "
             "For a future training date, request the latest date that has occurred."
@@ -138,6 +139,12 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "date": {"type": "string", "format": "date"},
                 "sources": _SOURCE_ARRAY,
                 "tolerate_errors": {"type": "boolean", "default": True},
+                "hrv_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 31,
+                    "description": "Number of local dates in hrv_history, including date. Omit for daily data only.",
+                },
                 "save_full": {
                     "type": "boolean",
                     "default": False,
@@ -410,14 +417,32 @@ class GarminConnectToolService:
             save_full = arguments.get("save_full", False)
             if not isinstance(save_full, bool):
                 raise ValueError("save_full must be a boolean")
+            hrv_days = arguments.get("hrv_days")
+            if "hrv_days" in arguments and (type(hrv_days) is not int or not 1 <= hrv_days <= 31):
+                raise ValueError("hrv_days must be an integer from 1 to 31")
+            tolerate_errors = arguments.get("tolerate_errors", True)
             payload = fetch_day(
                 day,
                 token_store=token_store,
                 only=_sources(arguments),
                 profile="full" if arguments.get("sources") else "readiness",
-                tolerate_errors=arguments.get("tolerate_errors", True),
+                tolerate_errors=tolerate_errors,
             )
             result = compact_day_payload(payload)
+            if hrv_days is not None:
+                daily_sources = payload["sources"]
+                prefetched_end_day = None
+                if "hrv" in daily_sources:
+                    prefetched_end_day = {**payload, "sources": {"hrv": daily_sources["hrv"]}}
+                history = fetch_recent_days(
+                    days=hrv_days,
+                    until=day,
+                    token_store=token_store,
+                    only=["hrv"],
+                    tolerate_errors=tolerate_errors,
+                    prefetched_end_day=prefetched_end_day,
+                )
+                result["hrv_history"] = compact_recent_payload(history)
             if save_full:
                 file_path, byte_size = _write_private_health_day_file(day, payload)
                 result.update({

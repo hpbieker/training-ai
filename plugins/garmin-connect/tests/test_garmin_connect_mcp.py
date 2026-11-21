@@ -83,6 +83,40 @@ class GarminConnectMcpTests(unittest.TestCase):
                 "get_health_day", {"date": "2026-08-17", "save_full": "yes"}
             )
 
+    def test_get_health_day_reuses_end_day_hrv_in_history(self) -> None:
+        def read_source(path, *, token_store):
+            if path.endswith("/settings"):
+                return {"displayName": "tester"}
+            if path.startswith("/hrv-service/hrv/"):
+                day = path.rsplit("/", 1)[-1]
+                return {"hrvSummary": {"calendarDate": day, "lastNightAvg": 60 + int(day[-2:])}}
+            return {}
+
+        with patch("garmin_connect_api.garmin_api_json", side_effect=read_source) as read:
+            result = self.service.call_tool("get_health_day", {"date": "2026-08-17", "hrv_days": 3})
+        self.assertEqual(
+            [call.args[0] for call in read.call_args_list if call.args[0].startswith("/hrv-service/")],
+            [f"/hrv-service/hrv/2026-08-{day}" for day in (17, 15, 16)],
+        )
+        history = result["hrv_history"]
+        self.assertEqual((history["start_date"], history["end_date"]), ("2026-08-15", "2026-08-17"))
+        self.assertEqual([row["sources"]["hrv"]["lastNightAvg"] for row in history["days"]], [75, 76, 77])
+        self.assertEqual(history["days"][-1]["sources"], {"hrv": result["sources"]["hrv"]})
+
+    def test_get_health_day_keeps_daily_source_filter_with_hrv_history(self) -> None:
+        with patch("garmin_connect_api.garmin_api_json", return_value={}) as read:
+            result = self.service.call_tool("get_health_day", {
+                "date": "2026-08-17", "sources": ["stress"], "hrv_days": 1,
+            })
+        self.assertEqual(read.call_count, 2)
+        self.assertNotIn("hrv", result["sources"])
+        self.assertEqual([row["date"] for row in result["hrv_history"]["days"]], ["2026-08-17"])
+
+    def test_get_health_day_rejects_invalid_hrv_days(self) -> None:
+        for invalid in (True, 0, 32, None):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(MCP.ToolFailure, "hrv_days"):
+                self.service.call_tool("get_health_day", {"date": "2026-08-17", "hrv_days": invalid})
+
     @patch.object(MCP, "compact_recent_payload")
     @patch.object(MCP, "fetch_recent_days")
     def test_list_health_days_supports_narrow_sources(

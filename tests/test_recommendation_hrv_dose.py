@@ -105,6 +105,15 @@ class HrvDoseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'days array'):
             validate_source_override_payload('garmin_hrv_history', {'days': None})
 
+    def test_combined_garmin_response_supplies_day_and_history(self):
+        raw = history()
+        combined = {'date': '2026-10-22', 'sources': {}, 'hrv_history': raw}
+        day = normalize_source_override_payload('garmin', combined)
+        nightly = normalize_source_override_payload('garmin_hrv_history', combined)
+        validate_source_override_payload('garmin_hrv_history', nightly)
+        self.assertEqual(nightly, raw)
+        self.assertEqual(compact_hrv_history('2026-10-22', day)['mean_3d'], 67.667)
+
     def test_stale_gapped_or_duplicate_nights_do_not_make_three_current_nights(self):
         for days in [('19', '20', '21'), ('19', '21', '22'), ('21', '21', '22')]:
             with self.subTest(days=days):

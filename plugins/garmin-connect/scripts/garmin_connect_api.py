@@ -105,8 +105,9 @@ def fetch_recent_days(
     only: Iterable[str] | None = None,
     profile: str = "full",
     tolerate_errors: bool = False,
+    prefetched_end_day: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Fetch daily Garmin health data for a recent date window."""
+    """Fetch a recent date window, reusing a supplied end day scoped to its sources."""
 
     until_date = date.fromisoformat(until)
     start_date = until_date - timedelta(days=days - 1)
@@ -116,7 +117,7 @@ def fetch_recent_days(
         "start_date": start_date.isoformat(),
         "end_date": until_date.isoformat(),
         "days": [
-            fetch_day(
+            prefetched_end_day if offset == 0 and prefetched_end_day is not None else fetch_day(
                 (until_date - timedelta(days=offset)).isoformat(),
                 token_store=token_store,
                 only=only,

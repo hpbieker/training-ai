@@ -1247,6 +1247,9 @@ def normalize_source_override_payload(
             return normalized
         return dict(payload)
 
+    if source_name == "garmin_hrv_history" and isinstance(payload.get("hrv_history"), dict):
+        return dict(payload["hrv_history"])
+
     if source_name == "xert_recommended_training":
         advice = payload.get("advice")
         if isinstance(advice, dict):

@@ -201,14 +201,18 @@ episode disappearing from a source window must not silently clear the return.
 
 ## Readiness Composition
 
-- Before using HRV to reduce intensity or duration, fetch the three latest
-  actual nights with Garmin `list_health_days(until=<observed-date>, days=3,
-  sources=["hrv"])`. Persist its complete `structuredContent` unchanged and
-  pass it as `garmin_hrv_history` alongside the same-run `garmin` override.
-  The helper composes these inputs and computes the mean over three distinct,
-  consecutive dates ending on the target day. Show last night and the mean
-  separately. If history is unavailable or incomplete, disclose the single-night
-  fallback; do not score missing nights negatively or reuse older nights as current.
+- Before using HRV to reduce intensity or duration, fetch Garmin
+  `get_health_day(date=<observed-date>, hrv_days=3)`. Save the complete
+  `structuredContent` unchanged and use that file for both `garmin` and
+  `garmin_hrv_history` in the source overrides, with the same `read_at` in a
+  saved request. If using the full health-day archive as `garmin`, use the
+  compact MCP response as `garmin_hrv_history`. If the installed tool lacks
+  `hrv_days`, use `list_health_days(until=<observed-date>, days=3, sources=["hrv"])`
+  for the history and save its response unchanged alongside the same-run health day.
+  The helper computes the mean over three distinct, consecutive dates ending on
+  the target day. Show last night and the mean separately. If history is unavailable
+  or incomplete, disclose the single-night fallback; do not score missing nights
+  negatively or reuse older nights as current.
 - An isolated HRV, Sleep Score, or resting-HR deviation calls for caution and
   an execution/body-feel check, not automatic rejection of intensity or a fixed
   endurance-dose cap. A complete three-night HRV mean is the decision input;
