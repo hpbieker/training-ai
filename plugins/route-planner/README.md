@@ -87,7 +87,12 @@ absolute `route_file` path to GPX, GeoJSON or training-ai route JSON, or
 inline `geojson`. Imported tracks keep their segment breaks. They can
 include display metadata such as title, date, distance and elevation gain.
 
-The map shows pinned waypoints and picks up new saved revisions. It
+The map shows pinned waypoints and picks up new saved revisions. On a saved
+route, drag a waypoint to move it, select it to remove it, or drag the route
+line to insert one. Where route sections overlap, choose the section before
+the waypoint is saved. GeoJSON and GPX imports are displayed as read-only tracks.
+
+The map
 requests visible OpenStreetMap tiles and caches them locally for seven
 days. Tile requests reveal the viewed area to the tile provider.
 

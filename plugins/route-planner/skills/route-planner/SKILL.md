@@ -40,3 +40,7 @@ Check the returned road before using the point in the route.
 Use `show_route` when the user asks to see a route on a map. Pass its saved
 route ID or the existing route file. Use `get_route` or `inspect_route` to
 answer questions about route data.
+
+On a saved route, the user can drag a waypoint to move it or drag the line
+to insert one. Check the new saved revision with `get_route` when asked to
+verify a map edit.

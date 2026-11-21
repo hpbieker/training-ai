@@ -1,7 +1,7 @@
 {
   "name": "route-planner",
-  "version": "0.2.13",
-  "description": "Plan cycling routes, view saved routes or imported rides on an interactive map, and export GPX.",
+  "version": "0.2.14",
+  "description": "Plan and edit cycling routes, view saved routes or imported rides on an interactive map, and export GPX.",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {

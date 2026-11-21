@@ -46,8 +46,11 @@ class RouteChangeTests(unittest.TestCase):
             })
             self.assertEqual(result["revision"], 2)
             self.assertEqual(engine.call_args.args[0], [start, first, [drop["lon"], drop["lat"]], second, end])
-            points = result["points"][1:-1]
-            self.assertEqual(planner.load_route(saved["route_id"])["points"][1:-1], points)
+            view = planner.get_route_view({"route_id": saved["route_id"], "after_revision": 1})
+            self.assertEqual(view["revision"], 2)
+            self.assertEqual(view["waypoint_track_indices"], [1, 2, 3])
+            points = view["points"][1:-1]
+            self.assertEqual(result["points"][1:-1], points)
             self.assertEqual([points[0]["waypoint_id"], points[2]["waypoint_id"]], [first_id, second_id])
             self.assertNotIn(points[1]["waypoint_id"], [first_id, second_id])
             self.assertEqual(points[1]["requested"], {"lon": snapped[0], "lat": snapped[1]})

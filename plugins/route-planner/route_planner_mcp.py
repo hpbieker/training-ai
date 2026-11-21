@@ -28,7 +28,7 @@ from route_data import normalize_route
 from route_inspection import inspect_route_file, locate_passages, route_map_lines
 
 PLUGIN = Path(__file__).resolve().parent
-UI_URI = "ui://route-planner/show-route-0.2.13.html"
+UI_URI = "ui://route-planner/show-route-0.2.14.html"
 UI_MIME = "text/html;profile=mcp-app"
 UI_META = {"ui": {"prefersBorder": True, "csp": {"resourceDomains": [], "connectDomains": []}}}
 
@@ -397,11 +397,22 @@ def route_view(saved):
     geojson = json.loads(Path(saved["geojson_file"]).read_text(encoding="utf-8"))
     feature = geojson["features"][0]
     coordinates = feature["geometry"]["coordinates"]
+    waypoint_track_indices = []
+    index = 0
+    for point in saved["points"][1:-1]:
+        position = route_point(point["on_route"])
+        index = next((i for i in range(index + 1, len(coordinates) - 1)
+                      if coordinates[i][:2] == position), None)
+        if index is None:
+            waypoint_track_indices = None
+            break
+        waypoint_track_indices.append(index)
     map_lines = route_map_lines(feature)
     keys = ("title", "route_id", "revision", "distance_km", "estimated_time_s", "points")
     return {
         **{key: saved[key] for key in keys},
         "geometry": {"type": "MultiLineString", "coordinates": [coordinates]},
+        "waypoint_track_indices": waypoint_track_indices,
         "ferry_lines": map_lines["ferry"],
         "surface_lines": {surface: map_lines[surface] for surface in ("gravel", "unpaved")},
     }
@@ -703,7 +714,7 @@ def evaluate_route_change(arguments):
 
 
 def create_server():
-    server = Server("route-planner", version="0.2.13")
+    server = Server("route-planner", version="0.2.14")
     # A plugin upgrade can remove this process's installation directory.
     # Keep the app resource available for the lifetime of the MCP session.
     app_html = (PLUGIN / "web/dist/show-route.html").read_text(encoding="utf-8")
