@@ -19,6 +19,11 @@ SECTION_TAGS = (
     "vehicle:conditional", "oneway:conditional", "oneway:bicycle:conditional",
 )
 TAG = re.compile(r"(?:^|\s)([\w:.-]+)=(.*?)(?=\s[\w:.-]+=|$)")
+GRAVEL_SURFACES = {"gravel", "fine_gravel", "compacted"}
+UNPAVED_SURFACES = {
+    "unpaved", "ground", "dirt", "earth", "grass", "sand", "mud",
+    "pebblestone", "rock", "woodchips", "clay",
+}
 
 
 def section_metadata(tags):
@@ -154,6 +159,26 @@ def brouter_rows(messages):
         except (KeyError, TypeError, ValueError):
             position = None
         yield length, tags, position
+
+
+def route_map_lines(feature):
+    lines = {"ferry": [], "gravel": [], "unpaved": []}
+    messages = feature.get("properties", {}).get("messages") or []
+    if not messages or not {"Longitude", "Latitude"} <= set(messages[0]):
+        return lines
+    points = feature["geometry"]["coordinates"]
+    offsets = route_offsets(points)
+    rows = locate_rows(points, offsets, brouter_rows(messages), has_locations=True)
+    spans = merge_spans(offsets, rows)
+    for start, end, metadata in spans:
+        surface = metadata["surface"]
+        if metadata["tags"].get("route") == "ferry":
+            lines["ferry"].append(points[start:end + 1])
+        elif surface in GRAVEL_SURFACES:
+            lines["gravel"].append(points[start:end + 1])
+        elif surface in UNPAVED_SURFACES:
+            lines["unpaved"].append(points[start:end + 1])
+    return lines
 
 
 def read_route_feature(route_file):

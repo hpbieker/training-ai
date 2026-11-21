@@ -14,16 +14,24 @@ from urllib.request import Request, urlopen
 from uuid import uuid4
 
 import anyio
+import httpx
 from mcp import types
 from mcp.server import Server
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.stdio import stdio_server
 
+from map_tiles import get_map_tile
 from place_search import find_public_place
 from road_search import find_road_points
 from route_geometry import compare_route_geometry, coordinate, distance, validate_route, write_gpx
-from route_inspection import inspect_route_file, locate_passages
+from route_data import normalize_route
+from route_inspection import inspect_route_file, locate_passages, route_map_lines
 
 PLUGIN = Path(__file__).resolve().parent
+UI_URI = "ui://route-planner/show-route-0.2.13.html"
+UI_MIME = "text/html;profile=mcp-app"
+UI_META = {"ui": {"prefersBorder": True, "csp": {"resourceDomains": [], "connectDomains": []}}}
+
 PROFILE = PLUGIN / "assets/profiles/fastbike-road-flow.brf"
 BROUTER_URL = "https://brouter.de/brouter"
 MAX_ROUTING_REPLY = 20 * 1024 * 1024
@@ -53,6 +61,7 @@ WAYPOINT = {
     "required": [],
     "dependentRequired": {"lat": ["lon"], "lon": ["lat"]},
 }
+TITLE = {"type": "string", "maxLength": 300, "description": "Optional map title."}
 TOOL = types.Tool(
     name="plan_route",
     description=(
@@ -279,6 +288,71 @@ FIND_ROAD_POINTS = types.Tool(
     annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
 )
 
+SHOW_ROUTE = types.Tool(
+    name="show_route",
+    description=(
+        "Opens an interactive map for the user. Call only when the user asks to see the map. "
+        "Use get_route or inspect_route to check route data or answer questions about a route. "
+        "Show a saved planner route by route_id, or display an existing route from inline "
+        "GeoJSON or a local GPX, GeoJSON, or training-ai route JSON file. "
+        "Optional display metadata applies to imported routes. Imports do not save or recalculate a route."
+    ),
+    inputSchema={
+        "type": "object",
+        "oneOf": [
+            {
+                "properties": {"route_id": ID},
+                "required": ["route_id"],
+                "additionalProperties": False,
+            },
+            {
+                "properties": {
+                    "geojson": {"type": "object", "description": "GeoJSON line geometry or line features."},
+                    "route_file": {"type": "string", "description": "Absolute path to a local route file."},
+                    "title": TITLE,
+                    "date": {"type": "string", "maxLength": 300},
+                    "status": {"enum": ["planned", "completed"]},
+                    "distance_km": {"type": "number", "minimum": 0},
+                    "moving_time_s": {"type": "number", "minimum": 0},
+                    "elevation_gain_m": {"type": "number", "minimum": 0},
+                    "source_url": {"type": "string", "description": "HTTPS link to the source route."},
+                    "source_label": {"type": "string", "maxLength": 300},
+                },
+                "oneOf": [{"required": ["geojson"]}, {"required": ["route_file"]}],
+                "additionalProperties": False,
+            },
+        ],
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    _meta={"ui": {"resourceUri": UI_URI}},
+)
+
+GET_ROUTE_VIEW = types.Tool(
+    name="get_route_view",
+    description="Fetch a newer revision for the open route map.",
+    inputSchema={
+        "type": "object",
+        "properties": {"route_id": ID, "after_revision": {"type": "integer", "minimum": 1}},
+        "required": ["route_id", "after_revision"],
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    _meta={"ui": {"visibility": ["app"]}},
+)
+
+MAP_TILE = types.Tool(
+    name="get_map_tile",
+    description="Load one visible map tile for the route map.",
+    inputSchema={
+        "type": "object",
+        "properties": {key: {"type": "integer"} for key in ("z", "x", "y")},
+        "required": ["z", "x", "y"],
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    _meta={"ui": {"visibility": ["app"]}},
+)
+
 
 def route_directory():
     return Path(os.environ.get("ROUTE_PLANNER_ROUTES", tempfile.gettempdir())).resolve()
@@ -301,6 +375,43 @@ def load_route(route_id):
 
 def get_route(arguments):
     return {key: value for key, value in load_route(arguments["route_id"]).items() if key != "geojson_file"}
+
+
+def show_route(arguments):
+    if "route_id" in arguments:
+        saved = load_route(arguments["route_id"])
+        view = route_view(saved)
+        summary = {key: value for key, value in saved.items() if key != "geojson_file"}
+    else:
+        view = normalize_route(arguments)
+        lines = view["geometry"]["coordinates"]
+        summary = {key: value for key, value in view.items() if key != "geometry"}
+        summary.update(point_count=sum(map(len, lines)), segment_count=len(lines))
+    return types.CallToolResult(
+        content=[types.TextContent(type="text", text=json.dumps(summary, ensure_ascii=False))],
+        structuredContent={**summary, "route": view},
+    )
+
+
+def route_view(saved):
+    geojson = json.loads(Path(saved["geojson_file"]).read_text(encoding="utf-8"))
+    feature = geojson["features"][0]
+    coordinates = feature["geometry"]["coordinates"]
+    map_lines = route_map_lines(feature)
+    keys = ("title", "route_id", "revision", "distance_km", "estimated_time_s", "points")
+    return {
+        **{key: saved[key] for key in keys},
+        "geometry": {"type": "MultiLineString", "coordinates": [coordinates]},
+        "ferry_lines": map_lines["ferry"],
+        "surface_lines": {surface: map_lines[surface] for surface in ("gravel", "unpaved")},
+    }
+
+
+def get_route_view(arguments):
+    saved = load_route(arguments["route_id"])
+    if saved["revision"] <= arguments["after_revision"]:
+        return None
+    return route_view(saved)
 
 
 def export_route(arguments):
@@ -593,17 +704,46 @@ def evaluate_route_change(arguments):
 
 def create_server():
     server = Server("route-planner", version="0.2.13")
+    # A plugin upgrade can remove this process's installation directory.
+    # Keep the app resource available for the lifetime of the MCP session.
+    app_html = (PLUGIN / "web/dist/show-route.html").read_text(encoding="utf-8")
 
     @server.list_tools()
     async def list_tools():
         return [
-            TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE, LOCATE_ON_ROUTE,
-            EVALUATE_ROUTE_CHANGE, SEARCH_PLACES, FIND_ROAD_POINTS,
+            TOOL, UPDATE_ROUTE, EVALUATE_ROUTE_CHANGE, GET_ROUTE, SHOW_ROUTE, INSPECT_ROUTE, EXPORT_ROUTE,
+            LOCATE_ON_ROUTE, SEARCH_PLACES, FIND_ROAD_POINTS, MAP_TILE, GET_ROUTE_VIEW,
         ]
+
+    @server.list_resources()
+    async def list_resources():
+        return [types.Resource(uri=UI_URI, name="show-route", title="Route", mimeType=UI_MIME, _meta=UI_META)]
+
+    @server.read_resource()
+    async def read_resource(uri):
+        if str(uri) != UI_URI:
+            raise ValueError("Unknown resource")
+        return [ReadResourceContents(app_html, UI_MIME, UI_META)]
 
     @server.call_tool()
     async def call_tool(name, arguments):
         try:
+            if name == SHOW_ROUTE.name:
+                return await anyio.to_thread.run_sync(show_route, arguments)
+            if name == GET_ROUTE_VIEW.name:
+                view = await anyio.to_thread.run_sync(get_route_view, arguments)
+                return types.CallToolResult(
+                    content=[],
+                    structuredContent={"route": view} if view is not None else {},
+                )
+            if name == MAP_TILE.name:
+                data_url = await anyio.to_thread.run_sync(
+                    get_map_tile, arguments["z"], arguments["x"], arguments["y"],
+                )
+                return types.CallToolResult(
+                    content=[types.TextContent(type="text", text="Map tile")],
+                    _meta={"data_url": data_url},
+                )
             handler = {
                 TOOL.name: plan_route,
                 UPDATE_ROUTE.name: update_route,
@@ -622,7 +762,7 @@ def create_server():
                 content=[types.TextContent(type="text", text=json.dumps(result))],
                 structuredContent=result,
             )
-        except (ValueError, OSError, KeyError, TypeError, IndexError) as exc:
+        except (ValueError, OSError, KeyError, TypeError, IndexError, httpx.HTTPError) as exc:
             return types.CallToolResult(
                 isError=True, content=[types.TextContent(type="text", text=str(exc))]
             )

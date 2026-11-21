@@ -1,12 +1,12 @@
 {
   "name": "route-planner",
   "version": "0.2.13",
-  "description": "Plan and save cycling routes with ordered waypoints.",
+  "description": "Plan cycling routes, view saved routes or imported rides on an interactive map, and export GPX.",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Route Planner",
-    "shortDescription": "Plan cycling routes with ordered waypoints.",
+    "shortDescription": "Plan cycling routes and view saved routes or imported rides.",
     "category": "Health & Fitness",
     "composerIcon": "./assets/route-planner.png",
     "logo": "./assets/route-planner.png"

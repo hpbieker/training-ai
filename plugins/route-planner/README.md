@@ -3,6 +3,8 @@
 A local MCP server that plans cycling routes using BRouter and OpenStreetMap.
 It uses the bundled `assets/profiles/fastbike-road-flow.brf` cycling profile.
 
+Install Node.js and `npm` alongside `uv` before building the plugin.
+
 ```sh
 python3 scripts/build_plugin.py route-planner
 codex plugin add route-planner@training-ai
@@ -79,5 +81,14 @@ Call `find_road_points` with up to ten `locations`. Each location needs a
 and returns up to five candidates within 300 m for each location. Candidates
 are mapped roads open to cars and bicycles. Check the returned road name
 or reference before using its coordinate in `plan_route` or `update_route`.
+
+Call `show_route` to open the interactive map. Pass a saved `route_id`, an
+absolute `route_file` path to GPX, GeoJSON or training-ai route JSON, or
+inline `geojson`. Imported tracks keep their segment breaks. They can
+include display metadata such as title, date, distance and elevation gain.
+
+The map shows pinned waypoints and picks up new saved revisions. It
+requests visible OpenStreetMap tiles and caches them locally for seven
+days. Tile requests reveal the viewed area to the tile provider.
 
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.

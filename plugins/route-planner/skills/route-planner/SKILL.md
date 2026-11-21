@@ -36,3 +36,7 @@ OpenStreetMap credit when presenting place search results.
 Use `find_road_points` to choose a waypoint on the intended road near a place
 or approximate coordinate. Pass an exact name or road number when known.
 Check the returned road before using the point in the route.
+
+Use `show_route` when the user asks to see a route on a map. Pass its saved
+route ID or the existing route file. Use `get_route` or `inspect_route` to
+answer questions about route data.

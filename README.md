@@ -35,7 +35,8 @@ The build targets macOS arm64 because the locked `cryptography` release
 publishes macOS wheels for arm64 only. It uses `uv` to install Python 3.13 if
 needed and packages the locked dependencies in `dist/<plugin>/.venv`. Codex
 starts the bundled interpreter directly. Keep the base Python 3.13
-installation.
+installation. Route Planner also needs Node.js and `npm` at build time for
+its map UI.
 
 ## Usage
 
