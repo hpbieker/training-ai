@@ -108,11 +108,23 @@ in the power trace. For structured work at a known endurance target, pass
 It returns one sustained segment after harder work, or null when unresolved.
 Cross-check the boundaries against the efforts, pauses and cooldown.
 
-Assess the extra minutes against the last settled period at comparable power
-immediately before the decision. Report the windows relative to the start of
-the aerobic work, excluding stops. Use the initial transition to describe
-recovery from the intervals. If the decision point or comparable windows are
-missing, describe what was completed and qualify the extension verdict.
+Give separate verdicts on the course of the steady work and on the added
+minutes. Compare a settled early window with a late one for overall drift;
+then compare the extension with an equal-duration window immediately before
+it at similar watts. Anchor both to completed work in the trace, excluding
+stops and cooldown. A stable finish can follow an earlier rise in cost.
+Use any initial transition after intervals to describe recovery separately.
+
+For a personal reference, find prior rides with similar sustained watts and
+enough work to reach the same minutes of the block. Compare the same window
+relative to each ride’s actual work onset. If a shorter ride only reaches the
+pre-extension window, use it there; a longer ride may also cover the extension.
+In the rider’s answer, identify the dates, work minutes, actual watts and the
+most informative measured responses for today and the reference. Qualify
+differences in cadence, preceding hard work or conditions when material.
+If the boundary, streams or a credible reference are missing, state which
+comparison is possible. Keep tolerability during the ride separate from the
+recovery cost observed at the following quality session.
 
 Narrative effort, breathing and leg reports are evidence even when numeric RPE
 is null. Let a substantial reported burden affect the verdict; good leg feel or

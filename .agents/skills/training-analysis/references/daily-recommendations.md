@@ -485,8 +485,10 @@ longer of two extended rides that both exceed the measured reference, give
 lacks this review. Leave any skipped minutes unassigned unless the two-day
 comparison justifies transferring them. A hard constraint
 that rules out useful extra work needs only the finish decision and reason.
-Count the checkpoint in minutes from the start of the whole ride, before
-cooldown. Give an observable continue/stop cue at the end of the shared work.
+For a steady aerobic block, normally set the checkpoint at the end of the
+prescribed work, before cooldown. Count it in ridden minutes from workout
+start. Describe the extension to the rider relative to the completed work
+block; an earlier check for rising effort does not start the extra minutes. Give an observable continue/stop cue at the end of the shared work.
 A first attempt at higher interval power can justify a shorter primary dose
 while leaving a longer aerobic finish available on a favorable late response.
 Evaluate the incremental cost and recovery before the next priority ride.
