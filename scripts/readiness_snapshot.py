@@ -2003,14 +2003,6 @@ def intervals_wellness_context(
         "current_day_review_signals": subjective_review,
         "unresolved_illness_comment": pending_comment,
         "soreness_status_missing": soreness_status_missing,
-        "soreness_assumed_ok_when_missing": soreness_status_missing,
-        "soreness_update_requested_for_vt2_plus": soreness_status_missing,
-        "soreness_update_request": (
-            "Jeg antar at sårhet ikke begrenser økten; sett dagens soreness-verdi i "
-            "Intervals.icu når VT2 eller hardere anbefales."
-            if soreness_status_missing
-            else None
-        ),
         "current_day_illness": bool(current and current.get("illness")),
         "recent_events": events,
         "recent_illness_events": illness_events,
@@ -2031,9 +2023,8 @@ def intervals_wellness_context(
             "Structured Intervals.icu calendar events and legacy wellness annotations supplement Garmin and training load. "
             "A current-day SICK event should override model readiness and block training. "
             "Elapsed days do not establish recovery; require a current symptom and exercise-response "
-            "assessment before resuming or progressing training. When today's Intervals soreness "
-            "is missing, assume it is non-limiting and still provide the appropriate recommendation; "
-            "if recommending VT2 or harder, ask the user to set today's soreness value."
+            "assessment before resuming or progressing training. Check dated athlete feedback when "
+            "soreness is missing. Ask only if the answer would change the prescription."
         ),
     }
 

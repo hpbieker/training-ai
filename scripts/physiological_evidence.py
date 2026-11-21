@@ -115,7 +115,8 @@ def field_summary(rows, field, clock=None):
 
 
 def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
-                    power_tolerance=0.05, cadence_tolerance=0.10, window_context=None):
+                    power_tolerance=0.05, cadence_tolerance=0.10, window_context=None,
+                    power_band=None):
     """Find contiguous stable early/late windows; never stitch isolated samples.
 
     Windows use elapsed time, skip the initial transition and windows with
@@ -147,6 +148,10 @@ def matched_windows(rows, fields, *, transition_seconds=120, window_seconds=120,
                   if window['start_s'] >= times[0]
                   and window['end_s'] <= times[0] + duration
                   and all(id(row) in included_rows for row in chunk)]
+    if power_band is not None:
+        low, high = power_band
+        candidates = [(chunk, window) for chunk, window in candidates
+                      if low <= window['power_avg'] <= high]
     result['candidate_windows'] = len(candidates)
     # Prefer the widest temporal separation that satisfies mechanical matching.
     pairs = []

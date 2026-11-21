@@ -1132,6 +1132,27 @@ class RecommendationSummaryTests(unittest.TestCase):
         }}})
         self.assertIn("RETURN-TO-TRAINING PHASE exercise_challenge; use 15 min", summary)
 
+    def test_summary_shows_both_same_role_references_and_preserves_partial_work(self):
+        def attempt(key, role, minutes, seconds):
+            return {"role": role, "attempt": {"activity_id": key, "completed_role": role,
+                                              "moving_minutes": minutes},
+                    "work_intervals": [{"seconds": s, "average_watts": None} for s in seconds]}
+
+        partial = attempt("shortened", "vt2", 50, [1675, 356])
+        long = attempt("extended", "vo2max", 120, [180, 180])
+        long.update(following_day={"activities": [{"activity_id": "easy", "moving_minutes": 165}]},
+                    next_quality_session=partial)
+        compact = attempt("compact", "vo2max", 60, [180, 180])
+        packet = {"primary_decision": {"intensity_decision": {"requested_goal": "vo2max"}},
+                  "training_history_context": {"prior_quality_sequences": {
+                      "quality_sequences": [partial, long, compact]}}}
+        lines = [json.loads(line.removeprefix("QUALITY HISTORY: "))
+                 for line in format_summary(packet).splitlines() if line.startswith("QUALITY HISTORY: ")]
+        self.assertEqual([row["attempt"]["activity_id"] for row in lines], ["extended", "compact"])
+        self.assertEqual(lines[0]["following_day_records"][0]["moving_minutes"], 165)
+        self.assertEqual(lines[0]["next_quality"]["recorded_work_seconds_watts"], [[1675, None], [356, None]])
+        self.assertIsNone(lines[1]["next_quality"])
+
     def test_future_freshness_separates_current_sources_from_tomorrow_signals(self):
         freshness = compact_freshness_summary(
             {},

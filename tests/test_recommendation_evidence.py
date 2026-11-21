@@ -46,7 +46,8 @@ class RecommendationEvidenceTests(unittest.TestCase):
         evidence = readiness_evidence_status(inputs)
         self.assertEqual(evidence['direct_signal_coverage'], 'complete')
         self.assertIn('high_soreness', evidence['observed_limitations'])
-        self.assertTrue(evidence['soreness_reported'])
+        self.assertEqual(evidence['intervals_soreness_value'], 3)
+        self.assertFalse(evidence['intervals_soreness_missing'])
 
     def test_movable_event_only_cancels_its_own_practical_stop(self):
         from zoneinfo import ZoneInfo

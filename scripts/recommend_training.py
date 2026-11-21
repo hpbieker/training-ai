@@ -23,7 +23,7 @@ if str(XERT_PLUGIN) not in sys.path:
 from recommendation_binding import (bind_workout_calculation, canonical_structure, validate_capacity_values,
                                     validate_capacity_horizon, instant)
 from illness_return import parse_illness_return_json
-from vt1_dose import dose_comparisons
+from vt1_dose import dose_comparisons, prior_quality_sequences
 from plan_state import (
     AEROBIC_ROLES,
     DEFAULT_STATE_PATH,
@@ -670,6 +670,14 @@ def main() -> None:
         xert_activity_loads=load_json_if_exists(source_files["xert_activity_loads"]),
         local_timezone=local_timezone,
     )
+    history_context["prior_quality_sequences"] = prior_quality_sequences(
+        plan_state, data_cutoff, ARTIFACTS_DIR / "activities",
+        aerobic_references=args.plan_selection_json["intensity_goal"] in {"recovery", "vt1"},
+    )
+    if planned_at.date() == data_cutoff.date():
+        readiness_packet["recommendation_inputs"]["current_day_athlete_answers"] = (
+            history_context["prior_quality_sequences"]["current_day_athlete_answers"]
+        )
     target_resolution = resolve_training_targets(
         selection=args.training_target_json,
         readiness_packet=readiness_packet,
@@ -4694,7 +4702,9 @@ def readiness_evidence_status(inputs: dict[str, Any]) -> dict[str, Any]:
         "observed_limitations": agreement["blockers"],
         "observed_cautions": agreement["review_signals"],
         "review_required": agreement["review_required"],
-        "soreness_reported": agreement["soreness"] is not None,
+        "intervals_soreness_value": agreement["soreness"],
+        "intervals_soreness_missing": agreement["soreness"] is None,
+        "current_day_athlete_answers": inputs.get("current_day_athlete_answers", []),
         "interpretation": (
             "The intensity ceiling is a model screening result, not confirmed physiological "
             "readiness. Missing direct evidence lowers confidence, not the dose by itself. "
@@ -5549,10 +5559,6 @@ def build_llm_context(
     current_illness = bool(intervals_events.get("current_day_illness"))
     illness_followup_needed = bool(intervals_events.get("illness_followup_needed"))
     return_to_training_active = bool(intervals_events.get("return_to_training_active"))
-    soreness_update_requested_for_vt2_plus = bool(
-        intervals_events.get("soreness_update_requested_for_vt2_plus")
-    )
-
     return {
         "purpose": (
             "Authoritative decision contract plus supporting data for an LLM-authored "
@@ -5585,15 +5591,6 @@ def build_llm_context(
             "followup_question": intervals_events.get("followup_question"),
             "soreness_status_missing": intervals_events.get("soreness_status_missing"),
             "current_day_soreness": intervals_events.get("current_day_soreness"),
-            "soreness_assumed_ok_when_missing": intervals_events.get(
-                "soreness_assumed_ok_when_missing"
-            ),
-            "soreness_update_requested_for_vt2_plus": (
-                soreness_update_requested_for_vt2_plus
-            ),
-            "soreness_update_request": intervals_events.get(
-                "soreness_update_request"
-            ),
             "reason": (
                 "current_day_sickness_annotation"
                 if current_illness
@@ -5607,9 +5604,8 @@ def build_llm_context(
                 "illness return, ask for current form and keep the provisional "
                 "recommendation to rest until symptom and response assessment is resolved. "
                 "Use the reviewed return phase and dose, never elapsed days, to progress. If today's Intervals "
-                "soreness is missing, assume soreness is non-limiting and still provide the "
-                "appropriate recommendation. When that recommendation is VT2, VO2Max, threshold, "
-                "peak-power, or harder work, ask the user to set today's Intervals soreness value. "
+                "soreness is missing, consult the available athlete feedback first. Ask only if the "
+                "answer would change the prescription. "
                 "Missing soreness never blocks or downgrades intensity by itself."
             ),
         },
@@ -7139,6 +7135,34 @@ def calendar_summary_lines(calendar: dict[str, Any]) -> list[str]:
     return lines
 
 
+def quality_history_summary_lines(history: dict[str, Any], goal: str | None) -> list[str]:
+    """Show same-role attempts and their observed follow-up beside the proposed dose."""
+    def ride(row):
+        return {key: row[key] for key in ("activity_id", "completed_role", "moving_minutes", "session_rpe")
+                if row.get(key) is not None}
+
+    def quality(session):
+        intervals = session.get("work_intervals")
+        return {**ride(session["attempt"]), "recorded_work_seconds_watts": (
+            [[bout["seconds"], bout.get("average_watts")] for bout in intervals]
+            if intervals is not None else None
+        )}
+
+    lines = []
+    for session in history.get("quality_sequences", []):
+        if session["role"] != goal:
+            continue
+        following = session.get("following_day") or {}
+        next_quality = session.get("next_quality_session")
+        comparison = {
+            "attempt": quality(session),
+            "following_day_records": [ride(row) for row in following.get("activities", [])],
+            "next_quality": quality(next_quality) if next_quality else None,
+        }
+        lines.append("QUALITY HISTORY: " + json.dumps(comparison, ensure_ascii=False))
+    return lines
+
+
 def format_summary(packet: dict[str, Any]) -> str:
     decision = packet.get("decision_inputs") or {}
     context = packet.get("llm_context") or {}
@@ -7207,6 +7231,10 @@ def format_summary(packet: dict[str, Any]) -> str:
             matches=plan_context.get("goal_matches_state"),
         ),
         "COACHING DOSE: " + json.dumps(primary.get("coaching_selection"), ensure_ascii=False),
+        *quality_history_summary_lines(
+            (packet.get("training_history_context") or {}).get("prior_quality_sequences") or {},
+            intensity_decision.get("requested_goal"),
+        ),
         *(["VT1 WORKING POWER: " + json.dumps(primary["vt1_power_review"], ensure_ascii=False)]
           if "vt1_power_review" in primary else []),
         *(["VT1 DOSE COMPARISON: " + json.dumps(primary["vt1_dose_comparison"], ensure_ascii=False)]

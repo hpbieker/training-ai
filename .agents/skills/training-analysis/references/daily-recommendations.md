@@ -404,9 +404,9 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   observed response, place an execution check before the corresponding demand
   recurs. State what to assess and what changes if it recurs. A warm-up check or
   a later endurance check cannot replace a check before a problematic repetition.
-- Inspect today's soreness before hard work. Missing soreness alone does not
-  downgrade the session, but ask the user to record it; explicit zero counts as
-  present.
+- Check today's soreness in wellness and dated athlete answers before hard work.
+  Zero counts as present. An empty field alone does not justify asking or
+  reducing the dose. Ask only if the answer changes the prescription.
 - When cumulative load is normal but acute signals are cautious, prefer adding
   easy endurance duration over intensity when logistics and body feel permit.
 - For long rides or deliberate late-session work, read

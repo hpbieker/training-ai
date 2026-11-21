@@ -45,6 +45,27 @@ For late efforts on long rides, compare elapsed time, work already completed and
 carbohydrate actually consumed before the effort. Use the
 [cycling physiology reference](references/cycling-endurance-physiology.md) when interpreting durability.
 
+### Capture athlete feedback
+
+At post-ride review, first read saved feedback, the activity analysis and
+completed intervals. When the reason for a shortened set or omitted extension
+could change a future dose, ask what made the athlete stop there. For a long
+reference ride, ask about the late response at comparable power only if it is
+missing and materially changes how the ride can be used. Capture actual intake
+only when it could explain the response. Link the next quality result from the
+activity history when it becomes available.
+
+Save each relevant answer verbatim locally with
+`python3 scripts/athlete_feedback.py --activity-id ID --observed-at DATE_OR_TIMESTAMP --reported-at ANSWER_TIMESTAMP --context SCOPE --question QUESTION --answer ANSWER`.
+Use the real answer time with offset, the exact saved activity and the date of
+the observation if its clock time is unknown. Split distinct observation times
+(e.g. why yesterday's set ended and today's soreness). For pre-ride answers
+about a previous ride, use that ride's ID and distinguish current status in
+the observation context. For a standalone pre-ride answer when the upcoming ride has no activity ID,
+use the latest completed activity as a history anchor and label the context
+as pre-ride status for the decision date; it describes the upcoming session. Read back the saved record. Preserve earlier
+answers when recording corrections.
+
 ### Activity comparison
 
 Read [references/activity-analysis.md](references/activity-analysis.md) for
