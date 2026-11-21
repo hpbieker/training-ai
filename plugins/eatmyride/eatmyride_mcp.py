@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import threading
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -19,6 +21,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from eatmyride_api import (  # noqa: E402
     EatMyRideCredentials,
+    activity_start_local,
     build_custom_product_payload,
     build_foodplan_with_set_products,
     create_product as api_create_product,
@@ -45,6 +48,7 @@ from eatmyride_api import (  # noqa: E402
 ALL_TOOL_NAMES = (
     "list_activities",
     "get_fueling",
+    "get_foodplan_summaries",
     "get_foodplan",
     "search_products",
     "list_products",
@@ -72,6 +76,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     },
     "get_foodplan": {
         "title": "Get EatMyRide Food Plan",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "get_foodplan_summaries": {
+        "title": "Get EatMyRide Food Plan Summaries",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -191,6 +202,7 @@ _PRODUCT_INCLUDE_FIELDS = (
     "ingredientsQty", "ingredientsQtyUnit", "tags", "salt", "sugars",
     "saturatedFat", "fibers", "caffeine",
 )
+_FOODPLAN_SUMMARY_FILTERS = ("all", "has_fluids", "has_events")
 
 
 def _include_fields_schema(allowed: tuple[str, ...], noun: str) -> dict[str, object]:
@@ -255,6 +267,40 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "intake_evidence": {"type": "string", "description": "Evidence boundary for recorded versus confirmed intake."},
         },
         output_required=["activity", "products", "summary", "intake_evidence"],
+    ),
+    "get_foodplan_summaries": _tool_definition(
+        name="get_foodplan_summaries",
+        description=(
+            "Summarize recorded EatMyRide food plans for explicit EatMyRide activity IDs "
+            "or an inclusive local-date range. Reads food plans only after activity selection. "
+            "Returns fluids, carbohydrates and event counts. Failed reads are reported separately. "
+            "Food-plan totals describe recorded plans."
+        ),
+        properties={
+            "activity_ids": {
+                "type": "array", "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+                "minItems": 1, "uniqueItems": True,
+                "description": "EatMyRide activity IDs. Use these or both dates.",
+            },
+            "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
+            "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+            "filter": {
+                "type": "string", "enum": list(_FOODPLAN_SUMMARY_FILTERS), "default": "all",
+                "description": "all includes empty plans; has_fluids requires positive ml; has_events requires an event.",
+            },
+        },
+        required=[],
+        output_properties={
+            "checked_count": {"type": "integer"},
+            "matched_count": {"type": "integer"},
+            "failed_count": {"type": "integer"},
+            "activities": _array_of_open_objects(
+                "Matching summaries with activity_id, fluids_ml, carbohydrates_grams and event_count. "
+                "Date-range results also include start_local."
+            ),
+            "errors": _array_of_open_objects("Failed reads with activity_id and a stable error code."),
+        },
+        output_required=["checked_count", "matched_count", "failed_count", "activities", "errors"],
     ),
     "get_foodplan": _tool_definition(
         name="get_foodplan",
@@ -606,6 +652,45 @@ class EatMyRideLiveService:
         foodplan = self._run(lambda token: get_foodplan(activity_id, token=token))
         return summarize_fueling(activity, foodplan)
 
+    def get_foodplan_summaries(
+        self, *, activity_ids: list[str] | None = None, start_date: str | None = None,
+        end_date: str | None = None, filter: str = "all",
+    ) -> dict[str, Any]:
+        if activity_ids is not None:
+            selected = {activity_id: {"activity_id": activity_id} for activity_id in activity_ids}
+        else:
+            selected = {}
+            for activity in self.list_activities(start_date, end_date):
+                activity_id = str(activity["id"])
+                selected[activity_id] = {
+                    "activity_id": activity_id,
+                    "start_local": activity_start_local(activity).isoformat(),
+                }
+
+        activities = []
+        errors = []
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            for row, summary in zip(selected.values(), pool.map(self._summarize_foodplan, selected)):
+                if summary is None:
+                    errors.append({"activity_id": row["activity_id"], "code": "foodplan_unavailable"})
+                elif (
+                    filter == "all"
+                    or (filter == "has_fluids" and summary["fluids_ml"] > 0)
+                    or (filter == "has_events" and summary["event_count"] > 0)
+                ):
+                    activities.append({**row, **summary})
+        return {
+            "checked_count": len(selected), "matched_count": len(activities), "failed_count": len(errors),
+            "activities": activities, "errors": errors,
+        }
+
+    def _summarize_foodplan(self, activity_id: str) -> dict[str, Any] | None:
+        try:
+            foodplan = self._run(lambda token: get_foodplan(activity_id, token=token))
+            return {**summarize_foodplan(foodplan), "event_count": len(foodplan)}
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError, ZeroDivisionError):
+            return None
+
     def get_foodplan(self, activity_id: str) -> dict[str, Any]:
         foodplan = self._run(lambda token: get_foodplan(activity_id, token=token))
         events = summarize_foodplan_events(foodplan)
@@ -907,6 +992,8 @@ class EatMyRideToolService:
             }
         if name == "get_fueling":
             return service.get_fueling(arguments["activity_id"])
+        if name == "get_foodplan_summaries":
+            return service.get_foodplan_summaries(**arguments)
         if name == "get_foodplan":
             return service.get_foodplan(arguments["activity_id"])
         if name == "search_products":
@@ -1023,6 +1110,20 @@ def _validate_arguments(name: str, arguments: dict[str, Any]) -> None:
         if key in {"start_date", "end_date", "activity_id", "query", "product_filter", "contains", "label"}:
             if not isinstance(value, str) or not value.strip():
                 raise ToolFailure("invalid_arguments", f"{key} must be a non-empty string")
+    if name == "get_foodplan_summaries":
+        dates = {"start_date", "end_date"} & arguments.keys()
+        if "activity_ids" in arguments:
+            ids = arguments["activity_ids"]
+            if dates:
+                raise ToolFailure("invalid_arguments", "Choose activity_ids or a date range")
+            if not isinstance(ids, list) or not ids or any(
+                not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", item) for item in ids
+            ) or len(ids) != len(set(ids)):
+                raise ToolFailure("invalid_arguments", "activity_ids must contain unique EatMyRide activity IDs")
+        elif len(dates) != 2:
+            raise ToolFailure("invalid_arguments", "Provide activity_ids or both start_date and end_date")
+        if arguments.get("filter", "all") not in _FOODPLAN_SUMMARY_FILTERS:
+            raise ToolFailure("invalid_arguments", "filter must be all, has_fluids or has_events")
     if name == "list_products":
         source = arguments.get("source")
         if source not in {"custom", "suggested"}:
@@ -1185,7 +1286,7 @@ def create_sdk_server(service: EatMyRideToolService) -> Any:
 
     server = Server(
         "eatmyride",
-        version="0.1.0",
+        version="0.1.1",
         instructions=(
             "Read EatMyRide activities, fueling, glycogen state, and products. Preview "
             "custom-product and food-plan changes by default; remote writes require "

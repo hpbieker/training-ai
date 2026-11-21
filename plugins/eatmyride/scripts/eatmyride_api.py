@@ -18,7 +18,6 @@ EATMYRIDE_API_BASE_URL = os.environ.get(
     "https://backend.eatmyride.com/api",
 )
 EATMYRIDE_API_VERSION = os.environ.get("EATMYRIDE_API_VERSION", "1.03")
-LOCAL_TIMEZONE = datetime.now().astimezone().tzinfo
 DEFAULT_CONFIG_PATH = Path.home() / ".eatmyride_mcp.json"
 
 
@@ -86,8 +85,8 @@ def list_activities(
     )
     if local_end < local_start:
         raise ValueError("end_day must be on or after start_day")
-    start = datetime.combine(local_start, time.min, tzinfo=LOCAL_TIMEZONE)
-    end = datetime.combine(local_end + timedelta(days=1), time.min, tzinfo=LOCAL_TIMEZONE)
+    start = datetime.combine(local_start, time.min).astimezone()
+    end = datetime.combine(local_end + timedelta(days=1), time.min).astimezone()
     payload = _request_json(
         f"/activities/list/{quote(start.isoformat())}/{quote(end.isoformat())}",
         token=token,
@@ -97,8 +96,8 @@ def list_activities(
     return [
         activity
         for activity in payload
-        if (activity_date := _activity_local_date(activity)) is not None
-        and local_start <= activity_date <= local_end
+        if (activity_start := activity_start_local(activity)) is not None
+        and local_start <= activity_start.date() <= local_end
     ]
 
 
@@ -817,12 +816,12 @@ def _request_text(
         raise RuntimeError(f"EatMyRide request failed: {exc.reason}") from exc
 
 
-def _activity_local_date(activity: dict[str, Any]) -> date | None:
+def activity_start_local(activity: dict[str, Any]) -> datetime | None:
     raw_date = str(activity.get("date") or "")
     if not raw_date:
         return None
     activity_date = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
-    return activity_date.astimezone(LOCAL_TIMEZONE).date()
+    return activity_date.astimezone()
 
 
 def _optional_grams_to_milligrams(value: float | None) -> int | None:

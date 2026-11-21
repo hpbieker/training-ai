@@ -96,6 +96,7 @@ class EatMyRideMcpSchemaTests(unittest.TestCase):
             (
                 "list_activities",
                 "get_fueling",
+                "get_foodplan_summaries",
                 "get_foodplan",
                 "search_products",
                 "list_products",
@@ -390,6 +391,59 @@ class EatMyRideLiveProductServiceTests(unittest.TestCase):
 class EatMyRideLiveFoodplanServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         self.service = MCP.EatMyRideLiveService(lambda: FakeCredentials())
+
+    def test_foodplan_summaries_filters_and_preserves_failed_reads(self) -> None:
+        calls = MCP.EatMyRideToolService(lambda: self.service)
+        candidates = [
+            {"id": i, "date": f"2026-11-18T12:00:0{i}+01:00"} for i in range(1, 5)
+        ]
+        plans = {
+            "1": [{"ml": 700, "product": {"carbohydrates": 60000}}],
+            "2": [{"product": {"carbohydrates": 20000}}],
+            "3": [],
+        }
+
+        def read_plan(activity_id, *, token):
+            if activity_id == "4":
+                raise HTTPError("https://example.invalid", 404, "missing", {}, None)
+            return plans[activity_id]
+
+        with (
+            patch.object(MCP, "list_activities", return_value=candidates) as list_activities,
+            patch.object(MCP, "get_foodplan", side_effect=read_plan) as get_foodplan,
+            patch.object(MCP, "get_activity") as get_activity,
+        ):
+            period = calls.call_tool("get_foodplan_summaries", {
+                "start_date": "2026-11-18", "end_date": "2026-11-18", "filter": "has_fluids",
+            })
+            list_activities.assert_called_once()
+            self.assertEqual(get_foodplan.call_count, 4)
+            for filter_name, expected in (("all", ["3", "2", "1"]), ("has_events", ["2", "1"])):
+                rows = calls.call_tool("get_foodplan_summaries", {
+                    "activity_ids": ["3", "2", "1"], "filter": filter_name,
+                })["activities"]
+                self.assertEqual([row["activity_id"] for row in rows], expected)
+                self.assertTrue(all("start_local" not in row for row in rows))
+            list_activities.assert_called_once()
+            get_activity.assert_not_called()
+
+        self.assertEqual((period["checked_count"], period["matched_count"], period["failed_count"]), (4, 1, 1))
+        self.assertEqual(period["activities"], [{
+            "activity_id": "1", "start_local": API.activity_start_local(candidates[0]).isoformat(),
+            "fluids_ml": 700, "carbohydrates_grams": 60, "event_count": 1,
+        }])
+        self.assertEqual(period["errors"], [{"activity_id": "4", "code": "foodplan_unavailable"}])
+
+    def test_foodplan_summaries_validates_selection_before_access(self) -> None:
+        calls = MCP.EatMyRideToolService(lambda: self.fail("Unexpected source access"))
+        for args in (
+            {}, {"start_date": "2026-11-18"},
+            {"activity_ids": ["1"], "end_date": "2026-11-18"},
+            {"activity_ids": ["1", "1"]}, {"activity_ids": ["../1"]},
+            {"activity_ids": ["1"], "filter": None},
+        ):
+            with self.subTest(args=args), self.assertRaises(MCP.ToolFailure):
+                calls.call_tool("get_foodplan_summaries", args)
 
     def test_confirmed_write_handles_multiple_products_in_one_plan(self) -> None:
         products = {

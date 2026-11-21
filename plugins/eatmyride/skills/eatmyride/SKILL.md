@@ -16,6 +16,13 @@ writes. The plugin is stateless and returns normalized data to callers.
 - `get_fueling` returns compact activity energy and glycogen state together
   with aggregated food-plan products, calculated intake totals, hourly rates,
   and an explicit reminder that recorded planning data is not confirmed intake.
+- Use `get_foodplan_summaries` for recorded volume, carbohydrates and event
+  counts across activities. Supply EatMyRide `activity_ids` or both inclusive
+  local dates. Use `filter="has_fluids"` for positive recorded volume,
+  `"has_events"` for non-empty plans, or `"all"` to include empty plans.
+  Date-range rows include `start_local`. Check `failed_count` and `errors`
+  before aggregating. For a cross-source analysis, select activities and use
+  their durations in the caller.
 - `get_foodplan` returns exact item-level events. Use it only when event timing
   matters, when preparing a change, or when verifying a write; normal activity
   analysis should stop at `get_fueling`.
