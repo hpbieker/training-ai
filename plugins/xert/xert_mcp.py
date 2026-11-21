@@ -360,6 +360,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "list_activity_summaries",
         "description": (
             "List Xert activity summaries in an inclusive local-date range. "
+            "Use includeFields=[\"xss\", \"duration_s\"] for training load and duration. "
             "Returns newest first; limit selects the N newest activities within the period. "
             "Older periods may take longer to retrieve. "
             "period_complete is false when limit stops reading before the period is covered. "
@@ -396,7 +397,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "Uses the authenticated dashboard, including automatically synced Garmin rides. "
             "List compact Xert activity identity summaries for an inclusive local-date "
             "range. Use includeFields for details available from the activity-list "
-            "response. This tool never fetches individual activity details."
+            "response. For XSS, use list_activity_summaries with includeFields=[\"xss\"]. "
+            "This tool never fetches individual activity details."
         ),
         "inputSchema": {
             "type": "object",

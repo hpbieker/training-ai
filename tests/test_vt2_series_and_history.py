@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from activity_inspect_pipeline import inspect_with_cache
 from progression_advisor import compact_inspect_summary, recent_relevant_activities
-from recommend_training import training_history_context
+from recommend_training import annotate_volume_density, training_history_context
 
 OSLO = ZoneInfo("Europe/Oslo")
 
@@ -73,6 +73,34 @@ class VT2SeriesTests(unittest.TestCase):
 
 
 class HistoryCutoffTests(unittest.TestCase):
+    def test_native_xert_windows_and_projection_use_completed_rides_once(self):
+        cutoff = datetime(2026, 11, 17, 9, tzinfo=OSLO)
+        activities = [
+            {"start_local": f"2026-11-{when}", "duration_s": 3600, "xss": {"total": 80}}
+            for when in ("10T09:00:00", "16T10:00:00", "17T06:00:00", "17T08:30:00")
+        ]
+        payload = {"start_date": "2026-10-25", "end_date": "2026-11-17",
+                   "period_complete": True, "activities": activities}
+        with TemporaryDirectory() as folder:
+            def history():
+                return training_history_context("2026-11-17", cutoff=cutoff, artifacts_dir=Path(folder),
+                                                xert_activity_loads=payload, local_timezone=OSLO)
+
+            context = history()
+            windows = context["xert_load_windows"]
+            self.assertEqual(windows["completed_7d"]["xss"], 160)
+            self.assertEqual(windows["week_including_today"]["activity_count"], 2)
+            self.assertEqual(windows["completed_3d"]["elapsed_hours"], 1)
+            target = {"endurance_duration_solution": {"duration_minutes": 90, "achieved_xss": {"total": 95}}}
+            annotate_volume_density(target, history_context=context)
+            projected = target["week_if_full_remaining_session_ridden_today"]
+            self.assertEqual((projected["elapsed_hours"], projected["xss"]), (3.5, 255))
+            payload["period_complete"] = False
+            self.assertFalse(history()["xert_load_windows"])
+            payload["period_complete"] = True
+            del activities[1]["duration_s"]
+            self.assertNotIn("completed_7d", history()["xert_load_windows"])
+
     def test_all_history_uses_completion_before_or_equal_to_cutoff(self):
         cutoff = datetime(2026, 11, 17, 9, tzinfo=OSLO)
         with TemporaryDirectory() as folder:

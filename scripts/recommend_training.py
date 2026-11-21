@@ -2716,6 +2716,56 @@ def xert_start_datetime(raw: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def xert_load_windows(payload: dict[str, Any] | None, *, cutoff: datetime, local_timezone: Any) -> dict[str, Any]:
+    """Native elapsed duration and strain for completed days and today's rolling week."""
+    if not payload or payload.get("period_complete") is not True:
+        return {}
+    try:
+        first = date.fromisoformat(payload["start_date"])
+        last = date.fromisoformat(payload["end_date"])
+    except (KeyError, TypeError, ValueError):
+        return {}
+    activities = payload.get("activities")
+    if not isinstance(activities, list):
+        return {}
+    today = cutoff.astimezone(local_timezone).date()
+    windows = {}
+    yesterday = today - timedelta(days=1)
+    periods = [(n, yesterday) for n in (3, 7, 14, 21)]
+    for days, end in [(7, today), *periods]:
+        start = end - timedelta(days=days - 1)
+        if first > start or last < end:
+            continue
+        seconds_total = 0.0
+        xss_total = 0.0
+        count = 0
+        for row in activities:
+            if not isinstance(row, dict) or len(str(row.get("start_local") or "")) <= 10:
+                break
+            timestamp = parse_optional_local_datetime(row.get("start_local"), local_timezone=local_timezone)
+            if timestamp is None:
+                break
+            if not start <= timestamp.date() <= end or timestamp >= cutoff:
+                continue
+            seconds = number(row.get("duration_s"))
+            load = xert_total_xss(row)
+            if seconds is None or not 0 < seconds < math.inf or load is None or not 0 <= load < math.inf:
+                break
+            if not completed_activity_start(None, row["start_local"], seconds, cutoff=cutoff,
+                                            local_timezone=local_timezone):
+                continue
+            seconds_total += seconds
+            xss_total += load
+            count += 1
+        else:
+            key = "week_including_today" if end == today else f"completed_{days}d"
+            windows[key] = {"start_date": start.isoformat(), "end_date": end.isoformat(),
+                            "activity_count": count, "elapsed_hours": round(seconds_total / 3600, 2),
+                            "weekly_equivalent_elapsed_hours": round(seconds_total * 7 / (3600 * days), 2),
+                            "xss": round(xss_total, 1)}
+    return windows
+
+
 def training_history_context(
     day: str,
     *,
@@ -2729,7 +2779,7 @@ def training_history_context(
     xert_loads = [
         row for row in xert_load_index(xert_activity_loads)
         if completed_activity_start(row.get("start_utc"), row.get("start_local"),
-                                    (number(row.get("elapsed_minutes")) or 0) * 60,
+                                    number(row.get("duration_s")) or (number(row.get("elapsed_minutes")) or 0) * 60,
                                     cutoff=cutoff, local_timezone=local_timezone) is not None
     ]
     rows: list[dict[str, Any]] = []
@@ -2826,6 +2876,7 @@ def training_history_context(
 
     return {
         "source": "local_intervals_activity_artifacts",
+        "xert_load_windows": xert_load_windows(xert_activity_loads, cutoff=cutoff, local_timezone=local_timezone),
         "completed_by": cutoff.isoformat(),
         "load_source": "xert_xss",
         "artifacts_dir": str(artifacts_dir),
@@ -2876,6 +2927,24 @@ def annotate_volume_density(
 ) -> None:
     """Describe recorded volume with its available coverage."""
     planned_hours = (number(target_resolution.get("target_minutes")) or 0.0) / 60.0
+    native_week = (history_context.get("xert_load_windows") or {}).get("week_including_today")
+    composition = target_resolution.get("dose_composition") or {}
+    solution = target_resolution.get("endurance_duration_solution") or {}
+    if composition:
+        prescription = composition.get("estimated_total") or {}
+        minutes = number(prescription.get("duration_minutes"))
+        session_xss = number(prescription.get("xss"))
+    else:
+        minutes = number(solution.get("duration_minutes"))
+        session_xss = number((solution.get("achieved_xss") or {}).get("total"))
+    target_date = (history_context.get("rolling_7d") or {}).get("end_date")
+    if native_week and native_week["end_date"] == target_date and minutes is not None and session_xss is not None:
+        target_resolution["week_if_full_remaining_session_ridden_today"] = {
+            "start_date": native_week["start_date"], "end_date": native_week["end_date"],
+            "session_minutes": minutes, "session_xss": round(session_xss, 1),
+            "elapsed_hours": round(native_week["elapsed_hours"] + minutes / 60, 2),
+            "xss": round(native_week["xss"] + session_xss, 1),
+        }
     windows = []
     for days in (14, 21):
         history = history_context.get(f"rolling_{days}d") or {}

@@ -18,8 +18,9 @@ Prefer the Xert MCP tools when they are available:
 - `list_activities` returns compact identity summaries for an inclusive
   local-date range with only `path`, `name`, and `start_local` by default. Use
   `includeFields` to add duration, distance, source, or map URL from the same
-  activity-list response. Use `get_activity` when XSS, signature, Difficulty,
-  focus, specificity, freshness, or XEP is required.
+  activity-list response. For bulk XSS and duration, use
+  `list_activity_summaries` with `includeFields=["xss", "duration_s"]`.
+  Use `get_activity` for activity detail and session data.
 - `list_activities`, `list_workouts`, `list_notes`,
   `list_recommended_workouts`, and `get_training_forecast` accept closed
   `filters` (`field`, `op`, `value`), ordered `sort` keys, and a post-filter
@@ -134,9 +135,9 @@ workout rows and coverage of Xert's beta interface.
 
 ## Choose The Narrowest Command
 
-- Use MCP `list_activities` and `get_activity` for activity discovery and
-  details. Keep list discovery to fields supplied by the activity-list response;
-  use `get_activity` for load, signature, and other calculated detail fields.
+- Use MCP `list_activity_summaries` for activity discovery and available
+  summary fields. Use `list_activities` when you need to filter or sort its
+  compact identity summaries, and `get_activity` for individual details.
 - For current state and capacity together, use `get_training_state` with
   `capacity_for: {as_of, fresh_at}`. The response includes `workout_capacity`
   in the same format as `calculate_workout_capacity` and uses the recovery
