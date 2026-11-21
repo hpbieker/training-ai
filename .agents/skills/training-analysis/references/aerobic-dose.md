@@ -3,7 +3,12 @@
 Before choosing minutes, compare recorded volume with the active plan's target
 over its stated horizon. For a moving-time target, use completed moving time
 in the same local-date windows. For the last N completed days, use the decision
-date minus N through yesterday inclusive.
+date minus N through yesterday inclusive. Fetch the longest range once with
+Intervals.icu `list_activities` and `includeFields: ["moving_time", "icu_ignore_time"]`,
+without filters or a result limit. Supply the full response, including its query
+bounds, as `sources.intervals_activity_volume` in the saved request. Report the
+packet’s `training_history_context.completed_moving_time` for those dates.
+If fetched coverage starts late, fetch the full range before quoting the mean.
 The rolling window ending today is separate and is used for projections.
 Check the dated activity list for coverage,
 pagination and missing rides when local artifacts are the only basis for a
@@ -157,10 +162,10 @@ explain why.
 Use an early fallback for unexpectedly heavy legs. Give an offered extension
 its own decision point near the end of the primary steady work, before
 cooldown. Start the extra minutes only after completing the full primary work
-block. If an earlier response check can shorten the ride, state how much primary
-work remains before the extension begins. Base the cue on the response at the
-same power and express it in ridden minutes or completed work so a delayed start
-or pause preserves the cue.
+block. Use the packet’s `extension_start` when present. An earlier response
+check may shorten the ride; if presenting it, separately state how much primary
+work remains before the extension begins. Base the cue on the response at the same power and express it in ridden
+minutes or completed work so a delayed start or pause preserves the cue.
 
 Use dated athlete answers already available at the decision time. A later
 clarification of why a bout ended takes precedence over an earlier unknown

@@ -94,6 +94,22 @@ class AerobicFinishTests(unittest.TestCase):
             self.assertIn(required, summary)
         self.assertNotIn("14:20", summary)
 
+    def test_early_response_check_does_not_start_the_extra_minutes(self):
+        self.primary["selected_intensity"] = "vt1"
+        self.primary["coaching_selection"]["aerobic_finish"] = {**self.offer, "check_at_minute": 142}
+        self.primary["executable_now"] = {"minutes": 150, "timeline": {"status": "complete", "segments": [
+            {"start_seconds": 0, "end_seconds": 720, "duration_seconds": 720, "power": 165, "end_power": 204},
+            {"start_seconds": 720, "end_seconds": 8820, "duration_seconds": 8100, "power": 215},
+            {"start_seconds": 8820, "end_seconds": 9000, "duration_seconds": 180, "power": 150}]}}
+        self.target.update(target_minutes=150, vt1_dose_comparison={"working_power_w": 215})
+        finish = self.resolve()
+        self.assertEqual(finish["checkpoint_segment"]["minutes_completed"], 130)
+        self.assertEqual(finish["extension_start"], {"segment": 2, "work_minutes": 135, "ridden_minutes": 147})
+        summary = aerobic_finish_lines(finish)
+        self.assertIn("after completing 135 min", summary[0])
+        self.assertIn("Total 165 min", summary[0])
+        self.assertTrue(any("EARLIER RESPONSE CHECK: after 130 min" in line for line in summary))
+
     def test_calendar_and_cleanup_can_veto_an_offer(self):
         self.primary["coaching_selection"]["aerobic_finish"] = self.offer
         self.calendar["hard_stop"] = {"at": "2026-11-20T14:38:00+01:00"}

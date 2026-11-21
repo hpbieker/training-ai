@@ -54,6 +54,7 @@ SOURCE_REFRESH_POLICY = {
     "xert": ("xert", 30),
     "intervals_wellness": ("intervals", 30),
     "intervals_events": ("intervals", 30),
+    "intervals_activity_volume": ("intervals", 30),
     "xert_activity_loads": ("xert", 30),
     "xert_recommended_training": ("xert", 30),
     "xert_workout_capacity": ("xert", 30),
@@ -648,6 +649,8 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
         "garmin", "xert", "intervals_wellness", "intervals_events",
         "xert_activity_loads", "weather_home",
     }
+    if "intervals_activity_volume" in args.source_overrides_json:
+        required_sources.add("intervals_activity_volume")
     if "garmin_hrv_history" in args.source_overrides_json:
         required_sources.add("garmin_hrv_history")
     if indoor_available:
@@ -712,6 +715,14 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
         xert_activity_loads=load_json_if_exists(source_files["xert_activity_loads"]),
         local_timezone=local_timezone,
     )
+    if "intervals_activity_volume" in args.source_overrides_json:
+        try:
+            history_context["completed_moving_time"] = completed_moving_time_windows(
+                load_json_if_exists(source_files["intervals_activity_volume"]),
+                as_of=data_cutoff.astimezone(local_timezone).date(),
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
     history_context["prior_quality_sequences"] = prior_quality_sequences(
         plan_state, data_cutoff, ARTIFACTS_DIR / "activities",
         aerobic_references=args.plan_selection_json["intensity_goal"] in {"recovery", "vt1"},
@@ -1252,6 +1263,7 @@ def source_paths(output_dir: Path, day: str) -> dict[str, Path]:
         "xert": output_dir / f"xert-readiness-{day}.json",
         "intervals_wellness": output_dir / f"intervals-wellness-recent-{day}.json",
         "intervals_events": output_dir / f"intervals-events-recent-{day}.json",
+        "intervals_activity_volume": output_dir / f"intervals-activity-volume-{day}.json",
         "xert_activity_loads": output_dir / f"xert-activity-loads-recent-{day}.json",
         "xert_recommended_training": output_dir / f"xert-recommended-training-{day}.json",
         "xert_workout_capacity": output_dir / f"xert-workout-capacity-{day}.json",
@@ -1398,6 +1410,7 @@ def validate_source_override_payload(
         "garmin_hrv_history": "days",
         "intervals_wellness": "wellness",
         "intervals_events": "events",
+        "intervals_activity_volume": "activities",
         "xert_activity_loads": "activities",
     }.get(source_name)
     if required_list is not None and not isinstance(payload.get(required_list), list):
@@ -2864,6 +2877,41 @@ def xert_load_windows(payload: dict[str, Any] | None, *, cutoff: datetime, local
                             "activity_count": count, "elapsed_hours": round(seconds_total / 3600, 2),
                             "weekly_equivalent_elapsed_hours": round(seconds_total * 7 / (3600 * days), 2),
                             "xss": round(xss_total, 1)}
+    return windows
+
+
+def completed_moving_time_windows(activity_list: dict, *, as_of: date) -> list[dict]:
+    """Weekly moving time over whole local dates preceding the decision."""
+    end = as_of - timedelta(days=1)
+    first = as_of - timedelta(days=21)
+    rows = activity_list["activities"]
+    try:
+        fetched_start = date.fromisoformat(activity_list["start_date"])
+        fetched_end = date.fromisoformat(activity_list["end_date"])
+    except (TypeError, KeyError, ValueError) as exc:
+        raise ValueError("Keep the inclusive start_date and end_date returned by list_activities.") from exc
+    if (fetched_start > first or fetched_end < end
+            or activity_list.get("filters")
+            or activity_list.get("source_limited")
+            or any(activity_list.get(key, len(rows)) != len(rows)
+                   for key in ("source_count", "matched_count", "count"))
+            or not {"moving_time", "icu_ignore_time"}.issubset(activity_list.get("includeFields", []))):
+        raise ValueError(f"Fetch the complete unfiltered Intervals.icu activity list from {first} to {end} "
+                         "inclusive with moving_time and icu_ignore_time.")
+    moving_by_date = {}
+    for row in rows:
+        day = date.fromisoformat(row["start_date_local"][:10])
+        if first <= day <= end and not row.get("icu_ignore_time"):
+            seconds = row.get("moving_time")
+            if type(seconds) not in (float, int) or not math.isfinite(seconds) or seconds < 0:
+                raise ValueError(f"Missing or invalid Intervals.icu moving_time for {row.get('id')}")
+            moving_by_date[day] = moving_by_date.get(day, 0) + seconds
+    windows = []
+    for days in (14, 21):
+        start = as_of - timedelta(days=days)
+        seconds = sum(total for day, total in moving_by_date.items() if start <= day)
+        windows.append({"days": days, "start_date": start.isoformat(), "end_date": end.isoformat(),
+                        "moving_seconds": seconds, "weekly_equivalent_hours": round(seconds * 7 / (3600 * days), 1)})
     return windows
 
 
@@ -5076,6 +5124,16 @@ def resolve_aerobic_finish(primary, target, *, planned_at, available_windows, ca
                     "minutes_completed": (checkpoint_seconds - segment["start_seconds"]) / 60,
                 }
                 break
+        # A response check can precede completion of the last prescribed VT1 block.
+        watts = (target.get("vt1_dose_comparison") or {}).get("working_power_w")
+        if primary["selected_intensity"] == "vt1" and watts is not None:
+            for index, work in reversed(list(enumerate(timeline["segments"], start=1))):
+                if work.get("power") == work.get("end_power", work.get("power")) == watts:
+                    result["extension_start"] = {
+                        "segment": index, "work_minutes": work["duration_seconds"] / 60,
+                        "ridden_minutes": work["end_seconds"] / 60,
+                    }
+                    break
     if calendar.get("events"):
         placements = place_movable_events(
             calendar, sessions=[{"start": planned_at.isoformat(), "end": end.isoformat()}],
@@ -7441,13 +7499,20 @@ def aerobic_finish_lines(review: dict[str, Any] | None) -> list[str]:
     if segment:
         checkpoint = (f"after {segment['minutes_completed']:g} min of segment {segment['number']} "
                       f"({checkpoint} as prescribed)")
+    extension_start = review.get("extension_start")
+    start_cue = checkpoint
+    if extension_start:
+        start_cue = (f"after completing {extension_start['work_minutes']:g} min of segment "
+                     f"{extension_start['segment']} ({extension_start['ridden_minutes']:g} ridden minutes)")
     lines = [
-        f"OPTIONAL AEROBIC FINISH: {checkpoint}, +{review['extra_minutes']:g} min "
+        f"OPTIONAL AEROBIC FINISH: {start_cue}, +{review['extra_minutes']:g} min "
         f"at {review['intensity']}. Total {review['total_minutes']:g} min, "
         f"finish {end}, cleanup complete {cleanup}.",
         "CONTINUE IF: " + review["cue"],
         "TRAINING PURPOSE: " + review["reason"],
     ]
+    if extension_start and review["check_at_minute"] < extension_start["ridden_minutes"]:
+        lines.append(f"EARLIER RESPONSE CHECK: {checkpoint}; the extension starts after the full work block.")
     if review.get("good_response_limit") and review["extra_minutes"] < review["alternative_extra_minutes"]:
         lines.append(f"WHY STOP SHORT OF +{review['alternative_extra_minutes']:g} MIN ON GOOD LEGS: "
                      + review["good_response_limit"])
@@ -7513,6 +7578,9 @@ def format_summary(packet: dict[str, Any]) -> str:
         ("PROVISIONAL SESSION: " if primary.get("provisional")
          else "DO NOW: ") + executable_now_line(primary),
         *aerobic_finish_lines(primary.get("aerobic_finish")),
+        *(f"INTERVALS.ICU COMPLETED MOVING TIME ({row['start_date']} to {row['end_date']}): "
+          f"{row['weekly_equivalent_hours']:g} h/week over {row['days']} days"
+          for row in (packet.get("training_history_context") or {}).get("completed_moving_time", [])),
         "READINESS CEILING: {ceiling} (model screening, not confirmed readiness)".format(
             ceiling=intensity_decision.get("readiness_ceiling") or "missing",
         ),
@@ -7602,7 +7670,7 @@ def format_summary(packet: dict[str, Any]) -> str:
         "  Dose vs typical: {position}".format(
             position=dose_position_line(target_resolution),
         ),
-        "  Volume density: {density}".format(
+        "  Projected moving-time density including the proposed ride: {density}".format(
             density=volume_density_line(target_resolution),
         ),
         "  Dose split: {split}".format(

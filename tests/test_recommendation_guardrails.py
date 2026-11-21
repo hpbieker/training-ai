@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from plan_state import recommendation_plan_context
 from recommend_training import (
     annotate_volume_density,
+    completed_moving_time_windows,
     apply_split_preference_to_windows,
     annotate_dose_composition_window_fit,
     annotate_route_window_fit,
@@ -92,6 +93,24 @@ class TrainingTargetContractTests(unittest.TestCase):
             segment["duration_seconds"] for segment in structure["segments"][:3]
         ), 10800)
         self.assertEqual(structure["adjustable_segment_index"], 4)
+
+    def test_completed_volume_uses_full_local_dates_and_requires_coverage(self):
+        day = datetime(2026, 11, 21).date()
+        data = {"start_date": "2026-10-30", "end_date": "2026-11-21",
+                "includeFields": ["moving_time", "icu_ignore_time"], "activities": [
+                    {"start_date_local": date + "T23:55:00", "moving_time": seconds,
+                     "icu_ignore_time": ignore}
+                    for date, seconds, ignore in [("2026-10-30", 7200, False), ("2026-10-31", 3600, False),
+                                                  ("2026-11-07", 3600, False), ("2026-11-19", 3600, True),
+                                                  ("2026-11-20", 3600, False), ("2026-11-21", 7200, False)]]}
+        fortnight, three_weeks = completed_moving_time_windows(data, as_of=day)
+        self.assertEqual((fortnight["moving_seconds"], three_weeks["moving_seconds"]), (7200, 10800))
+        self.assertEqual(three_weeks["weekly_equivalent_hours"], 1.0)
+        self.assertEqual((three_weeks["start_date"], three_weeks["end_date"]), ("2026-10-31", "2026-11-20"))
+        for change in [{"start_date": "2026-11-01"}, {"end_date": "2026-11-19"}, {"matched_count": 7}]:
+            with self.subTest(change=change), self.assertRaisesRegex(ValueError, "complete unfiltered"):
+                completed_moving_time_windows({**data, **change}, as_of=day)
+        self.assertEqual(completed_moving_time_windows({**data, "activities": []}, as_of=day)[1]["moving_seconds"], 0)
 
     def test_volume_density_describes_recorded_volume_without_personal_target(self):
         target = {"target_minutes": 270}
