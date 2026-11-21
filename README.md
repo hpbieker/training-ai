@@ -6,12 +6,12 @@ training, health, and weather data.
 
 ## Getting started
 
-1. Open this repository in Codex and make sure `uv` is available. The local MCP
-   plugins use it to create their Python environments when they start.
+1. Open this repository in Codex and make sure `uv` is available.
 2. Use the [plugin catalog](.agents/plugins/marketplace.json) to find the plugins
-   for your data sources. Follow [Data source setup](#data-source-setup) for
-   credentials and service-specific settings.
-3. Use [`$training-analysis`](.agents/skills/training-analysis/SKILL.md) in Codex
+   for your data sources.
+3. Follow [Data source setup](#data-source-setup) for build and installation
+   commands where applicable, and for credentials and service-specific settings.
+4. Use [`$training-analysis`](.agents/skills/training-analysis/SKILL.md) in Codex
    for workout analysis, readiness, daily recommendations or routes. Use
    [`$training-plan`](.agents/skills/training-plan/SKILL.md) to create or update a
    training plan.
@@ -50,6 +50,19 @@ in to EatMyRide. The plugin reads this file when it needs to sign in.
 [EatMyRide plugin guide](plugins/eatmyride/skills/eatmyride/SKILL.md#authentication-and-boundaries)
 
 ### Garmin Connect
+
+Build the local macOS arm64 plugin with uv-managed Python 3.13, then install
+the result through the configured `training-ai` marketplace:
+
+```sh
+python3 scripts/build_plugin.py garmin-connect
+codex plugin add garmin-connect@training-ai
+```
+
+The build installs uv-managed Python 3.13 if needed and copies its executable
+and the locked dependencies into `dist/garmin-connect/.venv`. Codex starts
+that environment's Python directly. Keep the base Python 3.13 installation.
+Rebuild and reinstall after changing the plugin version or its dependencies.
 
 **Authentication.** Store your Garmin `username` and `password` in
 `~/.garmin_mcp.json`.
@@ -117,6 +130,13 @@ saving the cookie header locally. Repeat these steps if the plugin returns
 [Strava plugin guide](plugins/strava/skills/strava/SKILL.md#authentication)
 
 ### Xert
+
+Build and install the local macOS arm64 plugin with uv-managed Python 3.13:
+
+```sh
+python3 scripts/build_plugin.py xert
+codex plugin add xert@training-ai
+```
 
 **Authentication.** Fill in all four fields in `~/.xert_mcp.json`.
 

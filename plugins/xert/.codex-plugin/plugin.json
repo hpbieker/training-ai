@@ -1,6 +1,6 @@
 {
   "name": "xert",
-  "version": "0.1.1",
+  "version": "0.1.6",
   "description": "Xert source semantics and live access for cycling training data.",
   "author": {
     "name": "Hans Petter Bieker"

@@ -56,7 +56,7 @@
       "name": "xert",
       "source": {
         "source": "local",
-        "path": "./plugins/xert"
+        "path": "./dist/xert"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -80,7 +80,7 @@
       "name": "garmin-connect",
       "source": {
         "source": "local",
-        "path": "./plugins/garmin-connect"
+        "path": "./dist/garmin-connect"
       },
       "policy": {
         "installation": "AVAILABLE",

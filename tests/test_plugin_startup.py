@@ -3,6 +3,9 @@
 import asyncio
 import json
 from pathlib import Path
+import platform
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -17,7 +20,24 @@ class PluginStartupTests(unittest.IsolatedAsyncioTestCase):
     async def test_all_plugin_manifests_initialize_and_list_tools(self):
         manifests = sorted((ROOT / "plugins").glob("*/.mcp.json"))
         self.assertTrue(manifests, "No plugin launch manifests found")
+        marketplace = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
+        bundles = {
+            plugin["name"]: ROOT / plugin["source"]["path"]
+            for plugin in marketplace["plugins"]
+            if plugin["source"].get("path", "").startswith("./dist/")
+        }
         for manifest in manifests:
+            plugin = manifest.parent.name
+            if plugin in bundles:
+                if sys.platform != "darwin" or platform.machine() != "arm64":
+                    with self.subTest(plugin=plugin):
+                        self.skipTest("Plugin builds for macOS arm64")
+                    continue
+                subprocess.run(
+                    [sys.executable, "-B", str(ROOT / "scripts/build_plugin.py"), plugin],
+                    cwd=ROOT, check=True,
+                )
+                manifest = bundles[plugin] / ".mcp.json"
             for name, config in json.loads(manifest.read_text())["mcpServers"].items():
                 with self.subTest(plugin=name), tempfile.TemporaryFile(mode="w+") as stderr:
                     params = StdioServerParameters(
