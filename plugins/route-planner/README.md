@@ -28,5 +28,9 @@ saves the position on the calculated route.
 
 The tool returns the new revision and verified points. If calculation fails
 or the saved revision has changed, the update leaves the current route intact.
+If the revision has changed, call `get_route` before retrying.
+
+Call `get_route` with `route_id` to read the current saved summary, including
+its revision and ordered waypoint IDs.
 
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.

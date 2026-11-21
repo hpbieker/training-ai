@@ -123,6 +123,18 @@ UPDATE_ROUTE = types.Tool(
     annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
 )
 
+GET_ROUTE = types.Tool(
+    name="get_route",
+    description="Read a saved route summary and its ordered waypoint IDs without recalculating or opening an export file.",
+    inputSchema={
+        "type": "object",
+        "properties": {"route_id": ID},
+        "required": ["route_id"],
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+)
+
 
 def route_directory():
     return Path(os.environ.get("ROUTE_PLANNER_ROUTES", tempfile.gettempdir())).resolve()
@@ -141,6 +153,10 @@ def load_route(route_id):
         raise ValueError(f"Unknown or expired route_id: {route_id}") from None
     saved.pop("experimental", None)
     return saved
+
+
+def get_route(arguments):
+    return {key: value for key, value in load_route(arguments["route_id"]).items() if key != "geojson_file"}
 
 
 def brouter_json(url, data=None):
@@ -333,7 +349,8 @@ def check_revision(expected, saved):
     current = saved["revision"]
     if current != expected:
         raise ValueError(
-            f"Route revision conflict: expected {expected}, current revision is {current}."
+            f"Route revision conflict: expected {expected}, current revision is {current}. "
+            "Use get_route to read the latest route before retrying."
         )
 
 
@@ -353,12 +370,16 @@ def create_server():
 
     @server.list_tools()
     async def list_tools():
-        return [TOOL, UPDATE_ROUTE]
+        return [TOOL, UPDATE_ROUTE, GET_ROUTE]
 
     @server.call_tool()
     async def call_tool(name, arguments):
         try:
-            handler = {TOOL.name: plan_route, UPDATE_ROUTE.name: update_route}.get(name)
+            handler = {
+                TOOL.name: plan_route,
+                UPDATE_ROUTE.name: update_route,
+                GET_ROUTE.name: get_route,
+            }.get(name)
             if handler is None:
                 raise ValueError(f"Unknown tool: {name}")
             result = await anyio.to_thread.run_sync(handler, arguments)
