@@ -28,3 +28,7 @@ Compare kilometre markers, offsets and bearings for all passages. Use
 Use `evaluate_route_change` to compare a proposed edit to the saved route
 before applying it. Check `same_profile` and the changed sections against the
 user's intended roads and travel order.
+
+Use `search_places` for public places named in individual user requests.
+Keep personal or confidential information out of the query. Include the
+OpenStreetMap credit when presenting place search results.

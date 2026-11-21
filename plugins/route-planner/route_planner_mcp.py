@@ -18,6 +18,7 @@ from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
+from place_search import find_public_place
 from route_geometry import compare_route_geometry, coordinate, distance, validate_route, write_gpx
 from route_inspection import inspect_route_file, locate_passages
 
@@ -202,7 +203,7 @@ INSPECT_ROUTE = types.Tool(
 LOCATE_ON_ROUTE = types.Tool(
     name="locate_on_route",
     description=(
-        "Find where a saved route passes near a coordinate. "
+        "Find where a saved route passes near a coordinate. Use search_places first for a named place. "
         "Returns the closest point for each separate visit within the search radius, in travel order, "
         "with kilometres from the route start, offset in metres, compass bearing in degrees clockwise "
         "from true north, and road name or reference when available in saved metadata. "
@@ -222,6 +223,26 @@ LOCATE_ON_ROUTE = types.Tool(
         "additionalProperties": False,
     },
     annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+)
+
+SEARCH_PLACES = types.Tool(
+    name="search_places",
+    description=(
+        "Look up a public place named in a user-requested cycling route using OpenStreetMap data. "
+        "Queries go to an external service. Keep personal or confidential information out of queries. "
+        "Pass query and optional near to rank the results locally. "
+        "Returned point coordinates are representative place locations, not verified road points."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "minLength": 1, "maxLength": 200},
+            "near": POINT,
+        },
+        "required": ["query"],
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
 )
 
 
@@ -298,6 +319,15 @@ def locate_on_route(arguments):
         "radius_m": radius,
         "passages": locate_passages(saved["geojson_file"], near, radius),
     }
+
+
+def search_places(arguments):
+    near = arguments.get("near")
+    reference = coordinate(near["lat"], near["lon"]) if near is not None else None
+    query = arguments["query"].strip()
+    if not query:
+        raise ValueError("query cannot be blank")
+    return find_public_place(query, reference, distance)
 
 
 def brouter_json(url, data=None):
@@ -533,7 +563,7 @@ def create_server():
     async def list_tools():
         return [
             TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE, LOCATE_ON_ROUTE,
-            EVALUATE_ROUTE_CHANGE,
+            EVALUATE_ROUTE_CHANGE, SEARCH_PLACES,
         ]
 
     @server.call_tool()
@@ -547,6 +577,7 @@ def create_server():
                 INSPECT_ROUTE.name: inspect_route,
                 LOCATE_ON_ROUTE.name: locate_on_route,
                 EVALUATE_ROUTE_CHANGE.name: evaluate_route_change,
+                SEARCH_PLACES.name: search_places,
             }.get(name)
             if handler is None:
                 raise ValueError(f"Unknown tool: {name}")

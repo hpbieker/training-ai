@@ -61,4 +61,15 @@ before and after distances, the distance difference in metres, and up to
 saved route used the same profile, or is null if its profile hash is unknown.
 Changes in coordinate sampling can appear as changes to the route.
 
+Call `search_places` with a public place name in `query`. Optionally add
+`near` to rank the matches by distance locally. Treat returned coordinates
+as representative points for places, and verify any waypoint on its road.
+
+The default service follows [Nominatim's usage policy](https://operations.osmfoundation.org/policies/nominatim/).
+Use it for individual searches triggered by a user. Keep personal and
+confidential information out of queries. The public service prohibits
+autocomplete and systematic lookups. The plugin sends at most one request
+per second across local processes and caches responses for 24 hours.
+Use `ROUTE_PLANNER_GEOCODER_URL` to select a Nominatim-compatible service.
+
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.
