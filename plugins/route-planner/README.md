@@ -37,4 +37,13 @@ Call `export_route` with `route_id` to get a local GPX file. Set `format` to
 `geojson` to get the saved GeoJSON. The result includes the exported revision
 and the local file path.
 
+Call `inspect_route` with a saved `route_id` or the absolute path to a BRouter
+GeoJSON `route_file`. It reports road types, surfaces and access tags from the
+file, with totals and sections in travel order. Optionally filter by
+`distance_range` (`from_km`, `to_km`) or, for saved routes, `waypoint_range`
+(`from_waypoint_id`, `to_waypoint_id`). Section offsets are measured from
+the route start. Filtered tag totals are prorated by overlap with the
+saved geometry. Sections with missing or unmatched metadata are marked
+`unknown`.
+
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.

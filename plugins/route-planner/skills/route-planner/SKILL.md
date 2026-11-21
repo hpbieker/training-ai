@@ -16,3 +16,7 @@ to keep, and check the returned points after updating. If the revision has
 changed, use `get_route` to read the latest route before retrying.
 
 Use `export_route` only when the user requests a route file.
+
+Use `inspect_route` to check road types, surfaces or access tags on a saved
+route. Filter by kilometre range or by two waypoint IDs in travel order for a
+specific section. Report gaps where the saved metadata is missing.

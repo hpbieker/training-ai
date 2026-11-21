@@ -19,6 +19,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from route_geometry import coordinate, distance, validate_route, write_gpx
+from route_inspection import inspect_route_file
 
 PLUGIN = Path(__file__).resolve().parent
 PROFILE = PLUGIN / "assets/profiles/fastbike-road-flow.brf"
@@ -147,6 +148,44 @@ EXPORT_ROUTE = types.Tool(
     annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False),
 )
 
+INSPECT_ROUTE = types.Tool(
+    name="inspect_route",
+    description=(
+        "Report where road types, surfaces and access tags occur along the route, plus distance totals. "
+        "Pass route_id or a GeoJSON route_file. Optionally filter by distance_range (from_km, to_km) "
+        "or, for a saved route, by waypoint_range (from_waypoint_id, to_waypoint_id) in travel order. "
+        "The two filters are mutually exclusive. Section offsets are relative to the original route start. "
+        "This reads local metadata without network requests."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "route_id": ID,
+            "route_file": {"type": "string", "minLength": 1},
+            "distance_range": {
+                "type": "object",
+                "properties": {
+                    "from_km": {"type": "number", "minimum": 0},
+                    "to_km": {"type": "number", "minimum": 0},
+                },
+                "required": ["from_km", "to_km"],
+                "additionalProperties": False,
+            },
+            "waypoint_range": {
+                "type": "object",
+                "properties": {"from_waypoint_id": ID, "to_waypoint_id": ID},
+                "required": ["from_waypoint_id", "to_waypoint_id"],
+                "additionalProperties": False,
+            },
+        },
+        "oneOf": [{"required": ["route_id"]}, {"required": ["route_file"]}],
+        "dependentRequired": {"waypoint_range": ["route_id"]},
+        "not": {"required": ["distance_range", "waypoint_range"]},
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+)
+
 
 def route_directory():
     return Path(os.environ.get("ROUTE_PLANNER_ROUTES", tempfile.gettempdir())).resolve()
@@ -187,6 +226,26 @@ def export_route(arguments):
         finally:
             temporary.unlink(missing_ok=True)
     return {"route_id": saved["route_id"], "revision": saved["revision"], "route_file": str(output)}
+
+
+def inspect_route(arguments):
+    distance_range = arguments.get("distance_range")
+    waypoint_range = arguments.get("waypoint_range")
+    if distance_range is not None and waypoint_range is not None:
+        raise ValueError("Choose either distance_range or waypoint_range.")
+    if "route_id" in arguments:
+        saved = load_route(arguments["route_id"])
+        return {
+            "route_id": saved["route_id"],
+            "revision": saved["revision"],
+            **inspect_route_file(
+                saved["geojson_file"], distance_range=distance_range,
+                waypoint_range=waypoint_range, waypoints=saved["points"][1:-1] if waypoint_range else (),
+            ),
+        }
+    if waypoint_range is not None:
+        raise ValueError("Use route_id with waypoint_range.")
+    return inspect_route_file(arguments["route_file"], distance_range=distance_range)
 
 
 def brouter_json(url, data=None):
@@ -400,7 +459,7 @@ def create_server():
 
     @server.list_tools()
     async def list_tools():
-        return [TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE]
+        return [TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE]
 
     @server.call_tool()
     async def call_tool(name, arguments):
@@ -410,6 +469,7 @@ def create_server():
                 UPDATE_ROUTE.name: update_route,
                 GET_ROUTE.name: get_route,
                 EXPORT_ROUTE.name: export_route,
+                INSPECT_ROUTE.name: inspect_route,
             }.get(name)
             if handler is None:
                 raise ValueError(f"Unknown tool: {name}")
