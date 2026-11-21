@@ -151,14 +151,12 @@ saving the cookie header locally. Repeat these steps if the plugin returns
 
 **Authentication.** Forecasts require no credentials. For historical station
 observations, save a Frost client ID in `~/.yr_mcp.json` under
-`frost.client_id`. See [MET Norway's guide to getting a Frost client ID](https://frost.met.no/howto.html).
+`frost_client_id`. See [MET Norway's guide to getting a Frost client ID](https://frost.met.no/howto.html).
 Public observations require only the client ID.
 
 ```json
 {
-  "frost": {
-    "client_id": "<frost-client-id>"
-  }
+  "frost_client_id": "<frost-client-id>"
 }
 ```
 

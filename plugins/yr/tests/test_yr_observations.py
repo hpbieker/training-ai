@@ -270,7 +270,7 @@ class FrostTransportTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.path = Path(self.tmp.name) / "config.json"
-        self.path.write_text(json.dumps({"frost": {"client_id": "client-test", "client_secret": "never-send"}}))
+        self.path.write_text(json.dumps({"frost_client_id": "client-test", "client_secret": "never-send"}))
         self.client = OBS.FrostClient(self.path)
 
     def test_only_client_id_sent_and_not_returned(self):
@@ -296,13 +296,20 @@ class FrostTransportTests(unittest.TestCase):
 
     def test_missing_configuration_and_invalid_source_payload(self):
         self.path.unlink()
-        with self.assertRaisesRegex(OBS.ObservationFailure, "frost.client_id"):
+        with self.assertRaisesRegex(OBS.ObservationFailure, "Configure frost_client_id"):
             self.client.get("sources", {})
-        self.path.write_text('{"frost":{"client_id":"test"}}')
+        self.path.write_text('{"frost_client_id":"test"}')
         for payload in [b'not-json', b'{"wrong": []}', b'{"data": [], "nextLink": "next"}']:
             with patch.object(OBS, "urlopen", return_value=io.BytesIO(payload)):
                 with self.assertRaises(OBS.ObservationFailure):
                     self.client.get("sources", {})
+
+    def test_legacy_nested_config_still_authenticates(self):
+        self.path.write_text(json.dumps({"frost": {"client_id": "legacy-client"}}))
+        with patch.object(OBS, "urlopen", return_value=io.BytesIO(b'{"data": []}')) as mocked:
+            self.client.get("sources", {})
+        auth = mocked.call_args.args[0].get_header("Authorization")
+        self.assertEqual(base64.b64decode(auth.split()[1]).decode(), "legacy-client:")
 
 
 class FrostMetadataCacheTests(unittest.TestCase):

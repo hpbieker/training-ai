@@ -200,12 +200,12 @@ class FrostClient:
 
     def get(self, endpoint: str, params: dict) -> dict:
         try:
-            config = json.loads(self.config_path.read_text())["frost"]
-            client_id = config["client_id"]
+            config = json.loads(self.config_path.read_text(encoding="utf-8"))
+            client_id = config["frost_client_id"] if "frost_client_id" in config else config["frost"]["client_id"]
             if not isinstance(client_id, str) or not client_id.strip():
                 raise ValueError
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            raise ObservationFailure("configuration_error", "Configure frost.client_id in ~/.yr_mcp.json") from exc
+            raise ObservationFailure("configuration_error", "Configure frost_client_id in ~/.yr_mcp.json") from exc
         token = base64.b64encode((client_id + ":").encode()).decode()
         request = Request("https://frost.met.no/" + endpoint + "/v0.jsonld?" + urlencode(params),
                           headers={"Authorization": "Basic " + token,

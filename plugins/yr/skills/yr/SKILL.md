@@ -45,9 +45,6 @@ interfaces; helpers must not import or invoke the Yr plugin directly.
   cover. Calculate a change only when both samples report a measured depth.
 - Use `get_observations` for observations near selected points and times.
   Inspect the actual times, missing elements, warnings and per-point errors.
-- Frost reads `frost.client_id` from `~/.yr_mcp.json`; keep this file private
-  (0600). `client_secret` may be stored there but is not needed or sent for public
-  observations. Never print credentials or put them in tool arguments.
 - Read [references/observations.md](references/observations.md) before
   interpreting historical observations, measurement periods or quality codes.
 
