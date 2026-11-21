@@ -109,9 +109,19 @@ Read [references/outdoor-routes.md](references/outdoor-routes.md).
 
 When the user asks to add a banner, card, or workout image to a completed
 Strava activity, use `scripts/generate_strava_workout_card.py` by default.
-Call it with the current Intervals.icu activity directory, `--xert-session`
-for the matching saved Xert session, and `--output` for the PNG. Inspect the
-result, then attach it through the
+After renaming in Intervals.icu, fetch and save fresh metadata for the same
+activity ID before rendering. Call the generator with that activity
+directory, `--xert-session` for the matching saved Xert session, and `--output`
+for the PNG. Pass `--workout-role vo2max` or `--workout-role vt2` when the
+completed role is confirmed. Pass `--inspection` with the same activity's
+brief inspection JSON when it contains a measured `steady_vt1_segment`.
+For VO₂max and VT2 cards, request the completed activity's model series with
+Xert's `analyze_activity_xert_2(save_series=true)` and pass the saved file as
+`--lactate-series` when available. The card shows the estimated maximum within
+each work interval when the series covers every displayed interval.
+Inspect the finished PNG against the recorded work before uploading. Check
+the interval count, duration and power, and the duration and power of any
+measured aerobic finish. Attach it through the
 [Strava media workflow](../../../plugins/strava/skills/strava/references/write-safety.md#activity-media).
 
 ## Output

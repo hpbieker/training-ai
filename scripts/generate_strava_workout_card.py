@@ -13,6 +13,7 @@ import csv
 import json
 import math
 import re
+from bisect import bisect_left
 from io import BytesIO
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,6 +43,7 @@ MINT = "#66d7b5"
 DEFAULT_POWER_SCALE_MAX = 800.0
 DIFFICULTY_SCALE_MAX = 200.0
 HEART_RATE_FLOOR = 40.0
+INTERVAL_HEADLINES = {"vo2max": "VO₂MAX", "vt2": "VT2"}
 
 
 @dataclass(frozen=True)
@@ -71,7 +73,7 @@ def xert_number(value: Any) -> float | None:
     return as_float(value)
 
 
-def load_xert_session(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def load_xert_session(path: Path) -> tuple[object, dict[str, Any], list[dict[str, Any]]]:
     """Load only the Xert fields needed to reproduce its chart semantics."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -82,7 +84,40 @@ def load_xert_session(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]
         raise ValueError(f"Cannot read Xert session: {path}") from exc
     if not rows:
         raise ValueError("Xert session has no time-series data")
-    return summary, rows
+    return payload.get("activity_path"), summary, rows
+
+
+def load_lactate_maxima(
+    path: Path, activity_path: object, intervals: list[dict[str, object]]
+) -> list[float] | None:
+    """Read a maximum over each recorded work interval, excluding recovery."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not activity_path or payload.get("activity_path") != activity_path:
+        raise ValueError(f"Lactate series does not match the Xert session: {path}")
+    series = payload.get("series", {})
+    times = series.get("elapsed_s", [])
+    lactate = series.get("lactate_model_mmol_l", [])
+    if not times or len(times) != len(lactate):
+        return None
+    if any(not isinstance(time, (int, float)) or not math.isfinite(time) for time in times) or any(
+        current <= previous for previous, current in zip(times, times[1:])
+    ):
+        return None
+
+    maxima = []
+    for interval in intervals:
+        start = float(interval["start_time"])
+        end = float(interval["end_time"])
+        first, stop = bisect_left(times, start), bisect_left(times, end)
+        values = lactate[first:stop]
+        if not values or times[first] >= start + 1 or times[stop - 1] < end - 1:
+            return None
+        if any(current - previous > 1 for previous, current in zip(times[first:stop], times[first + 1:stop])):
+            return None
+        if any(not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 for value in values):
+            return None
+        maxima.append(max(values))
+    return maxima or None
 
 
 def xert_stream(rows: list[dict[str, Any]], key: str) -> tuple[list[float], list[float]]:
@@ -124,6 +159,14 @@ def load_activity(activity_dir: Path) -> dict[str, object]:
     if not isinstance(activity, dict):
         raise ValueError(f"Saved Intervals activity has no activity object: {path}")
     return activity
+
+
+def load_steady_finish(inspection_path: Path, activity_id: object) -> dict[str, object] | None:
+    """Read the measured finish from a brief inspection of the same activity."""
+    inspection = json.loads(inspection_path.read_text(encoding="utf-8"))
+    if not activity_id or inspection["activity"]["id"] != activity_id:
+        raise ValueError(f"Inspection does not match the Intervals activity: {inspection_path}")
+    return inspection.get("steady_vt1_segment")
 
 
 def load_streams(activity_dir: Path) -> list[dict[str, float]]:
@@ -192,9 +235,14 @@ def format_duration(seconds: float) -> str:
     return f"{hours} h {minutes:02d} min" if hours else f"{minutes} min"
 
 
-def workout_story(activity: dict[str, object], rows: list[dict[str, float]]) -> WorkoutStory:
+def workout_story(
+    activity: dict[str, object],
+    rows: list[dict[str, float]],
+    *,
+    workout_role: str | None = None,
+    steady_finish: dict[str, object] | None = None,
+) -> WorkoutStory:
     """State the purposeful work, using Intervals' detected interval summary."""
-    name = str(activity.get("name") or "").casefold()
     summaries = activity.get("interval_summary")
     parsed_summaries: list[tuple[int, int, int]] = []
     if isinstance(summaries, list):
@@ -212,7 +260,7 @@ def workout_story(activity: dict[str, object], rows: list[dict[str, float]]) -> 
     # Intervals.icu also lists warm-up and short finishing blocks. Prefer a
     # repeated work set instead of treating the first summary as the workout.
     repeated = [item for item in parsed_summaries if item[0] > 1]
-    candidates = repeated or parsed_summaries
+    candidates = repeated or (parsed_summaries if workout_role in INTERVAL_HEADLINES else [])
     selected = max(candidates, key=lambda item: (item[0], item[0] * item[1], item[2])) if candidates else None
     if selected:
         repetitions, seconds_total, watts = selected
@@ -229,22 +277,14 @@ def workout_story(activity: dict[str, object], rows: list[dict[str, float]]) -> 
             for _, extra_seconds, _ in matching_finishers
         )
         work_label = f"{repetitions} × {duration}{finisher_text} @ {watts} W"
-        if "vo2" in name:
-            return WorkoutStory(
-                "VO₂MAX",
-                f"{repetitions} × {duration} at {watts} W, followed by VT1 endurance work.",
-                work_label,
-                float(watts),
-                repetitions,
-            )
-        if "vt2" in name:
-            return WorkoutStory(
-                "VT2",
-                f"{repetitions} × {duration}{finisher_text} at {watts} W.",
-                work_label,
-                float(watts),
-                repetitions,
-            )
+        headline = INTERVAL_HEADLINES.get(workout_role, "INTERVALS")
+        subtitle = f"{repetitions} × {duration}{finisher_text} at {watts} W"
+        if steady_finish:
+            finish_seconds = as_float(steady_finish.get("duration_s"))
+            finish_watts = as_float(steady_finish.get("watts_avg"))
+            if finish_seconds and finish_seconds > 0 and finish_watts and finish_watts > 0:
+                subtitle += f", followed by {finish_seconds / 60:.0f} min of VT1 at {finish_watts:.0f} W"
+        return WorkoutStory(headline, f"{subtitle}.", work_label, float(watts), repetitions)
     segment = main_work_segment(rows)
     work = rows[segment.start : segment.end + 1]
     duration = format_duration(work[-1]["time"] - work[0]["time"])
@@ -273,6 +313,7 @@ def repeated_work_intervals(activity: dict[str, object], story: WorkoutStory) ->
     candidates = [
         item for item in candidates
         if isinstance(item, dict)
+        and item.get("type") == "WORK"
         and as_float(item.get("start_time")) is not None
         and as_float(item.get("end_time")) is not None
         and as_float(item.get("average_watts")) is not None
@@ -319,7 +360,12 @@ def format_measure(value: float | None, digits: int = 0) -> str:
 
 
 def add_response_table(
-    axis: plt.Axes, activity: dict[str, object], rows: list[dict[str, float]], story: WorkoutStory
+    axis: plt.Axes,
+    activity: dict[str, object],
+    rows: list[dict[str, float]],
+    story: WorkoutStory,
+    *,
+    lactate_maxima: list[float] | None = None,
 ) -> None:
     """Draw a compact per-rep physiology table with one easily scanned row per rep."""
     axis.set_xlim(0, 1)
@@ -377,9 +423,17 @@ def add_response_table(
     x, y, width, height = 0.0, 0.0, 1.0, TABLE_HEIGHT
     axis.add_patch(plt.Rectangle((x, y), width, height, transform=axis.transAxes, facecolor=PANEL, edgecolor="none"))
     headers = ("REP" if intervals else "TIME", "HR BPM", "BR /MIN", "VE VOL/MIN", "SMO₂ MIN %" if intervals else "SMO₂ %", "CORE TEMP °C")
+    precision = (0, 0, 0, 1, 2)
+    right_margin = 0
+    if intervals and lactate_maxima and len(lactate_maxima) == len(body):
+        headers += ("LACTATE MAX EST (mmol/L)",)
+        precision += (1,)
+        right_margin = 0.014
+        for (_, measures), maximum in zip(body, lactate_maxima, strict=True):
+            measures.append(maximum)
     header_y = y + height - 0.022
     rep_width = 0.10
-    column_width = (width - rep_width) / (len(headers) - 1)
+    column_width = (width - rep_width - right_margin) / (len(headers) - 1)
     axis.text(x + 0.014, header_y, headers[0], color=MINT, fontsize=7, fontweight="bold", family="DejaVu Sans")
     for index, header in enumerate(headers[1:]):
         center = x + rep_width + (index + 0.5) * column_width
@@ -394,16 +448,29 @@ def add_response_table(
     for row_index, (label, measures) in enumerate(body):
         baseline = first_row_y - row_index * row_height
         axis.text(x + 0.014, baseline, label, color=MUTED, fontsize=label_size, fontweight="bold", family="DejaVu Sans")
-        for column_index, (measure, digits) in enumerate(zip(measures, (0, 0, 0, 1, 2))):
+        for column_index, (measure, digits) in enumerate(zip(measures, precision, strict=True)):
             center = x + rep_width + (column_index + 0.5) * column_width
             axis.text(center, baseline, format_measure(measure, digits), ha="center", color=WHITE, fontsize=measure_size, family="DejaVu Sans")
 
 
-def render(activity_dir: Path, xert_session: Path, output: Path) -> Path:
+def render(
+    activity_dir: Path,
+    xert_session: Path,
+    output: Path,
+    *,
+    workout_role: str | None = None,
+    inspection_path: Path | None = None,
+    lactate_series_path: Path | None = None,
+) -> Path:
     activity = load_activity(activity_dir)
     rows = load_streams(activity_dir)
-    story = workout_story(activity, rows)
-    summary, xert_rows = load_xert_session(xert_session)
+    steady_finish = load_steady_finish(inspection_path, activity.get("id")) if inspection_path else None
+    story = workout_story(activity, rows, workout_role=workout_role, steady_finish=steady_finish)
+    activity_path, summary, xert_rows = load_xert_session(xert_session)
+    lactate_maxima = None
+    if lactate_series_path and workout_role in INTERVAL_HEADLINES:
+        intervals = repeated_work_intervals(activity, story)
+        lactate_maxima = load_lactate_maxima(lactate_series_path, activity_path, intervals)
     time, power = xert_stream(xert_rows, "power")
     hr_time, heart_rate = xert_stream(xert_rows, "hr")
     mpa_time, mpa = xert_stream(xert_rows, "mpa")
@@ -461,7 +528,7 @@ def render(activity_dir: Path, xert_session: Path, output: Path) -> Path:
     # the table's separator line autoscale the text layer and clip the heading.
     table = figure.add_axes([0, 0, 1, 1])
     table.set_axis_off()
-    add_response_table(table, activity, rows, story)
+    add_response_table(table, activity, rows, story, lactate_maxima=lactate_maxima)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     # Match the Xert renderer: draw at high resolution, then downsample to
@@ -479,9 +546,21 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("activity_dir", type=Path, help="Saved Intervals.icu activity directory")
     parser.add_argument("--xert-session", type=Path, required=True, help="Saved Xert session JSON for the same activity")
+    parser.add_argument("--workout-role", choices=INTERVAL_HEADLINES, help="Confirmed role of the work intervals")
+    parser.add_argument(
+        "--inspection", type=Path, help="Brief inspection JSON for the same activity, with any measured steady VT1 finish"
+    )
+    parser.add_argument("--lactate-series", type=Path, help="Saved Xert 2.0 Beta model series for the same activity")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
-    print(render(args.activity_dir, args.xert_session, args.output))
+    print(render(
+        args.activity_dir,
+        args.xert_session,
+        args.output,
+        workout_role=args.workout_role,
+        inspection_path=args.inspection,
+        lactate_series_path=args.lactate_series,
+    ))
 
 
 if __name__ == "__main__":
