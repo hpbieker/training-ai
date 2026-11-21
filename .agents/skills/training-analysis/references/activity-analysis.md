@@ -123,6 +123,16 @@ it, rather than repeating an inventory of unknowns.
 
 ## Block Detection
 
+When comparing repetitions, keep the recorded mean power, including observed
+zeros. Before describing a fade, a weaker repetition or a rebound, inspect
+the power trace within the effort. Compare equivalent portions of the work
+intervals, check the transition into recovery, and establish how long the
+difference lasted. If a few samples drive the mean, quantify their influence
+when it changes the verdict. A median or a mean excluding those samples can
+illustrate that influence. Describe a sustained fall when the trace shows it.
+Use cadence and recording coverage to interpret interruptions, and leave their
+cause open when the evidence is inconclusive.
+
 - Use a known target with `--target`, `--tolerance`, and `--min-block` when the
   intended structure is known.
 - Use `--auto-blocks` for mixed or unclear structured indoor sessions. Do not
