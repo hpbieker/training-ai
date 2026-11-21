@@ -854,6 +854,20 @@ verbose Calculate series merely to reproduce locally available model fields.
   training domain separately from plan intent, power prescription, progression,
   and readiness. Do not let the dominant XSS system choose the domain.
 
+Use Xert 2.0 Beta when a modeled difference could change the choice between
+plausible workouts, such as increasing interval power while reducing repetitions,
+or choosing how much endurance to add after quality work. Compare the candidates
+still in contention with `calculate_workout_xert_2`, using the same
+`model_source_activity_path` for the signature and model settings. Use
+`analyze_activity_xert_2` when a comparable completed ride and the athlete's
+response in subsequent sessions would help interpret the result.
+
+Report the modeled difference that matters for the decision. Give priority to
+actual execution, athlete feedback and subsequent training response. Use
+standard Xert XSS for capacity calculations. On a follow-up, reuse Xert 2.0 results
+while the workout and model inputs still match. If Xert 2.0 Beta is unavailable, proceed
+with the other evidence.
+
 ## Capacity Before The Next Day's Workout
 
 For every training recommendation, calculate and show how much training can be
@@ -954,6 +968,14 @@ If local coaching preferences identify preferred indoor workouts by text in
 their names, pass that text as `cycling.preferred_workout_name_contains` in
 `--planning-context-json`. Matching ignores case. Rank all suitable workouts
 by fit when there is no preference or no suitable match.
+
+When library workouts fit the same goal and time window, compare the finalists
+with `calculate_workout_xert_2` if differences in recovery duration, work-bout
+length or placement of hard efforts could change the choice. Use the same
+`model_source_activity_path` and keep starting glycogen and muscle glucose
+uptake assumptions fixed when comparing workout structures. Explain which
+structure best serves the intended progression. Follow the existing
+[Xert 2.0 Beta comparison guidance](#xert-workout-feasibility) for reuse.
 
 For `rest`, retain only rest or explicit recovery candidates within the cap.
 For `easy_vt1`, retain recovery/endurance candidates within duration and load.

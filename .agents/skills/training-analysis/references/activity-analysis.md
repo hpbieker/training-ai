@@ -430,6 +430,35 @@ shared rules:
 - Save subjective feel/RPE remotely only when the user asks, using the owning
   source skill's write workflow.
 
+## Xert 2.0 Beta for completed rides and training history
+
+Start with the observed difference to explain. Select comparable rides or
+blocks by recorded power, duration and work already completed. For a question
+about recovery, also review the intervening training and the next quality session.
+
+Use `analyze_activity_xert_2` when a model estimate could change the
+interpretation. Use its summary for whole-ride comparisons. Request
+`save_series=true` when timing matters, for example to compare estimated
+glycogen remaining or maximum power available at the start of two similar
+climbs. Align the model series with the recorded climbs.
+
+Across rides, check the model version, signature and settings before
+attributing a difference to training. Interpret estimates alongside actual
+execution, athlete feedback and recorded carbohydrate intake where relevant.
+Muscle Glucose Uptake Rate describes modeled uptake. Use the food log for
+actual intake.
+
+For a week or block review, compare standard XSS with Xert 2.0 XSS when the
+choice of model could change the interpretation of the training dose. Check
+`period_complete` and match activities by their Xert activity path. If coverage
+is incomplete or any ride lacks either score, report the coverage and label both
+sums as subtotals for the same matched rides.
+
+Sum each model's XSS separately. Reuse current activity summaries and identify
+the rides that explain a material difference. Label the result as cumulative
+XSS for the period. Use standard Xert for Training Load, Recovery Load, Form
+and next-workout capacity.
+
 ## Xert MPA And Point-Of-Failure
 
 Use this only when the analysis specifically needs Xert model dynamics.

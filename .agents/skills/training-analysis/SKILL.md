@@ -74,6 +74,14 @@ then assess the observed differences and their uncertainty. Use the same
 reference reading order, selecting the specialist guidance relevant to the
 measurements and session structures being compared.
 
+### Training volume and load over a period
+
+For a week or block comparison, report volume from recorded time. When
+explaining a change in cumulative load across periods with different mixes of
+endurance and quality work, compare standard XSS and Xert 2.0 XSS for the
+matched rides. Follow the [period comparison guidance](references/activity-analysis.md#xert-20-beta-for-completed-rides-and-training-history)
+for coverage, reuse and attribution. A time-only question needs only duration.
+
 ### Molecular stimulus analysis
 
 When the user asks about a workout's cellular, biochemical, or molecular
