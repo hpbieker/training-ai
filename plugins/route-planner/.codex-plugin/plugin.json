@@ -1,0 +1,14 @@
+{
+  "name": "route-planner",
+  "version": "0.2.13",
+  "description": "Plan and save cycling routes with ordered waypoints.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Route Planner",
+    "shortDescription": "Plan cycling routes with ordered waypoints.",
+    "category": "Health & Fitness",
+    "composerIcon": "./assets/route-planner.png",
+    "logo": "./assets/route-planner.png"
+  }
+}

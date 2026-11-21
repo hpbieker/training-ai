@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "route-planner": {
+      "command": "./.venv/bin/python",
+      "args": ["-B", "./route_planner_mcp.py"],
+      "cwd": "."
+    }
+  }
+}
