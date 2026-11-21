@@ -119,9 +119,10 @@ explain that effort’s value even if the athlete only reports the schedule
 change. Include a later same-day start when recovery matters. For back-to-back
 quality, include the decisive same-athlete outcomes and the choice before the
 first ride in the rider's answer.
-When the next priority session moves, revisit the aerobic rides leading into it,
-including any previously offered finish. Give the rider the revised dose or
-the reason to keep it alongside the new quality day.
+When the next priority session moves, including in the initial request, revisit
+the preceding aerobic ride. On good legs compare the familiar steady block
+with the next credible longer block in the athlete’s history. Give both total
+ride times and what favors the last increment under the revised schedule.
 For a new recommendation, read [references/daily-recommendations.md](references/daily-recommendations.md).
 Also read
 [references/cycling-endurance-physiology.md](references/cycling-endurance-physiology.md)

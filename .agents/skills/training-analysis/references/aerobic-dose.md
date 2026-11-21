@@ -124,7 +124,15 @@ chosen dose on normal legs and what still limits it on good legs.
 Choose the primary dose for the day's purpose. If more volume serves the
 plan, fits the schedule and is supported by the athlete's history, prescribe
 one bounded option for good legs unless a specific cost still applies then.
-Compare the *upper options* on the same favorable late response. Show how
+When the next priority session moves later, start the good-legs comparison
+at the familiar steady block, even if the primary ride is shorter. Look for
+the nearest longer measured block at similar watts and compare their total
+ride times with the same warm-up and cooldown. Two additions that both end
+at or below the familiar block leave that question open. In the rider’s answer,
+say what the last increment would buy if the intervening ride is short, what
+would favor stopping at the familiar block, and where to decide while riding.
+If a longer finish lacks support or cannot fit, give the specific reason.
+Compare the upper options on the same favorable late response. Show how
 many steady minutes each would produce, at what power, and the actual
 difference in recovery before the next quality start. If the longer option
 restores a familiar tolerated block, helps the volume goal and fits the
