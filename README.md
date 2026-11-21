@@ -170,7 +170,7 @@ Run all core and plugin tests from the repository root:
 ```sh
 uv run --no-project \
   --with-requirements plugins/strava/requirements.txt \
-  --with-requirements plugins/training-visuals/requirements.txt \
+  --with-requirements plugins/route-planner/requirements.txt \
   --with matplotlib \
   python -B tests/run_all.py
 ```

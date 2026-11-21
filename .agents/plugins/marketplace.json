@@ -89,18 +89,6 @@
       "category": "Health & Fitness"
     },
     {
-      "name": "training-visuals",
-      "source": {
-        "source": "local",
-        "path": "./plugins/training-visuals"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Health & Fitness"
-    },
-    {
       "name": "route-planner",
       "source": {
         "source": "local",
