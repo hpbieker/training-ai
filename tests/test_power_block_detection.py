@@ -7,10 +7,34 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
-from analysis import detect_power_blocks, detect_stable_power_blocks, summarize_block
+from analysis import detect_power_blocks, detect_stable_power_blocks, detect_steady_finish, summarize_block
 
 
 class PowerBlockDetectionTests(unittest.TestCase):
+    def test_aerobic_finish_excludes_early_plateau_and_all_hard_reps(self):
+        powers = [215] * 600 + ([355] * 180 + [120] * 180) * 5 + [355] * 180
+        rows = [dict(time=t, watts=w) for t, w in enumerate(powers)]
+        self.assertIsNone(detect_steady_finish(rows, 215, []))
+        start = len(rows)
+        rows += [dict(time=start + t, watts=w)
+                 for t, w in enumerate([215] * 4500 + [150] * 180)]
+        finish = detect_steady_finish(rows, 215, [])
+        self.assertGreaterEqual(finish.start_index, start)
+        self.assertAlmostEqual(finish.detection["duration_seconds"], 4500, delta=20)
+
+    def test_no_single_finish_across_pause_or_before_recorded_short_effort(self):
+        rows = [dict(time=t, watts=215) for t in range(600)]
+        self.assertIsNotNone(detect_steady_finish(rows, 215, []))
+        split = rows + [dict(time=t, watts=215) for t in range(700, 1300)]
+        self.assertIsNone(detect_steady_finish(split, 215, []))
+        sprint = rows + [dict(time=t, watts=550) for t in range(600, 610)]
+        laps = [dict(type="WORK", average_watts=550, end_index=610)]
+        self.assertIsNone(detect_steady_finish(sprint, 215, laps))
+
+    def test_alternating_efforts_averaging_to_target_are_not_a_steady_finish(self):
+        rows = [dict(time=t, watts=315 if t % 2 else 115) for t in range(1200)]
+        self.assertIsNone(detect_steady_finish(rows, 215, []))
+
     def test_cli_finds_ten_minutes_at_each_recording_rate(self):
         # Include a sample at the transition so the full recording defines the
         # final work sample's width, even when the last few intervals vary.

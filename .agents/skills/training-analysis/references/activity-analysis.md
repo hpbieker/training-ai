@@ -101,6 +101,19 @@ For quality work followed by endurance work, include both parts when their
 perceived effort could change the verdict or next-session consequence. Falling
 HR or respiration during the extension does not establish felt ease.
 
+For a ride with an optional aerobic extension, recover the main duration and
+the decision point from the applicable prescription. Locate the actual finish
+in the power trace. For structured work at a known endurance target, pass
+`--steady-vt1-watts W` to the inspection alongside any hard-interval target.
+It returns one sustained segment after harder work, or null when unresolved.
+Cross-check the boundaries against the efforts, pauses and cooldown.
+
+Assess the extra minutes against the last settled period at comparable power
+immediately before the decision. Report the windows relative to the start of
+the aerobic work, excluding stops. Use the initial transition to describe
+recovery from the intervals. If the decision point or comparable windows are
+missing, describe what was completed and qualify the extension verdict.
+
 Narrative effort, breathing and leg reports are evidence even when numeric RPE
 is null. Let a substantial reported burden affect the verdict; good leg feel or
 moderate model difficulty cannot negate it. Keep experienced effort during the

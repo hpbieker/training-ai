@@ -38,7 +38,7 @@ ANALYSIS_OPTION_FIELDS = {
     "auto_max_gap",
     "auto_smoothing",
     "auto_tolerance",
-    "steady_vt1",
+    "steady_vt1_watts",
     "no_auto_outdoor_vt1",
     "no_auto_indoor_vt1",
     "fields",
@@ -86,12 +86,14 @@ def parse_analysis_options_json(raw: str) -> dict[str, Any]:
             raise argparse.ArgumentTypeError(
                 f"analysis-option {field} must be a non-negative number"
             )
-    if "prescribed_watts" in payload:
-        prescribed = payload["prescribed_watts"]
-        if not math.isfinite(prescribed) or prescribed <= 0:
-            raise argparse.ArgumentTypeError("prescribed_watts must be finite and positive")
+    for field in ("prescribed_watts", "steady_vt1_watts"):
+        if field in payload:
+            watts = payload[field]
+            if (isinstance(watts, bool) or not isinstance(watts, (float, int))
+                    or not math.isfinite(watts) or watts <= 0):
+                raise argparse.ArgumentTypeError(f"{field} must be finite and positive")
     boolean_fields = {
-        "auto_blocks", "steady_vt1", "no_auto_outdoor_vt1",
+        "auto_blocks", "no_auto_outdoor_vt1",
         "no_auto_indoor_vt1", "include_intervals", "debug_beta",
     }
     for field in boolean_fields & payload.keys():
@@ -237,6 +239,7 @@ def build_inspect_args(options: dict[str, Any]) -> list[str]:
         ("--vt2-watts", options.get("vt2_watts")),
         ("--prescribed-watts", options.get("prescribed_watts")),
         ("--target", options.get("target")),
+        ("--steady-vt1-watts", options.get("steady_vt1_watts")),
         ("--threshold", options.get("threshold")),
         ("--tolerance", options.get("tolerance")),
         ("--min-block", options.get("min_block")),
@@ -255,7 +258,6 @@ def build_inspect_args(options: dict[str, Any]) -> list[str]:
     if options.get("include_intervals") is False:
         inspect_args.append("--no-intervals")
     for flag, enabled in (
-        ("--steady-vt1", options.get("steady_vt1")),
         ("--debug-beta", options.get("debug_beta")),
         ("--no-auto-outdoor-vt1", options.get("no_auto_outdoor_vt1")),
         ("--no-auto-indoor-vt1", options.get("no_auto_indoor_vt1")),

@@ -28,7 +28,7 @@ from analysis import (
     detect_pause_segments,
     detect_power_blocks,
     detect_stable_power_blocks,
-    detect_steady_power_segment,
+    detect_steady_finish,
     recovery_reoxygenation,
     resolve_activity_ref,
     summarize_block,
@@ -91,9 +91,8 @@ def main() -> None:
     parser.add_argument("--auto-smoothing", default="30s")
     parser.add_argument("--auto-tolerance", type=float, default=12.0)
     parser.add_argument(
-        "--steady-vt1",
-        action="store_true",
-        help="Also run steady VT1-style work segment detection",
+        "--steady-vt1-watts", type=float,
+        help="Prescribed power of the sustained aerobic finish, independent of the hard-interval target",
     )
     parser.add_argument(
         "--outdoor-vt1",
@@ -180,6 +179,8 @@ def main() -> None:
         parser.error("--brief and --compact are alternative output shapes; choose one")
     if args.prescribed_watts is not None and not valid_vt2_anchor(args.prescribed_watts):
         parser.error("--prescribed-watts must be finite and positive")
+    if args.steady_vt1_watts is not None and not valid_vt2_anchor(args.steady_vt1_watts):
+        parser.error("--steady-vt1-watts must be finite and positive")
     if args.debug_beta and not args.brief:
         parser.error("--debug-beta requires --brief")
     try:
@@ -255,18 +256,15 @@ def inspect_activity(activity_ref: str, args: argparse.Namespace) -> tuple[Saved
     if not args.no_intervals:
         result["intervals"] = interval_summaries(activity, fields, window_context=window_context)
 
-    if args.steady_vt1 and not activity.metadata.get("icu_ignore_power"):
-        segment_rows, start, end, target = detect_steady_power_segment(rows)
+    if args.steady_vt1_watts is not None:
+        finish = None
+        if not activity.metadata.get("icu_ignore_power"):
+            finish = detect_steady_finish(rows, args.steady_vt1_watts, activity.intervals)
         result["steady_vt1_segment"] = summarize_block(
-            rows,
-            start_index=start,
-            end_index=end,
-            label="steady_vt1",
-            fields=fields,
-            window_context=window_context,
-            detection={"target": target, "method": "detect_steady_power_segment"},
-        )
-        result["steady_vt1_segment"]["summary"] = summarize_rows(segment_rows, fields)
+            rows, start_index=finish.start_index, end_index=finish.end_index,
+            label="steady_vt1", fields=fields, window_context=window_context,
+            detection=finish.detection,
+        ) if finish else None
 
     if args.target is not None or args.threshold is not None:
         blocks = detect_power_blocks(
@@ -459,7 +457,7 @@ def compact_result(result: dict[str, Any], fields: list[str]) -> dict[str, Any]:
                 "detection": result["steady_vt1_segment"]["detection"],
                 **compact_summary_block(result["steady_vt1_segment"], fields),
             }
-            if "steady_vt1_segment" in result
+            if result.get("steady_vt1_segment")
             else None
         ),
         "moxy": result.get("moxy", {}),
@@ -589,7 +587,7 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
         "recoveries": recoveries,
         "steady_vt1_segment": (
             brief_work_block(result["steady_vt1_segment"], index=1)
-            if "steady_vt1_segment" in result
+            if result.get("steady_vt1_segment")
             else None
         ),
     }

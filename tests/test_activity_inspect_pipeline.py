@@ -42,7 +42,7 @@ class ActivityInspectPipelineArgumentsTests(unittest.TestCase):
                     "auto_blocks": True,
                     "auto_min_power": 140,
                     "auto_min_block": "10m",
-                    "steady_vt1": True,
+                    "steady_vt1_watts": 215,
                     "no_auto_outdoor_vt1": True,
                     "fields": "time,watts,heartrate",
                     "include_intervals": False,
@@ -58,7 +58,7 @@ class ActivityInspectPipelineArgumentsTests(unittest.TestCase):
             inspect_args[inspect_args.index("--auto-min-block") + 1],
             "10m",
         )
-        self.assertIn("--steady-vt1", inspect_args)
+        self.assertEqual(inspect_args[inspect_args.index("--steady-vt1-watts") + 1], "215")
         self.assertIn("--no-auto-outdoor-vt1", inspect_args)
         self.assertIn("--no-intervals", inspect_args)
         self.assertEqual(

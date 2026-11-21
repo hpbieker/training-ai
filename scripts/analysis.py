@@ -8,7 +8,6 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from statistics import median
 from physiological_evidence import MAX_SAMPLE_INTERVAL, numeric, timeline, quality, field_summary, matched_windows, prepare_windows
 from typing import Any, Iterable
 
@@ -567,70 +566,35 @@ def latest_activity_with_moxy(
     return None
 
 
-def detect_steady_power_segment(
-    rows: list[dict[str, str]],
-    *,
-    target_candidates: tuple[int, ...] = (195, 200, 205),
-    warmup_fallback_seconds: int = 12 * 60,
-    cooldown_fallback_seconds: int = 3 * 60,
-    tolerance: float = 8,
-    stable_seconds: int = 5 * 60,
-    step_lookback_seconds: int = 90,
-    cooldown_target: int = 150,
-    cooldown_tolerance: float = 15,
-) -> tuple[list[dict[str, str]], int, int, int]:
-    """Detect a steady work segment from a power trace.
-
-    Useful for VT1 rides where warm-up and cooldown should be excluded.
-    The user's VT1 rides usually have three power segments: a warm-up ramp below
-    target, steady VT1 around 200-205 W, and a steady cooldown around 150 W.
-    Detect start from consistent target power and end from consistent cooldown
-    power near the end of the file.
-    """
-
-    watts = [value(row, "watts") or 0.0 for row in rows]
-    if len(watts) < warmup_fallback_seconds + cooldown_fallback_seconds + 60:
-        return rows, 0, len(rows), round(median(watts) / 5) * 5
-
-    middle = watts[int(len(watts) * 0.2) : int(len(watts) * 0.8)]
-    median_power = median(middle)
-    target = min(target_candidates, key=lambda candidate: abs(candidate - median_power))
-
-    smoothed = rolling_mean(watts, 30)
-    start = warmup_fallback_seconds
-    for index in range(6 * 60, len(watts) - stable_seconds):
-        block = smoothed[index : index + stable_seconds]
-        block_mean = sum(block) / len(block)
-        in_range = sum(1 for watt in block if abs(watt - target) <= tolerance)
-        if abs(block_mean - target) <= tolerance and in_range / len(block) >= 0.8:
-            step_start = find_power_step_start(
-                smoothed,
-                index,
-                target=target,
-                lookback_seconds=step_lookback_seconds,
-            )
-            start = first_consistent_target_power(
-                smoothed,
-                step_start,
-                target=target,
-                tolerance=tolerance,
-                hold_seconds=45,
-            )
-            break
-
-    end = find_cooldown_start(
-        smoothed,
-        start_index=max(start + 10 * 60, len(watts) // 2),
-        work_target=target,
-        cooldown_target=cooldown_target,
-        tolerance=cooldown_tolerance,
+def detect_steady_finish(
+    rows: list[dict[str, str]], target: float, intervals: list[dict[str, Any]],
+) -> PowerBlock | None:
+    """Find a single sustained finish at the prescribed power after harder work."""
+    tolerance = 10
+    harder_than = target + tolerance
+    source_end = max((
+        interval["end_index"] for interval in intervals
+        if interval.get("type") == "WORK"
+        and (numeric(interval, "average_watts") or 0) > harder_than
+        and isinstance(interval.get("end_index"), int)
+    ), default=0)
+    # Source laps may be missing or group several efforts. Check the trace too.
+    harder = detect_power_blocks(
+        rows, threshold=harder_than + 1, min_seconds=30,
+        max_gap_seconds=2, smoothing_seconds=5,
     )
-    if end is None:
-        end = len(rows) - cooldown_fallback_seconds
-
-    if end <= start:
-        end = len(rows)
-    return rows[start:end], start, end, target
+    after = max(source_end, harder[-1].end_index if harder else 0)
+    at_target = detect_power_blocks(rows, target=target, tolerance=tolerance, min_seconds=300)
+    candidates = [block for block in at_target if block.start_index >= after]
+    if len(candidates) != 1:
+        return None
+    block = candidates[0]
+    # Alternating efforts can average to the target under the rolling mean.
+    _, widths, _ = timeline(rows)
+    watts = [value(row, "watts") for row in rows]
+    if stable_power_block(watts, widths, block, tolerance=25, min_fraction=0.75, max_stddev=35):
+        return block
+    return None
 
 
 def detect_power_blocks(
@@ -865,99 +829,6 @@ def remove_overlapping_power_blocks(blocks: list[PowerBlock]) -> list[PowerBlock
 
 def blocks_overlap(left: PowerBlock, right: PowerBlock) -> bool:
     return max(left.start_index, right.start_index) < min(left.end_index, right.end_index)
-
-
-def rolling_mean(values: list[float], window: int) -> list[float]:
-    """Return trailing rolling mean values."""
-
-    if window <= 1:
-        return values[:]
-    result = []
-    total = 0.0
-    queue = []
-    for value_ in values:
-        queue.append(value_)
-        total += value_
-        if len(queue) > window:
-            total -= queue.pop(0)
-        result.append(total / len(queue))
-    return result
-
-
-def find_power_step_start(
-    smoothed_watts: list[float],
-    stable_index: int,
-    *,
-    target: int,
-    lookback_seconds: int,
-) -> int:
-    """Find the start of the step into steady target power."""
-
-    search_start = max(0, stable_index - lookback_seconds)
-    threshold = target - 10
-    for index in range(stable_index, search_start, -1):
-        before = smoothed_watts[max(0, index - 30) : index]
-        after = smoothed_watts[index : min(len(smoothed_watts), index + 30)]
-        if not before or not after:
-            continue
-        before_mean = sum(before) / len(before)
-        after_mean = sum(after) / len(after)
-        if before_mean < threshold and after_mean >= threshold:
-            return index
-    return stable_index
-
-
-def first_consistent_target_power(
-    smoothed_watts: list[float],
-    start_index: int,
-    *,
-    target: int,
-    tolerance: float,
-    hold_seconds: int,
-) -> int:
-    """Find first point where power consistently reaches target."""
-
-    threshold = target - tolerance
-    for index in range(start_index, len(smoothed_watts) - hold_seconds):
-        block = smoothed_watts[index : index + hold_seconds]
-        in_range = sum(1 for watt in block if watt >= threshold)
-        if in_range / hold_seconds >= 0.85:
-            return index
-    return start_index
-
-
-def find_cooldown_start(
-    smoothed_watts: list[float],
-    *,
-    start_index: int,
-    work_target: int,
-    cooldown_target: int,
-    tolerance: float,
-) -> int | None:
-    """Find the transition from steady work to cooldown.
-
-    Use future cooldown stability only after confirming the preceding minute was
-    still near work target. This avoids pulling the end point backward just
-    because a long look-ahead window contains the cooldown.
-    """
-
-    for index in range(start_index, len(smoothed_watts) - 120):
-        previous = smoothed_watts[max(0, index - 60) : index]
-        next_30 = smoothed_watts[index : index + 30]
-        next_120 = smoothed_watts[index : index + 120]
-        if not previous or len(next_30) < 30 or len(next_120) < 120:
-            continue
-
-        previous_mean = sum(previous) / len(previous)
-        next_30_mean = sum(next_30) / len(next_30)
-        next_120_mean = sum(next_120) / len(next_120)
-        if (
-            previous_mean >= work_target - 15
-            and next_30_mean <= cooldown_target + 20
-            and abs(next_120_mean - cooldown_target) <= tolerance + 10
-        ):
-            return index
-    return None
 
 
 def load_wellness_range(
