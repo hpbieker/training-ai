@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "intervals-icu": {
-      "command": "sh",
-      "args": [
-        "-c",
-        "(test -x .venv/bin/python || uv venv .venv >&2) && uv pip install -r ./requirements.txt >&2 && exec .venv/bin/python -B ./intervals_icu_mcp.py"
-      ],
+      "command": "./.venv/bin/python",
+      "args": ["-B", "./intervals_icu_mcp.py"],
       "cwd": "."
     }
   }

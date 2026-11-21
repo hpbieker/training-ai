@@ -1,6 +1,6 @@
 {
   "name": "komoot",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "List and inspect Komoot tours, download GPX or FIT, and rename planned tours through the local Safari cookie session.",
   "author": {
     "name": "Hans Petter Bieker"

@@ -8,7 +8,7 @@
       "name": "eatmyride",
       "source": {
         "source": "local",
-        "path": "./plugins/eatmyride"
+        "path": "./dist/eatmyride"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -20,7 +20,7 @@
       "name": "komoot",
       "source": {
         "source": "local",
-        "path": "./plugins/komoot"
+        "path": "./dist/komoot"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -32,7 +32,7 @@
       "name": "strava",
       "source": {
         "source": "local",
-        "path": "./plugins/strava"
+        "path": "./dist/strava"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -44,7 +44,7 @@
       "name": "olympiatoppen",
       "source": {
         "source": "local",
-        "path": "./plugins/olympiatoppen"
+        "path": "./dist/olympiatoppen"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -68,7 +68,7 @@
       "name": "intervals-icu",
       "source": {
         "source": "local",
-        "path": "./plugins/intervals-icu"
+        "path": "./dist/intervals-icu"
       },
       "policy": {
         "installation": "AVAILABLE",
@@ -104,7 +104,7 @@
       "name": "yr",
       "source": {
         "source": "local",
-        "path": "./plugins/yr"
+        "path": "./dist/yr"
       },
       "policy": {
         "installation": "AVAILABLE",

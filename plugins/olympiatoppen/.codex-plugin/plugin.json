@@ -1,6 +1,6 @@
 {
   "name": "olympiatoppen",
-  "version": "0.1.5+codex.20261027103056",
+  "version": "0.1.6",
   "description": "Read logged workouts and session details from Olympiatoppen's training diary.",
   "author": {
     "name": "Hans Petter Bieker"

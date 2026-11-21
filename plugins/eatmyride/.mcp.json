@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "eatmyride": {
-      "command": "sh",
-      "args": [
-        "-c",
-        "(test -x .venv/bin/python || uv venv .venv >&2) && uv pip install -r ./requirements.txt >&2 && exec .venv/bin/python -B ./eatmyride_mcp.py"
-      ],
+      "command": "./.venv/bin/python",
+      "args": ["-B", "./eatmyride_mcp.py"],
       "cwd": "."
     }
   }

@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "komoot": {
-      "command": "sh",
-      "args": [
-        "-c",
-        "(test -x .venv/bin/python || uv venv .venv >&2) && uv pip install -r ./requirements.txt >&2 && exec .venv/bin/python -B ./komoot_mcp.py"
-      ],
+      "command": "./.venv/bin/python",
+      "args": ["-B", "./komoot_mcp.py"],
       "cwd": "."
     }
   }
