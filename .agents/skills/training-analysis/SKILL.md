@@ -102,7 +102,19 @@ features and research, and what remains uncertain for this athlete.
 
 ### Readiness or daily recommendation
 
-Read [references/daily-recommendations.md](references/daily-recommendations.md).
+For a change to an existing recommendation, begin with
+[updating the selected recommendation](references/daily-recommendations.md#update-an-existing-recommendation).
+When availability disrupts the quality rhythm or the athlete asks about earlier
+quality, locate the next realistic priority slot. Weigh moving quality earlier
+and adding a single controlled effort while keeping the full session. Briefly
+explain that effort’s value even if the athlete only reports the schedule
+change. Include a later same-day start when recovery matters. For back-to-back
+quality, include the decisive same-athlete outcomes and the choice before the
+first ride in the rider's answer.
+When the next priority session moves, revisit the aerobic rides leading into it,
+including any previously offered finish. Give the rider the revised dose or
+the reason to keep it alongside the new quality day.
+For a new recommendation, read [references/daily-recommendations.md](references/daily-recommendations.md).
 Also read
 [references/cycling-endurance-physiology.md](references/cycling-endurance-physiology.md)
 when prescribing a long ride, late-session intensity, severe intervals, heat
@@ -112,12 +124,51 @@ plans under `config/plans/`, select the applicable plan, decide the current plan
 pass that role to the recommendation helper through an explicit
 `intensity_goal` inside `--plan-selection-json`. Do not use a generic goal as a substitute for plan
 selection, and do not make a helper parse an LLM-readable plan file.
-Use the narrow readiness helper for a focused question and the recommendation
-helper for a complete session decision:
+Before choosing the session role and duration, read the preceding rides,
+reviewed quality outcomes and available dated athlete reports using
+`python3 -B scripts/vt1_dose.py --quality-sequences --as-of <decision-time-with-offset>`.
+If today's subjective response could change the session, check current chat
+and dated reports first. In a live exchange, including a reply to an automated
+recommendation, ask for the missing observation before choosing the dose.
+Use the [pre-session question guidance](references/daily-recommendations.md#pre-session-questions).
+When quality is due, compare the achieved set with the next step in the
+reviewed plan. Compare both as complete workouts, including work per effort,
+total work minutes and recovery. If either can be done without an optional
+extension, assess both on that basis. Use the following day and next quality
+session to identify which difference the history actually informs.
+When recommending another repeat, explain what remains to be established
+after earlier completions and how repeating the set would clarify it. Keep the queued role as
+the provisional goal when uncertainty can be resolved in the warm-up or set.
+A change of goal before the helper runs needs a reason that still applies if
+the athlete responds normally at the familiar workload.
+The final recommendation packet also includes these observations under
+`training_history_context.prior_quality_sequences`.
+
+Use [Choosing the aerobic dose](references/aerobic-dose.md) when choosing
+endurance duration, including how far to ride after intervals. Ground the range
+in comparable completed rides and explain the choice against a materially
+different finish. Use the history packet's `long_finish_references` to check
+the earlier combined ride and its follow-up before carrying forward a decision
+to stop or cap a finish, including one from automation memory. If moving
+minutes to a later ride, compare both placements through the next quality session. In a saved
+daily request, keep the selected ride and the athlete's later choice separate:
+resolve `training_target.aerobic_finish` and include the packet's finish
+decision in the final prescription, including on reruns. For a
+planned aerobic or recovery day, add `--aerobic-references` to the history
+query for measured indoor blocks. On a spacing day, compare both the primary
+and a longer ride through the next quality session, including a successful
+sequence when one is available. Size the optional finish on good legs.
+If choosing less than a familiar, useful longer dose, tell the rider what
+favors the smaller addition at that checkpoint. The packet compares the two
+totals and time to the next session under `aerobic_finish.spacing_comparison`.
+
+Use the narrow readiness helper for a focused question. For a complete session
+decision, [save the candidate inputs](references/daily-recommendations.md#save-and-run-a-candidate)
+and run the recommendation helper through the saved request:
 
 ```bash
 python3 -B scripts/readiness_snapshot.py --time-context-json '<normalized-time-context>' --source-inputs-json '<normalized-source-map>'
-python3 -B scripts/recommend_training.py --planning-context-json '<normalized-json>' --plan-selection-json '{"intensity_goal":"<role>"}' --summary
+python3 -B scripts/run_training_request.py /absolute/path/to/request.json
 ```
 
 Treat helper output as structured evidence, not the final recommendation.

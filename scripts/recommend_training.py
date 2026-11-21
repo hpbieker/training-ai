@@ -71,7 +71,7 @@ def parse_training_target_json(raw: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise argparse.ArgumentTypeError("--training-target-json must contain one JSON object")
     unknown = set(payload) - {"minutes", "load", "low_xss", "basis", "reason", "evidence", "endurance_extension", "capacity_decision",
-                              "vt1_role", "vt1_power_choice", "vt1_comparison"}
+                              "vt1_role", "vt1_power_choice", "vt1_comparison", "aerobic_finish"}
     if unknown:
         raise argparse.ArgumentTypeError(f"unsupported training-target field: {sorted(unknown)[0]}")
     for field in ("minutes", "load"):
@@ -91,6 +91,47 @@ def parse_training_target_json(raw: str) -> dict[str, Any]:
         if not isinstance(evidence, list) or not evidence or any(not isinstance(v, str) or not v.strip() for v in evidence):
             raise argparse.ArgumentTypeError(f"{name} requires non-empty evidence strings")
     justification(payload, "training-target")
+    if "aerobic_finish" in payload:
+        review = payload["aerobic_finish"]
+        if not isinstance(review, dict) or review.get("decision") not in ("offer", "finish"):
+            raise argparse.ArgumentTypeError("aerobic_finish.decision must be offer or finish")
+        fields = {"decision", "reason"}
+        if "alternative_extra_minutes" in review:
+            fields.add("alternative_extra_minutes")
+        if review["decision"] == "finish" and "smaller_extra_minutes" in review:
+            fields.add("smaller_extra_minutes")
+        if review["decision"] == "offer":
+            fields.update(("extra_minutes", "check_at_minute", "intensity", "cue"))
+            if "marginal_benefit" in review:
+                fields.add("marginal_benefit")
+            if "limit_basis" in review:
+                fields.add("limit_basis")
+                if review["limit_basis"] not in ("observed_response", "practical_limit", "plan_limit", "coaching_judgment"):
+                    raise argparse.ArgumentTypeError("Invalid aerobic_finish.limit_basis")
+        if "good_response_limit" in review:
+            fields.add("good_response_limit")
+            if "alternative_extra_minutes" not in review:
+                raise argparse.ArgumentTypeError("good_response_limit requires the alternative_extra_minutes reviewed")
+        if set(review) != fields:
+            raise argparse.ArgumentTypeError(f"aerobic_finish requires exactly {sorted(fields)}")
+        numeric_fields = fields & {"extra_minutes", "check_at_minute", "alternative_extra_minutes", "smaller_extra_minutes"}
+        for key in fields - numeric_fields - {"decision"}:
+            if not isinstance(review[key], str) or not review[key].strip():
+                raise argparse.ArgumentTypeError(f"aerobic_finish.{key} requires non-empty text")
+        for key in numeric_fields:
+            value = review[key]
+            if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                raise argparse.ArgumentTypeError(f"aerobic_finish.{key} must be finite and positive")
+        if "alternative_extra_minutes" in review and review["alternative_extra_minutes"] == review.get("extra_minutes"):
+            raise argparse.ArgumentTypeError("Compare a different length of optional aerobic work")
+        if "limit_basis" in review and review["extra_minutes"] >= review.get("alternative_extra_minutes", 0):
+            raise argparse.ArgumentTypeError("limit_basis applies to an offer shorter than the reviewed alternative")
+        if "marginal_benefit" in review and review["extra_minutes"] <= review.get("alternative_extra_minutes", math.inf):
+            raise argparse.ArgumentTypeError("marginal_benefit compares a longer offer with a shorter alternative")
+        if "smaller_extra_minutes" in review and review["smaller_extra_minutes"] >= review.get("alternative_extra_minutes", 0):
+            raise argparse.ArgumentTypeError("smaller_extra_minutes must be below alternative_extra_minutes")
+        if review.get("check_at_minute", 0) > payload["minutes"]:
+            raise argparse.ArgumentTypeError("aerobic_finish checkpoint falls after the primary ride")
     if "vt1_role" in payload and payload["vt1_role"] not in sorted(AEROBIC_ROLES):
         raise argparse.ArgumentTypeError("vt1_role must be a reviewed aerobic role")
     if "vt1_power_choice" in payload:
@@ -358,7 +399,7 @@ def review_vt1_working_power(structure, reference, choice, *, extension_only=Fal
             "working_segment_index": index, "choice": choice}
 
 
-def main() -> None:
+def main(argv: list[str] | None = None, *, require_finish_review: bool = False) -> None:
     parser = argparse.ArgumentParser(
         description="Fetch Garmin/Xert/Yr inputs and build one recommendation packet.",
         epilog=(
@@ -384,6 +425,7 @@ def main() -> None:
         help=(
             "Coach-selected minutes, calculated load, basis (duration/load), reason and "
             "evidence. VT1 uses vt1_role, vt1_comparison and optional vt1_power_choice. "
+            "Use aerobic_finish to offer a longer ride or explain finishing at the primary duration. "
             "Optional low_xss, justified endurance_extension and capacity_decision. "
             "Omission requires dose assessment, never an automatic Xert dose."
         ),
@@ -456,7 +498,7 @@ def main() -> None:
         action="store_true",
         help="Print a compact chat-oriented summary instead of the full JSON packet.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         planning_context = parse_planning_context_json(args.planning_context_json)
         args.date = planning_context["date"]
@@ -833,12 +875,32 @@ def main() -> None:
             comparison = target_resolution["vt1_dose_comparison"]
             comparison["prescribed_total_minutes"] = solution["duration_seconds"] / 60
             comparison["prescribed_steady_work_minutes"] = work_seconds / 60
+            reference_id = (comparison["selection_review"] or {}).get("activity_id")
+            reference = next((ride for ride in comparison["candidates"]
+                              if ride["activity_id"] == reference_id), None)
+            if reference and reference["moving_minutes"] and reference["moving_minutes"] > 0:
+                block = history_context["prior_quality_sequences"].get(
+                    "measured_indoor_aerobic_references", {}).get(reference_id, {}).get(
+                        "longest_detected_steady_power_block")
+                comparison["reference_vs_prescription"] = {
+                    "reference": {"activity_id": reference_id, "total_minutes": reference["moving_minutes"],
+                                  "detected_steady_block": block,
+                                  "finish_to_next_quality_minutes": reference["finish_to_next_quality_minutes"]},
+                    "prescription": {"total_minutes": comparison["prescribed_total_minutes"],
+                                     "work_minutes": work_seconds / 60, "work_watts": watts},
+                }
+                previous = reference["moving_minutes"]
+                delta = comparison["prescribed_total_minutes"] - previous
+                comparison["duration_change"] = {
+                    "reference_moving_minutes": previous,
+                    "delta_minutes": round(delta, 1),
+                    "delta_percent": round(100 * delta / previous, 1),
+                }
     require_endurance_solution_for_selected_domain(
         intensity_decision=intensity_decision,
         target_resolution=target_resolution,
     )
     finalize_plan_trace(target_resolution)
-    annotate_volume_density(target_resolution, history_context=history_context)
     if args.quality_workout_json is not None:
         apply_quality_workout_vt1_composition(
             target_resolution,
@@ -873,6 +935,7 @@ def main() -> None:
         now=now,
         available_windows=available_windows,
     )
+    annotate_volume_density(target_resolution, history_context=history_context)
     remainder_disposition = planning_context["calendar"]["remainder_disposition"]
     target_resolution["split"]["remainder_disposition"] = remainder_disposition
     target_resolution["split"]["guidance"] = split_session_guidance(
@@ -979,6 +1042,19 @@ def main() -> None:
             approximation=planning_context.get("capacity_approximation"))
         target_resolution["recovery_protection_capacity"]["horizon"] = target_resolution["capacity_horizon"]
 
+    comparison = (target_resolution.get("vt1_dose_comparison") or {}).get("reference_vs_prescription")
+    if comparison:
+        sessions = (target_resolution.get("split") or {}).get("sessions") or []
+        finish = instant(sessions[-1]["end"], "scheduled workout end") if sessions else None
+        next_at = planning_context.get("next_workout_at")
+        comparison["prescription"].update(
+            finish_at=finish.astimezone(local_timezone).isoformat() if finish else None,
+            next_workout_at=next_at,
+            finish_to_next_planned_workout_minutes=(
+                round((instant(next_at, "next_workout_at") - finish).total_seconds() / 60, 1)
+                if finish and next_at else None),
+        )
+
     primary_decision = build_primary_decision(
         readiness_packet=readiness_packet,
         target_resolution=target_resolution,
@@ -986,6 +1062,23 @@ def main() -> None:
         cycling_available=indoor_available or indoor_gym_available or outdoor_available,
         remainder_disposition=planning_context["calendar"]["remainder_disposition"],
     )
+    finish_review = resolve_aerobic_finish(
+        primary_decision, target_resolution, planned_at=max(planned_at, now),
+        available_windows=available_windows, calendar=planning_context["calendar"],
+        required=require_finish_review,
+        spacing_day=(pure_vt1 and plan_context["next_role"] == "easy_aerobic"
+                     and plan_context.get("aerobic_days_since_quality") == 0
+                     and bool(plan_context.get("last_quality_session"))),
+    )
+    if finish_review:
+        primary_decision["aerobic_finish"] = finish_review
+    selection = primary_decision.get("coaching_selection")
+    if selection and "aerobic_finish" in selection:
+        # Keep the original proposal in target_resolution. Only the resolved
+        # finish belongs in the executable recommendation.
+        primary_decision["coaching_selection"] = {
+            key: value for key, value in selection.items() if key != "aerobic_finish"
+        }
 
     if not outdoor_available:
         route_packet = outdoor_unavailable_packet(reason=outdoor_unavailable_reason)
@@ -4874,6 +4967,168 @@ def current_available_window(
     return None
 
 
+def spacing_offer_comparison(review, target, planned_at, minutes):
+    """Compare both optional finishes against the same reference and next start."""
+    dose = target.get("vt1_dose_comparison") or {}
+    evidence = dose.get("reference_vs_prescription") or {}
+    next_start = ((evidence.get("prescription") or {}).get("next_workout_at")
+                  or (target.get("capacity_horizon") or {}).get("next_workout_at"))
+    reference = evidence.get("reference")
+    if reference:
+        ride = next((r for r in dose.get("candidates", []) if r["activity_id"] == reference["activity_id"]), {})
+        quality = ride.get("next_quality_session") or {}
+        reference = {**reference, "subsequent_quality": {
+            k: quality[k] for k in ("activity_id", "planned_role", "planned_workout_completed", "quality_role_fulfilled")
+            if quality.get(k) is not None}}
+    comparison = {"reference": reference, "primary_work_watts": dose.get("working_power_w"),
+                  "extension_intensity": review["intensity"]}
+    for name, key in (("offered", "extra_minutes"), ("alternative", "alternative_extra_minutes")):
+        extra = review[key]
+        total = minutes + extra
+        candidate = {"total_minutes": total, "extra_minutes": extra}
+        if dose.get("prescribed_steady_work_minutes") is not None:
+            candidate["work_minutes_including_extension"] = dose["prescribed_steady_work_minutes"] + extra
+        if next_start:
+            end = planned_at + timedelta(minutes=total)
+            candidate["finish_to_next_start_minutes"] = round((datetime.fromisoformat(next_start) - end).total_seconds() / 60, 1)
+        comparison[name] = candidate
+    return comparison
+
+
+def resolve_aerobic_finish(primary, target, *, planned_at, available_windows, calendar, required, spacing_day=False):
+    """Resolve the coach's optional finish separately from the selected ride."""
+    selection = primary.get("coaching_selection") or {}
+    split = target.get("split") or {}
+    minutes = primary["executable_now"]["minutes"]
+    if (primary["action"] != "train" or primary["selected_intensity"] in {"recovery", "active_recovery"}
+            or not selection or minutes <= 0 or len(split.get("sessions") or []) > 1):
+        return None
+    if any((target.get(key) or {}).get("active") for key in ("readiness_domain_cap", "illness_return_guardrail")):
+        return {"decision": "finish", "reason": "Follow the reviewed readiness or return-to-training dose."}
+    if abs(minutes - target["target_minutes"]) > 0.1:
+        return {"decision": "finish", "reason": "Only part of the selected dose fits this session."}
+    window = current_available_window(planned_at, available_windows)
+    if window:
+        primary_end = planned_at + timedelta(minutes=minutes)
+        clean_at = primary_end + timedelta(minutes=calendar.get("cleanup_buffer_minutes", 0))
+        if primary_end >= window["end"]:
+            return {"decision": "finish", "reason": "The primary ride fills the verified riding window."}
+        for key in ("hard_stop", "practical_stop"):
+            stop = calendar.get(key)
+            if stop and clean_at >= datetime.fromisoformat(stop["at"]):
+                return {"decision": "finish", "reason": f"The primary ride and cleanup fill the window to {stop['at']}."}
+    review = selection.get("aerobic_finish")
+    if review is None:
+        if required:
+            raise ValueError(
+                "Review the longer aerobic finish before issuing today's recommendation. Set "
+                "training_target.aerobic_finish to {decision: finish, reason, alternative_extra_minutes, "
+                "good_response_limit} or {decision: offer, "
+                "reason, extra_minutes, alternative_extra_minutes, intensity, check_at_minute, cue}. "
+                "Compare plausible lengths using the athlete's history and surrounding sessions. "
+                "Use the saved evidence and rerun this request."
+            )
+        return None
+    if review["decision"] == "finish":
+        if required and spacing_day and window and not review.get("smaller_extra_minutes"):
+            raise ValueError(
+                "A long alternative alone cannot settle an aerobic spacing-day finish. Compare the primary "
+                "with a smaller useful addition on good legs and with the longer option. If the smaller one "
+                "serves the volume goal and fits, offer it. To finish, set smaller_extra_minutes below "
+                "alternative_extra_minutes and explain in good_response_limit why even that addition is "
+                "unhelpful. Check actual recovery time from each finish to quality in the successful and "
+                "abbreviated sequences. Also justify any simultaneous reduction in working watts and minutes."
+            )
+        if required and not (review.get("alternative_extra_minutes") and review.get("good_response_limit")):
+            raise ValueError(
+                "Reassess the saved finish decision on a favorable late response. Use the reviewed "
+                "history in vt1_dose.py --quality-sequences with the decision --as-of. For an aerobic "
+                "spacing day, add --aerobic-references and compare the intervening rides and subsequent "
+                "quality outcomes. "
+                "If extra aerobic work serves the plan and fits, offer it. To decline, supply "
+                "alternative_extra_minutes and good_response_limit explaining the specific cost "
+                "or constraint even then. An open calendar tomorrow alone is insufficient."
+            )
+        return review
+
+    total = minutes + review["extra_minutes"]
+    if review["check_at_minute"] > minutes:
+        raise ValueError("aerobic_finish checkpoint falls after the executable ride")
+    end = planned_at + timedelta(minutes=total)
+    cleanup_end = end + timedelta(minutes=calendar.get("cleanup_buffer_minutes", 0))
+    if not window:
+        return {"decision": "finish", "reason": "Available time for the longer ride has not been confirmed."}
+    if end > window["end"]:
+        return {"decision": "finish", "reason": "The longer ride does not fit the verified riding window."}
+    for key in ("hard_stop", "practical_stop"):
+        stop = calendar.get(key)
+        if stop and cleanup_end > datetime.fromisoformat(stop["at"]):
+            return {"decision": "finish", "reason": f"The longer ride and cleanup run past {stop['at']}."}
+    result = {**review, "total_minutes": total,
+              "finish_at": end.isoformat(), "cleanup_end": cleanup_end.isoformat()}
+    timeline = primary["executable_now"].get("timeline") or {}
+    if timeline.get("status") == "complete":
+        checkpoint_seconds = review["check_at_minute"] * 60
+        for index, segment in enumerate(timeline["segments"], start=1):
+            if segment["start_seconds"] < checkpoint_seconds <= segment["end_seconds"]:
+                result["checkpoint_segment"] = {
+                    "number": index,
+                    "minutes_completed": (checkpoint_seconds - segment["start_seconds"]) / 60,
+                }
+                break
+    if calendar.get("events"):
+        placements = place_movable_events(
+            calendar, sessions=[{"start": planned_at.isoformat(), "end": end.isoformat()}],
+            local_timezone=planned_at.tzinfo, day=planned_at.date().isoformat(),
+        )
+        if placements["status"] == "conflict":
+            return {"decision": "finish", "reason": "The longer ride leaves insufficient room for movable events."}
+        if placements["placements"]:
+            result["movable_event_placements"] = placements["placements"]
+    if required and "alternative_extra_minutes" not in review:
+        raise ValueError(
+            "Review the length of the optional finish. Set aerobic_finish.alternative_extra_minutes "
+            "to a different positive addition to the same primary ride. Explain in reason why the "
+            "chosen duration serves this training sequence better. Check older comparable rides for "
+            "a materially longer option before reusing the saved dose."
+        )
+    if required and review["extra_minutes"] < review["alternative_extra_minutes"] and not review.get("good_response_limit"):
+        raise ValueError(
+            "Reassess the shorter offer on a favorable late response. If retaining it, set "
+            "aerobic_finish.good_response_limit to the concrete reason to omit the difference "
+            "or move it. For a transfer, compare the same work today versus closer to the next "
+            "priority session, including the intervening ride. A free slot supplies no planned "
+            "dose. If the longer option is useful and fits, update the offer and its cue."
+        )
+    if spacing_day and review.get("alternative_extra_minutes"):
+        comparison = spacing_offer_comparison(review, target, planned_at, minutes)
+        result["spacing_comparison"] = comparison
+        if required and review["extra_minutes"] < review["alternative_extra_minutes"] and not review.get("limit_basis"):
+            raise ValueError(
+                f"Compare these spacing-day finishes on good legs: {json.dumps(comparison)}. "
+                "Does the longer total repeat tolerated work at similar power, benefit current volume "
+                "and leave a comparable recovery window? If so, offer it unless something specific "
+                "still favors the shorter option. To retain the cap, set aerobic_finish.limit_basis "
+                "(observed_response, practical_limit, plan_limit or coaching_judgment). Name the deciding "
+                "fact in good_response_limit and carry it into the athlete's answer. A difference in kJ/XSS "
+                "quantifies the work; pre-ride uncertainty alone does not distinguish the two late finishes."
+            )
+        block = (comparison.get("reference") or {}).get("detected_steady_block") or {}
+        shorter_work = comparison["alternative"].get("work_minutes_including_extension")
+        if (required and review["extra_minutes"] > review["alternative_extra_minutes"]
+                and shorter_work is not None and block.get("minutes") is not None
+                and round(shorter_work) > round(block["minutes"]) and not review.get("marginal_benefit")):
+            raise ValueError(
+                f"Both options already exceed the selected reference block: {json.dumps(comparison)}. "
+                "Check the powers and how often comparable work was tolerated. One longer successful ride "
+                "establishes feasibility. To choose the larger dose, give aerobic_finish.marginal_benefit: "
+                "what does the extra work beyond the shorter extended ride contribute specifically today, "
+                "given other volume opportunities and the next quality dose? If there is no distinct "
+                "benefit, compare a finish near the routinely tolerated dose instead."
+            )
+    return result
+
+
 def available_window_label(window: dict[str, Any], *, include_note: bool = False) -> str:
     label = f"{window['start'].strftime('%H:%M')}-{window['end'].strftime('%H:%M')}"
     note = str(window.get("note") or "").strip()
@@ -5186,6 +5441,8 @@ def initialize_plan_trace(target_resolution: dict[str, Any]) -> None:
         "base_plan": {
             "label": "xert_recommended_remaining_dose"
             if source == "xert_training_advice_target_xss"
+            else "explicit_coaching_selection"
+            if source == "explicit_coaching_selection"
             else "explicit_user_or_cli_plan"
             if source.startswith("explicit_")
             else "fallback_plan",
@@ -7163,6 +7420,46 @@ def quality_history_summary_lines(history: dict[str, Any], goal: str | None) -> 
     return lines
 
 
+def aerobic_finish_lines(review: dict[str, Any] | None) -> list[str]:
+    if not review:
+        return []
+    if review["decision"] == "finish":
+        lines = ["AEROBIC FINISH: end at the primary duration. " + review["reason"]]
+        if review.get("good_response_limit"):
+            choices = f"+{review['alternative_extra_minutes']:g}"
+            if review.get("smaller_extra_minutes"):
+                choices = f"+{review['smaller_extra_minutes']:g} / {choices}"
+            lines.append(f"WHY SKIP {choices} MIN EVEN ON GOOD LEGS: "
+                         + review["good_response_limit"])
+        return lines
+    end, cleanup = (
+        datetime.fromisoformat(review[key]).strftime("%H:%M")
+        for key in ("finish_at", "cleanup_end")
+    )
+    checkpoint = f"{review['check_at_minute']:g} min from workout start"
+    segment = review.get("checkpoint_segment")
+    if segment:
+        checkpoint = (f"after {segment['minutes_completed']:g} min of segment {segment['number']} "
+                      f"({checkpoint} as prescribed)")
+    lines = [
+        f"OPTIONAL AEROBIC FINISH: {checkpoint}, +{review['extra_minutes']:g} min "
+        f"at {review['intensity']}. Total {review['total_minutes']:g} min, "
+        f"finish {end}, cleanup complete {cleanup}.",
+        "CONTINUE IF: " + review["cue"],
+        "TRAINING PURPOSE: " + review["reason"],
+    ]
+    if review.get("good_response_limit") and review["extra_minutes"] < review["alternative_extra_minutes"]:
+        lines.append(f"WHY STOP SHORT OF +{review['alternative_extra_minutes']:g} MIN ON GOOD LEGS: "
+                     + review["good_response_limit"])
+    if review.get("spacing_comparison"):
+        lines.append("SPACING-DAY DOSES: " + json.dumps(review["spacing_comparison"], ensure_ascii=False))
+        if review.get("marginal_benefit"):
+            lines.append("BENEFIT OF THE LAST MINUTES: " + review["marginal_benefit"])
+        if review.get("limit_basis"):
+            lines.append("BASIS FOR SHORTER OFFER: " + review["limit_basis"])
+    return lines
+
+
 def format_summary(packet: dict[str, Any]) -> str:
     decision = packet.get("decision_inputs") or {}
     context = packet.get("llm_context") or {}
@@ -7215,6 +7512,7 @@ def format_summary(packet: dict[str, Any]) -> str:
         ),
         ("PROVISIONAL SESSION: " if primary.get("provisional")
          else "DO NOW: ") + executable_now_line(primary),
+        *aerobic_finish_lines(primary.get("aerobic_finish")),
         "READINESS CEILING: {ceiling} (model screening, not confirmed readiness)".format(
             ceiling=intensity_decision.get("readiness_ceiling") or "missing",
         ),
@@ -7239,6 +7537,9 @@ def format_summary(packet: dict[str, Any]) -> str:
           if "vt1_power_review" in primary else []),
         *(["VT1 DOSE COMPARISON: " + json.dumps(primary["vt1_dose_comparison"], ensure_ascii=False)]
           if "vt1_dose_comparison" in primary else []),
+        *(["PROJECTED SEVEN-DAY LOAD: " + json.dumps(
+            target_resolution["week_if_full_remaining_session_ridden_today"], ensure_ascii=False)]
+          if "week_if_full_remaining_session_ridden_today" in target_resolution else []),
         "XERT COMPARISON: " + json.dumps(primary.get("xert_comparison"), ensure_ascii=False),
         *dose_composition_summary_lines(target_resolution),
         "DOSE SEMANTICS: {semantics}; completed activities already accounted for={accounted}".format(

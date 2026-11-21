@@ -27,6 +27,92 @@ full session-planning workflow below:
 Keep this packet focused on readiness. Calendar placement, dose solvers, capacity
 and alternative sessions belong to a requested concrete training recommendation.
 
+## Update an existing recommendation
+
+Start from the selected request and successful packet identified in this thread.
+Confirm the local date, plan/activity cursor, pending or newly completed training,
+latest athlete report and whether the full occupied window is still available.
+Follow the user's change through its dependencies:
+
+- Device sync: refresh the named plugin and the related readings used in the
+  decision (for Garmin, the health day and relevant nightly history). Compare
+  observation times, direct signals and fresh versus stale measurements.
+- Meeting or time limit: use a time supplied by the athlete immediately. Merge
+  it once with the Outlook Local calendar if fetched; a newly reported meeting
+  can precede calendar sync. Check setup, workout, cleanup and movable meals.
+  When the occupied window still fits, confirm it. Otherwise try moving the
+  whole session. Evaluate trimming optional endurance before changing priority
+  intervals when no available window fits the whole session.
+- New body feel, soreness or symptoms: use the dated athlete feedback workflow,
+  reassess intensity and dose, and apply illness guidance where relevant.
+- Completed training: reconcile the activity and reviewed plan role; refresh
+  relevant Intervals.icu and Xert state, remaining advice and capacity. Account
+  for the completed work once.
+- Change to outdoor riding, location or route: refresh the applicable route,
+  weather, road conditions, gear and timing. Keep relevant physiology.
+- If a priority session becomes unavailable, first decide where that quality
+  belongs using plan spacing and the actual calendar. Then revisit the primary
+  aerobic dose and its optional finish on the preceding ride. Compare time
+  from the finishes to the old and new quality start. Identify which reason
+  for the previous cap still applies on good legs. Weigh any intervening ride:
+  when its duration is unknown, report the available window separately from
+  what the athlete expects to ride. Compare a lost/short ride with a plausible
+  longer ride through the next quality session, leaving both scenarios open. Give a preferred finish and, if the last increment
+  serves a volume need when the intervening ride is short or lost, tell the rider
+  how far to continue on a stable response and why. If choosing the shorter
+  finish even then, give the remaining cost. Treat tentative minutes as examples;
+  use a firm cutoff only for an actual constraint or evidence that distinguishes
+  the options there. State the revised dose and the cue in completed work.
+  For each quoted recovery interval, subtract that variant’s finish from the
+  priority start using their timestamps.
+  A hypothetical move stays conditional. Keep the next actual workout distinct
+  from the next priority workout. Use capacity for the horizon and intervening
+  training it actually models; qualify or omit a projection for another scenario.
+- A changed workout start requires advice and capacity for that candidate;
+  a changed next-workout horizon requires updated capacity. A changed dose,
+  structure or fitness signature requires a matching workout calculation.
+  Reassess any time-sensitive readiness projections at the new start.
+
+Reuse each still-current source at its original read time. Preserve plan,
+history, athlete feedback and unaffected sources across a short follow-up.
+When a date, source age, new activity or elapsed training window invalidates
+more of the decision, refresh those dependencies through their plugins. If the
+selected inputs cannot be recovered, rebuild the missing context using the
+normal workflow. For an update, lead with what changed and its consequence.
+A brief confirmation suffices when the previous prescription still fits.
+
+### Save and run a candidate
+
+In a unique private candidate directory, write `request.json` before running
+`python3 -B scripts/run_training_request.py /absolute/path/to/request.json`.
+Use the existing CLI JSON payloads as fields named `planning_context`,
+`plan_selection`, `training_target`, and, as applicable, `quality_workout`,
+`endurance_workout`, `illness_return` and `route_options`. For each original
+plugin snapshot, store an entry under `sources` such as
+`"garmin": {"path": "/private/tmp/.../garmin.json", "read_at": "<timestamp with offset>"}`.
+Use the time of the plugin read; keep the source's observation time inside
+the unchanged snapshot. Use absolute source paths when copying a request
+between directories. The runner uses the current clock, checks source ages,
+and passes the inputs to the normal recommendation helper. Its `--as-of`
+option is for historical tests. Plugins own all live reads.
+
+Retain the selected request path and its dated packet path in the thread's
+tool context (and in the run note if the automation already maintains one).
+Record the calendar read time and provenance of any other material evidence
+alongside those references. In a follow-up, copy the request into a new
+private directory, change the affected inputs, and run the selected candidate
+once. Reuse `training_target.aerobic_finish` only while its rationale and
+both riding windows still hold. Reassess it when the calendar opens or
+tightens, legs or primary dose change, or the next priority session moves.
+For an older request missing the decision or its duration comparison,
+treat the previous extra minutes as unreviewed. Apply the aerobic-dose
+comparison afresh, then update the decision, cue and reason together. A conditional start to the
+primary aerobic block does not settle the later finish. For a calendar-only
+confirmation, verify both occupied windows if an extension was offered. Reuse
+the existing calculations when the structure and model inputs still match. Retain the updated calendar in the new request
+and reference the verified workout packet. Use the full decision workflow
+when timing, role or dose has to change.
+
 ## Resolve Context First
 
 Before running helpers, resolve the local date, planned start or free window,
@@ -64,8 +150,52 @@ Only quote margins to commitments that actually constrain the athlete.
 For movable events, pass the minimum duration and whether shortening
 is permitted; use the placement returned by the helper.
 
-Consider the earliest feasible start in each availability window and any
-later start called for by the user's placement preference. Evaluate each
+When a schedule change disrupts the plan’s quality rhythm, locate the next
+realistic full session. Compare keeping the preceding ride aerobic with moving
+quality earlier. A reduced set that replaces a priority workout and a single
+controlled bout that supplements it are different proposals. Assess the latter
+at its own dose, even when a multi-repetition set would be excessive. Weigh what
+the effort would contribute beyond recent quality, the aerobic work it would
+displace, and recovery on both sides of it. Compare whole sequences through
+the next priority set. A tolerated effort or lower total modeled load establishes
+plausibility at most. Tell the rider briefly what the extra effort would buy or
+why aerobic work is preferable, even if they did not ask about a bonus.
+If advancing quality instead, say which planned set it replaces and reassess
+the next quality date from the work actually completed. If more recovery
+within the day could change the choice, evaluate a later feasible start with
+room for the whole session and cleanup. Weigh the value of avoiding the delay
+against the preceding load, comparable session pairs and the plan's spacing
+rule. Identify any departure from the plan and explain whether the benefit of
+earlier quality warrants it. For quality on adjacent days, look up the
+same order of quality roles on consecutive local dates in the athlete's
+reviewed history, beyond the recent helper window when necessary. Compare
+the full preceding day's work and the actual next-day bouts, including
+abbreviated attempts. Group by local calendar date: a second ride on the
+first day still contributes load. Show time from the hard ride and, if later,
+from the last ride to the next quality start. Calculate these gaps from UTC
+starts and recorded elapsed time. Apply the same comparison when the athlete
+asks about a shorter quality session today versus a later full session, even
+when the later slot is soon. Build a credible reduced set before comparing
+days. Fewer repetitions preserve the duration of each effort; shorter repetitions
+can preserve target power and the workout family while giving earlier recoveries.
+Lower watts address excessive intensity at the established duration; by themselves
+they save no time. Choose according to the limiting factor, the intended stimulus,
+the plan's established variants and the athlete's actual bouts. When two changes
+are credible, contrast them briefly and prescribe one; justify combining cuts.
+Give the dose, recoveries and total time when calendar fit matters.
+
+In the rider's answer, give the closest relevant
+outcomes: when they differ, briefly report both a completed and an abbreviated
+set with the preceding load. If comparable history is missing, say so.
+Explain how the actual bouts, watts, recovery and availability favor one
+schedule. Planned work minutes describe the dose; they do not establish how
+much the athlete will complete. For mutually exclusive morning and afternoon
+options, say what to decide before the morning ride and which session to skip.
+If a later message confirms the window, give the winning schedule and the
+deciding reason without repeating the full comparison.
+
+Consider the earliest feasible start in each window and a later start when
+recovery or the athlete's placement preference makes it relevant. Evaluate each
 `planned_at` independently, keeping its inputs and results together. Choose
 among candidates whose complete, candidate-specific workout fits its window
 using the user's placement preference. With no preference, choose the earliest
@@ -116,9 +246,9 @@ is assembled across several source reads. Before candidate evaluation, resolve
 the plan role, classify the freshly read calendar into `calendar.events`, and
 pass day boundaries and setup/cleanup buffers. The helper derives candidate
 windows and applies the complete setup, workout, and cleanup window. Run it
-per candidate with that candidate's explicit `planned_at` and Xert advice, then
-once more with the selected `planned_at` to create the final recommendation
-packet.
+per candidate with that candidate's explicit `planned_at` and Xert advice.
+Use the selected candidate's successful packet as final while its inputs and
+placement remain valid. Recalculate a candidate whose inputs changed.
 An existing calendar event that appears to reserve time for training is
 calendar evidence, not an automatic choice of `planned_at`; select its start
 only when the same placement calculation supports it.
@@ -328,7 +458,39 @@ solver. A solver result validates execution, not the reason for selecting a dose
 
 An endurance addition requires `endurance_extension: {reason, evidence}` in the
 selection, justified separately from the quality workout. Without it, the
-addition is zero. A gap to XATA advice is not a reason to add training.
+addition is zero. This field describes aerobic work already in the primary
+timeline. For a full, continuous training ride, also set
+`training_target.aerobic_finish`. Use `{"decision":"finish","reason":"…"}`
+for a full calendar window or an enforced recovery ceiling. For a discretionary
+finish with room to continue, also set `alternative_extra_minutes` to the
+credible longer addition, `smaller_extra_minutes` for a declined intermediate
+addition on a spacing day after quality, and `good_response_limit` to the specific reason
+that still matters with easy legs and steady breathing. Reopen an inherited
+finish missing that comparison, including one recorded in automation memory. When the
+additional aerobic work serves a current volume need, comparable rides
+support it and the next priority session allows it, offer that choice:
+`{"decision":"offer","extra_minutes":…,"alternative_extra_minutes":…,"intensity":"…","check_at_minute":…,"cue":"…","reason":"…"}`.
+Both minute values are additions to the same primary ride. Record the most
+informative different positive addition as the alternative. Explain in
+`reason` why the chosen length serves this week better, including what
+would favor more time when a longer ride is credible. When the offered
+addition is shorter than the compared addition, also give `good_response_limit`:
+why omit the difference even on good legs, or why moving the same work later
+is preferable across the whole sequence. On an aerobic spacing day set
+`limit_basis` for a shorter offer to `observed_response`, `practical_limit`,
+`plan_limit` or `coaching_judgment`. Use the returned `spacing_comparison`
+and give the deciding reason in the rider's answer. When choosing the
+longer of two extended rides that both exceed the measured reference, give
+`marginal_benefit` for the last increment over the shorter one. Reassess a saved shorter offer that
+lacks this review. Leave any skipped minutes unassigned unless the two-day
+comparison justifies transferring them. A hard constraint
+that rules out useful extra work needs only the finish decision and reason.
+Count the checkpoint in minutes from the start of the whole ride, before
+cooldown. Give an observable continue/stop cue at the end of the shared work.
+A first attempt at higher interval power can justify a shorter primary dose
+while leaving a longer aerobic finish available on a favorable late response.
+Evaluate the incremental cost and recovery before the next priority ride.
+A gap to XATA advice is not a reason to add training.
 For a duration-selected combined session, supply its complete fixed-duration
 rows/signature/adjustable-row index through `--quality-workout-json` alongside
 the separate quality-base calculation, and the complete combined calculation
@@ -366,9 +528,45 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
 
 ## Dose And Intensity
 
-- Use readiness to set the intensity ceiling. Within that ceiling, use the
-  resolved goal and progression history to select the concrete domain; recent
-  same-family hard work can reduce the selection to VT1.
+- When a quality role is due, compare the complete reference dose, including
+  any endurance extension, with what the athlete subsequently tolerated. Read
+  `following_day` and `next_quality_session` before choosing quality or an
+  easier day. In the answer, give the next local day's recorded training or
+  confirmed rest and the actual bouts at the next quality session, including
+  partial bouts. Explain how these observations and intervening training
+  influence the choice. Missing follow-up leaves recovery uncertain, and a
+  shortened bout alone cannot establish its cause.
+- Decide the role before choosing minutes. For a queued quality opportunity,
+  compare repeating the achieved work on its own with postponing it. If a
+  similar set preceded a better subsequent quality result, check differences
+  in the endurance extension, intervening training and time between rides.
+  Identify which part of the reference dose the evidence calls into question.
+  A difficult preceding session and a recovery timer measured after it may
+  describe the same load. Look for evidence that its effects persist.
+- If the concern is how the athlete will respond tomorrow, give the plan for a
+  normal response and an easier branch for an adverse one. Place the decision
+  where the uncertainty arises: warm-up for unusual effort at easy power,
+  first interval and recovery for tolerance of intensity, or before the last
+  repetitions for repeatability. When choosing an extra easy day even with a
+  normal response, explain why the compact quality session would be unsuitable
+  and what delaying it would protect. Apply illness, current symptoms, adverse
+  recovery, plan spacing and practical constraints before proposing a trial.
+- Choose the history that can distinguish today's plausible doses. For a
+  successful and an interrupted attempt, compare what the athlete did before
+  *each*, the actual bouts completed and how they felt. Place today's lead-in
+  alongside both. Say which difference matters for the disputed work (often
+  the last repetition), what it costs before the next priority and what
+  remains unknown. If the previous stop's cause could change the cap even
+  with a normal first effort, ask or give the two conditional doses. Specify
+  where recurrence changes the remaining work and how to finish.
+- For endurance duration, start with a similar day's role and recent volume
+  actually sustained. When helpful, show where today's dose puts the rolling
+  week. Compare working minutes at the chosen power to explain duration; if
+  power changes too, explain that choice separately. Use the athlete's reported
+  response at that load. Use verified work intervals for minutes at power and
+  calculate recovery from the prior finish to the next start. If those data
+  are missing, keep the comparison qualitative. Prioritize the fact that
+  separates the alternatives in the final answer.
 - Before selecting a quality dose, distinguish the achieved progression anchor
   from the latest reduced execution. Check whether the reason for a temporary
   reduction still applies today. Do not carry that reduction forward without
@@ -376,6 +574,30 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   A progression hold permits reassessing repetition of the achieved dose; it
   does not by itself require the most recent reduced dose. Preserve adverse
   recent responses as recovery evidence when reassessing the dose.
+  Compare the planned work with the most recent comparable session. Explain
+  which observation or plan objective favors shortening, repeating or extending
+  the work at the selected power. If the last attempt was interrupted, compare
+  both the work completed then and the last comparable full set. State whether
+  the uncertainty concerns holding power in one effort or repeating it across
+  efforts, and place the in-session check where that uncertainty matters. Interpret whole-session RPE in light of any
+  work outside the intervals. If the evidence supports several durations,
+  identify the chosen duration as a coaching judgment. When planning ahead,
+  state what to check at the warm-up or first relevant effort and how the
+  prescription changes if the response differs from usual.
+- Before finalizing, check the prescription from the athlete's perspective:
+  identify the best comparable completed work and the most recent relevant
+  response. Use source-labelled work intervals when available, preserving a
+  shortened final bout. Distinguish steady work from a diagnostic ramp,
+  recoveries and optional extensions. Time in a power band is accumulated
+  exposure; it need not be a continuous interval.
+  When two prescriptions are plausible, explain what choosing the extra
+  work would accomplish today and what it might cost before the next session.
+  For unresolved symptoms or unusual effort, give the athlete an actionable
+  check at the familiar load and say which part to shorten, omit or stop.
+  Verify that the written timeline sums to the stated duration, including
+  only the recoveries actually prescribed. Attribute qualitative capacity
+  judgements to the model and quote workout XSS only from a matching
+  calculation.
 - Evaluate the marginal physiological value of the proposed dose in the context
   of recently completed training and its observed response. Do not subtract
   completed load from Xert `remainingXSS` again. A documented adverse response
@@ -449,7 +671,20 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   context and cannot establish the effect of the earlier ride on its own.
   Explain why today's role, response and upcoming quality favor repeating,
   shortening or extending the selected comparison. If none fits, explain the
-  independent basis for the dose. Mixed-sport daily medians describe volume.
+  independent basis for the dose. For a selected reference, compare today's
+  total minutes with its moving minutes. If the structures differ, also compare
+  minutes at the proposed working power and identify what is removed, retained
+  or added (for example a diagnostic ramp or an endurance extension). If changing
+  both power and duration, explain what supports each change. Where the evidence
+  supports more than one dose, name the practical trade-off that decided it.
+  Round for presentation. Review power,
+  HR and coverage in the matched windows where available. Explain what changed
+  and why it supports the size of a proposed cut or extension. If only a reason
+  for caution is known, consider repeating the tolerated dose with a specific
+  body-feel or in-session adjustment. Consider the next quality outcome without
+  assuming the preceding aerobic ride caused it. Identify who chose the dose
+  and report calculated strain, capacity and calendar fit separately.
+  Mixed-sport daily medians describe volume.
   In `--training-target-json`, set `vt1_role` if the queue does not specify
   today's aerobic purpose. When candidates exist, supply
   `"vt1_comparison":{"activity_id":"…","reason":"…"}`, omitting the ID only
@@ -475,7 +710,8 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   Do not fill the difference to XATA advice or automatically cap it to model
   recovery capacity. Use MCP
   `solve_segment_duration` with the current Fitness Signature and complete
-  workout structure to convert the resulting Low-XSS dose to VT1 duration. The
+  workout structure to convert a load-selected dose to VT1 duration. For
+  a duration-selected extension, use the fixed-duration calculation above. The
   summary must show Xert's original recommended dose, the chosen daily target,
   complete quality-workout XSS, VT1 filler, expected total, and any
   calendar-limited shortfall in both minutes and estimated XSS. If no explicit
@@ -527,6 +763,71 @@ agent-supplied target even if a helper labels it explicit_user_or_cli_plan.
   `solve_segment_duration` with the current Fitness Signature and complete
   remaining VT1 structure to convert the newly selected remaining load to VT1
   duration. Completed quality never creates an automatic endurance addition.
+
+For a duration decision, use native Xert elapsed hours and XSS for the last
+completed seven days and the 14–21-day density when coverage is complete.
+Keep these distinct from local moving hours. To project the seven days ending
+today, add the candidate to the window including today. Compare a feasible
+neighbouring dose at the same power and explain the extra work and the likely
+effect on the next priority session. Judge duration using comparable rides
+and the response to their following quality sessions; include contrary cases.
+When a comparable ride is much longer or shorter, compare directly with
+repeating that ride. A small step around the proposed dose does not explain
+the full difference. Identify what changed in recovery, timing or priority,
+and what is lost by repeatedly choosing the shorter dose. Keep both options
+open until the evidence supports a choice. A weekly target, remaining XSS or
+a capacity ceiling cannot select the minutes.
+
+Read the available timestamped athlete answers and any relevant linked activity
+analysis before asking about an interruption or late effort. Keep the athlete's
+words distinct from the reviewer's interpretation. Apply a later clarification
+to the observation it describes; a previous “unknown” is not contrary evidence.
+Distinguish how the rider felt during a bout, after the ride and this morning.
+In historical decisions use only evidence available at the cutoff. For an
+endurance bridge compare the three-session sequence (preceding load, aerobic
+ride, subsequent quality), actual work at power, time from finish to next
+start and achieved bouts. For quality compare the last full dose and the last
+interruption. Resolve usable start/end including buffers from the calendar.
+
+### Pre-session questions
+
+Before asking, identify the two plausible answers and which would change
+working minutes, repetitions, intensity or the decision to train. Ask one
+specific question only if that difference matters and saved evidence does not
+already answer it. Ask about what the athlete can observe now, such as how
+their legs feel compared with a usual quality day. Use the reply in the
+decision. Reserve warm-up and interval checks for responses that emerge while
+riding. If a reply cannot be obtained before the recommendation, give the
+provisional prescription and what would change it. Save a received answer using the
+activity feedback workflow in SKILL.md. Preserve the distinction between a
+voluntary stop, an unknown cause and demonstrated inability. Before release, check both branches of the advice. If a familiar
+warm-up power already feels unusually hard, the fallback must be easier than
+the load that triggered it or end the session. For recent pain that shortened
+a ride, establish whether it persists in daily activity or easy pedalling
+before prescribing hard work. With an ambiguous calendar start and a hard
+stop, state when preparation must begin and whether the whole block fits if
+preparation starts only when the window opens. Check that a normal response to the proposed dose would still
+serve the planned purpose. Separate total time, work time and optional work.
+
+For queued quality work, identify what the last hard attempt showed and what
+has changed since. A comfortable recovery ride establishes tolerance of easy
+work. When current evidence leaves tolerance of quality work open and a trial
+is appropriate, prescribe the work that a normal response would justify,
+with a check during warm-up, early in the first effort and after its recovery.
+Specify the easier branch if the previous limiting response returns. If
+deferring quality from the outset, identify the current reason to do so.
+
+For an aerobic day between demanding sessions, assess the previous session's
+hard work and any endurance extension together. Compare the intended work
+block with a genuinely easier combination of power and duration. Where useful,
+quantify the difference in mechanical work and explain what the extra aerobic
+work buys before the next priority session. Weigh observed recovery trends
+alongside the athlete's report and comparable sequences. Explain the evidence
+for changing repetitions, work duration or intensity. Reconcile recorded work intervals with the
+descriptive summary, counting partial repetitions separately. Distinguish
+today’s available start from the next session’s start. For a second opinion,
+give the reviewer the same pre-session evidence and the draft, ask for
+material corrections, and have the recommending coach verify each correction.
 
 ### Xert workout feasibility
 
@@ -628,9 +929,10 @@ the capacity protection unresolved.
    mixed-history XSS-per-minute ratio.
 - Present both values explicitly:
    - `Recommended dose`: the final coaching prescription;
-   - `Maximum compatible with next-day Xert freshness`: duration,
-     watts/structure, limiting
-     XSS capacity, next workout role, and next workout start.
+   - `Maximum compatible with next-day Xert freshness`: limiting XSS capacity,
+     next workout role and start. For adjustable endurance, report the maximum
+     duration and power supported by the capacity calculation. For fixed work,
+     report whether the prescribed structure fits each applicable XSS capacity.
    Also show the selected dose's reason and evidence, XATA suggestion, difference
    from that suggestion, and any capacity conflict with its explicit decision
    and consequences for the next session. Neither automatic filling nor an
@@ -678,8 +980,7 @@ Do not add warm-up outside a workout whose total already includes it.
 ## Recommendation Artifacts
 
 For normal interactive recommendations, use separate unique private
-`--output-dir` directories under `/private/tmp` for each candidate and the final
-run. Write temporary source snapshots and intermediate data using ordinary file
+`--output-dir` directories under `/private/tmp` for each candidate or revised request. Write temporary source snapshots and intermediate data using ordinary file
 I/O rather than `apply_patch`, so they do not generate Codex file-change cards.
 Write persistent artifacts under `outputs/` only when explicitly requested or
 required by an automation or later analysis. Do not link JSON packets in a
@@ -713,11 +1014,34 @@ normal recommendation.
   reference time from the prescribed duration and state any extension/shortfall.
   Explain what the quality work and additional aerobic volume each contribute;
   matching a model dose is not by itself a training-purpose explanation.
+- Anchor each on-bike check to the work that prompts the decision: completed
+  repetitions, minutes ridden in the relevant block, or actual accumulated load
+  when an established and observable metric is appropriate. Name the block
+  and prescribed intensity, or the load metric and where accumulation starts.
+  Give the response to assess at that point. For example, check after 45 minutes
+  at the aerobic target following the intervals, then after 15 more at that
+  target. For accumulated work outdoors, carry the completed work forward
+  across stops and count further work when the rider resumes at the intended
+  effort. If the cue depends on a steady response, assess that response during
+  steady riding after the interruption; recovery during the stop can change
+  how the restart feels. Use `check_at_minute` as a planned ride-time equivalent
+  when the prescribed sequence is followed. Account for actual stops when
+  checking the time remaining to turn back or meet a deadline.
+- Render `primary_decision.aerobic_finish` directly below the primary session
+  when present, using the resolved decision from the packet. When a favorable late response makes
+  the extra work useful, offer the bounded option with the decision point,
+  observable cue, extra minutes and watts, total duration and finish time.
+  Briefly explain the selected length against the relevant alternative.
+  Check the longer occupied window and recovery before the next priority ride.
+  When finishing at the primary dose is preferable even on good legs, give the
+  concrete reason. A cue for starting or skipping the planned aerobic block
+  answers only the earlier decision. Keep the selected timeline at the primary
+  duration.
 - Include a separate `Capacity before the next workout` section, translated into
   the user's language, following the capacity workflow above. Show the next
-  workout role and exact start, limiting Low/High/Peak XSS capacity, and its
-  conversion through the proposed structure to duration and watts. Keep this
-  maximum distinct from the recommended dose.
+  workout role and exact start, the applicable XSS capacities, and whether the
+  prescribed workout fits. Give a maximum in minutes only when a calculation
+  for the proposed structure establishes that duration.
 - Present all three layers below as separate, named parts of every
   recommendation; reporting only the final session is not sufficient:
   - `Physiological scope`: report the model screening ceiling from
@@ -729,8 +1053,12 @@ normal recommendation.
      and recent training load indicate. Use the reviewed plan state's
      `next_role`, `last_quality_session` and `aerobic_days_since_quality`
      for quality spacing. Historical candidates provide execution context.
-     Use the requested goal, progression status and next step to explain the dose. Name the selected active
-     plan and current plan role. If no applicable plan exists, state that the
+     Name the selected active plan and current role. When the last reviewed
+     session identifies a concrete next step for this role, compare that
+     prescription (including power and repetitions) with repeating the achieved
+     dose. State which you choose and how recovery since that review and
+     today's evidence inform the choice. Preserve any conditions the review
+     placed on progression. If no applicable plan exists, state that the
      training need is unresolved instead of presenting a generic helper goal as
      a plan.
   - `Final recommendation`: report `selected_domain` plus the concrete duration,
@@ -766,9 +1094,9 @@ normal recommendation.
   `garmin_signal_status` to distinguish available observations from missing data.
   Do not restore excluded raw values as negative signals. A sync attempt that
   still leaves sleep unavailable does not itself justify reducing training.
-  If direct recovery data remain missing, explicitly ask the user to sync their
-  device before training (unless already attempted), and ask for soreness/body
-  feel when unknown. Keep the recommendation provisional without an automatic
+  If direct recovery data remain missing, request a sync or a current body-feel
+  observation only when the result could change the prescription and the
+  relevant information is still missing after checking saved sources. Keep the recommendation provisional without an automatic
   missing-data dose cut.
   Observed values still need comparison and context; availability is not an
   adverse finding or confirmation of good recovery.
