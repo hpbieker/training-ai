@@ -1,5 +1,17 @@
-"""Route geometry validation for the Route Planner MCP."""
+"""Route geometry validation and GPX export for the Route Planner MCP."""
 import math
+import xml.etree.ElementTree as ET
+
+USER_AGENT = "training-ai-route-planner/0.2.0"
+
+LIMITATIONS = [
+    "No external traffic counts are fetched; the routing profile may use OSM-derived estimates.",
+    "Conditional access and local restrictions are not fully modelled.",
+    "Road selection and access handling follow the bundled BRouter profile.",
+    "The routing profile can use elevation and OSM-derived estimates for routing.",
+    "Importing GPX into another service may recalculate the route; compare the resulting track.",
+]
+
 
 def coordinate(lat, lon):
     if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
@@ -27,3 +39,21 @@ def validate_route(payload, start, end, max_snap):
     if max(snaps) > max_snap:
         raise ValueError(f"Endpoint moved too far from requested location: {snaps} metres")
     return points
+
+
+def write_gpx(path, name, points):
+    ET.register_namespace("", "http://www.topografix.com/GPX/1/1")
+    ns = "{http://www.topografix.com/GPX/1/1}"
+    root = ET.Element(ns+"gpx", version="1.1", creator=USER_AGENT)
+    metadata = ET.SubElement(root, ns+"metadata")
+    ET.SubElement(metadata, ns+"name").text = name
+    ET.SubElement(metadata, ns+"desc").text = " ".join(LIMITATIONS)
+    trk = ET.SubElement(root, ns+"trk")
+    ET.SubElement(trk, ns+"name").text = name
+    ET.SubElement(trk, ns+"type").text = "cycling"
+    seg = ET.SubElement(trk, ns+"trkseg")
+    for p in points:
+        point = ET.SubElement(seg, ns+"trkpt", lat=str(p[1]), lon=str(p[0]))
+        if len(p) > 2 and p[2] is not None and math.isfinite(p[2]):
+            ET.SubElement(point, ns+"ele").text = str(p[2])
+    ET.ElementTree(root).write(path, encoding="utf-8", xml_declaration=True)

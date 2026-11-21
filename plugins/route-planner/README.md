@@ -33,4 +33,8 @@ If the revision has changed, call `get_route` before retrying.
 Call `get_route` with `route_id` to read the current saved summary, including
 its revision and ordered waypoint IDs.
 
+Call `export_route` with `route_id` to get a local GPX file. Set `format` to
+`geojson` to get the saved GeoJSON. The result includes the exported revision
+and the local file path.
+
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.

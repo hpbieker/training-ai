@@ -18,7 +18,7 @@ from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from route_geometry import coordinate, distance, validate_route
+from route_geometry import coordinate, distance, validate_route, write_gpx
 
 PLUGIN = Path(__file__).resolve().parent
 PROFILE = PLUGIN / "assets/profiles/fastbike-road-flow.brf"
@@ -135,6 +135,18 @@ GET_ROUTE = types.Tool(
     annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
 )
 
+EXPORT_ROUTE = types.Tool(
+    name="export_route",
+    description="Export the latest saved route by route_id. Returns a local file path. Defaults to GPX.",
+    inputSchema={
+        "type": "object",
+        "properties": {"route_id": ID, "format": {"enum": ["gpx", "geojson"]}},
+        "required": ["route_id"],
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False),
+)
+
 
 def route_directory():
     return Path(os.environ.get("ROUTE_PLANNER_ROUTES", tempfile.gettempdir())).resolve()
@@ -157,6 +169,24 @@ def load_route(route_id):
 
 def get_route(arguments):
     return {key: value for key, value in load_route(arguments["route_id"]).items() if key != "geojson_file"}
+
+
+def export_route(arguments):
+    saved = load_route(arguments["route_id"])
+    geojson = Path(saved["geojson_file"])
+    if arguments.get("format", "gpx") == "geojson":
+        output = geojson
+    else:
+        coordinates = json.loads(geojson.read_text(encoding="utf-8"))["features"][0]["geometry"]["coordinates"]
+        output = geojson.with_suffix(".gpx")
+        with tempfile.NamedTemporaryFile(dir=output.parent, delete=False) as file:
+            temporary = Path(file.name)
+        try:
+            write_gpx(temporary, saved["title"], coordinates)
+            temporary.replace(output)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return {"route_id": saved["route_id"], "revision": saved["revision"], "route_file": str(output)}
 
 
 def brouter_json(url, data=None):
@@ -370,7 +400,7 @@ def create_server():
 
     @server.list_tools()
     async def list_tools():
-        return [TOOL, UPDATE_ROUTE, GET_ROUTE]
+        return [TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE]
 
     @server.call_tool()
     async def call_tool(name, arguments):
@@ -379,6 +409,7 @@ def create_server():
                 TOOL.name: plan_route,
                 UPDATE_ROUTE.name: update_route,
                 GET_ROUTE.name: get_route,
+                EXPORT_ROUTE.name: export_route,
             }.get(name)
             if handler is None:
                 raise ValueError(f"Unknown tool: {name}")

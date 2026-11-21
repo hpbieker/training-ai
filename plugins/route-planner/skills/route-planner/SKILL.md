@@ -14,3 +14,5 @@ Use `update_route` to change a saved route. Pass the route ID and revision from
 the latest successful call, preserve waypoint IDs for points the user wants
 to keep, and check the returned points after updating. If the revision has
 changed, use `get_route` to read the latest route before retrying.
+
+Use `export_route` only when the user requests a route file.
