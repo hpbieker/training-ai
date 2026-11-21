@@ -910,10 +910,9 @@ def discover_intervals_icu_credentials(
 ) -> IntervalsIcuCredentials:
     """Discover the API key without exposing it through tool arguments.
 
-    An explicit environment variable wins. Otherwise read the user-owned
-    ``~/.intervals_icu_mcp.json`` file, matching the Xert and OmniFocus MCP
-    configuration pattern. ``INTERVALS_ICU_MCP_CONFIG`` can select another
-    config file for tests or controlled deployments.
+    Read the user-owned ``~/.intervals_icu_mcp.json`` file.
+    ``INTERVALS_ICU_MCP_CONFIG`` can select another config file for tests or
+    controlled deployments.
     """
 
     selected_path = Path(
@@ -933,7 +932,7 @@ def discover_intervals_icu_credentials(
     unknown = set(payload) - {"apiKey"}
     if unknown:
         raise ValueError(f"Unknown setting in {selected_path}: {sorted(unknown)[0]}")
-    api_key = os.environ.get("INTERVALS_ICU_API_KEY") or payload.get("apiKey")
+    api_key = payload.get("apiKey")
     if api_key is not None and (not isinstance(api_key, str) or not api_key):
         raise ValueError(f"apiKey in {selected_path} must be a non-empty string")
     credentials = IntervalsIcuCredentials(api_key=api_key)

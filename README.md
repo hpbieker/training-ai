@@ -83,8 +83,7 @@ in to EatMyRide. The plugin reads this file when it needs to sign in.
 ### Intervals.icu
 
 **Authentication.** Store your Intervals.icu API key as `apiKey` in
-`~/.intervals_icu_mcp.json`, or set `INTERVALS_ICU_API_KEY` in the plugin
-environment.
+`~/.intervals_icu_mcp.json`.
 
 ```json
 {

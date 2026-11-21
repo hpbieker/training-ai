@@ -1652,19 +1652,6 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
 
 
 class IntervalsIcuConfigTests(unittest.TestCase):
-    def setUp(self):
-        self.original_environment = {
-            name: os.environ.pop(name, None)
-            for name in ("INTERVALS_ICU_API_KEY",)
-        }
-
-    def tearDown(self):
-        for name, value in self.original_environment.items():
-            if value is not None:
-                os.environ[name] = value
-            else:
-                os.environ.pop(name, None)
-
     def test_reads_user_owned_json_config(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "config.json"
@@ -1672,10 +1659,15 @@ class IntervalsIcuConfigTests(unittest.TestCase):
             credentials = MCP.discover_intervals_icu_credentials(path)
             self.assertEqual(credentials.api_key, "from-file")
 
-    def test_environment_overrides_config(self):
-        os.environ["INTERVALS_ICU_API_KEY"] = "from-environment"
-        credentials = MCP.discover_intervals_icu_credentials("/missing/config.json")
-        self.assertEqual(credentials.api_key, "from-environment")
+    def test_ignores_api_key_environment_variable(self):
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.dict(
+            os.environ, {"INTERVALS_ICU_API_KEY": "from-environment"}
+        ):
+            path = Path(temporary) / "config.json"
+            with self.assertRaisesRegex(ValueError, "api_key"):
+                MCP.discover_intervals_icu_credentials(path)
+            path.write_text(json.dumps({"apiKey": "from-file"}), encoding="utf-8")
+            self.assertEqual(MCP.discover_intervals_icu_credentials(path).api_key, "from-file")
 
     def test_rejects_non_api_key_config(self):
         with tempfile.TemporaryDirectory() as temporary:
