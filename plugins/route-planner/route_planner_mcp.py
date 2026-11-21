@@ -19,6 +19,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
 from place_search import find_public_place
+from road_search import find_road_points
 from route_geometry import compare_route_geometry, coordinate, distance, validate_route, write_gpx
 from route_inspection import inspect_route_file, locate_passages
 
@@ -245,6 +246,39 @@ SEARCH_PLACES = types.Tool(
     annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
 )
 
+FIND_ROAD_POINTS = types.Tool(
+    name="find_road_points",
+    description=(
+        "Find points on mapped carriageways within 300 m of each approximate location in one lookup. "
+        "Use for routing guides, especially when a parallel cycleway is nearby or a waypoint misses the route. "
+        "Optional road matches an exact OpenStreetMap street name or road reference. "
+        "Returns up to five candidates with coordinates, road class and OSM links per location, in input order. "
+        "Coordinates are sent to an external OpenStreetMap-based service."
+    ),
+    inputSchema={
+        "type": "object",
+        "properties": {
+            "locations": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "near": POINT,
+                        "road": {"type": "string", "minLength": 1, "maxLength": 200},
+                    },
+                    "required": ["near"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["locations"],
+        "additionalProperties": False,
+    },
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+)
+
 
 def route_directory():
     return Path(os.environ.get("ROUTE_PLANNER_ROUTES", tempfile.gettempdir())).resolve()
@@ -393,7 +427,8 @@ def verify_matches(requested, geometry, snap_waypoint_index=None):
                       f"(nearest eligible point {gap:.1f} m away, limit {limit} m).")
             if role == "waypoint":
                 detail += (
-                    f" Verify the routing guide near lat {point[1]:.6f}, lon {point[0]:.6f}."
+                    f" Use find_road_points near lat {point[1]:.6f}, lon {point[0]:.6f} "
+                    "to locate a routing guide on the intended road."
                 )
             raise ValueError(detail)
         previous = j
@@ -563,7 +598,7 @@ def create_server():
     async def list_tools():
         return [
             TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE, LOCATE_ON_ROUTE,
-            EVALUATE_ROUTE_CHANGE, SEARCH_PLACES,
+            EVALUATE_ROUTE_CHANGE, SEARCH_PLACES, FIND_ROAD_POINTS,
         ]
 
     @server.call_tool()
@@ -578,6 +613,7 @@ def create_server():
                 LOCATE_ON_ROUTE.name: locate_on_route,
                 EVALUATE_ROUTE_CHANGE.name: evaluate_route_change,
                 SEARCH_PLACES.name: search_places,
+                FIND_ROAD_POINTS.name: find_road_points,
             }.get(name)
             if handler is None:
                 raise ValueError(f"Unknown tool: {name}")

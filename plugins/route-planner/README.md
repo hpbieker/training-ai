@@ -72,4 +72,12 @@ autocomplete and systematic lookups. The plugin sends at most one request
 per second across local processes and caches responses for 24 hours.
 Use `ROUTE_PLANNER_GEOCODER_URL` to select a Nominatim-compatible service.
 
+Call `find_road_points` with up to ten `locations`. Each location needs a
+`near` coordinate and can include an exact street name or road number in
+`road`. The tool sends coordinates to the public
+[Valhalla demo server](https://github.com/valhalla/valhalla#demo-server)
+and returns up to five candidates within 300 m for each location. Candidates
+are mapped roads open to cars and bicycles. Check the returned road name
+or reference before using its coordinate in `plan_route` or `update_route`.
+
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.

@@ -32,3 +32,7 @@ user's intended roads and travel order.
 Use `search_places` for public places named in individual user requests.
 Keep personal or confidential information out of the query. Include the
 OpenStreetMap credit when presenting place search results.
+
+Use `find_road_points` to choose a waypoint on the intended road near a place
+or approximate coordinate. Pass an exact name or road number when known.
+Check the returned road before using the point in the route.
