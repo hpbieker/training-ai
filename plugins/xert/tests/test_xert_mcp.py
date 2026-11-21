@@ -134,8 +134,9 @@ class XertMcpSchemaTests(unittest.TestCase):
                 "list_activity_summaries",
                 "list_activities",
                 "get_activity",
-                "get_activity_beta_preview",
-                "calculate_workout_beta_preview",
+                "summarize_activities_xert_2",
+                "analyze_activity_xert_2",
+                "calculate_workout_xert_2",
                 "list_workouts",
                 "get_workout",
                 "list_planner_events",
@@ -391,42 +392,46 @@ class XertMcpDispatchTests(unittest.TestCase):
                     "get_activity", {"activity_path": "a1", field: "yes"}
                 )
 
-    @patch.object(MCP, "get_activity_beta_preview")
-    def test_beta_preview_is_separate_read_only_tool(self, preview) -> None:
+    @patch.object(MCP, "analyze_activity_xert_2")
+    def test_xert_2_activity_analysis_is_read_only(self, preview) -> None:
         preview.return_value = {
-            "activity_path": "a1", "source": "xert_beta_local_wasm", "experimental": True,
+            "activity_path": "a1", "source": "xert_2_local_wasm", "experimental": True,
             "standard_xert_comparable": False, "caveats": [], "metrics": {}, "xss": {},
         }
         result = self.tools.call_tool(
-            "get_activity_beta_preview", {"activity_path": "a1", "save_series": True}
+            "analyze_activity_xert_2", {"activity_path": "a1", "save_series": True}
         )
         self.assertTrue(result["experimental"])
         preview.assert_called_once_with("a1", save_series=True)
         with self.assertRaisesRegex(MCP.ToolFailure, "save_series must be a boolean"):
             self.tools.call_tool(
-                "get_activity_beta_preview", {"activity_path": "a1", "save_series": "yes"}
+                "analyze_activity_xert_2", {"activity_path": "a1", "save_series": "yes"}
             )
 
-    @patch.object(MCP, "calculate_workout_beta_preview")
-    def test_beta_workout_preview_is_separate_read_only_tool(self, preview) -> None:
+    @patch.object(MCP, "calculate_workout_xert_2")
+    def test_xert_2_workout_calculation_is_read_only(self, preview) -> None:
         preview.return_value = {
-            "beta_model_source_activity_path": "a1", "workout_duration_s": 600,
-            "source": "xert_beta_local_wasm", "experimental": True,
+            "model_source_activity_path": "a1", "workout_duration_s": 600,
+            "source": "xert_2_local_wasm", "experimental": True,
             "standard_xert_comparable": False, "caveats": [], "metrics": {}, "xss": {},
         }
-        result = self.tools.call_tool("calculate_workout_beta_preview", {
-            "beta_model_source_activity_path": "a1",
+        result = self.tools.call_tool("calculate_workout_xert_2", {
+            "model_source_activity_path": "a1",
             "rows": [{"duration_seconds": 600, "power": 200}],
+            "initial_muscle_glycogen_balance_g": -100,
+            "muscle_glucose_uptake_g_per_hour": 0,
             "save_series": True,
         })
         self.assertTrue(result["experimental"])
         preview.assert_called_once_with(
             [{"duration_seconds": 600, "power": 200}],
-            beta_model_source_activity_path="a1", save_series=True,
+            model_source_activity_path="a1",
+            initial_muscle_glycogen_balance_g=-100, muscle_glucose_uptake_g_per_hour=0,
+            save_series=True,
         )
         with self.assertRaisesRegex(MCP.ToolFailure, "save_series must be a boolean"):
-            self.tools.call_tool("calculate_workout_beta_preview", {
-                "beta_model_source_activity_path": "a1",
+            self.tools.call_tool("calculate_workout_xert_2", {
+                "model_source_activity_path": "a1",
                 "rows": [{"duration_seconds": 600, "power": 200}],
                 "save_series": "yes",
             })

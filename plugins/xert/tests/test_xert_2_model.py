@@ -1,24 +1,91 @@
 import importlib.util
+from io import BytesIO
 import json
 from pathlib import Path
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from jsonschema import validate
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT))
+from xert_mcp import TOOL_DEFINITIONS
+
 spec = importlib.util.spec_from_file_location(
-    "preview", PLUGIN_ROOT / "xert_beta_preview.py"
+    "preview", PLUGIN_ROOT / "xert_2_model.py"
 )
 P = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(P)
 
 
-class BetaPreviewTests(unittest.TestCase):
+class Xert2ModelTests(unittest.TestCase):
+    def test_batch_summary_keeps_beta_aggregates_and_partial_coverage(self):
+        service = Mock()
+        model_inputs = ({"activity": {"name": "Example"}}, "bundle", "bundle-url", "test-bundle")
+        with (
+            patch.object(P, "_load_activity_model", side_effect=[model_inputs, OSError("private URL")]) as load,
+            patch.object(P, "_run_wasm", return_value=self.example_model_result()) as run,
+        ):
+            result = P.summarize_activities_xert_2(service, ["a2", "a1"])
+        run.assert_called_once_with(*model_inputs[:3])
+        service.list_activity_summaries.assert_not_called()
+        self.assertIs(load.call_args_list[0].kwargs["opener"], load.call_args_list[1].kwargs["opener"])
+        self.assertEqual((result["analyzed_count"], result["unavailable_count"]), (1, 1))
+        first, second = result["activities"]
+        self.assertEqual([first["path"], second["path"]], ["a2", "a1"])
+        self.assertEqual(set(first), {"path", "status", "xert_2"})
+        beta = first["xert_2"]
+        self.assertEqual(result["bundle_sha256"], "test-bundle")
+        self.assertNotIn("bundle_sha256", beta)
+        self.assertEqual(beta["xss"], {"total": 1, "low": 1, "high": 0, "peak": 0})
+        self.assertEqual(beta["lactate_model_mmol_l"]["minimum"], 1.0)
+        self.assertEqual(beta["lactate_model_mmol_l"]["maximum"], 2.0)
+        self.assertEqual(beta["lactate_model_mmol_l"]["duration_at_or_above_s"]["2_mmol_l"], 1.0)
+        self.assertEqual(beta["glycogen_depleted_g"], 1)
+        self.assertNotIn("series", beta)
+        self.assertNotIn("series_file", beta)
+        self.assertEqual((second["status"], second["xert_2"]), ("unavailable", None))
+        self.assertNotIn("private URL", str(result))
+        validate(result, TOOL_DEFINITIONS["summarize_activities_xert_2"]["outputSchema"])
+
+    def test_batch_bundle_hash_is_shared_only_for_identical_builds(self):
+        props = {"activity": {"name": "Example"}}
+        for hashes in (("first", "first"), ("first", "second")):
+            with (
+                self.subTest(hashes=hashes),
+                patch.object(P, "_load_activity_model", side_effect=[
+                    (props, "bundle", "bundle-url", digest) for digest in hashes
+                ]),
+                patch.object(P, "_run_wasm", return_value=self.example_model_result()),
+            ):
+                result = P.summarize_activities_xert_2(Mock(), ["a1", "a2"])
+                row_hashes = [row["xert_2"].get("bundle_sha256") for row in result["activities"]]
+                if hashes[0] == hashes[1]:
+                    self.assertEqual(result["bundle_sha256"], hashes[0])
+                    self.assertEqual(row_hashes, [None, None])
+                else:
+                    self.assertNotIn("bundle_sha256", result)
+                    self.assertEqual(row_hashes, list(hashes))
+
     def test_unsupported_wasm_factory_is_rejected_before_execution(self):
         with self.assertRaisesRegex(ValueError, "supported WASM factory interface"):
             P._run_wasm({}, "unreviewed", "https://beta.xertonline.com/js/svelte.js")
+
+    def test_beta_bundle_download_is_reused_per_url(self):
+        first_url = "https://beta.xertonline.com/build/first.js"
+        second_url = "https://beta.xertonline.com/build/second.js"
+        first = b"Module = (() => {return 1;})(); xert_default = Module;"
+        second = b"Module = (() => {return 2;})(); xert_default = Module;"
+        P._load_bundle.cache_clear()
+        self.addCleanup(P._load_bundle.cache_clear)
+        with patch.object(P, "urlopen", side_effect=[BytesIO(first), BytesIO(second)]) as download:
+            first_result = P._load_bundle(first_url)
+            self.assertEqual(P._load_bundle(first_url), first_result)
+            second_result = P._load_bundle(second_url)
+            self.assertEqual(P._load_bundle(first_url), first_result)
+        self.assertEqual([call.args[0] for call in download.call_args_list], [first_url, second_url])
+        self.assertNotEqual(first_result[1], second_result[1])
 
     @unittest.skipUnless(P.shutil.which("node"), "Node.js required")
     def test_runner_matches_current_frontend_signature_rounding_clamps_and_option_defaults(self):
@@ -91,7 +158,7 @@ initialOptions: {"movingAverage":5}
     def test_power_integral_uses_timestamps(self):
         self.assertEqual(P._integral_kj([0, 2, 2], [0, 2, 5]), .012)
 
-    def test_substrates_and_energy_matches_beta_ui_aggregates(self):
+    def test_substrates_and_energy_matches_xert_2_ui_aggregates(self):
         series = {
             "power_w": [200, 200], "glucose_regeneration_w": [0, 2],
             "fat_used_for_regeneration_w": [0, .36], "muscle_glycogen_burned_g": [0, 204],
@@ -106,14 +173,14 @@ initialOptions: {"movingAverage":5}
         self.assertEqual(summary["carb_to_fat_ratio"], 259 / 108)
         self.assertGreater(summary["additional_energy"]["regenerated_glucose_g"], 0)
 
-    def test_lactate_conversion_supports_current_and_legacy_beta_signatures(self):
+    def test_lactate_conversion_supports_current_and_legacy_xert_2_signatures(self):
         self.assertEqual(P._lactate_mmol_l([0, 5416.0], {"blood_lactate_j_per_mmol": 5416}), [1.0, 2.0])
         self.assertEqual(P._lactate_mmol_l([481.0], {"l_mmol_factor": 481}), [1.0])
         with self.assertRaisesRegex(ValueError, "valid lactate conversion"):
             P._lactate_mmol_l([100], {"blood_lactate_j_per_mmol": 0})
 
-    def test_saved_series_includes_glucose_regeneration_and_its_fat_cost(self):
-        result = {
+    def example_model_result(self):
+        return {
             "computed": {
                 "ts": [0, 1000], "ps": [200, 200], "mpas": [500, 500], "ftps": [300, 300],
                 "hies": [10000, 10000], "lactates": [0, 100], "gng": [0, 2], "gngFat": [0, .36],
@@ -123,8 +190,24 @@ initialOptions: {"movingAverage":5}
             },
             "signature_used": {"mgc": 400, "gross_eff": .23, "blood_lactate_j_per_mmol": 100}, "options_used": {},
         }
+    def test_xert_2_tool_results_match_advertised_output_schemas(self):
+        props = {"activity": {"name": "Example"}, "signature": {"ftp": 300}}
+        with patch.object(P, "_load_activity_model", return_value=(props, "", "", "test")), \
+             patch.object(P, "_run_wasm", return_value=self.example_model_result()):
+            results = {
+                "analyze_activity_xert_2": P.analyze_activity_xert_2("a1"),
+                "calculate_workout_xert_2": P.calculate_workout_xert_2(
+                    [{"duration_seconds": 2, "power": 200}], model_source_activity_path="a1"
+                ),
+            }
+        for name, result in results.items():
+            with self.subTest(tool=name):
+                validate(result, TOOL_DEFINITIONS[name]["outputSchema"])
+
+    def test_saved_series_includes_glucose_regeneration_and_its_fat_cost(self):
         output = P._series_and_output(
-            result=result, source_fields={}, save_series=True, series_context={}, bundle_sha256="test"
+            result=self.example_model_result(), source_fields={}, save_series=True,
+            series_context={}, bundle_sha256="test"
         )
         path = Path(output["series_file"])
         try:
@@ -136,6 +219,34 @@ initialOptions: {"movingAverage":5}
             self.assertIn("substrates_and_energy", output)
         finally:
             path.unlink(missing_ok=True)
+
+    def test_workout_overrides_leave_source_signature_and_power_profile_intact(self):
+        signature = {"ftp": 300, "initial_gmg_balance": -20, "glut4r": 60}
+        props = {"signature": signature}
+        rows = [{"duration_seconds": 2, "power": 75, "power_type": "relative_ftp"}]
+        with patch.object(P, "_load_activity_model", return_value=(props, "", "", "test")), \
+             patch.object(P, "_run_wasm", return_value=self.example_model_result()) as run:
+            P.calculate_workout_xert_2(
+                rows, model_source_activity_path="a1",
+                initial_muscle_glycogen_balance_g=-100, muscle_glucose_uptake_g_per_hour=0,
+            )
+            P.calculate_workout_xert_2(rows, model_source_activity_path="a1")
+        overridden, inherited = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(overridden["signature"], {"ftp": 300, "initial_gmg_balance": 100, "glut4r": 0})
+        self.assertEqual(inherited["signature"], {"ftp": 300, "initial_gmg_balance": -20, "glut4r": 60})
+        self.assertEqual(overridden["activity"], inherited["activity"])
+        self.assertEqual(inherited["activity"]["recordsData"]["power"], [225, 225])
+
+    def test_invalid_workout_overrides_fail_before_fetch(self):
+        with patch.object(P, "_load_activity_model") as load:
+            for field, values in (
+                ("initial_muscle_glycogen_balance_g", (-4001, 4001, float("inf"), True)),
+                ("muscle_glucose_uptake_g_per_hour", (-1, 401, float("nan"), "60")),
+            ):
+                for value in values:
+                    with self.subTest(field=field, value=value), self.assertRaisesRegex(ValueError, field):
+                        P.calculate_workout_xert_2([], model_source_activity_path="a1", **{field: value})
+            load.assert_not_called()
 
     def test_only_expected_beta_origin(self):
         for url in ["https://example.com/a", "http://beta.xertonline.com/a", None]:

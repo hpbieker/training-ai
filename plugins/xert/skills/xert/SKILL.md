@@ -1,6 +1,6 @@
 ---
 name: xert
-description: Use when working with Xert live data, Training Load, Recovery Load, Form or freshness, Training Status, Fitness Signature development (TP, HIE, PP), required XSS to build fitness, offline strain calculations, MPA and XSS semantics, activity or workout fields, workout rows, calendar notes, or Xert writes.
+description: Use when working with Xert live data, Training Load, Recovery Load, Form or freshness, Training Status, Fitness Signature development (TP, HIE, PP), required XSS to build fitness, offline strain calculations, MPA and XSS semantics, Xert 2.0 Beta modeling, activity or workout fields, workout rows, calendar notes, or Xert writes.
 ---
 
 # Xert
@@ -18,6 +18,7 @@ Load only the references needed for the question.
 | Task | Start with | Read when needed |
 | --- | --- | --- |
 | Completed workout or activity comparison | `list_activity_summaries`; `get_activity` for details or session series | [Activity fields](references/field-semantics.md#activity-and-workout-fields); [tool details](references/tool-workflows.md#mcp-read-access) |
+| Xert 2.0 Beta activity list, activity analysis or workout simulation | `summarize_activities_xert_2`, `analyze_activity_xert_2` or `calculate_workout_xert_2` | [Xert 2.0 Beta workflow](references/tool-workflows.md#xert-20-beta) |
 | Readiness or today's/planned session dose | `get_training_state(view="summary")` and `get_training_advice(view="summary", at=...)` | [Recovery and advice](references/field-semantics.md#recovery-and-advice) |
 | Known workout XSS or adjustable endurance duration | `calculate_strain` or `solve_segment_duration` | [Strain model](references/strain-model.md); [calculation workflow](references/tool-workflows.md#choose-the-narrowest-command) |
 | Capacity, load development or signature projection | `calculate_workout_capacity` or `project_load_model` | [Load model](references/training-load-model.md); [tool arguments](references/tool-workflows.md#choose-the-narrowest-command) |

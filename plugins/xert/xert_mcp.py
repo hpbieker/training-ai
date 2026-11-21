@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from xert_service import XertService
 from xert_activity_summaries import SUMMARY_FIELDS
-from xert_beta_preview import calculate_workout_beta_preview, get_activity_beta_preview
+from xert_2_model import analyze_activity_xert_2, calculate_workout_xert_2, summarize_activities_xert_2
 from list_query import apply_list_query, query_fields, query_properties
 
 
@@ -22,8 +22,9 @@ ALL_TOOL_NAMES = (
     "list_activity_summaries",
     "list_activities",
     "get_activity",
-    "get_activity_beta_preview",
-    "calculate_workout_beta_preview",
+    "summarize_activities_xert_2",
+    "analyze_activity_xert_2",
+    "calculate_workout_xert_2",
     "list_workouts",
     "get_workout",
     "list_planner_events",
@@ -63,15 +64,22 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "idempotentHint": False,
         "openWorldHint": True,
     },
-    "get_activity_beta_preview": {
-        "title": "Get Experimental Xert Beta Activity Preview",
+    "summarize_activities_xert_2": {
+        "title": "Summarize Xert 2.0 Beta Preview Activities",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
         "openWorldHint": True,
     },
-    "calculate_workout_beta_preview": {
-        "title": "Calculate Experimental Xert Beta Workout Preview",
+    "analyze_activity_xert_2": {
+        "title": "Analyze Activity with Xert 2.0 Beta",
+        "readOnlyHint": True,
+        "destructiveHint": False,
+        "idempotentHint": True,
+        "openWorldHint": True,
+    },
+    "calculate_workout_xert_2": {
+        "title": "Calculate Workout with Xert 2.0 Beta",
         "readOnlyHint": True,
         "destructiveHint": False,
         "idempotentHint": True,
@@ -486,13 +494,40 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "annotations": TOOL_ANNOTATIONS["get_activity"],
     },
-    "get_activity_beta_preview": {
-        "name": "get_activity_beta_preview",
+    "summarize_activities_xert_2": {
+        "name": "summarize_activities_xert_2",
         "description": (
-            "Run Xert Beta 2's experimental activity model locally using authenticated preview data. "
+            "Enrich selected activity paths with experimental Xert 2.0 Beta Preview summaries. "
+            "Get paths and activity metadata from list_activity_summaries, then join on path. "
+            "Loads each activity's Xert Beta preview and calculates model time series locally. "
+            "Returns only per-activity aggregates in input order: Beta XSS and modeled "
+            "lactate, glycogen, carbohydrate and fat summaries. "
+            "Check unavailable_count for missing Beta Preview results. The bundle hash is "
+            "reported once at the top level for a shared build and per activity for mixed builds."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "activity_paths": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
+                    "minItems": 1, "maxItems": 10, "uniqueItems": True,
+                    "description": "Activity paths from list_activity_summaries.",
+                },
+            },
+            "required": ["activity_paths"],
+            "additionalProperties": False,
+        },
+        "outputSchema": _object("Activity paths, Beta Preview summaries, and result counts."),
+        "annotations": TOOL_ANNOTATIONS["summarize_activities_xert_2"],
+    },
+    "analyze_activity_xert_2": {
+        "name": "analyze_activity_xert_2",
+        "description": (
+            "Run Xert 2.0 Beta's experimental activity model locally using authenticated preview data. "
             "Returns modeled lactate, muscle-glycogen balance, MPA, and dynamic TP/HIE; lactate and "
             "glycogen are model estimates, not physiological measurements. "
-            "Results, including Beta XSS, are not standard Xert values and can differ. Set "
+            "Results, including Xert 2.0 XSS, are not standard Xert values and can differ. Set "
             "save_series=true only to save model time series to a private temporary JSON file. "
             "This tool never changes Xert activities, signatures, options, or segments."
         ),
@@ -502,7 +537,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "activity_path": {"type": "string", "minLength": 1,
                                   "description": "Xert activity path returned by list_activities."},
                 "save_series": {"type": "boolean", "default": False,
-                                "description": "Save the full experimental Beta model series to a private temporary JSON file."},
+                                "description": "Save the full experimental Xert 2.0 model series to a private temporary JSON file."},
             },
             "required": ["activity_path"], "additionalProperties": False,
         },
@@ -514,27 +549,30 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "standard_xert_comparable": {"const": False},
                 "caveats": {"type": "array", "items": {"type": "string"}},
                 "bundle_sha256": {"type": "string"},
-                "options_used": _object("Beta model options used for this calculation."),
-                "signature_used": _object("Beta signature used for this calculation."),
-                "metrics": _object("Aggregated experimental Beta model time series, including lactate_model_mmol_l, muscle_glycogen_remaining_g, dynamic_tp_w, dynamic_hie_kj, and mpa_w."),
-                "xss": _object("Experimental Beta XSS; not standard Xert XSS."),
-                "energy": _object("Experimental Beta energy model output."),
+                "options_used": _object("Xert 2.0 model options used for this calculation."),
+                "signature_used": _object("Xert 2.0 signature used for this calculation."),
+                "metrics": _object("Aggregated experimental Xert 2.0 model time series, including lactate_model_mmol_l, muscle_glycogen_remaining_g, dynamic_tp_w, dynamic_hie_kj, and mpa_w."),
+                "xss": _object("Experimental Xert 2.0 XSS; not standard Xert XSS."),
+                "substrates_and_energy": _object("Modeled carbohydrate, fat, glycogen, glucose and energy totals."),
                 "series_file": {"type": "string", "description": "Private series JSON path when save_series is true."},
                 "series_format": {"type": "string"}, "series_byte_size": {"type": "integer"},
             },
-            "required": ["activity_path", "source", "experimental", "standard_xert_comparable", "caveats", "metrics", "xss"],
+            "required": ["activity_path", "source", "experimental", "standard_xert_comparable", "caveats",
+                         "metrics", "xss", "substrates_and_energy"],
             "additionalProperties": False,
         },
-        "annotations": TOOL_ANNOTATIONS["get_activity_beta_preview"],
+        "annotations": TOOL_ANNOTATIONS["analyze_activity_xert_2"],
     },
-    "calculate_workout_beta_preview": {
-        "name": "calculate_workout_beta_preview",
+    "calculate_workout_xert_2": {
+        "name": "calculate_workout_xert_2",
         "description": (
-            "Calculate an unsaved workout with Xert Beta 2's experimental model. "
-            "beta_model_source_activity_path supplies only the Beta signature and model options; "
-            "the power profile comes entirely from rows. Includes an experimental summary for each "
-            "work repetition and its following rest-in-between segment, including modeled lactate, muscle-glycogen "
-            "balance, MPA, and dynamic TP/HIE. Beta XSS and all calculated values are "
+            "Calculate an unsaved workout with Xert 2.0 Beta's experimental model. "
+            "model_source_activity_path supplies the Xert 2.0 signature, model options, and carbohydrate bias; "
+            "the power profile comes entirely from rows. Optionally override starting muscle glycogen balance "
+            "and Muscle Glucose Uptake Rate for this calculation. Includes an experimental summary for each "
+            "work repetition and its following rest-in-between segment, including power, modeled lactate and "
+            "muscle glycogen. MPA and dynamic TP/HIE are available as workout-level metrics and in the saved series. "
+            "Xert 2.0 XSS and all calculated values are "
             "not standard Xert values and can differ. This tool never saves or edits a workout, "
             "activity, signature, or options."
         ),
@@ -542,40 +580,48 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "properties": {
                 "rows": _workout_rows_schema("Complete unsaved workout rows to model."),
-                "beta_model_source_activity_path": {
+                "model_source_activity_path": {
                     "type": "string", "minLength": 1,
-                    "description": "Activity used only to obtain Beta signature and model options.",
+                    "description": "Completed activity supplying the Xert 2.0 signature, model options, and carbohydrate bias.",
+                },
+                "initial_muscle_glycogen_balance_g": {
+                    "type": "number", "minimum": -4000, "maximum": 4000,
+                    "description": "Grams relative to full muscle glycogen capacity: negative for depleted, zero for full, positive for loaded. Xert rounds and caps the magnitude at signature capacity. Omit to inherit.",
+                },
+                "muscle_glucose_uptake_g_per_hour": {
+                    "type": "number", "minimum": 0, "maximum": 400,
+                    "description": "Modeled Muscle Glucose Uptake Rate in g/h. Omit to inherit the source activity's rate.",
                 },
                 "save_series": {
                     "type": "boolean", "default": False,
-                    "description": "Save the full experimental Beta model series to a private temporary JSON file.",
+                    "description": "Save the full experimental Xert 2.0 model series to a private temporary JSON file.",
                 },
             },
-            "required": ["rows", "beta_model_source_activity_path"], "additionalProperties": False,
+            "required": ["rows", "model_source_activity_path"], "additionalProperties": False,
         },
         "outputSchema": {
             "type": "object",
             "properties": {
-                "beta_model_source_activity_path": {"type": "string"},
+                "model_source_activity_path": {"type": "string"},
                 "workout_duration_s": {"type": "integer"},
                 "source": {"type": "string"}, "experimental": {"const": True},
                 "standard_xert_comparable": {"const": False},
                 "caveats": {"type": "array", "items": {"type": "string"}},
                 "bundle_sha256": {"type": "string"},
-                "options_used": _object("Beta model options used for this calculation."),
-                "signature_used": _object("Beta signature used for this calculation."),
-                "metrics": _object("Aggregated experimental Beta model time series, including lactate_model_mmol_l, muscle_glycogen_remaining_g, dynamic_tp_w, dynamic_hie_kj, and mpa_w."),
-                "xss": _object("Experimental Beta XSS; not standard Xert XSS."),
-                "energy": _object("Experimental Beta energy model output."),
-                "intervals": {"type": "array", "items": _object("Per-work-interval and recovery summaries, including the same modeled physiological fields.")},
+                "options_used": _object("Xert 2.0 model options used for this calculation."),
+                "signature_used": _object("Xert 2.0 signature used for this calculation."),
+                "metrics": _object("Aggregated experimental Xert 2.0 model time series, including lactate_model_mmol_l, muscle_glycogen_remaining_g, dynamic_tp_w, dynamic_hie_kj, and mpa_w."),
+                "xss": _object("Experimental Xert 2.0 XSS; not standard Xert XSS."),
+                "substrates_and_energy": _object("Modeled carbohydrate, fat, glycogen, glucose and energy totals."),
+                "intervals": {"type": "array", "items": _object("Per-repetition and recovery timing, power, modeled lactate, and muscle glycogen.")},
                 "series_file": {"type": "string", "description": "Private series JSON path when save_series is true."},
                 "series_format": {"type": "string"}, "series_byte_size": {"type": "integer"},
             },
-            "required": ["beta_model_source_activity_path", "workout_duration_s", "source", "experimental",
-                         "standard_xert_comparable", "caveats", "metrics", "xss", "intervals"],
+            "required": ["model_source_activity_path", "workout_duration_s", "source", "experimental",
+                         "standard_xert_comparable", "caveats", "metrics", "xss", "substrates_and_energy", "intervals"],
             "additionalProperties": False,
         },
-        "annotations": TOOL_ANNOTATIONS["calculate_workout_beta_preview"],
+        "annotations": TOOL_ANNOTATIONS["calculate_workout_xert_2"],
     },
     "list_workouts": {
         "name": "list_workouts",
@@ -1413,18 +1459,22 @@ class XertToolService:
                     "session_byte_size": byte_size,
                 })
             return output
-        if name == "get_activity_beta_preview":
+        if name == "summarize_activities_xert_2":
+            return summarize_activities_xert_2(service, arguments["activity_paths"])
+        if name == "analyze_activity_xert_2":
             save_series = arguments.get("save_series", False)
             if not isinstance(save_series, bool):
                 raise ValueError("save_series must be a boolean")
-            return get_activity_beta_preview(arguments["activity_path"], save_series=save_series)
-        if name == "calculate_workout_beta_preview":
+            return analyze_activity_xert_2(arguments["activity_path"], save_series=save_series)
+        if name == "calculate_workout_xert_2":
             save_series = arguments.get("save_series", False)
             if not isinstance(save_series, bool):
                 raise ValueError("save_series must be a boolean")
-            return calculate_workout_beta_preview(
+            return calculate_workout_xert_2(
                 arguments["rows"],
-                beta_model_source_activity_path=arguments["beta_model_source_activity_path"],
+                model_source_activity_path=arguments["model_source_activity_path"],
+                initial_muscle_glycogen_balance_g=arguments.get("initial_muscle_glycogen_balance_g"),
+                muscle_glucose_uptake_g_per_hour=arguments.get("muscle_glucose_uptake_g_per_hour"),
                 save_series=save_series,
             )
         if name == "list_workouts":

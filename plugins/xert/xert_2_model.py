@@ -1,4 +1,4 @@
-"""Read-only adapter for the experimental Xert Beta 2 activity model.
+"""Read-only adapter for the experimental Xert 2.0 Beta activity model.
 
 The beta UI supplies an authenticated activity embed and runs a WebAssembly
 model in the browser.  This module recreates that calculation
@@ -7,6 +7,7 @@ HTML or its temporary access token.
 """
 from __future__ import annotations
 
+from functools import cache
 import hashlib
 from html.parser import HTMLParser
 import json
@@ -26,7 +27,7 @@ from xert_service import XertService
 
 
 BETA = "https://beta.xertonline.com"
-SERIES_FORMAT = "xert-beta-preview-series-v1"
+SERIES_FORMAT = "xert-2-model-series-v1"
 
 RUNNER = r'''
 const fs=require('fs'), vm=require('vm');
@@ -105,7 +106,7 @@ def _props(html: str) -> dict[str, Any]:
 
 def _stats(values: list[float], times: list[float]) -> dict[str, float]:
     if not values or len(values) != len(times):
-        raise ValueError("Invalid Beta model series length")
+        raise ValueError("Invalid Xert 2.0 model series length")
     lo, hi = min(range(len(values)), key=values.__getitem__), max(range(len(values)), key=values.__getitem__)
     return {"start": values[0], "minimum": values[lo], "minimum_at_s": times[lo],
             "maximum": values[hi], "maximum_at_s": times[hi], "end": values[-1]}
@@ -114,7 +115,7 @@ def _stats(values: list[float], times: list[float]) -> dict[str, float]:
 def _duration_at_or_above(values: list[float], times: list[float], threshold: float) -> float:
     """Return model time at or above a threshold, using source timestamps."""
     if len(values) != len(times) or len(values) < 2:
-        raise ValueError("Invalid Beta model series length")
+        raise ValueError("Invalid Xert 2.0 model series length")
     durations = [max(0.0, later - earlier) for earlier, later in zip(times, times[1:])]
     # The renderer treats the final sample as one ordinary sample interval.
     final_duration = durations[-1] if durations else 0.0
@@ -124,7 +125,7 @@ def _duration_at_or_above(values: list[float], times: list[float], threshold: fl
 def _integral_kj(values: list[float], times: list[float]) -> float:
     """Integrate a model power series using source timestamps."""
     if len(values) != len(times) or len(values) < 2:
-        raise ValueError("Invalid Beta model series length")
+        raise ValueError("Invalid Xert 2.0 model series length")
     durations = [max(0.0, later - earlier) for earlier, later in zip(times, times[1:])]
     final_duration = durations[-1]
     return sum(value * duration for value, duration in zip(values, [*durations, final_duration])) / 1000
@@ -133,14 +134,14 @@ def _integral_kj(values: list[float], times: list[float]) -> float:
 def _substrates_and_energy(model: dict[str, Any], series: dict[str, list[float]],
                            times: list[float], signature: dict[str, Any]) -> dict[str, Any]:
     """Return the compact activity totals shown by the Beta substrates UI."""
-    gross_eff = _number(signature.get("gross_eff"), "Beta signature gross_eff")
+    gross_eff = _number(signature.get("gross_eff"), "Xert 2.0 signature gross_eff")
     if gross_eff <= 0:
-        raise ValueError("Beta signature gross_eff must be positive")
+        raise ValueError("Xert 2.0 signature gross_eff must be positive")
     carbs_g = model["total_carbs_used"]
     fat_g = model["total_fat_used"]
     glycogen_burned_g = model.get("gmg_burned_total", series["muscle_glycogen_burned_g"][-1])
-    glycogen_depleted_g = model.get("gmg_depleted_total", signature["mgc"] -
-                                    series["muscle_glycogen_remaining_g"][-1])
+    glycogen_remaining = series["muscle_glycogen_remaining_g"]
+    glycogen_depleted_g = model.get("gmg_depleted_total", glycogen_remaining[0] - glycogen_remaining[-1])
     glycogen_replenished_g = model.get("gmg_replenished_total", series["muscle_glycogen_replenished_g"][-1])
     glucose_burned_g = model.get("gbg_burned_total", carbs_g - glycogen_burned_g)
     regeneration_kj = _integral_kj(series["glucose_regeneration_w"], times)
@@ -177,7 +178,7 @@ def _lactate_mmol_l(values: list[float], signature: dict[str, Any]) -> list[floa
     legacy_factor = signature.get("l_mmol_factor")
     if isinstance(legacy_factor, (int, float)) and legacy_factor > 0:
         return [value / legacy_factor for value in values]
-    raise ValueError("Xert Beta signature lacks a valid lactate conversion factor")
+    raise ValueError("Xert 2.0 signature lacks a valid lactate conversion factor")
 
 
 def _wasm_factory(bundle: str) -> str:
@@ -193,19 +194,19 @@ def _wasm_factory(bundle: str) -> str:
         start = bundle.index(start_marker)
         end = bundle.index(end_marker, start)
     except ValueError as error:
-        raise ValueError("Xert Beta frontend lacks the supported WASM factory interface") from error
+        raise ValueError("Xert 2.0 Beta frontend lacks the supported WASM factory interface") from error
     if end <= start:
-        raise ValueError("Xert Beta frontend has an invalid WASM factory interface")
+        raise ValueError("Xert 2.0 Beta frontend has an invalid WASM factory interface")
     return "var " + bundle[start:end]
 
 
 def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, Any]:
     node = shutil.which("node")
     if not node:
-        raise ValueError("Node.js is required for Xert Beta preview")
+        raise ValueError("Node.js is required for the Xert 2.0 model")
     factory = _wasm_factory(bundle)
     props = {**props, "bundle_url": bundle_url}
-    with tempfile.TemporaryDirectory(prefix="xert-beta-preview-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="xert-2-model-") as temporary:
         root = Path(temporary)
         (root / "input.json").write_text(json.dumps(props))
         (root / "factory.js").write_text(factory)
@@ -215,26 +216,33 @@ def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, 
     return json.loads(result.stdout)
 
 
-def _load_activity_beta_props(activity_path: str) -> tuple[dict[str, Any], str, str, str]:
-    """Read the Beta model state from one completed activity without retaining HTML."""
+@cache
+def _load_bundle(bundle_url: str) -> tuple[str, str]:
+    """Reuse each successfully loaded Beta frontend bundle for the process lifetime."""
+    with urlopen(bundle_url, timeout=45) as response:
+        bundle_bytes = response.read()
+    bundle = bundle_bytes.decode()
+    _wasm_factory(bundle)
+    return bundle, hashlib.sha256(bundle_bytes).hexdigest()
+
+
+def _load_activity_model(activity_path: str, *, opener=None) -> tuple[dict[str, Any], str, str, str]:
+    """Read the Xert 2.0 model state from one completed activity without retaining HTML."""
     if not re.fullmatch(r"[A-Za-z0-9_-]+", activity_path):
         raise ValueError("Expected an activity path, not a URL")
-    service = XertService()
-    preview = _open_text(service._auth.web_opener(), Request(
+    if opener is None:
+        opener = XertService()._auth.web_opener()
+    preview = _open_text(opener, Request(
         f"https://www.xertonline.com/activities/{activity_path}/preview"), "Xert preview")
     outer = _Page(); outer.feed(preview)
     with urlopen(_beta_url(outer.frame), timeout=45) as response:
         embed = response.read().decode()
     page = _Page(); page.feed(embed)
     bundle_url = _beta_url(page.bundle)
-    with urlopen(bundle_url, timeout=45) as response:
-        bundle_bytes = response.read()
-    bundle_sha256 = hashlib.sha256(bundle_bytes).hexdigest()
-    bundle = bundle_bytes.decode()
-    _wasm_factory(bundle)
     props = _props(embed)
     if props["activity"].get("path") != activity_path:
         raise ValueError("Preview activity identity does not match request")
+    bundle, bundle_sha256 = _load_bundle(bundle_url)
     return props, bundle, bundle_url, bundle_sha256
 
 
@@ -256,7 +264,7 @@ def _interval_summaries(series: dict[str, list[float]], intervals: list[dict[str
         power = series["power_w"][start:end]
         lactate = series["lactate_model_mmol_l"][start:end]
         if not times:
-            raise ValueError("Workout interval has no Beta model samples")
+            raise ValueError("Workout interval has no Xert 2.0 model samples")
         lactate_stats = _stats(lactate, times)
         lactate_stats["delta"] = lactate_stats["end"] - lactate_stats["start"]
         summary: dict[str, Any] = {
@@ -310,11 +318,11 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
     metrics["muscle_glycogen_replenished_g"] = {"end": series["muscle_glycogen_replenished_g"][-1]}
     output: dict[str, Any] = {
         **source_fields,
-        "source": "xert_beta_local_wasm", "experimental": True,
+        "source": "xert_2_local_wasm", "experimental": True,
         "standard_xert_comparable": False,
-        "caveats": ["Experimental Beta 2 model estimates, not physiological measurements.",
-                    "Beta XSS and other calculated values can differ from standard Xert activity values.",
-                    "No Beta signature, option, segment, or activity writes were performed."],
+        "caveats": ["Experimental Xert 2.0 model estimates, not physiological measurements.",
+                    "Xert 2.0 XSS and other calculated values can differ from standard Xert activity values.",
+                    "No Xert 2.0 signature, option, segment, or activity writes were performed."],
         "bundle_sha256": bundle_sha256, "options_used": result["options_used"],
         "signature_used": signature, "metrics": metrics,
         "xss": {key: model[value] for key, value in (("total", "xss"), ("low", "xlss"), ("high", "xhss"), ("peak", "xpss"))},
@@ -323,7 +331,7 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
     if intervals is not None:
         output["intervals"] = _interval_summaries(series, intervals)
     if save_series:
-        descriptor, file_name = tempfile.mkstemp(prefix="xert-beta-preview-series-", suffix=".json")
+        descriptor, file_name = tempfile.mkstemp(prefix="xert-2-model-series-", suffix=".json")
         with os.fdopen(descriptor, "w") as stream:
             json.dump({**series_context, "bundle_sha256": bundle_sha256,
                        "signature_used": signature, "options_used": result["options_used"], "series": series}, stream,
@@ -333,9 +341,15 @@ def _series_and_output(*, result: dict[str, Any], source_fields: dict[str, Any],
     return output
 
 
-def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) -> dict[str, Any]:
-    """Compute an experimental, read-only Beta 2 preview for one activity."""
-    props, bundle, bundle_url, bundle_sha256 = _load_activity_beta_props(activity_path)
+def analyze_activity_xert_2(activity_path: str, *, save_series: bool = False) -> dict[str, Any]:
+    """Analyze a completed activity locally with the Xert 2.0 Beta model."""
+    props, bundle, bundle_url, bundle_sha256 = _load_activity_model(activity_path)
+    return _analyze_activity_model(
+        activity_path, props, bundle, bundle_url, bundle_sha256, save_series=save_series,
+    )
+
+
+def _analyze_activity_model(activity_path, props, bundle, bundle_url, bundle_sha256, *, save_series=False):
     result = _run_wasm(props, bundle, bundle_url)
     return _series_and_output(
         result=result,
@@ -344,6 +358,55 @@ def get_activity_beta_preview(activity_path: str, *, save_series: bool = False) 
         series_context={"activity_path": activity_path},
         bundle_sha256=bundle_sha256,
     )
+
+
+def summarize_activities_xert_2(
+    service: XertService, activity_paths: list[str],
+) -> dict[str, Any]:
+    """Enrich selected activity paths with compact Beta Preview summaries."""
+    if not isinstance(activity_paths, list) or not 1 <= len(activity_paths) <= 10:
+        raise ValueError("activity_paths must contain 1 to 10 paths")
+    if any(not isinstance(path, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", path) for path in activity_paths):
+        raise ValueError("activity_paths must contain Xert activity paths")
+    if len(set(activity_paths)) != len(activity_paths):
+        raise ValueError("activity_paths must be unique")
+
+    rows = []
+    opener = service._auth.web_opener()
+    for path in activity_paths:
+        row = {"path": path}
+        try:
+            model_inputs = _load_activity_model(path, opener=opener)
+            result = _analyze_activity_model(path, *model_inputs)
+        except (OSError, ValueError, KeyError, RuntimeError, subprocess.SubprocessError):
+            # Preview URLs and subprocess diagnostics can contain private model inputs.
+            row.update(status="unavailable", xert_2=None)
+        else:
+            metrics = result["metrics"]
+            energy = result["substrates_and_energy"]
+            row.update(status="ok", xert_2={
+                "bundle_sha256": result["bundle_sha256"],
+                "xss": result["xss"],
+                "lactate_model_mmol_l": metrics["lactate_model_mmol_l"],
+                "muscle_glycogen_remaining_g": metrics["muscle_glycogen_remaining_g"],
+                "glycogen_depleted_g": energy["glycogen"]["depleted_g"],
+                "total_carbs_g": energy["total_carbs_g"],
+                "fat_g": energy["fat_g"],
+            })
+        rows.append(row)
+    analyzed = [row["xert_2"] for row in rows if row["xert_2"] is not None]
+    bundle_hashes = {summary["bundle_sha256"] for summary in analyzed}
+    output = {
+        "activities": rows,
+        "source": "xert_2_local_wasm", "experimental": True,
+        "analyzed_count": len(analyzed),
+        "unavailable_count": len(rows) - len(analyzed),
+    }
+    if len(bundle_hashes) == 1:
+        output["bundle_sha256"] = bundle_hashes.pop()
+        for summary in analyzed:
+            del summary["bundle_sha256"]
+    return output
 
 
 def _number(value: Any, label: str) -> float:
@@ -363,13 +426,13 @@ def _power_values(row: dict[str, Any], *, signature: dict[str, Any], sequence: i
     duration = _positive_int(row.get("duration_seconds"), f"rows[{sequence}].duration_seconds")
     power_type = row.get("power_type", "absolute")
     power = _number(row.get("power"), f"rows[{sequence}].power")
-    ftp = _number(signature.get("ftp"), "Beta signature ftp")
+    ftp = _number(signature.get("ftp"), "Xert 2.0 signature ftp")
     multiplier = {"absolute": 1.0, "relative_ftp": ftp / 100,
                   "ramp_absolute": 1.0, "ramp_ftp": ftp / 100}
     if power_type == "ramp_ltp":
-        multiplier[power_type] = _number(signature.get("ltp"), "Beta signature ltp") / 100
+        multiplier[power_type] = _number(signature.get("ltp"), "Xert 2.0 signature ltp") / 100
     if power_type not in multiplier:
-        raise ValueError(f"rows[{sequence}].power_type is unsupported by Beta preview")
+        raise ValueError(f"rows[{sequence}].power_type is unsupported by the Xert 2.0 model adapter")
     start = power * multiplier[power_type]
     if not power_type.startswith("ramp_"):
         return [start] * duration
@@ -395,9 +458,9 @@ def _expand_workout(rows: list[dict[str, Any]], signature: dict[str, Any]) -> tu
         rib_type = row.get("rib_power_type", "absolute")
         rib_power = _number(row.get("rib_power", 0), f"rows[{sequence}].rib_power")
         if rib_type == "relative_ftp":
-            rib_power *= _number(signature.get("ftp"), "Beta signature ftp") / 100
+            rib_power *= _number(signature.get("ftp"), "Xert 2.0 signature ftp") / 100
         elif rib_type != "absolute":
-            raise ValueError(f"rows[{sequence}].rib_power_type is unsupported by Beta preview")
+            raise ValueError(f"rows[{sequence}].rib_power_type is unsupported by the Xert 2.0 model adapter")
         for repetition in range(repeats):
             start = len(samples)
             samples.extend(work)
@@ -424,10 +487,28 @@ def _expand_workout_rows(rows: list[dict[str, Any]], signature: dict[str, Any]) 
     return _expand_workout(rows, signature)[0]
 
 
-def calculate_workout_beta_preview(rows: list[dict[str, Any]], *, beta_model_source_activity_path: str,
-                                   save_series: bool = False) -> dict[str, Any]:
-    """Calculate an unsaved workout with the Beta state sourced from one activity."""
-    props, bundle, bundle_url, bundle_sha256 = _load_activity_beta_props(beta_model_source_activity_path)
+def calculate_workout_xert_2(
+    rows: list[dict[str, Any]], *,
+    model_source_activity_path: str,
+    initial_muscle_glycogen_balance_g: float | None = None,
+    muscle_glucose_uptake_g_per_hour: float | None = None,
+    save_series: bool = False,
+) -> dict[str, Any]:
+    """Calculate an unsaved workout with Xert 2.0 model inputs from one activity."""
+    overrides = {}
+    if initial_muscle_glycogen_balance_g is not None:
+        balance = _number(initial_muscle_glycogen_balance_g, "initial_muscle_glycogen_balance_g")
+        if not -4000 <= balance <= 4000:
+            raise ValueError("initial_muscle_glycogen_balance_g must be between -4000 and 4000")
+        # Xert stores depletion as positive. The tool accepts a balance relative to full.
+        overrides["initial_gmg_balance"] = -balance
+    if muscle_glucose_uptake_g_per_hour is not None:
+        uptake = _number(muscle_glucose_uptake_g_per_hour, "muscle_glucose_uptake_g_per_hour")
+        if not 0 <= uptake <= 400:
+            raise ValueError("muscle_glucose_uptake_g_per_hour must be between 0 and 400")
+        overrides["glut4r"] = uptake
+
+    props, bundle, bundle_url, bundle_sha256 = _load_activity_model(model_source_activity_path)
     power, intervals = _expand_workout(rows, props["signature"])
     count = len(power)
     records = {
@@ -435,15 +516,18 @@ def calculate_workout_beta_preview(rows: list[dict[str, Any]], *, beta_model_sou
         "lat": [None] * count, "lng": [None] * count, "spd": [0.0] * count,
         "cad": [0.0] * count, "power": power,
     }
-    calculation_props = {**props, "activity": {"path": "unsaved-workout", "name": "Unsaved workout",
-                                                   "recordsData": records}}
+    calculation_props = {
+        **props,
+        "signature": {**props["signature"], **overrides},
+        "activity": {"path": "unsaved-workout", "name": "Unsaved workout", "recordsData": records},
+    }
     result = _run_wasm(calculation_props, bundle, bundle_url)
     return _series_and_output(
         result=result,
-        source_fields={"beta_model_source_activity_path": beta_model_source_activity_path,
+        source_fields={"model_source_activity_path": model_source_activity_path,
                        "workout_duration_s": count},
         save_series=save_series,
-        series_context={"beta_model_source_activity_path": beta_model_source_activity_path,
+        series_context={"model_source_activity_path": model_source_activity_path,
                         "workout_rows": rows},
         bundle_sha256=bundle_sha256,
         intervals=intervals,

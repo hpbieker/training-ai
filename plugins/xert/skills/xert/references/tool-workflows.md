@@ -100,6 +100,38 @@ Prefer the Xert MCP tools when they are available:
 - `calculate_workout` sends a complete, unsaved workout structure to
   Xert Calculate. Signature overrides must supply TP, HIE, and PP together.
 
+## Xert 2.0 Beta
+
+See the [field reference](xert-2-beta.md) for result fields, units, supported
+workout rows and coverage of Xert's beta interface.
+
+- Use `summarize_activities_xert_2(activity_paths=[...])` for Xert 2.0 Beta
+  Preview aggregates for one to ten activities. Resolve paths and metadata with
+  `list_activity_summaries` and join the results on `path`. The tool calculates
+  the model time series internally and returns one compact row per path in input
+  order. Check `unavailable_count` before aggregating Beta values across activities.
+- Use `analyze_activity_xert_2(activity_path=...)` for a completed activity.
+  Discover its path with `list_activity_summaries`.
+- Use `calculate_workout_xert_2(rows=..., model_source_activity_path=...)` for
+  an unsaved workout. The source activity supplies the Xert 2.0 Fitness
+  Signature, model options, and carbohydrate bias. The workout rows supply
+  the power profile. Use the same source activity to compare candidates.
+- To test one assumption at a time, keep the source activity and rows fixed.
+  Change `initial_muscle_glycogen_balance_g` (for example, −100 g or 0 g)
+  or `muscle_glucose_uptake_g_per_hour` and check the applied values in
+  `signature_used`. Zero is an explicit value for either input.
+- These tools require Xert web credentials, beta access and local Node.js.
+  They load the activity embed and run Xert's browser model locally.
+  `bundle_sha256` identifies the frontend build used for the calculation.
+  Set `save_series=true` only when full series are needed. The returned
+  private JSON path is intended for local analysis.
+- Treat lactate, muscle glycogen, glucose use and fat use as model estimates.
+  The Muscle Glucose Uptake Rate (MGUR, stored as `glut4r` in the signature)
+  describes modeled uptake by muscle. Use food logs for carbohydrate intake.
+  Read glucose use and net glycogen depletion as separate quantities.
+  Use standard Xert XSS for Training Load and recovery calculations.
+  See [Xert's clarification on muscle glucose uptake](https://forum.xertonline.com/t/2-0-beta/49605/66).
+
 ## Choose The Narrowest Command
 
 - Use MCP `list_activities` and `get_activity` for activity discovery and
