@@ -14,6 +14,42 @@ SPEC.loader.exec_module(MODULE)
 
 
 class SaveIntervalsActivityTests(unittest.TestCase):
+    def test_batch_selects_exactly_one_activity_by_stream_manifest_id(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            activity_json = root / "activities.json"
+            streams_file = root / "source-streams.csv"
+            streams_file.write_bytes(b"time,watts\n0,200\n")
+            manifest = root / "streams.json"
+            manifest.write_text(json.dumps({
+                "activity_id": "i123",
+                "streams_file": streams_file.name,
+                "sha256": hashlib.sha256(streams_file.read_bytes()).hexdigest(),
+            }))
+            activity = {"id": "i123", "start_date_local": "2026-08-17"}
+            other = {"id": "i456", "start_date_local": "2026-08-16"}
+            output_dir = root / "intervals"
+
+            for matches, count in [([other], 0), ([activity, other, activity], 2)]:
+                with self.subTest(count=count):
+                    activity_json.write_text(json.dumps({"activities": matches}))
+                    with self.assertRaisesRegex(ValueError, f"found {count}"):
+                        MODULE.save_activity_package(
+                            activity_json=activity_json,
+                            streams_manifest=manifest,
+                            output_dir=output_dir,
+                        )
+                    self.assertFalse(output_dir.exists())
+
+            activity_json.write_text(json.dumps({
+                "activity_ids": ["i456", "i123"], "activities": [other, activity],
+            }))
+            result = MODULE.save_activity_package(
+                activity_json=activity_json, streams_manifest=manifest, output_dir=output_dir,
+            )
+            self.assertEqual(result["activity_dir"].name, "2026-08-17_i123")
+            self.assertEqual(json.loads(result["activity_metadata"].read_text()), activity)
+
     def test_saves_mcp_envelope_and_streams_in_canonical_activity_directory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
