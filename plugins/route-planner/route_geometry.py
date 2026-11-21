@@ -1,4 +1,6 @@
 """Route geometry validation and GPX export for the Route Planner MCP."""
+from difflib import SequenceMatcher
+from itertools import accumulate, groupby, pairwise
 import math
 import xml.etree.ElementTree as ET
 
@@ -39,6 +41,44 @@ def validate_route(payload, start, end, max_snap):
     if max(snaps) > max_snap:
         raise ValueError(f"Endpoint moved too far from requested location: {snaps} metres")
     return points
+
+
+def compare_route_geometry(before, after):
+    # Ignore elevation and consecutive duplicate coordinates when matching the route.
+    before = [point for point, _ in groupby(tuple(p[:2]) for p in before)]
+    after = [point for point, _ in groupby(tuple(p[:2]) for p in after)]
+    before_offsets = list(accumulate((distance(a, b) for a, b in pairwise(before)), initial=0.0))
+    after_offsets = list(accumulate((distance(a, b) for a, b in pairwise(after)), initial=0.0))
+    changes = []
+    if before != after:
+        # A route can traverse the same coordinates more than once. Preserve
+        # travel order and let repeated coordinates participate in matching.
+        matcher = SequenceMatcher(None, before, after, autojunk=False)
+        for tag, i, j, k, l in matcher.get_opcodes():
+            if tag == "equal":
+                continue
+            changes.append({
+                "before": changed_span(before, before_offsets, i, j),
+                "after": changed_span(after, after_offsets, k, l),
+            })
+    return {
+        "distance_delta_m": round(after_offsets[-1] - before_offsets[-1], 1),
+        "changed_section_count": len(changes),
+        "changed_sections": changes[:20],
+    }
+
+
+def changed_span(points, offsets, start, stop):
+    # Include the connecting edges before and after the changed vertices.
+    first = max(0, start - 1)
+    last = min(stop, len(points) - 1)
+    return {
+        "start_km": round(offsets[first] / 1000, 4),
+        "end_km": round(offsets[last] / 1000, 4),
+        "length_m": round(offsets[last] - offsets[first], 1),
+        "start": {"lon": points[first][0], "lat": points[first][1]},
+        "end": {"lon": points[last][0], "lat": points[last][1]},
+    }
 
 
 def write_gpx(path, name, points):

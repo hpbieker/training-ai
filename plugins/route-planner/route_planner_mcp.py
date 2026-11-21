@@ -18,7 +18,7 @@ from mcp import types
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 
-from route_geometry import coordinate, distance, validate_route, write_gpx
+from route_geometry import compare_route_geometry, coordinate, distance, validate_route, write_gpx
 from route_inspection import inspect_route_file, locate_passages
 
 PLUGIN = Path(__file__).resolve().parent
@@ -124,6 +124,17 @@ UPDATE_ROUTE = types.Tool(
         "additionalProperties": False,
     },
     annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
+)
+
+EVALUATE_ROUTE_CHANGE = types.Tool(
+    name="evaluate_route_change",
+    description=(
+        "Calculate the effect of a proposed update against a saved route revision without saving it. "
+        "Accepts the same changes as update_route. Reports the distance difference and where the "
+        "route geometry changes. Sends the full proposed route coordinates and bundled profile to BRouter."
+    ),
+    inputSchema=UPDATE_ROUTE.inputSchema,
+    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
 )
 
 GET_ROUTE = types.Tool(
@@ -495,12 +506,35 @@ def update_route(arguments):
     )}
 
 
+def evaluate_route_change(arguments):
+    route_id = arguments["route_id"]
+    saved = load_route(route_id)
+    check_revision(arguments["expected_revision"], saved)
+    baseline = json.loads(Path(saved["geojson_file"]).read_text(encoding="utf-8"))
+    candidate, payload = calculate_route(arguments, route_id, saved)
+    previous_profile = saved.get("profile_sha256")
+    return {
+        "route_id": route_id,
+        "base_revision": saved["revision"],
+        "before_distance_km": saved["distance_km"],
+        "after_distance_km": candidate["distance_km"],
+        "same_profile": previous_profile == candidate["profile_sha256"] if previous_profile else None,
+        **compare_route_geometry(
+            baseline["features"][0]["geometry"]["coordinates"],
+            payload["features"][0]["geometry"]["coordinates"],
+        ),
+    }
+
+
 def create_server():
     server = Server("route-planner", version="0.2.13")
 
     @server.list_tools()
     async def list_tools():
-        return [TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE, LOCATE_ON_ROUTE]
+        return [
+            TOOL, UPDATE_ROUTE, GET_ROUTE, EXPORT_ROUTE, INSPECT_ROUTE, LOCATE_ON_ROUTE,
+            EVALUATE_ROUTE_CHANGE,
+        ]
 
     @server.call_tool()
     async def call_tool(name, arguments):
@@ -512,6 +546,7 @@ def create_server():
                 EXPORT_ROUTE.name: export_route,
                 INSPECT_ROUTE.name: inspect_route,
                 LOCATE_ON_ROUTE.name: locate_on_route,
+                EVALUATE_ROUTE_CHANGE.name: evaluate_route_change,
             }.get(name)
             if handler is None:
                 raise ValueError(f"Unknown tool: {name}")

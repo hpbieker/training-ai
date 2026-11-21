@@ -24,3 +24,7 @@ specific section. Report gaps where the saved metadata is missing.
 Use `locate_on_route` to find where a saved route passes near a coordinate.
 Compare kilometre markers, offsets and bearings for all passages. Use
 `inspect_route` to check road metadata around a passage when needed.
+
+Use `evaluate_route_change` to compare a proposed edit to the saved route
+before applying it. Check `same_profile` and the changed sections against the
+user's intended roads and travel order.

@@ -87,3 +87,52 @@ class RouteChangeTests(unittest.TestCase):
             self.assertEqual(planner.load_route(saved["route_id"])["revision"], 2)
             planner.update_route({**changes, "expected_revision": 2, "end": {"lon": 10.002, "lat": 60}})
             self.assertEqual(engine.call_args.args[0][1], route[1])
+
+    def test_removal_evaluates_same_candidate_as_update_without_writing(self):
+        route = [[10, 60], [10.001, 60], [10.002, 60]]
+        detour = [10.001, 60.001]
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch.dict(os.environ, {"ROUTE_PLANNER_ROUTES": directory}),
+            patch.object(planner, "run_brouter", side_effect=[
+                brouter_payload([*route[:2], detour, *route[1:]]),
+                brouter_payload(route),
+                brouter_payload(route),
+            ]) as engine,
+        ):
+            saved = planner.plan_route({
+                "start": {"lon": 10, "lat": 60},
+                "end": {"lon": 10.002, "lat": 60},
+                "waypoints": [{"lon": detour[0], "lat": detour[1]}],
+            })
+            route_id = saved["route_id"]
+            changes = {"route_id": route_id, "expected_revision": 1,
+                       "remove_waypoint_id": saved["points"][1]["waypoint_id"]}
+            folder = planner.route_folder(route_id)
+            before = {p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}
+
+            with self.assertRaisesRegex(ValueError, "revision conflict"):
+                planner.evaluate_route_change({**changes, "expected_revision": 2})
+            self.assertEqual(engine.call_count, 1)
+            result = planner.evaluate_route_change(changes)
+
+            self.assertEqual(result["base_revision"], 1)
+            self.assertTrue(result["same_profile"])
+            self.assertEqual(result["distance_delta_m"], -222.4)
+            self.assertEqual(result["changed_section_count"], 1)
+            self.assertEqual({p: p.read_bytes() for p in folder.rglob("*") if p.is_file()}, before)
+            self.assertEqual(planner.get_route({"route_id": route_id})["revision"], 1)
+
+            updated = planner.update_route(changes)
+            self.assertEqual(updated["revision"], 2)
+            self.assertEqual(updated["distance_km"], result["after_distance_km"])
+            self.assertEqual(engine.call_args_list[1], engine.call_args_list[2])
+
+    def test_unchanged_track_ignores_elevation_and_duplicate_coordinates(self):
+        before = [[10, 60, 100], [10.001, 60, 101]]
+        after = [[10, 60, 102], [10, 60, 103], [10.001, 60, 104]]
+        self.assertEqual(planner.compare_route_geometry(before, after), {
+            "distance_delta_m": 0.0,
+            "changed_section_count": 0,
+            "changed_sections": [],
+        })

@@ -53,4 +53,12 @@ order, with distance from the route start, offset from the lookup point and
 bearing clockwise from true north. Road names and references come from
 saved metadata when available.
 
+Call `evaluate_route_change` with the same inputs as `update_route` to
+preview a change without saving a revision. It sends the proposed coordinates
+and bundled profile to BRouter. The result includes the base revision,
+before and after distances, the distance difference in metres, and up to
+20 changed sections in travel order. `same_profile` reports whether the
+saved route used the same profile, or is null if its profile hash is unknown.
+Changes in coordinate sampling can appear as changes to the route.
+
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.
