@@ -27,9 +27,16 @@
       <li data-surface="gravel" hidden>Gravel / compacted</li>
       <li data-surface="unpaved" hidden>Other unpaved</li>
     </ul>
+    <section id="street-view-panel" aria-label="Google Street View" tabindex="-1" hidden>
+      <button id="street-view-close" type="button" title="Back to map" aria-label="Back to map">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>
+      </button>
+      <iframe id="street-view-frame" title="Google Street View panorama" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+    </section>
     <div id="map-status">
       <div id="route-message" role="status">Waiting for route …</div>
       <div id="tile-message" role="status" hidden>Some map tiles could not be loaded.</div>
+      <div id="street-view-status" role="status" hidden></div>
     </div>
   </div>
 </main>

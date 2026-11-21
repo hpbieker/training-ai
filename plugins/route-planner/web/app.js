@@ -1,6 +1,7 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 import L from 'leaflet';
 import { enablePointerZoom } from './wheel_zoom.js';
+import { routeHeadingAt } from './route_heading.js';
 const el = (id) => document.getElementById(id);
 const app = new App({ name: 'Route Planner', version: '0.2.14' }, {}, { autoResize: false });
 const header = document.querySelector('header');
@@ -354,10 +355,103 @@ function releaseRouteKey() {
   routeLayers.addTo(map);
   mapWrap.classList.remove('route-hidden');
 }
+const streetViewPanel = el('street-view-panel');
+const streetViewFrame = el('street-view-frame');
+const streetViewClose = el('street-view-close');
+const streetViewStatus = el('street-view-status');
+let streetViewEmbedKey;
+let previousMapView;
+let streetViewMarker;
+
+function setStreetViewStatus(text) {
+  streetViewStatus.textContent = text;
+  streetViewStatus.hidden = !text;
+}
+
+function enterStreetView(latlng) {
+  setStreetViewStatus('');
+  map.closePopup();
+  previousMapView = { center: map.getCenter(), zoom: map.getZoom() };
+  streetViewPanel.hidden = false;
+  map.stop();
+  mapElement.classList.remove('selecting-street-view');
+  mapElement.inert = true;
+  mapWrap.classList.add('street-view-active');
+  map.invalidateSize({ pan: false, animate: false });
+  map.setView(latlng, 16, { animate: false });
+  streetViewMarker = L.marker(latlng, {
+    icon: L.divIcon({ className: 'street-view-position', iconSize: [16, 16] }),
+    interactive: false, keyboard: false, zIndexOffset: 1000,
+  }).addTo(map);
+  streetViewPanel.focus({ preventScroll: true });
+}
+
+function openStreetView(latlng, viewpoint) {
+  if (!streetViewEmbedKey) {
+    setStreetViewStatus('Street View is missing its Google Maps Embed API key.');
+    return;
+  }
+  enterStreetView(latlng);
+  const query = new URLSearchParams({
+    key: streetViewEmbedKey, location: viewpoint,
+  });
+  const heading = routeHeadingAt(map, displayedRoute.segments, latlng);
+  if (Number.isFinite(heading)) query.set('heading', String(heading));
+  streetViewFrame.src = 'https://www.google.com/maps/embed/v1/streetview?' + query;
+}
+
+function closeStreetView() {
+  if (!previousMapView) return;
+  map.closePopup();
+  streetViewPanel.hidden = true;
+  streetViewFrame.removeAttribute('src');
+  streetViewMarker.remove();
+  streetViewMarker = undefined;
+  mapWrap.classList.remove('street-view-active');
+  mapElement.inert = false;
+  map.invalidateSize({ pan: false, animate: false });
+  map.setView(previousMapView.center, previousMapView.zoom, { animate: false });
+  previousMapView = undefined;
+  mapElement.focus({ preventScroll: true });
+}
+
+function isStreetViewShortcut(event) {
+  return displayedRoute && streetViewPanel.hidden && event.shiftKey
+    && !event.altKey && !event.ctrlKey && !event.metaKey;
+}
+
+map.on('click', ({ latlng, originalEvent }) => {
+  if (!isStreetViewShortcut(originalEvent)) return;
+  const viewpoint = `${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`;
+  openStreetView(latlng, viewpoint);
+});
+
+map.on('movestart', () => {
+  if (!streetViewPanel.hidden) return;
+  setStreetViewStatus('');
+});
+
+function updateStreetViewCursor(event) {
+  const selecting = Boolean(isStreetViewShortcut(event) && !event.buttons);
+  mapElement.classList.toggle('selecting-street-view', selecting);
+}
+
+function resetStreetViewCursor() {
+  mapElement.classList.remove('selecting-street-view');
+}
+
+document.addEventListener('keydown', updateStreetViewCursor);
+document.addEventListener('keyup', updateStreetViewCursor);
+mapElement.addEventListener('pointerenter', updateStreetViewCursor);
+mapElement.addEventListener('pointermove', updateStreetViewCursor);
+mapElement.addEventListener('pointerleave', resetStreetViewCursor);
+window.addEventListener('blur', resetStreetViewCursor);
+streetViewClose.addEventListener('click', closeStreetView);
+
 document.addEventListener('keydown', event => {
   if (event.defaultPrevented || event.repeat || event.ctrlKey || event.metaKey || event.altKey
       || event.target?.closest?.('input, textarea, select, [contenteditable]')) return;
-  if (event.key.toLowerCase() === 'm' && displayedRoute) {
+  if (event.key.toLowerCase() === 'm' && displayedRoute && streetViewPanel.hidden) {
     event.preventDefault();
     cancelRouteDrag();
     hidingWithKey = true;
@@ -365,6 +459,7 @@ document.addEventListener('keydown', event => {
     mapWrap.classList.add('route-hidden');
     map.closePopup();
   }
+  if (event.key === 'Escape' && !streetViewPanel.hidden) closeStreetView();
 });
 document.addEventListener('keyup', event => {
   if (event.key.toLowerCase() === 'm') releaseRouteKey();
@@ -489,6 +584,8 @@ async function refreshRoute() {
 app.ontoolresult = (result) => {
   try {
     if (result.isError) throw new Error(result.content?.find(c => c.type === 'text')?.text || 'Could not display the route.');
+    closeStreetView();
+    streetViewEmbedKey = result._meta?.street_view_embed_key;
     render(result.structuredContent?.route);
     refreshFailures = 0;
     routeMessage.hidden = true;

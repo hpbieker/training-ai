@@ -84,8 +84,47 @@ main.fullscreen{height:100dvh}
 .leaflet-dragging #map.leaflet-grab path.leaflet-interactive,
 .leaflet-dragging #map .route-waypoint.leaflet-marker-draggable { cursor: grabbing; }
 
+#map.leaflet-grab.selecting-street-view,
+#map.leaflet-grab.selecting-street-view .leaflet-interactive { cursor: crosshair; }
+#map.leaflet-grab.selecting-street-view path.route-drag-target { cursor: crosshair; }
 #map.leaflet-grab.dragging-route,
 #map.leaflet-grab.dragging-route path.route-drag-target { cursor: grabbing; }
+
+#street-view-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+#street-view-panel:focus { outline: none; }
+
+#street-view-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: #fff;
+  color: #746f69;
+  cursor: pointer;
+}
+
+#street-view-close:hover { background: #f4f2ef; }
+#street-view-close:focus-visible { outline: 2px solid #2656b1; outline-offset: 2px; }
+
+@media (max-width: 480px) {
+  #street-view-close { top: 12px; right: 12px; }
+}
+
+#street-view-frame { display: block; width: 100%; height: 100%; border: 0; }
 
 #map-pane { position: relative; height: 100%; isolation: isolate; }
 #map { position: relative; }
@@ -126,4 +165,35 @@ main.fullscreen{height:100dvh}
 }
 [data-surface="gravel"] { --surface-color: #a85b16; }
 [data-surface="unpaved"] { --surface-color: #6d587b; }
-.route-hidden #surface-legend { display: none; }
+.route-hidden #surface-legend,
+.street-view-active #surface-legend { display: none; }
+
+.street-view-position {
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #245ac3;
+  box-shadow: 0 1px 5px #0008;
+}
+
+.map-wrap.street-view-active #map-pane {
+  position: absolute;
+  z-index: 2;
+  bottom: 24px;
+  left: 24px;
+  width: min(200px, 55%);
+  height: min(150px, 45%);
+  overflow: hidden;
+  border-radius: 8px;
+  box-shadow: 0 1px 5px #0003;
+}
+
+@media (max-width: 480px) {
+  .map-wrap.street-view-active #map-pane { bottom: 16px; left: 12px; }
+}
+
+.street-view-active #fit,
+.street-view-active .leaflet-control-zoom { display: none; }
+.street-view-active .map-credit {
+  font-size: 10px;
+  line-height: 1.4;
+}

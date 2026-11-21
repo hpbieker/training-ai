@@ -97,3 +97,21 @@ requests visible OpenStreetMap tiles and caches them locally for seven
 days. Tile requests reveal the viewed area to the tile provider.
 
 Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.
+
+### Street View
+
+Hold Shift and click the map to open a nearby Google Street View panorama.
+Clicks within 25 m of the route use its direction of travel as the initial
+camera heading. Opening Street View sends the selected point to Google.
+
+To enable Street View, save the browser key in `~/.route_planner_mcp.json`.
+
+```json
+{
+  "google_maps_embed_key": "<google-maps-embed-key>"
+}
+```
+
+Restrict the browser key to the
+[Maps Embed API](https://developers.google.com/maps/documentation/embed/embedding-map)
+and the URL that hosts the Codex map. The map UI uses the key in the Embed URL.

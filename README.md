@@ -112,6 +112,20 @@ browser session for subsequent requests.
 
 [Olympiatoppen plugin guide](plugins/olympiatoppen/skills/olympiatoppen/SKILL.md#session-setup)
 
+### Route Planner
+
+Route Planner plans cycling routes and displays saved or imported routes on a
+map. To enable Street View, set `google_maps_embed_key` in
+`~/.route_planner_mcp.json`.
+
+```json
+{
+  "google_maps_embed_key": "<google-maps-embed-key>"
+}
+```
+
+[Route Planner plugin guide](plugins/route-planner/README.md#street-view)
+
 ### Strava
 
 **Authentication.** Import a signed-in Safari session on your Mac.

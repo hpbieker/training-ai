@@ -32,6 +32,21 @@ UI_URI = "ui://route-planner/show-route-0.2.14.html"
 UI_MIME = "text/html;profile=mcp-app"
 UI_META = {"ui": {"prefersBorder": True, "csp": {"resourceDomains": [], "connectDomains": []}}}
 
+
+def street_view_embed_key() -> str:
+    path = Path.home() / ".route_planner_mcp.json"
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    key = config.get("google_maps_embed_key") if isinstance(config, dict) else None
+    return key.strip() if isinstance(key, str) else ""
+
+
+STREET_VIEW_EMBED_KEY = street_view_embed_key()
+if STREET_VIEW_EMBED_KEY:
+    UI_META["ui"]["csp"]["frameDomains"] = ["https://www.google.com"]
+
 PROFILE = PLUGIN / "assets/profiles/fastbike-road-flow.brf"
 BROUTER_URL = "https://brouter.de/brouter"
 MAX_ROUTING_REPLY = 20 * 1024 * 1024
@@ -390,6 +405,7 @@ def show_route(arguments):
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=json.dumps(summary, ensure_ascii=False))],
         structuredContent={**summary, "route": view},
+        _meta={"street_view_embed_key": STREET_VIEW_EMBED_KEY} if STREET_VIEW_EMBED_KEY else None,
     )
 
 
