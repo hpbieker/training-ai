@@ -131,3 +131,12 @@ uv run --no-project --with-requirements requirements.txt python -B scripts/previ
 
 Open `http://127.0.0.1:8767/`. The arguments file is a JSON object with the
 same inputs as `show_route`.
+
+For local development, set the optional `google_maps_javascript_key` in
+`~/.route_planner_mcp.json` to enable the Maps JavaScript API panorama at the
+preview root. Restrict the browser key to the Maps JavaScript API and the
+loopback preview origin.
+With that key, the minimap follows the reported panorama position and
+camera heading. Shift-click checks for a panorama within 50 m and shows a
+brief hint when none is available. Open `/mcp-test` to test the MCP Apps
+bridge and Maps Embed mode.

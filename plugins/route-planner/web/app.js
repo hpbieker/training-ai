@@ -1,9 +1,29 @@
 import { App } from '@modelcontextprotocol/ext-apps';
 import L from 'leaflet';
 import { enablePointerZoom } from './wheel_zoom.js';
+import { findStreetView, showLiveStreetView } from './street_view.js';
 import { routeHeadingAt } from './route_heading.js';
+
 const el = (id) => document.getElementById(id);
-const app = new App({ name: 'Route Planner', version: '0.2.14' }, {}, { autoResize: false });
+const browserData = el('browser-preview-data');
+const app = browserData ? {
+  async connect() {
+    this.ontoolresult(JSON.parse(browserData.textContent));
+  },
+  getHostContext: () => ({ theme: 'light' }),
+  sendSizeChanged: async () => {},
+  async callServerTool(request) {
+    const response = await fetch('/tool', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Preview tool request failed.');
+    return response.json();
+  },
+  async openLink({ url }) {
+    window.open(url, '_blank', 'noopener');
+    return {};
+  },
+} : new App({ name: 'Route Planner', version: '0.2.14' }, {}, { autoResize: false });
 const header = document.querySelector('header');
 const main = document.querySelector('main');
 const mapWrap = document.querySelector('.map-wrap');
@@ -357,15 +377,31 @@ function releaseRouteKey() {
 }
 const streetViewPanel = el('street-view-panel');
 const streetViewFrame = el('street-view-frame');
+const streetViewLive = el('street-view-live');
 const streetViewClose = el('street-view-close');
 const streetViewStatus = el('street-view-status');
 let streetViewEmbedKey;
+let streetViewJavaScriptKey;
+let streetViewSession;
+let streetViewHint;
+let streetViewHintTimer;
 let previousMapView;
 let streetViewMarker;
 
-function setStreetViewStatus(text) {
+function setStreetViewStatus(text, latlng) {
+  clearTimeout(streetViewHintTimer);
+  streetViewHint?.remove();
+  streetViewHint = undefined;
   streetViewStatus.textContent = text;
   streetViewStatus.hidden = !text;
+  streetViewStatus.classList.toggle('street-view-announcement', Boolean(latlng));
+  if (latlng) {
+    streetViewHint = L.tooltip({
+      className: 'street-view-hint', direction: 'auto', opacity: 1,
+    }).setLatLng(latlng).setContent(text).addTo(map);
+    streetViewHint.getElement().setAttribute('aria-hidden', 'true');
+    streetViewHintTimer = setTimeout(() => setStreetViewStatus(''), 3500);
+  }
 }
 
 function enterStreetView(latlng) {
@@ -380,27 +416,76 @@ function enterStreetView(latlng) {
   map.invalidateSize({ pan: false, animate: false });
   map.setView(latlng, 16, { animate: false });
   streetViewMarker = L.marker(latlng, {
-    icon: L.divIcon({ className: 'street-view-position', iconSize: [16, 16] }),
+    icon: L.divIcon({
+      className: 'street-view-position', iconSize: [16, 16],
+      html: '<span class="street-view-heading" hidden></span>',
+    }),
     interactive: false, keyboard: false, zIndexOffset: 1000,
   }).addTo(map);
   streetViewPanel.focus({ preventScroll: true });
 }
 
-function openStreetView(latlng, viewpoint) {
-  if (!streetViewEmbedKey) {
-    setStreetViewStatus('Street View is missing its Google Maps Embed API key.');
+async function openStreetView(latlng, viewpoint) {
+  if (!streetViewJavaScriptKey) {
+    if (!streetViewEmbedKey) {
+      setStreetViewStatus('Street View is missing its Google Maps Embed API key.');
+      return;
+    }
+    enterStreetView(latlng);
+    streetViewLive.hidden = true;
+    streetViewFrame.hidden = false;
+    const query = new URLSearchParams({
+      key: streetViewEmbedKey, location: viewpoint,
+    });
+    const heading = routeHeadingAt(map, displayedRoute.segments, latlng);
+    if (Number.isFinite(heading)) query.set('heading', String(heading));
+    streetViewFrame.src = 'https://www.google.com/maps/embed/v1/streetview?' + query;
     return;
   }
-  enterStreetView(latlng);
-  const query = new URLSearchParams({
-    key: streetViewEmbedKey, location: viewpoint,
-  });
-  const heading = routeHeadingAt(map, displayedRoute.segments, latlng);
-  if (Number.isFinite(heading)) query.set('heading', String(heading));
-  streetViewFrame.src = 'https://www.google.com/maps/embed/v1/streetview?' + query;
+  streetViewSession?.abort();
+  const session = streetViewSession = new AbortController();
+  setStreetViewStatus('Looking for Street View…');
+  let location;
+  try {
+    location = await findStreetView(streetViewJavaScriptKey, latlng, session.signal);
+  } catch {
+    if (!session.signal.aborted) setStreetViewStatus('Could not check Street View. Try again.');
+    return;
+  }
+  if (session.signal.aborted) return;
+  if (!location) {
+    setStreetViewStatus('No Street View here', latlng);
+    return;
+  }
+
+  const routeHeading = routeHeadingAt(map, displayedRoute.segments, latlng);
+  enterStreetView(location.latLng?.toJSON() ?? latlng);
+  streetViewFrame.hidden = true;
+  streetViewLive.hidden = false;
+  const marker = streetViewMarker.getElement();
+  marker.hidden = true;
+  const arrow = marker.firstElementChild;
+  const onView = (position, heading) => {
+    if (!streetViewMarker.getLatLng().equals(position)) {
+      streetViewMarker.setLatLng(position);
+      map.panTo(position, { animate: false });
+    }
+    marker.hidden = false;
+    arrow.hidden = !Number.isFinite(heading);
+    if (!arrow.hidden) arrow.style.setProperty('--heading', `${heading}deg`);
+  };
+  const onUnavailable = () => {
+    if (session.signal.aborted) return;
+    closeStreetView();
+    setStreetViewStatus('Could not open Street View. Try again.');
+  };
+  showLiveStreetView(streetViewLive, streetViewJavaScriptKey, location.pano, routeHeading, session.signal,
+    onView, onUnavailable).catch(onUnavailable);
 }
 
 function closeStreetView() {
+  streetViewSession?.abort();
+  streetViewSession = undefined;
   if (!previousMapView) return;
   map.closePopup();
   streetViewPanel.hidden = true;
@@ -423,11 +508,12 @@ function isStreetViewShortcut(event) {
 map.on('click', ({ latlng, originalEvent }) => {
   if (!isStreetViewShortcut(originalEvent)) return;
   const viewpoint = `${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`;
-  openStreetView(latlng, viewpoint);
+  void openStreetView(latlng, viewpoint);
 });
 
 map.on('movestart', () => {
   if (!streetViewPanel.hidden) return;
+  streetViewSession?.abort();
   setStreetViewStatus('');
 });
 
@@ -586,6 +672,7 @@ app.ontoolresult = (result) => {
     if (result.isError) throw new Error(result.content?.find(c => c.type === 'text')?.text || 'Could not display the route.');
     closeStreetView();
     streetViewEmbedKey = result._meta?.street_view_embed_key;
+    streetViewJavaScriptKey = browserData ? result._meta?.street_view_javascript_key : undefined;
     render(result.structuredContent?.route);
     refreshFailures = 0;
     routeMessage.hidden = true;
@@ -610,6 +697,8 @@ app.onteardown = async () => {
   cancelRouteDrag();
   clearTimeout(refreshTimer);
   disablePointerZoom();
+  streetViewSession?.abort();
+  clearTimeout(streetViewHintTimer);
   observer.disconnect();
   map.remove();
   return {};

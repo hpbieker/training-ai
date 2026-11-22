@@ -14,7 +14,9 @@ from mcp.client.stdio import stdio_client
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from map_tiles import get_map_tile
-from route_planner_mcp import STREET_VIEW_EMBED_KEY, UPDATE_ROUTE, get_route_view, route_directory, update_route
+from route_planner_mcp import (
+    STREET_VIEW_EMBED_KEY, UPDATE_ROUTE, get_route_view, read_street_view_key, route_directory, update_route,
+)
 
 
 async def prepare(arguments):
@@ -44,12 +46,35 @@ def main():
     opts = parser.parse_args()
     html, frame_src, payload = anyio.run(prepare, json.loads(opts.arguments.read_text()))
 
-    csp = (
-        "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-        f"img-src data:; base-uri 'none'; frame-src {frame_src}"
-    )
-    head = '<meta http-equiv="Content-Security-Policy" content="' + escape(csp, quote=True) + '">'
-    app_html = html.replace('<head>', '<head>' + head, 1).encode()
+    def page(connect_src, extra_head='', live_street_view=False):
+        scripts = "'unsafe-inline'"
+        styles = "'unsafe-inline'"
+        images = "data:"
+        extra_directives = ""
+        if live_street_view:
+            maps_hosts = " https://maps.googleapis.com https://maps.gstatic.com"
+            panorama_hosts = " https://streetviewpixels-pa.googleapis.com https://mapsresources-pa.googleapis.com"
+            scripts += maps_hosts
+            styles += " https://fonts.googleapis.com"
+            images += maps_hosts + panorama_hosts + " https://*.ggpht.com https://*.googleusercontent.com blob:"
+            connect_src += maps_hosts + panorama_hosts + " https://*.ggpht.com blob: data:"
+            extra_directives = "; font-src https://fonts.gstatic.com; worker-src blob:"
+        csp = (
+            f"default-src 'none'; script-src {scripts}; style-src {styles}; img-src {images}; "
+            f"connect-src {connect_src}; base-uri 'none'; frame-src {frame_src}{extra_directives}"
+        )
+        head = '<meta http-equiv="Content-Security-Policy" content="' + escape(csp, quote=True) + '">'
+        return html.replace('<head>', '<head>' + head + extra_head, 1).encode()
+
+    live_key = read_street_view_key('google_maps_javascript_key')
+    browser_page = None
+    if live_key:
+        browser_result = payload['result']
+        browser_result = {**browser_result, '_meta': {'street_view_javascript_key': live_key}}
+        result = json.dumps(browser_result, ensure_ascii=False).replace('<', '\\u003c')
+        browser_data = '<script type="application/json" id="browser-preview-data">' + result + '</script>'
+        browser_page = page("'self'", browser_data, live_street_view=True)
+    app_html = page("'none'")
     data = json.dumps(payload, ensure_ascii=False).replace('<', '\\u003c')
     shell = (ROOT / 'web/test-host.html').read_text().replace('__TEST_DATA__', data)
     script = (ROOT / 'web/dist/test-host.js').read_bytes()
@@ -103,7 +128,9 @@ def main():
             if self.headers.get('Host') != preview_host:
                 self.send_error(403)
                 return
-            if self.path in {'/', '/mcp-test'}:
+            if self.path == '/' and browser_page is not None:
+                content, mime = browser_page, 'text/html; charset=utf-8'
+            elif self.path in {'/', '/mcp-test'}:
                 content, mime = shell.encode(), 'text/html; charset=utf-8'
             elif self.path == '/app':
                 content, mime = app_html, 'text/html; charset=utf-8'

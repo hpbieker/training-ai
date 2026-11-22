@@ -33,17 +33,17 @@ UI_MIME = "text/html;profile=mcp-app"
 UI_META = {"ui": {"prefersBorder": True, "csp": {"resourceDomains": [], "connectDomains": []}}}
 
 
-def street_view_embed_key() -> str:
+def read_street_view_key(field: str) -> str:
     path = Path.home() / ".route_planner_mcp.json"
     try:
         config = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return ""
-    key = config.get("google_maps_embed_key") if isinstance(config, dict) else None
+    key = config.get(field) if isinstance(config, dict) else None
     return key.strip() if isinstance(key, str) else ""
 
 
-STREET_VIEW_EMBED_KEY = street_view_embed_key()
+STREET_VIEW_EMBED_KEY = read_street_view_key("google_maps_embed_key")
 if STREET_VIEW_EMBED_KEY:
     UI_META["ui"]["csp"]["frameDomains"] = ["https://www.google.com"]
 
