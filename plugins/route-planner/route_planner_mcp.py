@@ -83,7 +83,8 @@ TOOL = types.Tool(
         "Calculate and save a cycling route through the supplied waypoints in order. "
         "Route coordinates are sent to an external routing service. "
         "Returns route and waypoint IDs, distance, estimated time and verified points. "
-        "Endpoints may move up to 100 m and intermediate points up to 15 m."
+        "Use export_route when you need a file. Endpoints may move up to 100 m, intermediate "
+        "points up to 15 m. Use update_route to edit it."
     ),
     inputSchema={
         "type": "object",
