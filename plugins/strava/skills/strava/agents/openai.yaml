@@ -4,4 +4,4 @@ interface:
   icon_small: "./assets/strava-small.png"
   icon_large: "./assets/strava.png"
   brand_color: "#FC5200"
-  default_prompt: "Use $strava to inspect, create, or update my Strava activities and routes."
+  default_prompt: "Use $strava to find my latest ride and show its activity details."

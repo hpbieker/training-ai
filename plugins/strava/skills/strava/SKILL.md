@@ -1,6 +1,6 @@
 ---
 name: strava
-description: Read and change Strava activities, tags, visibility, routes, Route Builder state, and authenticated Strava data through local MCP tools and Python helpers using a private Safari session. Use for activity or route inspection and mutation, or when creating a cycling route from a start location, target distance, route shape, direction, surface, elevation, popularity, and optional via points.
+description: Read Strava activities, kudos, gear and media, edit activity metadata and attachments, or build and manage Strava routes from waypoints or a target distance.
 ---
 
 # Strava
@@ -36,8 +36,11 @@ and troubleshooting.
 Read [references/write-safety.md](references/write-safety.md) before writes.
 Use MCP `list_activities`, `get_activity`, `list_gear`, `get_gear`,
 `update_activity`, and `update_activities`. Discover exact IDs through reads;
-`list_activities` accepts inclusive `since` and `until` dates. Writes take a
-`patch` and `confirm=true` for an already authorized action. Omitted fields are
+`list_activities` accepts inclusive `since` and `until` dates. It scans from
+the newest page up to `max_pages` and returns matching activities. For an
+older period, an empty result can mean the scan stopped before reaching it.
+Activity metadata writes take a `patch` and `confirm=true` for an already
+authorized action. Omitted fields are
 preserved. Use `tag: null` to clear a tag or `bike_id: "none"` to clear a bike.
 Visibility, hidden start time, and mute are independent settings. Updates verify
 API metadata plus edit-page-only bike, start-time, and mute state.
@@ -62,8 +65,10 @@ zero kudos. The browser endpoint exposes no pagination metadata; `count` is
 the returned list size rather than a separately verified total.
 
 Use `list_activity_media` with one exact activity ID before downloading or
-uploading. `download_activity_media` requires the returned `media_id` and an
-explicit `destination_dir`; it will not overwrite a local file unless
+changing attachments. For an authorized removal, pass the listed `media_id`,
+`activity_id` and `confirm=true` to `delete_activity_media`. The tool checks
+that the attachment disappeared. `download_activity_media` requires the
+returned `media_id` and an explicit `destination_dir`. An existing file is replaced only when
 `overwrite=true` is explicit.
 
 `upload_activity_media` is an activity write. It accepts one local JPG, PNG,
@@ -81,7 +86,8 @@ avoid attaching it twice.
 
 - Use `list_routes` to discover saved routes and exact IDs. Continue with
   `next_cursor` when `has_more` is true. Use `get_route(save_full=true)` when the
-  task requires complete geometry.
+  task requires complete geometry. Reuse the returned `full_route_file` for
+  inspection and patch preparation.
 - Use `build_route` for explicit waypoint pairs and `strava_build_route.py` for
   candidates from a start point and target distance. Inspect the geometry and
   [route quality](references/route-quality.md) before saving. See the
@@ -93,8 +99,8 @@ avoid attaching it twice.
 - Use `create_route`, `update_route` or `delete_route` only for an explicitly
   requested write with `confirm=true`. Read the
   [write-safety reference](references/write-safety.md#route-creation-and-updates),
-  verify the exact target and its ownership, and verify the saved state after
-  each write. Keep new routes private unless the user asks for public visibility.
+  resolve the exact target, and inspect the verified result. Keep new routes
+  private unless the user asks for public visibility.
 - Treat `write_unverified` as unresolved. Check the route and the verification
   details before retrying. When creation returns no ID, check `list_routes` for
   the proposed route before attempting another create.

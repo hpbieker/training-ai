@@ -9,34 +9,12 @@ Use this skill for Garmin Connect access, Garmin-specific field interpretation,
 sync/freshness behavior, and tightly scoped course writes. The plugin uses Python for Garmin Connect data requests and authentication. Health, activity, and course operations are
 exposed through MCP.
 
-## Network Execution
+## Choose a Garmin tool
 
-Live Garmin Connect reads and writes require external network access. Use the
-Garmin Connect MCP tools for health, activity, and course operations. Offline
-help, local artifact inspection, and cache-only workflows do not require
-external access.
-
-## Choose The Narrowest Command
-
-```bash
-get_health_day(date=<YYYY-MM-DD>)
-list_health_days(until=<YYYY-MM-DD>, days=7, sources=["hrv"])
-list_activities(since=<YYYY-MM-DD>, until=<YYYY-MM-DD>)
-get_activity(activity_id=<garmin-id>)
-get_activity(activity_id=<garmin-id>, save_full=true)
-get_activity_file(activity_id=<garmin-id>, format="fit")
-get_cycling_ftp()
-get_lactate_threshold()
-list_courses()
-get_course(course_id=<course-id>)
-create_course(course=<get-course-result>, name=<new-name>)
-delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
-```
-
-- Use `get_health_day` for normal same-day readiness input. Its stable compact
-  output includes normalized Training Readiness drivers and VO2max context and retains supporting daily
-  source summaries needed for readiness composition and preserves all normalized
-  readiness observations so a historical cutoff can select the correct row.
+- Use `get_health_day` for readiness on one date. It returns daily source
+  summaries, VO2max context and timestamped Training Readiness observations
+  with their drivers. For a historical cutoff, select the observation available
+  at that time. For a future session, use the latest observed day.
   Pass `save_full=true` only when the complete fetched health-day payload is
   needed; it is saved to a private temporary JSON file and kept out of MCP context.
   Compact VO2max preserves Garmin's `cycling` and `generic` categories; it does
@@ -76,6 +54,9 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   `includeFields` to add only selected Garmin training details to each row;
   activity type, duration, distance, source, moving duration, and account or
   profile fields are not part of the default.
+  With filters or sorting, Garmin supplies up to 500 candidates before local
+  filtering. If `source_limited=true` and complete coverage matters, split the
+  date range and check coverage for each part.
   Use `get_activity` for compact Training Effect, load, Stamina and performance
   metrics, including `metrics_summary.start_utc` when available. The compact
   Stamina analysis resolves Garmin's per-activity descriptor indexes, which can
@@ -115,10 +96,9 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   artifact contains Garmin's `external_id`. Creating that artifact belongs to
   the caller.
 
-The MCP tools return structured content and do not own persistence. When a caller
-needs a saved input, persist the normalized MCP result with its timestamps and
-source context. The caller's workflow owns downstream helper commands and input
-contracts; in training-ai, use the training-analysis skill for that integration.
+Reuse the returned temporary file when several consumers need the same export.
+For a durable training-ai input, use the training-analysis workflow and keep
+the timestamps and source context with the saved data.
 
 Add `username` and `password` to `~/.garmin_mcp.json` for automatic login on
 first use. Set `GARMIN_MCP_CONFIG` to use a different config file. Login requires

@@ -1,12 +1,12 @@
 ---
 name: eatmyride
-description: Use when reading or changing EatMyRide activities, food plans, products, fueling, glycogen, energy fields, or carbohydrate intake.
+description: Read EatMyRide activities, recorded fueling and modeled glycogen, compare food plans across rides, and edit food-plan entries or custom products.
 ---
 
 # EatMyRide
 
-Use the EatMyRide MCP tools for source access, field interpretation, and safe
-writes. The plugin is stateless and returns normalized data to callers.
+Use the EatMyRide MCP tools for activity and product lookup, fueling analysis,
+and authorized changes to food plans and custom products.
 
 ## MCP Tools
 
@@ -55,9 +55,10 @@ interpreting food-plan quantities, carbohydrate totals, glycogen,
   food plan can be prepared before an activity or edited afterward.
 - When reporting glycogen state, include both its minimum and final value when
   available.
-- For a previous usable plan, search an inclusive range before the reference
-  date, sort newest first, and inspect candidates until one has food or drink
-  events.
+- For the most recent recorded plan before a reference date, use
+  `get_foodplan_summaries` with a date range and `filter="has_events"`.
+  Choose the latest `start_local` and fetch that plan if item details matter.
+  If a read failed, its activity might have a more recent plan.
 
 ## Writes
 
@@ -67,10 +68,8 @@ Preview first with `confirm: false`; use `confirm: true` only after reviewing
 the exact target and proposed change. Confirmed tools verify remote state before
 reporting success.
 
-If `set_foodplan_products` returns `partial_write`, inspect `failed_stage`,
-`mutation_detected`, `desired_state_present`, and `readback_succeeded`. Do not
-retry when the fresh readback already shows the desired state; retry only after
-resolving an absent or unavailable readback.
+For `partial_write` or `write_failed`, use the food-plan readback guidance in
+the write reference before repeating a save.
 
 For `set_foodplan_products`:
 

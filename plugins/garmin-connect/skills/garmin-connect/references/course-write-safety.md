@@ -13,6 +13,9 @@
   fields, the complete `geoPoints` array, and course-point names survived the
   read-back. If it is false, report the new course ID and mismatches; do not
   automatically delete the created course.
+- If creation ends without a verified result, use the returned course ID or
+  find candidates with `list_courses`. Inspect the candidate with `get_course`
+  before retrying. Each successful create assigns a new ID.
 - Keep session tokens in the private token store and out of tool output.
 
 ## Delete

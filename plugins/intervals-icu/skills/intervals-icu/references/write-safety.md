@@ -5,8 +5,8 @@ Read this file before any Intervals.icu mutation.
 ## General
 
 - Update only fields the user explicitly provided or confirmed.
-- Use the plugin MCP, then fetch the affected activity, wellness day, or
-  date-bounded list and verify the requested state.
+- Use the plugin MCP and inspect the fresh readback it returns. Fetch current
+  state separately when the write outcome is uncertain.
 - Do not overwrite an existing wellness value with a different value without
   explicit confirmation. Use `confirm_overwrite=true` only after that
   confirmation.
@@ -29,8 +29,10 @@ Read this file before any Intervals.icu mutation.
   by a confirmed narrow duplicate rule. Use MCP `delete_activity` with
   `confirm` exactly matching `activity_id`, or MCP `delete_activities` with
   `confirm_activity_ids` exactly matching the ordered `activity_ids`.
-- Verify deletion with both a date-bounded activity list and, when relevant, a
-  direct lookup. A direct lookup can briefly return an id absent from lists.
+- Single deletion verifies both direct and date-list absence. Batch deletion
+  checks all IDs first, deletes them individually and checks the batch again.
+  If a batch stops partway, reconcile the requested IDs and retry only the
+  confirmed survivors. The original batch requires every ID to still exist.
 - Upload FIT, FIT.GZ, GPX, TCX, and similar files with MCP `upload_activity`.
   Intervals.icu can deduplicate uploads or reuse an id after delete/reupload;
   treat the response id as canonical and verify it plus the date-bounded list.
@@ -47,8 +49,9 @@ Read this file before any Intervals.icu mutation.
   fields change. Read first, require `confirm_overwrite=true` for an existing
   different value, and verify with a fresh readback.
 - Record sickness through MCP calendar-event tools with `category=SICK`, not a
-  wellness comment. Call `list_events` first and use the exact event id for an
-  update or deletion. `create_event` and `update_event` accept an inclusive user
+  wellness comment. Use `list_events` to find the exact event ID for an update
+  or deletion. `create_event` reuses an exact existing match. Both create and
+  update accept an inclusive user
   end date but store an exclusive end boundary. Verify every result; deletion
   additionally requires `confirm` to match the event id.
 

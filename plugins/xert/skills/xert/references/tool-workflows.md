@@ -124,8 +124,9 @@ workout rows and coverage of Xert's beta interface.
 - These tools require Xert web credentials, beta access and local Node.js.
   They load the activity embed and run Xert's browser model locally.
   `bundle_sha256` identifies the frontend build used for the calculation.
-  Set `save_series=true` only when full series are needed. The returned
-  private JSON path is intended for local analysis.
+  On `analyze_activity_xert_2` and `calculate_workout_xert_2`, set
+  `save_series=true` when full series are needed. Reuse the returned
+  `series_file` for local analysis. The batch summary returns aggregates.
 - Treat lactate, muscle glycogen, glucose use and fat use as model estimates.
   The Muscle Glucose Uptake Rate (MGUR, stored as `glut4r` in the signature)
   describes modeled uptake by muscle. Use food logs for carbohydrate intake.

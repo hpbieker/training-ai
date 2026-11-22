@@ -1,6 +1,6 @@
 ---
 name: xert
-description: Use when working with Xert live data, Training Load, Recovery Load, Form or freshness, Training Status, Fitness Signature development (TP, HIE, PP), required XSS to build fitness, offline strain calculations, MPA and XSS semantics, Xert 2.0 Beta modeling, activity or workout fields, workout rows, calendar notes, or Xert writes.
+description: Inspect Xert activities, workouts and Planner events, interpret Training Load and Fitness Signature, calculate XSS and MPA, analyze Xert 2.0 Beta glycogen estimates, or edit workouts and calendar entries.
 ---
 
 # Xert
@@ -21,7 +21,7 @@ Load only the references needed for the question.
 | Xert 2.0 Beta activity list, activity analysis or workout simulation | `summarize_activities_xert_2`, `analyze_activity_xert_2` or `calculate_workout_xert_2` | [Xert 2.0 Beta workflow](references/tool-workflows.md#xert-20-beta) |
 | Readiness or today's/planned session dose | `get_training_state(view="summary")` and `get_training_advice(view="summary", at=...)` | [Recovery and advice](references/field-semantics.md#recovery-and-advice) |
 | Known workout XSS or adjustable endurance duration | `calculate_strain` or `solve_segment_duration` | [Strain model](references/strain-model.md); [calculation workflow](references/tool-workflows.md#choose-the-narrowest-command) |
-| Capacity, load development or signature projection | `calculate_workout_capacity` or `project_load_model` | [Load model](references/training-load-model.md); [tool arguments](references/tool-workflows.md#choose-the-narrowest-command) |
+| Capacity, load development or signature projection | `calculate_workout_capacity` for capacity alone, `get_training_state(capacity_for=...)` for state and capacity together, or `project_load_model` for a projection | [Load model](references/training-load-model.md); [tool arguments](references/tool-workflows.md#choose-the-narrowest-command) |
 | Workout lookup or authorized edit | `list_workouts`, then `get_workout` | [Tool details](references/tool-workflows.md); [write safety](references/write-safety.md) |
 | Calendar, Planner events or forecast | `list_notes`, `list_planner_events` or `get_training_forecast` | [Calendar semantics](references/field-semantics.md#forecast-and-calendar); [tool details](references/tool-workflows.md) |
 | Empirical Calculate probe or model validation | Local strain model first; `calculate_workout` for a required live comparison | [Calculate boundaries](references/field-semantics.md#xert-calculate-model); [probe workflow](references/tool-workflows.md#choose-the-narrowest-command); [sources](references/sources.md) |
@@ -92,8 +92,9 @@ terminal output.
 ## Writes And Access
 
 Read [write-safety.md](references/write-safety.md) before calendar-note,
-Planner or workout writes, or live workout calculations. Perform writes only
-when explicitly requested. Read editable workout rows immediately before a
+Planner or workout writes. These MCP tools apply an authorized change on
+invocation. Use `calculate_workout` for an unsaved live calculation.
+Read editable workout rows immediately before a
 structural edit and inspect the verified result and `timeline_summary`.
 Xert repeat-row recovery follows every repetition, including the final one.
 

@@ -18,13 +18,9 @@ Choose the narrowest workflow that answers the request:
 - Latest activity when no date is implied: use MCP `list_activities` over an explicit lookback range and select the newest result.
 - Text or tag search: call MCP `search_activities`; use `list_activities`
   instead when complete date-range coverage is required.
-- Metadata or interval orientation only: call MCP `get_activity` for its compact
-  summary. Set `save_full=true` when the complete source activity is needed by
-  the repo persistence or analysis workflow.
-- Metadata or interval orientation for several known activity ids: call MCP
-  `get_activities` for compact summaries in one source request. Set
-  `save_full=true` to save the complete source activities in one private batch
-  envelope.
+- For known IDs, use `get_activity` or batch them with `get_activities`.
+  Select the needed metadata with `includeFields`. For recorded interval
+  boundaries, IDs and types on one activity, use `get_activity_intervals`.
 - Per-activity best power for explicit durations: call MCP
   `list_activity_power_curves`. Use `secs=[1]` for best one-second average
   power; do not describe it as a raw max-power metadata field.
@@ -45,9 +41,9 @@ Choose the narrowest workflow that answers the request:
 - Aggregate period totals, time in zones, category distribution, load, fitness,
   fatigue, form, and session-RPE: call `get_athlete_summary` with an explicit
   inclusive local-date range. Preserve these as Intervals.icu aggregates.
-- Calendar events: call MCP `list_events` first, then use `create_event`,
-  `update_event`, or `delete_event` on the exact event. Record sickness with
-  `category=SICK`, never as a wellness comment.
+- For sickness, use a calendar event with `category=SICK`. `create_event`
+  checks for an exact match before creating one. Use `list_events` to locate
+  an existing event for an edit or deletion.
 
 ## MCP Tools
 
@@ -68,16 +64,15 @@ Choose the narrowest workflow that answers the request:
 - `get_activity` returns a compact identity summary and accepts `includeFields`
   for selected inline detail fields. With
   `save_full=true`, it also saves the complete source activity in the standard
-  activity envelope to a private temporary JSON file;
+  activity envelope to a private temporary JSON file.
 - `get_activities` follows the same compact-summary/full-file split for a
   non-empty list of unique activity ids and uses Intervals.icu's batch endpoint.
   Its `includeFields` selection affects only inline summaries; saved full files
   remain complete. Both inline summaries and saved full activities are ordered
-  to match the requested `activity_ids`, independent of source response order;
-  `get_activity_streams` saves selected streams to a private temporary file and
-  returns `streams_manifest_file`, binding the activity ID, file path and SHA-256;
-  `get_activity_file` saves the original upload or reconstructed FIT file to a
-  private temporary file.
+  to match the requested `activity_ids`, independent of source response order.
+- `get_activity_streams` saves selected streams and returns
+  `streams_manifest_file`, which binds the activity ID, file path and SHA-256.
+  Use `get_activity_file` when the original upload or a reconstructed FIT is needed.
 - `list_activity_power_curves` returns Intervals.icu's per-activity power-curve
   rows for explicit durations in an inclusive local-date range. Its `secs` and
   each curve's aligned `watts` array preserve source order. It supports the
@@ -131,15 +126,11 @@ Choose the narrowest workflow that answers the request:
   `confirm` to equal the exact event id. Event writes use inclusive user dates,
   convert the stored end boundary to exclusive, and verify the result.
 
-For a completed-activity analysis through MCP, use exactly this sequence:
-
-1. `list_activities` with the requested inclusive local date.
-2. Select and verify the exact activity id.
-3. Call `get_activity(save_full=true)` and `get_activity_streams` for that id.
-   These two calls may run concurrently after identity is resolved. Pass the
-   returned `full_activity_file` and `streams_manifest_file` directly to the repo
-   persistence helper. The helper verifies activity identity and stream checksum
-   before saving; do not assemble an unverified metadata/CSV pair.
+When the training-ai analysis needs a complete activity package, resolve the
+exact ID from the request or a date-bounded `list_activities` lookup. Call
+`get_activity(save_full=true)` and `get_activity_streams` for that ID. These
+calls can run concurrently. Pass `full_activity_file` and `streams_manifest_file`
+directly to the persistence helper so it can verify identity and checksum.
 
 When an activity has an `id` but no URL field, build the web link
 as `https://intervals.icu/activities/<activity-id>`, for example
@@ -170,8 +161,6 @@ as `https://intervals.icu/activities/<activity-id>`, for example
 ## Freshness And Data Handoff
 
 - Fetch live data for same-day analysis, readiness, or post-workout evaluation unless the caller explicitly requests offline/cache-only work.
-- After finding a newly completed activity, fetch that exact id and its streams
-  through MCP, then let the caller persist the package before repo analysis.
 - Keep source payloads and stream artifacts as inputs. Pass normalized or packaged output to the repo helper; do not make repo helpers call Intervals.icu directly.
 - If live access fails, report which source call failed and whether the available local package predates the activity's latest sync. Do not silently present cached data as current.
 - Wellness fields may be copied from connected systems. Preserve their source
@@ -196,7 +185,8 @@ value; do not request it in the compact summary.
 Before renaming, uploading, deleting, changing wellness or sickness, or saving
 subjective fields, read
 [references/write-safety.md](references/write-safety.md). Mutate only what the
-user authorized and verify every write with a fresh readback.
+user authorized. Inspect the tool's verified readback. If verification fails,
+read current state before retrying.
 
 ## Scope And Responsibilities
 

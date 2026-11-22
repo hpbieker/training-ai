@@ -1,19 +1,18 @@
 ---
 name: komoot
-description: List Komoot tours, inspect tour metadata and full route geometry, or download planned tours as FIT using the Komoot MCP and existing Safari login.
+description: Find, inspect and compare Komoot tours, read waypoints and surfaces, export FIT or GPX files, and rename planned tours.
 ---
 
 # Komoot
 
 Use `list_tours` to find the signed-in account's planned tours; it also supports
-recorded tours, all tours, name search, and pagination. Use
+recorded tours, all tours and name search. Follow `next_page` with the same
+filters when more results are needed. Use
 `get_tour_metadata` for one tour's metadata without geometry, or
 `get_tour_route` for the complete coordinates, directions, way types, and
 surface payload. Both read tools accept a numeric tour ID or full tour URL.
 
-Use `get_tour_line` for Komoot's native route geometry. Use
-`download_tour_gpx` for a validated GPX export when moving a route to another
-service or device.
+Use `get_tour_line` for Komoot's native route geometry.
 
 Use `rename_tour` only for an explicitly requested rename. It requires
 `confirm=true`, checks that the tour appears in the signed-in account's
@@ -22,15 +21,11 @@ requires the exact new name. If the result is `komoot_write_unverified`,
 read the tour's current name before retrying; the mutation may already have
 reached Komoot.
 
-Use `download_tour_fit` for a planned tour's FIT export. Sign in to Komoot in
-Safari and keep the local curl-safari service running. Keep cookies out of
-tool arguments and chat. By default, the FIT file is saved in the training-ai
-workspace as `<tour-id>.fit`. Choose an explicit absolute `output_path` when
-another destination is requested. Existing files are preserved unless
-`overwrite=true` is supplied.
-
-This supports planned tours for which Komoot provides a FIT or GPX export. The
-server does not use the website UI or prompt for Komoot credentials.
+Use `download_tour_fit` or `download_tour_gpx` when a file is needed. Pass
+an absolute `output_path` for a specific destination. The default directory
+depends on the plugin installation. Use the returned `file_path` for handoff.
+Set `overwrite=true` only when replacing the existing file is intended.
+Live access uses the signed-in Safari session and local curl-safari service.
 
 ## Planning points, inspection and comparison
 

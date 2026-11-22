@@ -1,33 +1,38 @@
 # Xert Write Safety
 
-Perform writes only when the user explicitly asks. Validate non-persistently
-where possible, require the persistence flag, and read the object back after a
-successful write.
+Call a write tool only for the change the user authorized. Inspect its
+readback. For an uncertain outcome, resolve the current state before retrying.
 
 ## Calendar Notes
 
-Use MCP `set_note` only after explicit confirmation. Read the date back with
-MCP `get_note`; use `list_notes` when range context is relevant.
+Use `get_note` before appending to an existing note. `set_note` replaces the
+whole text for the date and returns the verified text. An empty string clears it.
 
 Calendar notes are separate from forecast and training-plan fields.
 
 ## Planner Events
 
 Planner events are separate from calendar notes. Read them with MCP
-`list_planner_events`. Create and update accept source-native event objects;
-`duration` is seconds. Persisted creates and updates are read back. MCP
+`list_planner_events`. Use `create_planner_event(event=...)` for a new event
+and omit `options.edit_id`. To change an existing event, pass its current
+local `date`, `event_path` and `patch` to `update_planner_event`.
+`duration` is in seconds. Persisted creates and updates are read back. MCP
 `delete_planner_event` reads the target first and verifies that it is absent
 afterward. Use create, update, or delete only when the user explicitly requests
 that write.
 
 ## Workout Updates
 
-Inspect editable workout rows first with MCP `get_workout(view=editable)`.
+Inspect editable rows with `get_workout(workout_path=..., view="editable")`.
 Submit an ordered `rows` array of `update`, `insert`, and `remove` operations to
 MCP `update_workout`; never submit a complete replacement array. Omitted
 metadata and row fields remain unchanged, and the tool verifies the saved
 structure. Use MCP `calculate_workout` only when an empirical Calculate result
 is actually required before the write.
+
+Row positions refer to the structure just read. If a response is lost after an
+insert or removal, read the editable rows again and derive any remaining edits
+from their current positions.
 
 Prefer updating repeat-row fields over expanding repeated blocks into copied
 rows. Keep row fields directly in each operation; do not nest them under
@@ -58,7 +63,7 @@ XSS probes.
 When the second-by-second response is needed, set `include_series=true` and
 keep the verbose series out of chat output.
 
-The series file includes Xert's calculation signature and per-second fields
+The MCP response includes Xert's calculation signature and per-second fields
 such as power, MPA, proximity, XSS rate, cumulative XSS, and difficulty. It is
 still an unsaved calculation. It also includes raw calculation statistics for
 system work and strain analysis.

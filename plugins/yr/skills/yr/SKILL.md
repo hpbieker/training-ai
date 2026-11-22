@@ -1,6 +1,6 @@
 ---
 name: yr
-description: Use for Yr/MET Norway forecasts, Frost historical station observations, station discovery, and weather source semantics.
+description: Get Yr/MET Norway forecasts for a location or route, find Frost stations, and inspect historical weather at selected places and times.
 ---
 
 # Yr
@@ -14,17 +14,17 @@ for an inclusive local-time window.
 
 Use `get_forecasts` when several already-selected points need forecasts at
 different local times, such as estimated arrivals along a route. Provide one
-shared timezone and one to 25 requests with unique IDs. This accommodates a
-six-hour route sampled at the start and every 15 minutes. The caller still owns
-point selection, arrival-time estimates, route meaning, and aggregation.
+shared timezone and one to 25 requests with unique IDs.
 
 Use `get_route_forecasts_summary` for a GeoJSON LineString in longitude/latitude
-order, a local start and a planned duration. It samples five points by default,
+order in `geometry`, plus `timezone`, `start_local` and `duration_minutes`.
+It samples five points by default,
 including start and finish, with a forecast window of 30 minutes on each side
 of passage. Supply `elapsed_seconds` aligned with the coordinates to scale a
-recorded ride's timing. Check coverage and missing hours. Precipitation sums
-the complete source hours overlapping the requested window, including partial
-boundary hours at their full amount.
+recorded ride's timing. Check each point's `error` and `missing_hours`.
+`precipitation_mm_overlapping_hours` sums whole source hours, including
+partial boundary hours. A null value means hourly coverage or rain data is
+missing. Overlapping passage windows can count the same hour more than once.
 
 Pass normalized MCP output to repo helpers through their source-input
 interfaces; helpers must not import or invoke the Yr plugin directly.
@@ -52,9 +52,3 @@ interfaces; helpers must not import or invoke the Yr plugin directly.
 
 Read [references/forecast.md](references/forecast.md) before
 interpreting fields, units, periods, uncertainty, or route limitations.
-
-## Boundaries
-
-- This plugin owns point forecasts, Frost station observations and source semantics.
-- The caller chooses forecast points, combines multi-point results, applies
-  domain context, and owns persistence, plotting, reports, and decisions.

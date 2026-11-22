@@ -7,8 +7,8 @@ material private and verify the saved state afterward.
 
 Use Safari Web Inspector Copy as cURL and `strava_session.py import-curl`
 when the session needs renewal. Store the reusable Cookie header in the mode-0600 cache at
-`~/.strava/session.headers`; never put cookie values in command arguments. Read the
-activity back after each change.
+`~/.strava/session.headers`; never put cookie values in command arguments.
+Use the fresh readback returned by the activity update.
 
 Supported primary tag form values include `Race`, `Workout`, `Commute`,
 `ForACause`, `Recovery`, `WithKid`, and `WithPet`.
@@ -46,8 +46,9 @@ report success only when the uploaded media appears.
 
 ## Route Creation And Updates
 
-Build first and inspect the actual geometry before creation. Build is
-non-persistent; create/update mutates the user's Strava account.
+Build first and inspect the actual geometry before creation. `build_route`
+calculates geometry and can return a local `full_build_file` with
+`save_full=true`. Use `create_route` to save a new route on Strava.
 
 Save exactly one complete path per leg. Multiple native paths may be alternative
 paths: Strava was observed to retain only the first during later processing.
