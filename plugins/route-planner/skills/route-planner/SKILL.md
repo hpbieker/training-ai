@@ -1,46 +1,55 @@
 ---
 name: route-planner
-description: Plan and update cycling routes through ordered waypoints.
+description: Plan, edit and inspect cycling routes, including checking that a route follows requested roads and direction.
 ---
 
 # Route Planner
 
-Use `plan_route` with verified coordinates for the start, end and any stops
-or roads the user wants to pass. Put waypoints in travel order. If the route
-misses a required waypoint, verify the point on the intended road before
-retrying.
+## Plan and verify
 
-Use `update_route` to change a saved route. Pass the route ID and revision from
-the latest successful call, preserve waypoint IDs for points the user wants
-to keep, and check the returned points after updating. If the revision has
-changed, use `get_route` to read the latest route before retrying.
+- Use `plan_route` with verified coordinates in travel order. Preserve explicit
+  stops and choose guide points on the through route for areas the user wants to
+  pass. For a directional loop, place verified guides on each flank between the
+  split and rejoin. Check their order before planning. Clockwise means southbound
+  on the east flank and northbound on the west flank.
+- Use `search_places` for public places and keep personal or confidential details
+  out of queries. Treat place centres as lookup hints and include OpenStreetMap
+  credit when presenting search results.
+- Use `find_road_points` for guides on carriageways. Pass an exact mapped name or
+  reference when known, or omit the road filter and verify the returned road.
+  For a requested cycleway or other cycling-only link, use a point verified
+  against mapped cycling geometry. If a guide misses the route, find another
+  point in the same corridor.
+- Use `inspect_route` to check requested corridors, direction and unintended
+  detours before reporting the result. Confirm road identity from mapped roads
+  and junctions. Use `locate_on_route` to compare kilometre markers, offsets and
+  bearings for separate passages near a point, including suspected retracing.
+  Report any required corridor or direction you could not verify.
 
-Use `export_route` only when the user requests a route file.
+## Edit and compare
 
-Use `inspect_route` to check road types, surfaces or access tags on a saved
-route. Filter by kilometre range or by two waypoint IDs in travel order for a
-specific section. Report gaps where the saved metadata is missing.
+- Read the latest summary with `get_route` and pass its revision as
+  `expected_revision`. Use `move_waypoint` for a move and
+  `add_waypoint.after_waypoint_id` to insert after a waypoint. Omit
+  `after_waypoint_id` to insert after the start. For multiple changes, use an
+  ordered `waypoints` list and preserve retained IDs. After a revision conflict,
+  read the latest summary again before retrying.
+- When the user prefers a parallel carriageway, limit lookups, trials and edits
+  to the requested area unless the preference is route-wide. Use
+  `inspect_route` with a narrow `distance_range` around the middle route
+  kilometre of the path section. Use a returned on-route coordinate as
+  `near` for the road lookup. Place new guides alongside the affected section
+  and in travel order on each affected pass.
+- Use `evaluate_route_change` to compare geometry before saving a reroute or
+  simplifying waypoints. `same_profile: true` with zero changed sections is
+  strong evidence that the route geometry is preserved. If
+  `changed_section_count` exceeds the number of returned spans, the preview is
+  incomplete. Its span endpoints are insufficient to confirm road identity.
+- When the user wants an edit saved, use `update_route`, then inspect the new
+  revision for road identity and side trips. For local edits, check that the
+  surrounding route is preserved. If both directions matter, check each pass
+  independently.
 
-Use `locate_on_route` to find where a saved route passes near a coordinate.
-Compare kilometre markers, offsets and bearings for all passages. Use
-`inspect_route` to check road metadata around a passage when needed.
-
-Use `evaluate_route_change` to compare a proposed edit to the saved route
-before applying it. Check `same_profile` and the changed sections against the
-user's intended roads and travel order.
-
-Use `search_places` for public places named in individual user requests.
-Keep personal or confidential information out of the query. Include the
-OpenStreetMap credit when presenting place search results.
-
-Use `find_road_points` to choose a waypoint on the intended road near a place
-or approximate coordinate. Pass an exact name or road number when known.
-Check the returned road before using the point in the route.
-
-Use `show_route` when the user asks to see a route on a map. Pass its saved
-route ID or the existing route file. Use `get_route` or `inspect_route` to
-answer questions about route data.
-
-On a saved route, the user can drag a waypoint to move it or drag the line
-to insert one. Check the new saved revision with `get_route` when asked to
-verify a map edit.
+Use `show_route` only when the user asks for a map. Label a requested map as a
+draft if a required corridor or direction is unresolved. Use `export_route`
+only when the user asks for a route file.
