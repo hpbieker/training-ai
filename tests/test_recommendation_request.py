@@ -103,7 +103,9 @@ class SavedRequestTests(unittest.TestCase):
         packet = {
             "primary_decision": primary, "planned_at": self.start, "planned_at_source": "planning_context",
             "target_resolution": {},
-            "plan_context": {},
+            "plan_context": {"dated_athlete_constraints": [
+                {"active": False, "quote": "Earlier constraint", "source": "chat-old"},
+            ]},
             "decision_inputs": {
                 "freshness_summary": {"guidance": "review", "stale_inputs": ["xert"]},
                 "wellness": {},
@@ -120,6 +122,7 @@ class SavedRequestTests(unittest.TestCase):
         self.assertIn("current_day_sickness_annotation", rest)
         self.assertIn('"unassessed_direct_signals":["hrv"]', rest)
         self.assertIn("Stale dynamic inputs: xert", rest)
+        self.assertNotIn("Earlier constraint", rest)
 
         primary.update(action="train", provisional=True)
         primary["unexecuted_remainder"] = {"minutes": 30, "disposition": "unscheduled"}

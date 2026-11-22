@@ -23,6 +23,7 @@ if str(XERT_PLUGIN) not in sys.path:
 from recommendation_binding import (bind_workout_calculation, canonical_structure, validate_capacity_values,
                                     validate_capacity_horizon, instant)
 from illness_return import parse_illness_return_json
+import day_constraints
 from vt1_dose import dose_comparisons, prior_quality_sequences
 from plan_state import (
     AEROBIC_ROLES,
@@ -613,6 +614,17 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
     else:
         planned_at = default_planned_at(args.date, now=now)
         planned_at_source = "default"
+    data_cutoff = min(now, planned_at)
+    constraints = day_constraints.for_day(day_constraints.DATABASE, planned_at.date(), data_cutoff.isoformat())
+    if constraints:
+        try:
+            day_constraints.check_candidate(
+                constraints, args.plan_selection_json["intensity_goal"],
+                (args.quality_workout_json or {}).get("status") == "planned",
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        plan_context["dated_athlete_constraints"] = constraints
     split_preference = planning_context.get("split_preference")
     if split_preference is not None:
         available_windows = apply_split_preference_to_windows(
@@ -713,7 +725,6 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
         illness_return_assessment=args.illness_return_json,
     )
     annotate_hrv_decision_context(readiness_packet)
-    data_cutoff = min(now, planned_at)
     history_context = training_history_context(
         args.date,
         cutoff=data_cutoff,
@@ -778,6 +789,10 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
             indoor_gym_available and not indoor_available and not outdoor_available
         ),
     )
+    try:
+        day_constraints.check_candidate(constraints, intensity_decision["selected_domain"])
+    except ValueError as exc:
+        parser.error(str(exc))
     apply_readiness_domain_target_cap(
         target_resolution,
         intensity_decision=intensity_decision,
@@ -7565,6 +7580,9 @@ def format_compact_summary(packet: dict[str, Any], packet_path: Path) -> str:
     lines.extend(aerobic_finish_lines(primary.get("aerobic_finish"), include_spacing_details=False))
     lines.extend(line.strip() for line in calendar_summary_lines(time_context["calendar"]))
     lines.extend(line.strip() for line in freshness_summary_lines(decision["freshness_summary"]))
+    for item in plan.get("dated_athlete_constraints", []):
+        if item["active"]:
+            lines.append(f"ACTIVE ATHLETE INSTRUCTION: {item['quote']} ({item['source']})")
 
     sections = [
         ("SEGMENT", segment, ("name", "type", "duration_seconds", "power", "end_power"))
@@ -7674,6 +7692,8 @@ def format_summary(packet: dict[str, Any]) -> str:
         "WORKOUT GOAL: {goal}".format(
             goal=intensity_decision.get("requested_goal") or "missing",
         ),
+        *("DATED ATHLETE INSTRUCTION: " + json.dumps(item, ensure_ascii=False)
+          for item in plan_context.get("dated_athlete_constraints", [])),
         "PLAN ROLE: {role}; next quality={quality}; goal matches state={matches}".format(
             role=plan_context.get("next_role") or "missing",
             quality=plan_context.get("next_quality_role") or "missing",

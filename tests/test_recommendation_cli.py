@@ -25,6 +25,37 @@ MOVED_WORKOUT = "2026-11-18T12:00:00+01:00"
 
 
 class RecommendationCLITests(unittest.TestCase):
+    def test_other_chat_constraint_survives_fresh_readiness_until_athlete_reopens_quality(self):
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            command = [sys.executable, "-B", str(ROOT / "scripts/day_constraints.py")]
+            def run(*args, check=True):
+                return subprocess.run([*command, *args], cwd=root, text=True,
+                                      capture_output=True, check=check)
+
+            key = run("record", "--date", "2026-11-17", "--quote", "No quality tomorrow.",
+                      "--source", "chat-one/message-1", "--reported-at", "2026-11-16T17:00:00+01:00",
+                      "--exclude", "quality").stdout.strip()
+            unsupported = run("release", "--id", key, "--kind", "condition", "--evidence", "New HRV is normal",
+                              "--source", "garmin-sync", "--reported-at", "2026-11-17T09:00:00+01:00", check=False)
+            self.assertNotEqual(unsupported.returncode, 0)
+            blocked, packet = self.run_cli(root, NEXT_WORKOUT, False)
+            self.assertIn("No quality tomorrow.", blocked.stderr)
+            self.assertIsNone(packet)
+            self.assertEqual(json.loads(run("show", "--date", "2026-11-18").stdout), [])
+
+            run("release", "--id", key, "--kind", "athlete", "--evidence", "The plan changed. I can do VT2 today.",
+                "--source", "chat-two/message-2", "--reported-at", "2026-11-17T09:45:00+01:00")
+            old, = json.loads(run("show", "--date", "2026-11-17", "--as-of", "2026-11-17T09:44:59+01:00").stdout)
+            self.assertTrue(old["active"])
+            self.assertNotIn("release", old)
+            accepted, packet = self.run_cli(root, NEXT_WORKOUT, False)
+            self.assertEqual(accepted.returncode, 0, accepted.stderr)
+            entry, = packet["plan_context"]["dated_athlete_constraints"]
+            self.assertFalse(entry["active"])
+            self.assertEqual(entry["release"]["source"], "chat-two/message-2")
+            self.assertEqual(packet["primary_decision"]["selected_intensity"], "vt2")
+
     def test_quality_workout(self):
         self.check_workout(next_workout=NEXT_WORKOUT)
 
@@ -130,7 +161,8 @@ class RecommendationCLITests(unittest.TestCase):
 
     def run_cli(self, workdir, next_workout, refresh_capacity, *, low_hours=None,
                 vt1_watts=None, choice=None, solver_mode=None, history=False, review=None):
-        (workdir / "scripts").symlink_to(ROOT / "scripts", target_is_directory=True)
+        if not (workdir / "scripts").exists():
+            (workdir / "scripts").symlink_to(ROOT / "scripts", target_is_directory=True)
         (workdir / "sitecustomize.py").write_text(
             "import socket\n"
             "def denied(*args, **kwargs):\n"
