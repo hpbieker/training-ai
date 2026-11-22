@@ -1,12 +1,12 @@
 {
   "name": "route-planner",
   "version": "0.2.14",
-  "description": "Plan and edit cycling routes, view saved routes or imported rides on an interactive map, and export GPX.",
+  "description": "Plan and edit cycling routes, view saved routes and imported rides on an interactive map, and export routes as GPX.",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Route Planner",
-    "shortDescription": "Plan cycling routes and view saved routes or imported rides.",
+    "shortDescription": "Plan, edit, and view cycling routes.",
     "category": "Health & Fitness",
     "composerIcon": "./assets/route-planner.png",
     "logo": "./assets/route-planner.png"
