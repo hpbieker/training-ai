@@ -8,7 +8,12 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from run_training_request import build_arguments
-from recommend_training import calendar_context_with_slack, parse_calendar_context_payload, parse_timezone
+from recommend_training import (
+    calendar_context_with_slack,
+    format_compact_summary,
+    parse_calendar_context_payload,
+    parse_timezone,
+)
 
 
 class SavedRequestTests(unittest.TestCase):
@@ -27,10 +32,14 @@ class SavedRequestTests(unittest.TestCase):
         }
         (self.root / "advice.json").write_text(json.dumps({"advice": {"at": self.start}}))
 
-    def arguments(self):
+    def arguments(self, **options):
         path = self.root / "request.json"
         path.write_text(json.dumps(self.input))
-        return build_arguments(path, self.now)
+        return build_arguments(path, self.now, **options)
+
+    def test_compact_default_and_detailed_opt_in(self):
+        self.assertIn("--compact-summary", self.arguments())
+        self.assertIn("--summary", self.arguments(details=True))
 
     def test_reuse_keeps_source_and_updates_decision_clock(self):
         args = self.arguments()
@@ -82,3 +91,47 @@ class SavedRequestTests(unittest.TestCase):
         self.now = datetime.fromisoformat("2026-11-20T10:30:00+01:00")
         with self.assertRaisesRegex(ValueError, "setup window"):
             self.arguments()
+
+    def test_compact_summary_surfaces_blockers_and_withholds_unusable_timeline(self):
+        primary = {
+            "action": "rest", "provisional": False,
+            "intensity_decision": {"requested_goal": "vt2", "readiness_ceiling": "readiness_unknown"},
+            "readiness_evidence": {"direct_signal_coverage": "partial", "unassessed_direct_signals": ["hrv"]},
+            "executable_now": {"minutes": 0, "intensity": "none", "timeline": {"status": "unavailable"}},
+            "unexecuted_remainder": {"minutes": 0, "disposition": "none"},
+        }
+        packet = {
+            "primary_decision": primary, "planned_at": self.start, "planned_at_source": "planning_context",
+            "target_resolution": {},
+            "plan_context": {},
+            "decision_inputs": {
+                "freshness_summary": {"guidance": "review", "stale_inputs": ["xert"]},
+                "wellness": {},
+            },
+            "llm_context": {
+                "health_constraints": {"no_training_today": True, "reason": "current_day_sickness_annotation"},
+                "time_context": {"calendar": {}},
+            },
+        }
+        packet_path = self.root / "recommendation-packet.json"
+        rest = format_compact_summary(packet, packet_path)
+        self.assertIn(f"PACKET: {packet_path}", rest)
+        self.assertIn("PRIMARY DECISION: REST", rest)
+        self.assertIn("current_day_sickness_annotation", rest)
+        self.assertIn('"unassessed_direct_signals":["hrv"]', rest)
+        self.assertIn("Stale dynamic inputs: xert", rest)
+
+        primary.update(action="train", provisional=True)
+        primary["unexecuted_remainder"] = {"minutes": 30, "disposition": "unscheduled"}
+        primary["executable_now"] = {
+            "minutes": 50, "intensity": "vt2",
+            "segments": [{"role": "vt2", "duration_minutes": 80, "fits_executable_window": False,
+                          "available_minutes": 50}],
+            "timeline": {"status": "requires_session_specific_calculation"},
+        }
+        packet["llm_context"]["health_constraints"] = {}
+        shortened = format_compact_summary(packet, packet_path)
+        self.assertIn("PROVISIONAL SESSION: 80 min VT2 complete workout required", shortened)
+        self.assertIn("TIMELINE: requires_session_specific_calculation", shortened)
+        self.assertIn("REMAINDER: 30 min; unscheduled; do not schedule automatically", shortened)
+        self.assertNotIn("SEGMENT:", shortened)

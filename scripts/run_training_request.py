@@ -12,7 +12,7 @@ JSON_INPUTS = ("plan_selection", "training_target", "quality_workout", "enduranc
                "illness_return", "route_options")
 
 
-def build_arguments(path, now):
+def build_arguments(path, now, *, details=False):
     request = json.loads(path.read_text())
     if not isinstance(request, dict):
         raise ValueError("The request must be a JSON object")
@@ -63,7 +63,8 @@ def build_arguments(path, now):
         if instant(advice.get("at"), "Xert planned advice at") != start:
             raise ValueError("Get Xert advice for the updated workout start")
     args = ["--planning-context-json", json.dumps(planning), "--source-overrides-json", json.dumps(paths),
-            "--refresh-json", '{"mode":"none"}', "--output-dir", str(path.parent), "--summary"]
+            "--refresh-json", '{"mode":"none"}', "--output-dir", str(path.parent),
+            "--summary" if details else "--compact-summary"]
     for field in JSON_INPUTS:
         if field in request:
             args.extend(["--" + field.replace("_", "-") + "-json", json.dumps(request[field])])
@@ -74,10 +75,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("request", type=Path)
     parser.add_argument("--as-of", help="Offset-aware decision time for a historical replay (default: now)")
+    parser.add_argument("--details", action="store_true", help="Print the detailed recommendation report.")
     args = parser.parse_args()
     try:
         now = instant(args.as_of, "as_of") if args.as_of else datetime.now(timezone.utc)
-        arguments = build_arguments(args.request.resolve(), now)
+        arguments = build_arguments(args.request.resolve(), now, details=args.details)
         recommend_training.main(arguments, require_finish_review=True)
     except (OSError, ValueError, KeyError, TypeError, argparse.ArgumentTypeError) as exc:
         parser.error(str(exc))

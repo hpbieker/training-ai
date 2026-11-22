@@ -494,10 +494,16 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
             "map_scope (top, all, or none)."
         ),
     )
-    parser.add_argument(
+    output_format = parser.add_mutually_exclusive_group()
+    output_format.add_argument(
         "--summary",
         action="store_true",
-        help="Print a compact chat-oriented summary instead of the full JSON packet.",
+        help="Print the detailed recommendation report instead of the full JSON packet.",
+    )
+    output_format.add_argument(
+        "--compact-summary",
+        action="store_true",
+        help="Print the recommendation and key evidence with the full packet path.",
     )
     args = parser.parse_args(argv)
     try:
@@ -1250,7 +1256,9 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
         json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    if args.summary:
+    if args.compact_summary:
+        print(format_compact_summary(packet, packet_path))
+    elif args.summary:
         print(format_summary(packet))
     else:
         print(json.dumps(packet, ensure_ascii=False, indent=2, sort_keys=True))
@@ -7478,7 +7486,9 @@ def quality_history_summary_lines(history: dict[str, Any], goal: str | None) -> 
     return lines
 
 
-def aerobic_finish_lines(review: dict[str, Any] | None) -> list[str]:
+def aerobic_finish_lines(
+    review: dict[str, Any] | None, *, include_spacing_details: bool = True,
+) -> list[str]:
     if not review:
         return []
     if review["decision"] == "finish":
@@ -7517,12 +7527,85 @@ def aerobic_finish_lines(review: dict[str, Any] | None) -> list[str]:
         lines.append(f"WHY STOP SHORT OF +{review['alternative_extra_minutes']:g} MIN ON GOOD LEGS: "
                      + review["good_response_limit"])
     if review.get("spacing_comparison"):
-        lines.append("SPACING-DAY DOSES: " + json.dumps(review["spacing_comparison"], ensure_ascii=False))
+        if include_spacing_details:
+            lines.append("SPACING-DAY DOSES: " + json.dumps(review["spacing_comparison"], ensure_ascii=False))
         if review.get("marginal_benefit"):
             lines.append("BENEFIT OF THE LAST MINUTES: " + review["marginal_benefit"])
         if review.get("limit_basis"):
             lines.append("BASIS FOR SHORTER OFFER: " + review["limit_basis"])
     return lines
+
+
+def format_compact_summary(packet: dict[str, Any], packet_path: Path) -> str:
+    """Summarize the decision without repeating the diagnostic packet."""
+    primary = packet["primary_decision"]
+    intensity = primary["intensity_decision"]
+    decision = packet["decision_inputs"]
+    context = packet["llm_context"]
+    target = packet["target_resolution"]
+    time_context = context["time_context"]
+    executable = primary["executable_now"]
+    timeline = executable["timeline"]
+    remainder = primary["unexecuted_remainder"]
+    plan = packet["plan_context"]
+    split = target.get("split") or {}
+    lines = [
+        f"PACKET: {packet_path}",
+        f"PRIMARY DECISION: {primary['action'].upper()}",
+        f"PLANNED TIME: {packet['planned_at']} ({packet['planned_at_source']})",
+        ("PROVISIONAL SESSION: " if primary["provisional"] else "DO NOW: ")
+        + executable_now_line(primary),
+        f"WORKOUT GOAL: {intensity['requested_goal']}",
+        f"READINESS CEILING: {intensity['readiness_ceiling']} (model screening)",
+        f"TIMELINE: {timeline['status']}",
+    ]
+    if remainder["minutes"]:
+        lines.append(f"REMAINDER: {remainder['minutes']:g} min; {remainder['disposition']}; "
+                     "do not schedule automatically")
+    lines.extend(aerobic_finish_lines(primary.get("aerobic_finish"), include_spacing_details=False))
+    lines.extend(line.strip() for line in calendar_summary_lines(time_context["calendar"]))
+    lines.extend(line.strip() for line in freshness_summary_lines(decision["freshness_summary"]))
+
+    sections = [
+        ("SEGMENT", segment, ("name", "type", "duration_seconds", "power", "end_power"))
+        for segment in timeline.get("segments", [])
+    ]
+    if primary["action"] == "train":
+        sections.extend(
+            ("SESSION WINDOW", session, ("start", "end", "duration_minutes"))
+            for session in split.get("sessions", [])
+        )
+    sections.extend([
+        ("HEALTH", context["health_constraints"], (
+            "no_training_today", "form_check_needed", "reason", "return_to_training_active",
+            "illness_return_phase", "return_to_training_guidance", "followup_question",
+        )),
+        ("DIRECT EVIDENCE", primary["readiness_evidence"], (
+            "readiness_status", "direct_signal_coverage", "unassessed_direct_signals",
+            "observed_limitations", "observed_cautions", "review_required",
+            "intervals_soreness_value",
+        )),
+        ("WELLNESS", decision["wellness"], (
+            "sleep_time_seconds", "sleep_score", "hrv_last_night_avg", "hrv_weekly_avg",
+            "hrv_trend_status", "resting_hr", "resting_hr_7day",
+        )),
+        ("DOSE", primary.get("coaching_selection") or {}, ("minutes", "load", "reason", "evidence")),
+        ("PLAN", plan, ("next_role", "next_quality_role", "mismatch_reason")),
+        ("XERT ADVICE", target, ("xert_recommended_total_xss", "xert_dose_basis")),
+        ("XERT CAPACITY", target.get("recovery_protection_capacity") or {}, (
+            "status", "fresh_at", "review_required", "exceeded_systems", "decision",
+        )),
+        ("CALENDAR FIT", split, (
+            "fits_current_window", "available_minutes_from_planned", "guidance",
+        )),
+    ])
+    for label, values, keys in sections:
+        selected = {key: values[key] for key in keys if values.get(key) is not None}
+        if selected:
+            lines.append(f"{label}: " + json.dumps(selected, ensure_ascii=False, separators=(",", ":")))
+    if primary["action"] == "unavailable":
+        lines.extend(f"UNAVAILABLE {mode}: {reason}" for mode, reason in packet["unavailable_reasons"].items())
+    return "\n".join(lines)
 
 
 def format_summary(packet: dict[str, Any]) -> str:
