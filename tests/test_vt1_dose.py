@@ -17,6 +17,47 @@ def event(id_, day, role):
 
 
 class DoseComparisonsTests(unittest.TestCase):
+    def test_consecutive_aerobic_days_match_duration_before_looking_at_outcome(self):
+        cutoff = datetime.fromisoformat("2026-11-20T18:00:00+01:00")
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            events = []
+
+            def add(day, role, minutes, watts):
+                key = f"ride{len(events)}"
+                entry = event(key, 1, role)
+                entry["started_at"] = f"2026-{day}T10:00:00+01:00"
+                events.append(entry)
+                folder = root / key
+                folder.mkdir()
+                metadata = {"moving_time": minutes * 60, "elapsed_time": minutes * 60,
+                            "icu_intervals": [{"type": "WORK", "elapsed_time": 360, "average_watts": watts}]}
+                (folder / "activity.json").write_text(json.dumps(metadata))
+                return entry
+
+            for month, first_day, duration in [(9, 3, 95), (10, 4, 100), (11, 1, 60)]:
+                add(f"{month:02}-{first_day:02}", "medium_aerobic", duration, 200)
+                add(f"{month:02}-{first_day+1:02}", "easy_aerobic", 75, 200)
+                attempt = add(f"{month:02}-{first_day+2:02}", "vt2", 45, 280)
+                if month == 10:
+                    attempt["quality_role_fulfilled"] = False
+
+            add("11-10", "easy_aerobic", 100, 200)
+            add("11-10", "vo2max", 30, 340)  # Mixed day cannot count as an aerobic day.
+            add("11-11", "easy_aerobic", 75, 200)
+            add("11-12", "vt2", 60, 280)
+            add("11-19", "easy_aerobic", 110, 200)
+            add("11-20", "easy_aerobic", 100, 200)
+            add("11-21", "vt2", 80, 280)  # No observed outcome at the cutoff.
+            history = prior_quality_sequences({"activity_events": events}, cutoff, root, aerobic_references=True)
+        pairs = history["consecutive_aerobic_references"]["vt2"]
+        self.assertEqual([p["aerobic_days"][0]["moving_minutes"] for p in pairs], [100, 95])
+        self.assertEqual([p["next_quality_attempt"]["activity_id"] for p in pairs], ["ride5", "ride2"])
+        self.assertFalse(pairs[0]["next_quality_attempt"]["role_fulfilled"])
+        self.assertEqual(pairs[0]["next_quality_attempt"]["work_intervals"],
+                         [{"seconds": 360, "average_watts": 280}])
+        self.assertEqual(pairs[0]["finish_to_next_quality_minutes"], 24 * 60 - 75)
+
     def test_measures_spacing_rides_from_recent_and_older_followup(self):
         day_after = {"activity_id": "recent", "completed_role": "easy_aerobic", "start": "2026-11-13"}
         older = {"activity_id": "older", "role": "easy_aerobic", "started_at": "2026-09-15T12:00:00+02:00"}

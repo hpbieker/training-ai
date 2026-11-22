@@ -2,6 +2,7 @@
 
 import argparse
 import json
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -160,6 +161,86 @@ def long_finish_references(events, directories, roles, cutoff):
     return result
 
 
+def consecutive_aerobic_references(events, directories, latest, cutoff):
+    """Find reviewed two-day aerobic sequences followed by a quality attempt.
+
+    Match the first day's duration to the latest ride. Select before inspecting
+    the result of the quality attempt, so abbreviated sets remain eligible.
+    """
+    if not latest or latest["completed_role"] not in AEROBIC_ROLES or not latest["moving_minutes"]:
+        return {}
+
+    by_day = defaultdict(list)
+    for event in events:
+        start = parse_datetime(event["started_at"])
+        if start >= cutoff:
+            continue
+        key = event["activity_id"]
+        folder = directories.get(key) or directories.get(key.removeprefix("i"))
+        meta = load_activity_metadata(folder) if folder else {}
+        local = event.get("start_date_local") or meta.get("start_date_local")
+        day = parse_iso_datetime(local).date() if local else start.astimezone(cutoff.tzinfo).date()
+        by_day[day].append((event, meta, folder))
+
+    if not by_day:
+        return {}
+    last_day = max(by_day)
+    last = by_day[last_day]
+    if (len(last) != 1 or last[0][0]["activity_id"] != latest["activity_id"]
+            or last[0][1].get("icu_ignore_time") or cutoff.date() - last_day > timedelta(days=1)):
+        return {}
+
+    candidates = defaultdict(list)
+    for day, entries in by_day.items():
+        quality, meta, folder = entries[0]
+        role = quality.get("planned_role")
+        if role not in QUALITY_ROLES:
+            role = quality.get("completed_role")
+        if role not in QUALITY_ROLES or not folder:
+            continue
+        elapsed = numeric(meta, "elapsed_time")
+        start = parse_datetime(quality["started_at"])
+        if not elapsed or start + timedelta(seconds=elapsed) > cutoff:
+            continue
+        first = by_day.get(day - timedelta(days=2), [])
+        second = by_day.get(day - timedelta(days=1), [])
+        if len(first) != 1 or len(second) != 1:
+            continue
+        lead_in = [first[0], second[0]]
+        if any(e["completed_role"] not in AEROBIC_ROLES or not numeric(m, "moving_time")
+               or m.get("icu_ignore_time") for e, m, _ in lead_in):
+            continue
+        difference = abs(numeric(first[0][1], "moving_time") / 60 - latest["moving_minutes"])
+        candidates[role].append((difference, day, lead_in, entries[0]))
+
+    result = {}
+    for role, matches in candidates.items():
+        result[role] = []
+        for _, _, lead_in, (quality, meta, folder) in sorted(
+                matches, key=lambda match: (match[0], -match[1].toordinal()))[:2]:
+            rides = []
+            for event, ride, ride_dir in lead_in:
+                row = {"activity_id": event["activity_id"], "start": event["started_at"],
+                       "moving_minutes": round(numeric(ride, "moving_time") / 60, 1)}
+                if ride.get("trainer") or ride.get("type") == "VirtualRide":
+                    row["longest_detected_steady_power_block"] = longest_indoor_power_block(ride_dir, ride)
+                rides.append(row)
+            outcome = {"activity_id": quality["activity_id"], "start": quality["started_at"],
+                       "completed_role": quality["completed_role"], "work_intervals": recorded_work_intervals(meta),
+                       "role_fulfilled": quality.get("quality_role_fulfilled"),
+                       **saved_context(folder, cutoff)}
+            sequence = {"aerobic_days": rides, "next_quality_attempt": outcome}
+            previous, ride, _ = lead_in[-1]
+            elapsed = numeric(ride, "elapsed_time")
+            if elapsed:
+                finish = parse_datetime(previous["started_at"]) + timedelta(seconds=elapsed)
+                gap = (parse_datetime(quality["started_at"]) - finish).total_seconds()
+                if gap >= 0:
+                    sequence["finish_to_next_quality_minutes"] = round(gap / 60, 1)
+            result[role].append(sequence)
+    return result
+
+
 def prior_quality_sequences(state, cutoff, activities_dir=DEFAULT_ARTIFACTS_DIR, *, aerobic_references=False):
     """Show the lead-in and observed follow-up of recent reviewed quality attempts."""
     directories = {p.parent.name.split("_", 1)[-1]: p.parent
@@ -250,6 +331,8 @@ def prior_quality_sequences(state, cutoff, activities_dir=DEFAULT_ARTIFACTS_DIR,
     history["current_day_athlete_answers"] = sorted(current_answers, key=lambda a: a["reported_at"])
     if aerobic_references:
         history["measured_indoor_aerobic_references"] = measured_aerobic_references(history, directories)
+        history["consecutive_aerobic_references"] = consecutive_aerobic_references(
+            events, directories, next(iter(recent), None), cutoff)
     return history
 
 
@@ -365,7 +448,8 @@ def main():
     mode.add_argument("--quality-sequences", action="store_true",
                       help="Show quality attempts, their lead-in, following day and next quality session")
     parser.add_argument("--aerobic-references", action="store_true",
-                        help="Include measured steady blocks from comparable indoor rides with --quality-sequences")
+                        help="Include measured steady blocks and older pairs of single aerobic days "
+                             "before a quality attempt, matched on the first ride's duration")
     parser.add_argument("--as-of", required=True, help="Decision cutoff, with UTC offset")
     parser.add_argument("--activity-id", help="Also include this older same-role comparison when eligible")
     parser.add_argument("--watts", type=float, help="Use today's chosen working power")
