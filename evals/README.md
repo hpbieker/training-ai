@@ -2,6 +2,8 @@
 
 The shared repository includes synthetic scenarios for Garmin Connect,
 Intervals.icu, Xert and [daily recommendations](training-analysis/recommendations/README.md).
+The [Route Planner evaluation](route-planner/README.md) checks a saved route
+against a public-road corridor on Hurum.
 
 Completed-session evaluations use local activity artifacts under
 `outputs/intervals/activities/`. Keep their inputs, reviews and results local.
