@@ -81,6 +81,59 @@ selected inputs cannot be recovered, rebuild the missing context using the
 normal workflow. For an update, lead with what changed and its consequence.
 A brief confirmation suffices when the previous prescription still fits.
 
+### Read training history
+
+Save the full history in the private candidate directory. Inspect recent
+activities, today's athlete reports, and the quality role under review.
+For an aerobic dose decision, add `--aerobic-references` and inspect the
+measured indoor blocks. The example assumes `candidate_dir` is the private
+candidate directory, `decision_at` is the decision cutoff with UTC offset,
+and `quality_role` is the quality role under review, such as `vt2`.
+
+```bash
+history_path="$candidate_dir/training-history.json"
+python3 -B scripts/vt1_dose.py --quality-sequences --aerobic-references \
+  --as-of "$decision_at" > "$history_path" &&
+jq --arg role "$quality_role" '{
+  athlete_reports: [.current_day_athlete_answers[] | {context, answer}],
+  recent_rides: [.latest_activities[] |
+    {activity_id, start, completed_role, moving_minutes, icu_average_watts, session_rpe}],
+  quality_attempts: ([.quality_sequences[] | select(.role == $role) |
+    {attempt: (.attempt | {activity_id, start, session_rpe}),
+     full_workout_completed, work_intervals}] | .[:2]),
+  indoor_aerobic_references: (
+    (.measured_indoor_aerobic_references // {}) | to_entries |
+    sort_by(.value.date) | reverse | .[:3] |
+    map({activity_id: .key} + (.value |
+      {date, moving_minutes, longest_detected_steady_power_block, finish_to_next_quality_minutes}))
+  )
+}' "$history_path"
+```
+
+Use this as a first look. Query a relevant older comparison by activity ID or
+inspect the surrounding sequence, feedback, and interval details from the
+same file when they could change the dose.
+
+### Collect source inputs
+
+Read the reference sections needed for the decision and look up each MCP
+schema by its exact tool name. When reading local code to resolve an
+ambiguity, find the relevant symbol and read the smallest useful section.
+Keep complete source responses available for the helper and print only
+observations needed for the current decision.
+
+Collect independent sources together before running the saved request.
+Include Xert's `list_activity_summaries` in the first batch alongside the
+other Xert, Garmin, Intervals.icu, calendar and weather reads needed for the
+decision. Request the inclusive local date range from the workout date
+minus 21 days through the workout date, with
+`includeFields=["xss", "duration_s"]` and no `limit`. Check
+`period_complete` before using the response for full-window load or elapsed
+time. Save the unchanged `structuredContent` to a private JSON file and set
+`path` and `read_at` under `sources.xert_activity_loads` in the request.
+Planned Xert advice depends on the selected start, so fetch it once that
+start is known.
+
 ### Save and run a candidate
 
 In a unique private candidate directory, write `request.json` before running
@@ -797,9 +850,11 @@ Before asking, identify the two plausible answers and which would change
 working minutes, repetitions, intensity or the decision to train. Ask one
 specific question only if that difference matters and saved evidence does not
 already answer it. Ask about what the athlete can observe now, such as how
-their legs feel compared with a usual quality day. Use the reply in the
-decision. Reserve warm-up and interval checks for responses that emerge while
-riding. If a reply cannot be obtained before the recommendation, give the
+their legs feel compared with a usual quality day. Use the built-in question
+dialog when available. Offer short answer choices when they fit the question
+and allow a free-text reply. Use the reply in the decision. Reserve warm-up and
+interval checks for responses that emerge while riding. If a reply cannot be
+obtained before the recommendation, give the
 provisional prescription and what would change it. Save a received answer using the
 activity feedback workflow in SKILL.md. Preserve the distinction between a
 voluntary stop, an unknown cause and demonstrated inability. Before release, check both branches of the advice. If a familiar

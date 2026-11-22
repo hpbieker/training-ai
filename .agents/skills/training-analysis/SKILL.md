@@ -164,6 +164,10 @@ the preceding aerobic ride. On good legs compare the familiar steady block
 with the next credible longer block in the athlete’s history. Give both total
 ride times and what favors the last increment under the revised schedule.
 For a new recommendation, read [references/daily-recommendations.md](references/daily-recommendations.md).
+Use its [source collection guidance](references/daily-recommendations.md#collect-source-inputs)
+to read the relevant sections, look up MCP schemas by exact tool name, and
+collect independent inputs together. Include `xert_activity_loads` in the
+initial source collection for a saved recommendation.
 Also read
 [references/cycling-endurance-physiology.md](references/cycling-endurance-physiology.md)
 when prescribing a long ride, late-session intensity, severe intervals, heat
@@ -174,8 +178,10 @@ pass that role to the recommendation helper through an explicit
 `intensity_goal` inside `--plan-selection-json`. Do not use a generic goal as a substitute for plan
 selection, and do not make a helper parse an LLM-readable plan file.
 Before choosing the session role and duration, read the preceding rides,
-reviewed quality outcomes and available dated athlete reports using
-`python3 -B scripts/vt1_dose.py --quality-sequences --as-of <decision-time-with-offset>`.
+reviewed quality outcomes and available dated athlete reports. Use the
+[focused history example](references/daily-recommendations.md#read-training-history)
+to save the full `vt1_dose.py` result and display the rides and fields needed
+for the decision.
 If today's subjective response could change the session, check current chat
 and dated reports first. In a live exchange, including a reply to an automated
 recommendation, ask for the missing observation before choosing the dose.
