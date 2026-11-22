@@ -117,8 +117,13 @@ Choose the narrowest workflow that answers the request:
   them individually, and verifies collective absence through the batch endpoint;
   `upload_activity` uploads one local activity file. Every completed write is
   verified with fresh source data.
-- `list_wellness` reads the selected athlete's wellness rows; `update_wellness`
-  patches the selected athlete's supported fields and requires
+- `list_wellness` reads the selected athlete's wellness rows. Use
+  `includeFields=["comments","soreness","fatigue","hydration"]` for a focused
+  read. Field selection runs after filters, sort and limit. Projected rows
+  include `id` and `updated` (`null` if unavailable). Selected fields keep
+  their source values, including `null`, and absent fields remain absent.
+  Omit `includeFields` for complete rows. `update_wellness` patches the
+  selected athlete's supported fields and requires
   `confirm_overwrite=true` for conflicting values.
 - `list_events` reads the selected athlete's calendar events; `create_event`
   creates an all-day event for the selected athlete;

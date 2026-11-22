@@ -1313,6 +1313,43 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         self.assertEqual(calls[0]["athlete_id"], "i-other")
         self.assertEqual(result["athlete"]["id"], "i-other")
         self.assertEqual(result["wellness"], source)
+        self.assertNotIn("includeFields", result)
+
+    def test_list_wellness_selects_fields_after_filter_sort_and_limit(self):
+        updated = "2026-08-16T10:00:00Z"
+        service = self.service(wellness_lister=lambda **kwargs: [
+            {"id": "2026-08-15", "fatigue": 2, "hrv": 50, "soreness": 2},
+            {"id": "2026-08-16", "updated": updated, "fatigue": 2, "hrv": 60, "soreness": None},
+            {"id": "2026-08-17", "fatigue": 1, "hrv": 80, "soreness": 1},
+        ])
+        fields = ["soreness", "hydration"]
+        result = service.call_tool("list_wellness", {
+            "start_date": "2026-08-15", "end_date": "2026-08-17",
+            "includeFields": fields,
+            "filters": [{"field": "fatigue", "op": "gte", "value": 2}],
+            "sort": [{"field": "hrv", "direction": "desc"}],
+            "limit": 1,
+        })
+        self.assertEqual(result["wellness"], [
+            {"id": "2026-08-16", "updated": updated, "soreness": None},
+        ])
+        self.assertEqual(result["includeFields"], fields)
+        self.assertEqual(result["start_date"], "2026-08-15")
+        self.assertEqual(result["end_date"], "2026-08-17")
+        self.assertEqual(result["source_count"], 3)
+        self.assertEqual(result["matched_count"], 2)
+        self.assertEqual(result["count"], 1)
+
+    def test_list_wellness_empty_selection_returns_identity_fields(self):
+        service = self.service(wellness_lister=lambda **kwargs: [
+            {"id": "2026-08-17", "soreness": 2},
+        ])
+        dates = {"start_date": "2026-08-17", "end_date": "2026-08-17"}
+        result = service.call_tool("list_wellness", {**dates, "includeFields": []})
+        self.assertEqual(result["wellness"], [{"id": "2026-08-17", "updated": None}])
+        for invalid in (None, "soreness", [""], ["soreness", "soreness"]):
+            with self.subTest(includeFields=invalid), self.assertRaisesRegex(MCP.ToolFailure, "includeFields"):
+                service.call_tool("list_wellness", {**dates, "includeFields": invalid})
 
     def test_update_wellness_applies_only_explicit_updates_and_verifies(self):
         reads = [
@@ -1633,6 +1670,10 @@ class IntervalsIcuMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
                 await session.initialize()
                 result = await session.list_tools()
 
+        wellness_tool = next(tool for tool in result.tools if tool.name == "list_wellness")
+        self.assertIn("includeFields", wellness_tool.inputSchema["properties"])
+        self.assertNotIn("includeFields", wellness_tool.inputSchema["required"])
+        self.assertIn("includeFields", wellness_tool.outputSchema["properties"])
         self.assertEqual(
             [tool.name for tool in result.tools],
             [

@@ -973,6 +973,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "list_wellness",
         "description": (
             "List Intervals.icu wellness rows for an inclusive local-date range. "
+            "Use includeFields to select source fields after filtering, sorting and limiting. "
             "Values may originate from connected systems; preserve source caveats."
         ),
         "inputSchema": {
@@ -984,6 +985,14 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 },
                 "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
                 "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
+                "includeFields": {
+                    "type": "array", "items": {"type": "string", "minLength": 1},
+                    "uniqueItems": True,
+                    "description": (
+                        "Exact top-level source field names. Rows always include id and updated "
+                        "when selecting fields. Omit to return complete rows."
+                    ),
+                },
                 **query_properties(_WELLNESS_FILTER_FIELDS),
             },
             "required": ["start_date", "end_date"],
@@ -996,6 +1005,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "athlete": _object("Explicitly selected non-default athlete."),
                 "count": {"type": "integer"},
                 "wellness": {"type": "array", "items": _object("Intervals.icu wellness row.")},
+                "includeFields": {"type": "array", "items": {"type": "string"}},
                 "source_count": {"type": "integer"}, "matched_count": {"type": "integer"},
                 "filters": {"type": "array", "items": {}},
                 "sort": {"type": "array", "items": {}},
@@ -1893,6 +1903,9 @@ class IntervalsIcuToolService:
                 end_date = _required_date(arguments, "end_date")
                 if end_date < start_date:
                     raise ToolFailure("end_date must not be before start_date", "invalid_arguments")
+                include_fields = (
+                    _include_fields(arguments["includeFields"]) if "includeFields" in arguments else None
+                )
                 wellness = self._wellness_lister(
                     oldest=start_date, newest=end_date, athlete_id=athlete_id, **auth,
                 )
@@ -1903,6 +1916,16 @@ class IntervalsIcuToolService:
                     "start_date": start_date.isoformat(), "end_date": end_date.isoformat(),
                     "count": len(wellness), "wellness": wellness, **query_meta,
                 }
+                if include_fields is not None:
+                    response["includeFields"] = list(include_fields)
+                    response["wellness"] = [
+                        {
+                            "id": row.get("id"),
+                            "updated": row.get("updated"),
+                            **{field: row[field] for field in include_fields if field in row},
+                        }
+                        for row in wellness
+                    ]
                 if selected_athlete is not None:
                     response["athlete"] = selected_athlete
                 return response
@@ -2333,16 +2356,17 @@ def _required_unique_string_array(arguments: dict[str, Any], key: str) -> list[s
     return value
 
 
-def _include_fields(value: Any, allowed: tuple[str, ...]) -> tuple[str, ...]:
+def _include_fields(value: Any, allowed: tuple[str, ...] | None = None) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(field, str) for field in value):
         raise ToolFailure("includeFields must be an array of strings", "invalid_arguments")
     if len(set(value)) != len(value):
         raise ToolFailure("includeFields must contain unique fields", "invalid_arguments")
-    unsupported = [field for field in value if field not in allowed]
-    if unsupported:
-        raise ToolFailure(
-            f"Unsupported includeFields value: {unsupported[0]}", "invalid_arguments"
-        )
+    if allowed is not None:
+        for field in value:
+            if field not in allowed:
+                raise ToolFailure(f"Unsupported includeFields value: {field}", "invalid_arguments")
+    elif "" in value:
+        raise ToolFailure("includeFields must contain non-empty field names", "invalid_arguments")
     return tuple(value)
 
 
