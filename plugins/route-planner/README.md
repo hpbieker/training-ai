@@ -60,16 +60,15 @@ for `route-planner`.
   the route start, offset from the lookup coordinate, true-north bearing and
   any road name or number in the saved metadata. Use `search_places` first
   for a place name, or a smaller radius to distinguish nearby visits.
-- `show_route`: pass exactly one of `route_id`, `route_file`, or `geojson`.
+- `show_route`: pass either a saved `route_id` or an absolute `route_file`.
   A saved route shows its latest revision and numbered waypoints. Drag a
   waypoint on the map to move it, or select it and choose **Remove waypoint**.
   Drag the route line to insert a waypoint on that section. Where sections
   overlap, choose which one to edit before the waypoint is saved. These
   actions recalculate and save the route.
   Dragged waypoints snap to the
-  routed position within 50 m of the drop. To view a planned or completed
-  ride, pass an absolute GPX, GeoJSON, or training-ai
-  route JSON file, or inline GeoJSON line geometry. Imports preserve segment
+  routed position within 50 m of the drop. Use a GPX, GeoJSON, or training-ai
+  route JSON file to view an imported ride. Imports preserve segment
   breaks and accept optional display metadata such as date, distance, moving
   time, and elevation gain. Imports only display the route.
   Hold **M** while the map has focus to hide the route and its markers.

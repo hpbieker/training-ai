@@ -54,8 +54,7 @@ description: Plan, edit, inspect and export cycling routes, verify roads and tra
   independently.
 
 Use `show_route` when the user asks for a map. Pass `route_id` for a saved
-route, or pass inline `geojson` or an absolute `route_file` for an existing
-GPX, GeoJSON or training-ai route JSON. Imported rides can be displayed
-directly. Label a draft if a required corridor or direction is unresolved.
+route or an absolute `route_file` for an existing GPX, GeoJSON or training-ai
+route JSON. Label a draft if a required corridor or direction is unresolved.
 Use `export_route` for a requested route file. GPX is the default and replaces
 the GPX export for that revision. GeoJSON returns the existing file.

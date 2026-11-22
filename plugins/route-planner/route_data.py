@@ -73,17 +73,13 @@ def read_route_file(filename):
 def normalize_route(arguments):
     if not isinstance(arguments, dict):
         raise ValueError('Arguments must be an object.')
-    allowed = {'geojson', 'route_file', 'title', 'date', 'status', 'distance_km', 'moving_time_s', 'elevation_gain_m', 'source_url', 'source_label'}
+    allowed = {'route_file', 'title', 'date', 'status', 'distance_km', 'moving_time_s', 'elevation_gain_m', 'source_url', 'source_label'}
     if set(arguments) - allowed:
         raise ValueError('Unknown route arguments: ' + ', '.join(sorted(set(arguments) - allowed)))
-    if ('geojson' in arguments) == ('route_file' in arguments):
-        raise ValueError('Provide exactly one of geojson or route_file.')
-    if 'route_file' in arguments:
-        if not isinstance(arguments['route_file'], str):
-            raise ValueError('route_file must be a string.')
-        lines = read_route_file(arguments['route_file'])
-    else:
-        lines = lines_from_geojson(arguments['geojson'])
+    route_file = arguments.get('route_file')
+    if not isinstance(route_file, str):
+        raise ValueError('route_file must be a string.')
+    lines = read_route_file(route_file)
     if not isinstance(lines, list) or not lines:
         raise ValueError('Route has no line segments.')
     if any(not isinstance(line, list) or len(line) < 2 for line in lines):

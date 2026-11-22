@@ -321,8 +321,8 @@ SHOW_ROUTE = types.Tool(
     description=(
         "Opens an interactive map for the user. Call only when the user asks to see the map. "
         "Use get_route or inspect_route to check route data or answer questions about a route. "
-        "Show a saved planner route by route_id, or display an existing route from inline "
-        "GeoJSON or a local GPX, GeoJSON, or training-ai route JSON file. "
+        "Show a saved planner route by route_id, or display an existing route from a local "
+        "GPX, GeoJSON, or training-ai route JSON file. "
         "Optional display metadata applies to imported routes. Imports do not save or recalculate a route."
     ),
     inputSchema={
@@ -335,7 +335,6 @@ SHOW_ROUTE = types.Tool(
             },
             {
                 "properties": {
-                    "geojson": {"type": "object", "description": "GeoJSON line geometry or line features."},
                     "route_file": {"type": "string", "description": "Absolute path to a local route file."},
                     "title": TITLE,
                     "date": {"type": "string", "maxLength": 300},
@@ -346,7 +345,7 @@ SHOW_ROUTE = types.Tool(
                     "source_url": {"type": "string", "description": "HTTPS link to the source route."},
                     "source_label": {"type": "string", "maxLength": 300},
                 },
-                "oneOf": [{"required": ["geojson"]}, {"required": ["route_file"]}],
+                "required": ["route_file"],
                 "additionalProperties": False,
             },
         ],
