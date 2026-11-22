@@ -35,8 +35,8 @@ The build targets macOS arm64 because the locked `cryptography` release
 publishes macOS wheels for arm64 only. It uses `uv` to install Python 3.13 if
 needed and packages the locked dependencies in `dist/<plugin>/.venv`. Codex
 starts the bundled interpreter directly. Keep the base Python 3.13
-installation. Route Planner also needs Node.js and `npm` at build time for
-its map UI.
+installation.
+Route Planner also needs Node.js and `npm` at build time for its map UI.
 
 ## Usage
 
@@ -114,8 +114,7 @@ browser session for subsequent requests.
 
 ### Route Planner
 
-Route Planner plans cycling routes and displays saved or imported routes on a
-map. To enable Street View, set `google_maps_embed_key` in
+**Optional Street View.** Set `google_maps_embed_key` in
 `~/.route_planner_mcp.json`.
 
 ```json
@@ -124,7 +123,11 @@ map. To enable Street View, set `google_maps_embed_key` in
 }
 ```
 
-[Route Planner plugin guide](plugins/route-planner/README.md#street-view)
+Restrict the key to the
+[Maps Embed API](https://developers.google.com/maps/documentation/embed/embedding-map)
+and the URL that hosts the Codex map.
+
+[Route Planner plugin guide](plugins/route-planner/README.md)
 
 ### Strava
 

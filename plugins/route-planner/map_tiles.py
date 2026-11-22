@@ -6,7 +6,7 @@ import tempfile
 import time
 import httpx
 
-CACHE = Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'training-visuals' / 'osm'
+CACHE = Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'route-planner' / 'osm'
 PNG_SIGNATURE = b'\x89PNG\r\n\x1a\n'
 PNG_END = b'\x00\x00\x00\x00IEND\xaeB\x60\x82'
 

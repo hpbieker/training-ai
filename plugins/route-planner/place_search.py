@@ -1,4 +1,4 @@
-"""Find representative place coordinates with a Nominatim-compatible service."""
+"""Find representative place coordinates with OpenStreetMap's Nominatim service."""
 
 from contextlib import closing
 import hashlib
@@ -70,9 +70,8 @@ def cached_places(request):
 
 
 def find_public_place(query, near, distance):
-    endpoint = os.environ.get("ROUTE_PLANNER_GEOCODER_URL") or PLACE_API
     params = urlencode({"q": query, "format": "jsonv2", "addressdetails": 1, "limit": RESULT_LIMIT})
-    request = Request(f"{endpoint}?{params}", headers={"User-Agent": USER_AGENT})
+    request = Request(f"{PLACE_API}?{params}", headers={"User-Agent": USER_AGENT})
     matches = []
     for item in cached_places(request)[:RESULT_LIMIT]:
         osm_type, osm_id = item.get("osm_type"), item.get("osm_id")

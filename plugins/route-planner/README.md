@@ -1,122 +1,106 @@
 # Route Planner
 
-A local MCP server that plans cycling routes using BRouter and OpenStreetMap.
-It uses the bundled `assets/profiles/fastbike-road-flow.brf` cycling profile.
+An MCP server for cycling routes using BRouter.de and OpenStreetMap data.
+It uses the bundled [`fastbike-road-flow.brf`](assets/profiles/fastbike-road-flow.brf) profile.
 
-Install Node.js and `npm` alongside `uv` before building the plugin.
+Follow the repository’s [plugin installation instructions](../../README.md#plugin-installation)
+for `route-planner`.
 
-```sh
-python3 scripts/build_plugin.py route-planner
-codex plugin add route-planner@training-ai
-```
+## Tools
 
-Call `plan_route` with `start`, `end` and optional `waypoints` in travel order.
-Coordinates are objects with `lat` and `lon`.
-The server sends coordinates and the cycling profile to BRouter. Both
-`plan_route` and `update_route` check that the route passes the requested
-points in order. The default limits are 100 m for start and end and 15 m
-for intermediate waypoints.
+- `search_places`: look up a public place named in a route request via
+  [Nominatim](https://operations.osmfoundation.org/policies/nominatim/).
+  Use it for individual, user-triggered route requests. Keep private addresses
+  and other personal or confidential data out of queries. Autocomplete, bulk
+  searches and periodic jobs are outside this workflow. The plugin sends at
+  most one request per second across local processes and caches successful
+  replies for 24 hours in the system temporary directory. Optional `near`
+  (`lat`, `lon`) ranks the returned matches locally. Coordinates are
+  representative place locations. Use `find_road_points` for carriageway guides.
+- `find_road_points`: pass up to ten `locations`, each with an approximate
+  `near` point and an optional exact street name or road reference as `road`. The
+  tool uses an external OpenStreetMap-based service to return up to five
+  carriageway candidates per location within 300 m, with points on the mapped
+  roads, road classifications and links to the OSM ways.
+  Use the chosen coordinate as a guide point in `plan_route` or `update_route`.
+- `plan_route`: pass `start`, `end` and optional `waypoints` in travel order.
+  Every new point is an object with decimal `lat` and `lon`. The tool returns
+  a `route_id`, `revision`, distance, estimated time, routing cost and verified
+  points. Each intermediate point has a `waypoint_id`.
+  It validates the geometry and checks passage within 100 m of the endpoints and
+  15 m of intermediate points. Road selection and access handling follow the
+  bundled BRouter profile.
+- `update_route`: pass `route_id`, the `expected_revision` you last read, and
+  the change. Use `move_waypoint` with `waypoint_id`, `lat` and `lon` to move
+  a point without changing its order, or `remove_waypoint_id` to remove it.
+  Use `add_waypoint` to insert a point, or send a replacement `waypoints`
+  list to change the order. A `waypoint_id` alone keeps the existing
+  coordinates. Include coordinates to move the point, or omit its ID to
+  create a new point. An empty list removes all
+  intermediate points. You can also change `start` or `end`; omitted
+  fields are kept. The same default limits as for `plan_route` apply. Set
+  `snap_to_route: true` on `add_waypoint` or `move_waypoint` to raise the limit
+  for that waypoint from 15 m to 50 m and save its position on the calculated
+  route. If the revision is out of date, read `get_route` before retrying.
+  Failed updates keep the previous revision. The update returns a compact
+  summary. Use `get_route` for verified points. The open map fetches the new
+  revision while keeping its zoom and position.
+- `evaluate_route_change`: use the same inputs as `update_route` to calculate
+  a candidate without saving it. Returns the base revision, before and after
+  distances, distance change in metres, and the first 20 changed spans in
+  travel order with offsets and endpoints on each route. The comparison uses
+  geometry, so a change in coordinate sampling can appear as a changed span.
+  `same_profile` tells whether the bundled profile matches the saved one, or
+  is null when the saved route has no profile hash. The calculation sends the
+  proposed coordinates and bundled profile to BRouter.
+- `get_route`: pass `route_id` to read the latest summary and waypoint IDs.
+- `locate_on_route`: pass `route_id`, `near` (latitude and longitude) and an
+  optional `radius_m` (100 m by default, up to 1,000 m). Returns the closest
+  point in each visit to that radius, in travel order, with kilometres from
+  the route start, offset from the lookup coordinate, true-north bearing and
+  any road name or number in the saved metadata. Use `search_places` first
+  for a place name, or a smaller radius to distinguish nearby visits.
+- `show_route`: pass exactly one of `route_id`, `route_file`, or `geojson`.
+  A saved route shows its latest revision and numbered waypoints. Drag a
+  waypoint on the map to move it, or select it and choose **Remove waypoint**.
+  Drag the route line to insert a waypoint on that section. Where sections
+  overlap, choose which one to edit before the waypoint is saved. These
+  actions recalculate and save the route.
+  Dragged waypoints snap to the
+  routed position within 50 m of the drop. To view a planned or completed
+  ride, pass an absolute GPX, GeoJSON, or training-ai
+  route JSON file, or inline GeoJSON line geometry. Imports preserve segment
+  breaks and accept optional display metadata such as date, distance, moving
+  time, and elevation gain. Imports only display the route.
+  Hold **M** while the map has focus to hide the route and its markers.
+- `inspect_route`: pass `route_id` or the absolute path to a GeoJSON `route_file`. The tool
+  returns distance totals and ordered `sections` with kilometre offsets,
+  endpoint coordinates, length, road type, surface and relevant OSM tags.
+  Optionally pass one filter: `distance_range` with `from_km` and `to_km`,
+  or `waypoint_range` with `from_waypoint_id` and `to_waypoint_id` from
+  `get_route`. Waypoint filters require a saved route and IDs in travel order.
+  Both filters clip the sections and totals to the selected interval. Kilometre
+  offsets still refer to the start of the whole route.
+  Section lengths follow the saved geometry, while tag totals use BRouter's
+  distances. For a filtered interval, BRouter distances are prorated by overlap
+  with the geometry, and unlocated tags contribute as `not_tagged` where possible.
+  Sections with missing or unmatched metadata are marked `unknown`.
+- `export_route`: pass `route_id` to get a local GPX file. Set `format` to
+  `geojson` to get the saved GeoJSON instead.
 
-The tool returns a route ID, revision, distance, estimated time, routing cost,
-and verified points. It saves the route and its GeoJSON locally.
-
-Call `update_route` with `route_id`, the `expected_revision` from the last
-successful call, and the requested change. Use `add_waypoint`, `move_waypoint`,
-or `remove_waypoint_id` to edit one waypoint, or pass `waypoints` in travel
-order to replace the list. A waypoint ID alone keeps its existing coordinates.
-You can also replace `start` or `end`. Set `snap_to_route: true` when adding or
-moving a waypoint to raise the limit for that point to 50 m. The tool then
-saves the position on the calculated route.
-
-The tool returns the new revision and a compact summary. Use `get_route`
-to read the verified points. The open map fetches the new revision.
-If calculation fails or the saved revision has changed, the update leaves
-the current route intact. If the revision has changed, call `get_route`
-before retrying.
-
-Call `get_route` with `route_id` to read the current saved summary, including
-its revision and ordered waypoint IDs.
-
-Call `export_route` with `route_id` to get a local GPX file. Set `format` to
-`geojson` to get the saved GeoJSON. The result includes the exported revision
-and the local file path.
-
-Call `inspect_route` with a saved `route_id` or the absolute path to a BRouter
-GeoJSON `route_file`. It reports road types, surfaces and access tags from the
-file, with totals and sections in travel order. Optionally filter by
-`distance_range` (`from_km`, `to_km`) or, for saved routes, `waypoint_range`
-(`from_waypoint_id`, `to_waypoint_id`). Section offsets are measured from
-the route start. Filtered tag totals are prorated by overlap with the
-saved geometry. Sections with missing or unmatched metadata are marked
-`unknown`.
-
-Call `locate_on_route` with a saved `route_id` and a coordinate in `near`.
-The optional `radius_m` defaults to 100 m and accepts values up to 1,000 m.
-The tool returns the closest point for each separate passage, in travel
-order, with distance from the route start, offset from the lookup point and
-bearing clockwise from true north. Road names and references come from
-saved metadata when available.
-
-Call `evaluate_route_change` with the same inputs as `update_route` to
-preview a change without saving a revision. It sends the proposed coordinates
-and bundled profile to BRouter. The result includes the base revision,
-before and after distances, the distance difference in metres, and up to
-20 changed sections in travel order. `same_profile` reports whether the
-saved route used the same profile, or is null if its profile hash is unknown.
-Changes in coordinate sampling can appear as changes to the route.
-
-Call `search_places` with a public place name in `query`. Optionally add
-`near` to rank the matches by distance locally. Treat returned coordinates
-as representative points for places, and verify any waypoint on its road.
-
-The default service follows [Nominatim's usage policy](https://operations.osmfoundation.org/policies/nominatim/).
-Use it for individual searches triggered by a user. Keep personal and
-confidential information out of queries. The public service prohibits
-autocomplete and systematic lookups. The plugin sends at most one request
-per second across local processes and caches responses for 24 hours.
-Use `ROUTE_PLANNER_GEOCODER_URL` to select a Nominatim-compatible service.
-
-Call `find_road_points` with up to ten `locations`. Each location needs a
-`near` coordinate and can include an exact street name or road number in
-`road`. The tool sends coordinates to the public
-[Valhalla demo server](https://github.com/valhalla/valhalla#demo-server)
-and returns up to five candidates within 300 m for each location. Candidates
-are mapped roads open to cars and bicycles. Check the returned road name
-or reference before using its coordinate in `plan_route` or `update_route`.
-
-Call `show_route` to open the interactive map. Pass a saved `route_id`, an
-absolute `route_file` path to GPX, GeoJSON or training-ai route JSON, or
-inline `geojson`. Imported tracks keep their segment breaks. They can
-include display metadata such as title, date, distance and elevation gain.
-
-The map shows pinned waypoints and picks up new saved revisions. On a saved
-route, drag a waypoint to move it, select it to remove it, or drag the route
-line to insert one. Where route sections overlap, choose the section before
-the waypoint is saved. GeoJSON and GPX imports are displayed as read-only tracks.
-
-The map
-requests visible OpenStreetMap tiles and caches them locally for seven
-days. Tile requests reveal the viewed area to the tile provider.
-
-Set `ROUTE_PLANNER_ROUTES` to select a local directory for saved routes.
+The plugin requests visible OpenStreetMap tiles, revealing the viewed area
+to the tile provider, and caches them for seven days in `~/.cache/route-planner/osm`
+or under `XDG_CACHE_HOME` when set.
 
 ### Street View
 
 Hold Shift and click the map to open a nearby Google Street View panorama.
-Clicks within 25 m of the route use its direction of travel as the initial
-camera heading. Opening Street View sends the selected point to Google.
+A small route map remains visible. Clicks within 25 m of the route use its
+direction of travel as the initial camera heading. Opening Street View
+sends the selected point to Google.
 
-To enable Street View, save the browser key in `~/.route_planner_mcp.json`.
-
-```json
-{
-  "google_maps_embed_key": "<google-maps-embed-key>"
-}
-```
-
-Restrict the browser key to the
-[Maps Embed API](https://developers.google.com/maps/documentation/embed/embedding-map)
-and the URL that hosts the Codex map. The map UI uses the key in the Embed URL.
+Follow the [Street View setup instructions](../../README.md#route-planner)
+to enable it in Codex.
 
 ### Local map preview
 
@@ -142,3 +126,18 @@ With that key, the minimap follows the reported panorama position and
 camera heading. Shift-click checks for a panorama within 50 m and shows a
 brief hint when none is available. Open `/mcp-test` to test the MCP Apps
 bridge and Maps Embed mode.
+
+## Files and services
+
+Route revisions are saved in a per-route directory under the system temporary
+directory by default. Use `ROUTE_PLANNER_ROUTES` for storage across temporary
+directory cleanup. Copy exported files elsewhere to keep them. The plugin writes
+nothing to the workspace.
+
+Each calculation uploads the bundled profile and sends the ordered coordinates
+to [BRouter.de](https://brouter.de/). GeoJSON records the server URL, uploaded
+profile ID, profile hash and engine version. The public service has no guaranteed
+availability. The plugin reports failures without retrying automatically.
+See the [BRouter privacy policy](https://brouter.de/privacypolicy.html).
+
+Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
