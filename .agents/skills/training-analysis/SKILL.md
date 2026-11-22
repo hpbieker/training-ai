@@ -48,7 +48,7 @@ carbohydrate actually consumed before the effort. Use the
 ### Capture athlete feedback
 
 If the athlete also rules out a workout on a future date, record that
-[instruction for the workout date](#readiness-or-daily-recommendation).
+[instruction for the workout date](references/daily-recommendations.md#dated-athlete-constraints).
 
 At post-ride review, first read saved feedback, the activity analysis and
 completed intervals. When the reason for a shortened set or omitted extension
@@ -113,42 +113,12 @@ features and research, and what remains uncertain for this athlete.
 
 ### Readiness or daily recommendation
 
-Carry explicit dated athlete constraints across chats. When the athlete rules
-out a workout or states a practical limit, save their words as soon as they
-give them, including when discussing tomorrow. Use
-`python3 -B scripts/day_constraints.py record --date YYYY-MM-DD --reported-at TIMESTAMP --source MESSAGE_REF --quote '...'`.
-Use the local date the instruction applies to, the original statement time with
-offset, and a traceable message reference. Add `--exclude quality` for a ban
-on quality, or specific excluded goals. Save a `--release-condition` only if
-the athlete explicitly made the constraint conditional on that verifiable fact.
-Keep suggested start times, hypothetical alternatives and coach assumptions
-distinct from athlete constraints.
-
-Before choosing or revising the workout role, including in a scheduled chat
-or after a device sync, run `python3 -B scripts/day_constraints.py show --date YYYY-MM-DD`
-for the workout date (use `--as-of` for replay). Also check the date of the
-next priority session when proposing to move it. Apply active instructions
-before using the queue, readiness or calendar to choose among eligible sessions.
-When a previously selected workout for that date is available, explain what
-new information changes its role or dose. A queue entry can stay pending.
-
-Reopen a ruled-out option only on a later athlete statement that specifically
-changes it, or direct evidence that its recorded release condition was met.
-Good legs, a free calendar, fresh device readings or silence alone do not
-revoke a separate practical limit. If there is a concrete reason it may have
-changed and the answer would alter the workout, ask one specific question.
-Keep the restriction in force pending the answer; an unattended run can give
-the applicable recommendation. Save a confirmed change with
-`python3 -B scripts/day_constraints.py release --id ID --kind athlete --reported-at TIMESTAMP --source SOURCE_REF --evidence '...'`.
-Quote the reply. For a verified release condition use `--kind condition`
-and identify the observation and how it meets the original condition. Re-read the date before updating the recommendation.
-
-When a clarification reopens a previously excluded workout, reassess its placement.
-Compare the previously recommended sequence with moving the priority session to the
-newly available slot. Use the athlete's current condition, time since the preceding
-ride, comparable completed and shortened sets, and what is gained or lost by waiting
-until the next feasible slot. If a later start today could matter, include it. Choose
-the sequence before prescribing the set. A warm-up check can then guide execution.
+- For a single measurement, use the source tool with the relevant fields.
+- For a readiness assessment, follow the [focused readiness workflow](references/daily-recommendations.md#focused-readiness-questions)
+  and run `readiness_snapshot.py --summary`.
+- For a workout prescription, apply the [dated athlete constraints](references/daily-recommendations.md#dated-athlete-constraints)
+  for the workout date. Follow the recommendation workflow below. The saved
+  request runner builds the readiness snapshot as part of that workflow.
 
 For a change to an existing recommendation, begin with
 [updating the selected recommendation](references/daily-recommendations.md#update-an-existing-recommendation).
@@ -217,18 +187,10 @@ If choosing less than a familiar, useful longer dose, tell the rider what
 favors the smaller addition at that checkpoint. The packet compares the two
 totals and time to the next session under `aerobic_finish.spacing_comparison`.
 
-Use the [focused readiness workflow](references/daily-recommendations.md#focused-readiness-questions)
-for a parameter lookup or readiness question. For a complete session
-decision, [save the candidate inputs](references/daily-recommendations.md#save-and-run-a-candidate)
-and run the recommendation helper through the saved request:
-
-```bash
-python3 -B scripts/readiness_snapshot.py --time-context-json '<normalized-time-context>' --source-inputs-json '<normalized-source-map>'
-python3 -B scripts/run_training_request.py /absolute/path/to/request.json
-```
-
-Use the saved-request runner's default compact output and read relevant fields
-from its packet when more evidence is needed.
+[Save the candidate inputs](references/daily-recommendations.md#save-and-run-a-candidate)
+and run `python3 -B scripts/run_training_request.py /absolute/path/to/request.json`.
+Use its default compact output and read relevant fields from the saved packet
+when more evidence is needed.
 
 ### Outdoor route recommendation
 

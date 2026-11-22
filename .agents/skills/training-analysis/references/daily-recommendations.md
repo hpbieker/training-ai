@@ -13,16 +13,19 @@ For a narrow question such as “am I ready now?”, use this path before the
 full session-planning workflow below:
 
 1. Resolve the current time and timezone, read relevant personal context, and
-   check compact plan context/pending activities. Fetch fresh Garmin health and
-   Xert state; persist MCP structured content unchanged in private temporary files.
-2. Run `readiness_snapshot.py --summary` with explicit time/source JSON. Use the
-   returned `latest_activity.activity_dir` to find activity reports; do not guess
-   paths or read whole helper scripts to discover the normal workflow.
-3. If assessing recovery after a completed workout, request Garmin
-   `get_health_day(includeFields=[], save_full=true)` and pass its
-   `full_health_day_file` as the Garmin input. The helper accepts that saved
-   wrapper and derives post-workout HR/stress windows locally. Compact
-   responses omit these series.
+   check compact plan context and pending activities.
+2. Fetch fresh Xert state and Garmin health together. For recovery after a
+   completed workout, use `get_health_day(date=..., includeFields=[], save_full=true)`
+   and pass its `full_health_day_file` as the Garmin input. This gives the
+   helper the HR and stress series for the post-workout window. Otherwise
+   use the relevant compact health fields. Save each compact MCP result's
+   structured content unchanged in a private temporary file.
+3. Run `python3 -B scripts/readiness_snapshot.py --summary` with
+   `--time-context-json` (`date`, `local_timezone` and offset-aware `now`)
+   and `--source-inputs-json` (source file paths keyed by `garmin` and `xert`,
+   with optional `wellness` and `events` paths nested under
+   `intervals`). When a latest activity is present, use its `activity_dir`
+   to find the reports.
 4. If sleep/HRV appears absent despite a same-day valid-sleep/readiness record,
    inspect the saved full sleep/HRV summaries before calling it missing or
    requesting a device sync. Missing from a compact response is not proof of
@@ -34,6 +37,45 @@ full session-planning workflow below:
 
 Keep this packet focused on readiness. Calendar placement, dose solvers, capacity
 and alternative sessions belong to a requested concrete training recommendation.
+
+## Dated athlete constraints
+
+Carry explicit dated athlete constraints across chats. When the athlete rules
+out a workout or states a practical limit, save their words as soon as they
+give them, including when discussing tomorrow. Use
+`python3 -B scripts/day_constraints.py record --date YYYY-MM-DD --reported-at TIMESTAMP --source MESSAGE_REF --quote '...'`.
+Use the local date the instruction applies to, the original statement time with
+offset, and a traceable message reference. Add `--exclude quality` for a ban
+on quality, or specific excluded goals. Save a `--release-condition` only if
+the athlete explicitly made the constraint conditional on that verifiable fact.
+Keep suggested start times, hypothetical alternatives and coach assumptions
+distinct from athlete constraints.
+
+Before choosing or revising the workout role, including in a scheduled chat
+or after a device sync, run `python3 -B scripts/day_constraints.py show --date YYYY-MM-DD`
+for the workout date (use `--as-of` for replay). Also check the date of the
+next priority session when proposing to move it. Apply active instructions
+before using the queue, readiness or calendar to choose among eligible sessions.
+When a previously selected workout for that date is available, explain what
+new information changes its role or dose. A queue entry can stay pending.
+
+Reopen a ruled-out option only on a later athlete statement that specifically
+changes it, or direct evidence that its recorded release condition was met.
+Good legs, a free calendar, fresh device readings or silence alone do not
+revoke a separate practical limit. If there is a concrete reason it may have
+changed and the answer would alter the workout, ask one specific question.
+Keep the restriction in force pending the answer; an unattended run can give
+the applicable recommendation. Save a confirmed change with
+`python3 -B scripts/day_constraints.py release --id ID --kind athlete --reported-at TIMESTAMP --source SOURCE_REF --evidence '...'`.
+Quote the reply. For a verified release condition use `--kind condition`
+and identify the observation and how it meets the original condition. Re-read the date before updating the recommendation.
+
+When a clarification reopens a previously excluded workout, reassess its placement.
+Compare the previously recommended sequence with moving the priority session to the
+newly available slot. Use the athlete's current condition, time since the preceding
+ride, comparable completed and shortened sets, and what is gained or lost by waiting
+until the next feasible slot. If a later start today could matter, include it. Choose
+the sequence before prescribing the set. A warm-up check can then guide execution.
 
 ## Update an existing recommendation
 
@@ -381,13 +423,15 @@ that every required override file exists before invoking the helper. Do not
 select refresh mode `none` until all source files required by refresh planning
 are present.
 
-Before composing the final recommendation, reject any source or recommendation
-packet whose snapshot date/time is stale for the current run, whose local date
-does not match the requested training date, or whose recorded plan provenance
-disagrees with the freshly read `config/plan-state.json` and latest activity.
-Do not repair such a packet from automation memory or older simulations; refresh
-the affected sources or state explicitly and stop the recommendation if fresh
-inputs cannot be obtained.
+Before composing the final recommendation, verify that the packet targets the
+requested local workout date and start, and that its plan provenance agrees
+with `config/plan-state.json` and the latest activity at the decision cutoff.
+Check each source against its own freshness window and observation time.
+For tomorrow’s ride, a fresh read of the latest observed Garmin day can support
+a projection of timestamped Recovery Time. Keep tomorrow’s overnight readings
+pending. Historical training and athlete reports retain their observation dates.
+Refresh stale or mismatched inputs before using the packet. If a required
+refresh fails, identify the missing input and stop the recommendation.
 
 Treat `planned_at` as both the workout time and the latest possible data
 boundary. Helpers derive `data_cutoff = min(now, planned_at)`: a future
