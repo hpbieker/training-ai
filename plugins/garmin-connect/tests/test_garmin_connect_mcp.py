@@ -94,8 +94,9 @@ class GarminConnectMcpTests(unittest.TestCase):
             },
         }
         result = self.service.call_tool("get_health_day", {
-            "date": "2026-08-17", "save_full": True,
+            "date": "2026-08-17",
             "includeFields": ["sources.heart_rate.restingHeartRate"],
+            "save_full": True,
         })
         path = Path(result["full_health_day_file"])
         self.addCleanup(path.unlink, missing_ok=True)

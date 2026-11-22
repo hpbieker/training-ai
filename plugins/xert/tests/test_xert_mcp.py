@@ -353,7 +353,7 @@ class XertMcpDispatchTests(unittest.TestCase):
     def test_get_activity_can_save_full_and_session_private_files(self) -> None:
         result = self.tools.call_tool(
             "get_activity", {
-                "activity_path": "folder/a1", "save_full": True, "save_session": True,
+                "activity_path": "folder/a1", "save_session": True, "save_full": True,
             }
         )
         full_path = Path(result["full_activity_file"])

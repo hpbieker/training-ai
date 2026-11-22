@@ -447,9 +447,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "get_activity",
         "description": (
             "Get activity details from authenticated Xert web analytics, including Garmin syncs. "
-            "Failures are errors, not empty activities. Set save_full=true to save "
-            "the complete activity document, or save_session=true to fetch and save "
-            "Xert-specific second-by-second data, in private temporary JSON files."
+            "Failures are errors, not empty activities. Set save_session=true to fetch and save "
+            "Xert-specific second-by-second data. Set save_full=true to save the complete "
+            "activity document. Both options use private temporary JSON files."
         ),
         "inputSchema": {
             "type": "object",
@@ -459,15 +459,15 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "minLength": 1,
                     "description": "Xert activity path returned by list_activities.",
                 },
-                "save_full": {
-                    "type": "boolean",
-                    "default": False,
-                    "description": "Save the complete activity document without session series.",
-                },
                 "save_session": {
                     "type": "boolean",
                     "default": False,
                     "description": "Fetch and save the complete activity including Xert session series.",
+                },
+                "save_full": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "Save the complete activity document without session series.",
                 },
             },
             "required": ["activity_path"],
