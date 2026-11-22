@@ -1,13 +1,14 @@
 ---
 name: route-planner
-description: Plan, edit and inspect cycling routes, including checking that a route follows requested roads and direction.
+description: Plan, edit, inspect and export cycling routes, verify roads and travel direction, or display saved routes and imported rides on an interactive map.
 ---
 
 # Route Planner
 
 ## Plan and verify
 
-- Use `create_route` with verified coordinates in travel order. Preserve explicit
+- Use `create_route` to create a saved route from verified coordinates in travel order.
+  Retain its `route_id` for later reads and edits. Preserve explicit
   stops and choose guide points on the through route for areas the user wants to
   pass. For a directional loop, place verified guides on each flank between the
   split and rejoin. Check their order before planning. Clockwise means southbound
@@ -40,8 +41,10 @@ description: Plan, edit and inspect cycling routes, including checking that a ro
   kilometre of the path section. Use a returned on-route coordinate as
   `near` for the road lookup. Place new guides alongside the affected section
   and in travel order on each affected pass.
-- Use `evaluate_route_change` to compare geometry before saving a reroute or
-  simplifying waypoints. `same_profile: true` with zero changed sections is
+- Use `evaluate_route_change` to preview an edit against `expected_revision`.
+  It uploads the routing profile and sends the proposed coordinates to BRouter
+  while keeping the saved route at its current revision.
+  `same_profile: true` with zero changed sections is
   strong evidence that the route geometry is preserved. If
   `changed_section_count` exceeds the number of returned spans, the preview is
   incomplete. Its span endpoints are insufficient to confirm road identity.
@@ -50,6 +53,9 @@ description: Plan, edit and inspect cycling routes, including checking that a ro
   surrounding route is preserved. If both directions matter, check each pass
   independently.
 
-Use `show_route` only when the user asks for a map. Label a requested map as a
-draft if a required corridor or direction is unresolved. Use `export_route`
-only when the user asks for a route file.
+Use `show_route` when the user asks for a map. Pass `route_id` for a saved
+route, or pass inline `geojson` or an absolute `route_file` for an existing
+GPX, GeoJSON or training-ai route JSON. Imported rides can be displayed
+directly. Label a draft if a required corridor or direction is unresolved.
+Use `export_route` for a requested route file. GPX is the default and replaces
+the GPX export for that revision. GeoJSON returns the existing file.
