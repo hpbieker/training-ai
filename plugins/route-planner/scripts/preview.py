@@ -70,7 +70,10 @@ def main():
     browser_page = None
     if live_key:
         browser_result = payload['result']
-        browser_result = {**browser_result, '_meta': {'street_view_javascript_key': live_key}}
+        browser_result = {
+            **browser_result,
+            '_meta': {'route': browser_result['_meta']['route'], 'street_view_javascript_key': live_key},
+        }
         result = json.dumps(browser_result, ensure_ascii=False).replace('<', '\\u003c')
         browser_data = '<script type="application/json" id="browser-preview-data">' + result + '</script>'
         browser_page = page("'self'", browser_data, live_street_view=True)

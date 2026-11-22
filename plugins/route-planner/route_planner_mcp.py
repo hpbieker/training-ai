@@ -415,10 +415,13 @@ def show_route(arguments):
         lines = view["geometry"]["coordinates"]
         summary = {key: value for key, value in view.items() if key != "geometry"}
         summary.update(point_count=sum(map(len, lines)), segment_count=len(lines))
+    meta = {"route": view}
+    if STREET_VIEW_EMBED_KEY:
+        meta["street_view_embed_key"] = STREET_VIEW_EMBED_KEY
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=json.dumps(summary, ensure_ascii=False))],
-        structuredContent={**summary, "route": view},
-        _meta={"street_view_embed_key": STREET_VIEW_EMBED_KEY} if STREET_VIEW_EMBED_KEY else None,
+        structuredContent=summary,
+        _meta=meta,
     )
 
 

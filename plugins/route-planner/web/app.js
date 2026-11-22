@@ -673,7 +673,7 @@ app.ontoolresult = (result) => {
     closeStreetView();
     streetViewEmbedKey = result._meta?.street_view_embed_key;
     streetViewJavaScriptKey = browserData ? result._meta?.street_view_javascript_key : undefined;
-    render(result.structuredContent?.route);
+    render(result._meta?.route);
     refreshFailures = 0;
     routeMessage.hidden = true;
   } catch (error) {
