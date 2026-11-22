@@ -12,10 +12,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from route_geometry import USER_AGENT
+from route_geometry import ATTRIBUTION, LICENSE_URL, USER_AGENT
 
-ATTRIBUTION = "© OpenStreetMap contributors"
-LICENSE_URL = "https://www.openstreetmap.org/copyright"
 PLACE_API = "https://nominatim.openstreetmap.org/search"
 RESULT_LIMIT = 5
 MAX_REPLY = 1024 * 1024

@@ -4,6 +4,9 @@ from itertools import accumulate, groupby, pairwise
 import math
 import xml.etree.ElementTree as ET
 
+ATTRIBUTION = "© OpenStreetMap contributors"
+LICENSE_URL = "https://www.openstreetmap.org/copyright"
+
 USER_AGENT = "training-ai-route-planner/0.2.0"
 
 LIMITATIONS = [

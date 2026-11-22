@@ -4,8 +4,7 @@ import json
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from place_search import ATTRIBUTION, LICENSE_URL
-from route_geometry import USER_AGENT, coordinate
+from route_geometry import ATTRIBUTION, LICENSE_URL, USER_AGENT, coordinate
 
 LOCATE_URL = "https://valhalla1.openstreetmap.de/locate"
 RADIUS_M = 300
