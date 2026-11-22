@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 from datetime import date
@@ -82,6 +83,8 @@ _SOURCE_ARRAY = {
     "description": "Optional Garmin daily sources. Omit for the readiness profile.",
 }
 
+_HEALTH_FIELD_PATH = r"^[^.\s]+(?:\.[^.\s]+)*$"
+
 _ACTIVITY_LIST_INCLUDE_FIELDS = (
     "type", "duration_s", "distance_m", "source", "elapsedDuration",
     "movingDuration", "calories", "averageHR", "maxHR",
@@ -129,6 +132,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "Returns all timestamped Training Readiness observations, its six drivers, "
             "Recovery Time, VO2max context, and compact supporting-source summaries. "
             "Set hrv_days to also return compact nightly HRV history ending on date. "
+            "Use includeFields for selected dotted paths in the returned payload. "
             "Set save_full=true to save the complete fetched health-day payload to a "
             "private temporary JSON file. "
             "For a future training date, request the latest date that has occurred."
@@ -139,6 +143,16 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "date": {"type": "string", "format": "date"},
                 "sources": _SOURCE_ARRAY,
                 "tolerate_errors": {"type": "boolean", "default": True},
+                "includeFields": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": _HEALTH_FIELD_PATH},
+                    "uniqueItems": True,
+                    "description": (
+                        "Optional exact field paths such as sources.sleep.sleepTimeSeconds or "
+                        "hrv_history.days.sources.hrv.lastNightAvg. Paths through arrays apply "
+                        "to each item. Omit to return the full normalized result."
+                    ),
+                },
                 "hrv_days": {
                     "type": "integer",
                     "minimum": 1,
@@ -414,6 +428,10 @@ class GarminConnectToolService:
         token_store = self._token_store_factory()
         if name == "get_health_day":
             day = _iso_date(arguments["date"], "date")
+            include_paths = (
+                _health_day_include_paths(arguments["includeFields"])
+                if "includeFields" in arguments else None
+            )
             save_full = arguments.get("save_full", False)
             if not isinstance(save_full, bool):
                 raise ValueError("save_full must be a boolean")
@@ -443,6 +461,8 @@ class GarminConnectToolService:
                     prefetched_end_day=prefetched_end_day,
                 )
                 result["hrv_history"] = compact_recent_payload(history)
+            if include_paths is not None:
+                result = _project_fields(result, include_paths)
             if save_full:
                 file_path, byte_size = _write_private_health_day_file(day, payload)
                 result.update({
@@ -646,16 +666,47 @@ def _sources(arguments: dict[str, Any]) -> list[str] | None:
 
 
 def _include_fields(
-    value: Any, allowed: tuple[str, ...] = _ACTIVITY_LIST_INCLUDE_FIELDS
+    value: Any, allowed: tuple[str, ...] | None = _ACTIVITY_LIST_INCLUDE_FIELDS
 ) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(field, str) for field in value):
         raise ValueError("includeFields must be an array of strings")
     if len(set(value)) != len(value):
         raise ValueError("includeFields must contain unique fields")
-    unsupported = [field for field in value if field not in allowed]
-    if unsupported:
-        raise ValueError(f"Unsupported includeFields value: {unsupported[0]}")
+    if allowed is not None:
+        for field in value:
+            if field not in allowed:
+                raise ValueError(f"Unsupported includeFields value: {field}")
     return tuple(value)
+
+
+def _health_day_include_paths(value: Any) -> list[tuple[str, ...]]:
+    paths = []
+    for field in _include_fields(value, allowed=None):
+        if not re.fullmatch(_HEALTH_FIELD_PATH, field):
+            raise ValueError(f"includeFields requires non-empty dotted field paths: {field!r}")
+        paths.append(tuple(field.split(".")))
+    if any(path[0] == "hrv_history" for path in paths):
+        paths.extend(("hrv_history", field) for field in (
+            "source", "source_time_local", "start_date", "end_date",
+        ))
+        if any(path[:2] == ("hrv_history", "days") for path in paths):
+            paths.extend(("hrv_history", "days", field) for field in ("date", "source_errors"))
+    paths.extend((field,) for field in ("date", "source", "source_time_local", "source_errors"))
+    return paths
+
+
+def _project_fields(value: Any, paths: list[tuple[str, ...]]) -> Any:
+    if () in paths or value is None:
+        return value
+    if isinstance(value, list):
+        return [_project_fields(item, paths) for item in value]
+    if not isinstance(value, dict):
+        return {}
+    children: dict[str, list[tuple[str, ...]]] = {}
+    for field, *rest in paths:
+        if field in value:
+            children.setdefault(field, []).append(tuple(rest))
+    return {field: _project_fields(value[field], nested) for field, nested in children.items()}
 
 
 def _activity_list_summary(

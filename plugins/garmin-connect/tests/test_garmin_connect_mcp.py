@@ -83,6 +83,31 @@ class GarminConnectMcpTests(unittest.TestCase):
                 "get_health_day", {"date": "2026-08-17", "save_full": "yes"}
             )
 
+    @patch.object(MCP, "fetch_day")
+    def test_get_health_day_selected_fields_keep_full_day_archive(self, fetch_day) -> None:
+        fetch_day.return_value = {
+            "date": "2026-08-17", "source": "garmin_connect",
+            "source_time_local": "2026-08-17T08:00:00+02:00",
+            "sources": {
+                "heart_rate": {"restingHeartRate": 48, "lastSevenDaysAvgRestingHeartRate": 50},
+                "stress": {"error": "unavailable"},
+            },
+        }
+        result = self.service.call_tool("get_health_day", {
+            "date": "2026-08-17", "save_full": True,
+            "includeFields": ["sources.heart_rate.restingHeartRate"],
+        })
+        path = Path(result["full_health_day_file"])
+        self.addCleanup(path.unlink, missing_ok=True)
+        self.assertEqual(result["date"], "2026-08-17")
+        self.assertEqual(result["source"], "garmin_connect")
+        self.assertEqual(result["source_time_local"], "2026-08-17T08:00:00+02:00")
+        self.assertEqual(result["source_errors"], {"stress": {"error": "unavailable"}})
+        self.assertEqual(result["sources"], {"heart_rate": {"restingHeartRate": 48}})
+        self.assertNotIn("training_readiness", result)
+        self.assertEqual(json.loads(path.read_text())["health_day"], fetch_day.return_value)
+        self.assertEqual(result["full_health_day_byte_size"], path.stat().st_size)
+
     def test_get_health_day_reuses_end_day_hrv_in_history(self) -> None:
         def read_source(path, *, token_store):
             if path.endswith("/settings"):
@@ -102,6 +127,42 @@ class GarminConnectMcpTests(unittest.TestCase):
         self.assertEqual((history["start_date"], history["end_date"]), ("2026-08-15", "2026-08-17"))
         self.assertEqual([row["sources"]["hrv"]["lastNightAvg"] for row in history["days"]], [75, 76, 77])
         self.assertEqual(history["days"][-1]["sources"], {"hrv": result["sources"]["hrv"]})
+
+    def test_get_health_day_projects_hrv_through_array_with_all_dates(self) -> None:
+        def read_source(path, *, token_store):
+            if path.endswith("/settings"):
+                return {"displayName": "tester"}
+            if path.startswith("/hrv-service/hrv/"):
+                day = path.rsplit("/", 1)[-1]
+                values = {"2026-08-15": 75, "2026-08-16": None, "2026-08-17": 77}
+                return {"hrvSummary": {
+                    "calendarDate": day, "lastNightAvg": values[day], "weeklyAvg": 79,
+                }}
+            return {}
+
+        with patch("garmin_connect_api.garmin_api_json", side_effect=read_source) as read:
+            result = self.service.call_tool("get_health_day", {
+                "date": "2026-08-17", "sources": ["hrv"], "hrv_days": 3,
+                "includeFields": ["hrv_history.days.sources.hrv.lastNightAvg"],
+            })
+        self.assertEqual(read.call_count, 3)
+        self.assertNotIn("sources", result)
+        history = result["hrv_history"]
+        self.assertEqual((history["start_date"], history["end_date"]), ("2026-08-15", "2026-08-17"))
+        self.assertTrue(history["source_time_local"])
+        self.assertEqual(history["days"], [
+            {"date": "2026-08-15", "sources": {"hrv": {"lastNightAvg": 75}}},
+            {"date": "2026-08-16", "sources": {"hrv": {"lastNightAvg": None}}},
+            {"date": "2026-08-17", "sources": {"hrv": {"lastNightAvg": 77}}},
+        ])
+
+    @patch.object(MCP, "fetch_day")
+    def test_get_health_day_rejects_invalid_paths_before_fetch(self, fetch_day) -> None:
+        for invalid in (None, "sources.sleep", [4], [""], ["sources..sleep"], ["sources. sleep"],
+                        ["sources.sleep", "sources.sleep"]):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(MCP.ToolFailure, "includeFields"):
+                self.service.call_tool("get_health_day", {"date": "2026-08-17", "includeFields": invalid})
+        fetch_day.assert_not_called()
 
     def test_get_health_day_keeps_daily_source_filter_with_hrv_history(self) -> None:
         with patch("garmin_connect_api.garmin_api_json", return_value={}) as read:
@@ -460,6 +521,9 @@ class GarminConnectMcpHandshakeTests(unittest.IsolatedAsyncioTestCase):
                 await session.initialize()
                 result = await session.list_tools()
 
+        health_day = next(tool for tool in result.tools if tool.name == "get_health_day")
+        self.assertIn("includeFields", health_day.inputSchema["properties"])
+        self.assertNotIn("includeFields", health_day.inputSchema["required"])
         self.assertEqual([tool.name for tool in result.tools], list(MCP.ALL_TOOL_NAMES))
 
 

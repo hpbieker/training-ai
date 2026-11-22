@@ -47,6 +47,16 @@ delete_course(course_id=<course-id>, confirm_course_id=<course-id>)
   [Recovery Time reference](references/training-effect-and-stamina-models.md#recovery-time)
   for how to interpret the estimate.
 - Use `sources` when only selected daily sources are needed.
+- Use `includeFields` on `get_health_day` to narrow the returned fields
+  without changing which sources are fetched. For example,
+  `includeFields=["sources.sleep.sleepTimeSeconds","hrv_history.days.sources.hrv.lastNightAvg"]`
+  selects sleep duration and, with `hrv_days` set, each day's HRV average.
+  Paths keep the original nesting and preserve list order. The response keeps
+  the day's date, source, read timestamp, and any source errors. Selected HRV
+  history keeps its date range and source context, and selected HRV rows keep
+  their dates. Omit `includeFields` for the complete normalized response.
+  `save_full=true` still saves the complete fetched day and returns its file
+  metadata.
 - Set `hrv_days=3` on `get_health_day` to return the day's readiness data
   together with compact HRV history for three dates ending on that day.
   The `hrv_history` field uses the same dated HRV rows as `list_health_days`
