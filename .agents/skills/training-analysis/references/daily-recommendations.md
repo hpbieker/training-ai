@@ -2,6 +2,13 @@
 
 ## Focused Readiness Questions
 
+For a direct lookup, such as last night's sleep duration or the latest
+reported soreness, pass `includeFields` to the source tool. For Garmin
+`get_health_day`, use field paths such as `sources.sleep.sleepTimeSeconds`
+or `sources.heart_rate.restingHeartRate`. For Intervals.icu `list_wellness`,
+use exact wellness field names such as `soreness` or `fatigue`. Request
+the supporting fields needed to interpret the answer.
+
 For a narrow question such as “am I ready now?”, use this path before the
 full session-planning workflow below:
 
@@ -12,9 +19,10 @@ full session-planning workflow below:
    returned `latest_activity.activity_dir` to find activity reports; do not guess
    paths or read whole helper scripts to discover the normal workflow.
 3. If assessing recovery after a completed workout, request Garmin
-   `get_health_day(save_full=true)` and pass its `full_health_day_file` as the
-   Garmin input. The helper accepts that saved wrapper and derives post-workout
-   HR/stress windows locally. Compact responses omit these series.
+   `get_health_day(includeFields=[], save_full=true)` and pass its
+   `full_health_day_file` as the Garmin input. The helper accepts that saved
+   wrapper and derives post-workout HR/stress windows locally. Compact
+   responses omit these series.
 4. If sleep/HRV appears absent despite a same-day valid-sleep/readiness record,
    inspect the saved full sleep/HRV summaries before calling it missing or
    requesting a device sync. Missing from a compact response is not proof of
@@ -119,8 +127,19 @@ same file when they could change the dose.
 Read the reference sections needed for the decision and look up each MCP
 schema by its exact tool name. When reading local code to resolve an
 ambiguity, find the relevant symbol and read the smallest useful section.
-Keep complete source responses available for the helper and print only
+Keep the source inputs needed by the helper and print only
 observations needed for the current decision.
+
+For a complete recommendation, keep the normal Garmin health-day payload
+with its readiness drivers and source context. Persist the response without
+printing it in full. Use Garmin `includeFields` for focused lookups or when a
+same-call full archive supplies the day's helper input and the inline result
+supplies HRV history. For the recommendation's Intervals.icu wellness source,
+request `includeFields=["comments","injury","fatigue","soreness","stress","mood","motivation","hydration"]`.
+These fields cover the helper's wellness and legacy illness checks. The
+tool retains date and update time. Fetch structured sickness in the separate
+`list_events` call. If the loaded schema lacks `includeFields`, persist the
+normal response and limit what you print from it.
 
 Collect independent sources together before running the saved request.
 Include Xert's `list_activity_summaries` in the first batch alongside the
@@ -148,6 +167,12 @@ the unchanged snapshot. Use absolute source paths when copying a request
 between directories. The runner uses the current clock, checks source ages,
 and passes the inputs to the normal recommendation helper. Its `--as-of`
 option is for historical tests. Plugins own all live reads.
+
+Use the runner's compact stdout for the decision and packet path. If evidence
+is needed beyond stdout, read the relevant packet fields, such as
+`primary_decision.readiness_evidence` or
+`training_history_context.prior_quality_sequences`. Use `--details` when the
+diagnostic report itself is needed.
 
 Retain the selected request path and its dated packet path in the thread's
 tool context (and in the run note if the automation already maintains one).
@@ -338,8 +363,9 @@ reviewed classification through the plan-state correction workflow before
 selecting today's role. Queue advancement does not establish current readiness.
 
 Fetch Intervals.icu wellness and calendar events through MCP `list_wellness`
-and `list_events` before invoking the helper. Persist each complete MCP result
-as normalized JSON and pass the paths as `intervals_wellness` and
+and `list_events` before invoking the helper. Use the
+[wellness field selection](#collect-source-inputs) and persist each returned
+MCP result unchanged. Pass the paths as `intervals_wellness` and
 `intervals_events` in `--source-overrides-json`. `recommend_training.py` must
 not import the Intervals transport or invoke its CLI.
 
@@ -401,8 +427,9 @@ episode disappearing from a source window must not silently clear the return.
   `get_health_day(date=<observed-date>, hrv_days=3)`. Save the complete
   `structuredContent` unchanged and use that file for both `garmin` and
   `garmin_hrv_history` in the source overrides, with the same `read_at` in a
-  saved request. If using the full health-day archive as `garmin`, use the
-  compact MCP response as `garmin_hrv_history`. If the installed tool lacks
+  saved request. If using the full health-day archive as `garmin`, select
+  `includeFields=["hrv_history.days.sources.hrv.lastNightAvg"]` on the same
+  call and save its inline response as `garmin_hrv_history`. If the installed tool lacks
   `hrv_days`, use `list_health_days(until=<observed-date>, days=3, sources=["hrv"])`
   for the history and save its response unchanged alongside the same-run health day.
   The helper computes the mean over three distinct, consecutive dates ending on

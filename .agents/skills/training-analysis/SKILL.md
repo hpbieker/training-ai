@@ -217,7 +217,8 @@ If choosing less than a familiar, useful longer dose, tell the rider what
 favors the smaller addition at that checkpoint. The packet compares the two
 totals and time to the next session under `aerobic_finish.spacing_comparison`.
 
-Use the narrow readiness helper for a focused question. For a complete session
+Use the [focused readiness workflow](references/daily-recommendations.md#focused-readiness-questions)
+for a parameter lookup or readiness question. For a complete session
 decision, [save the candidate inputs](references/daily-recommendations.md#save-and-run-a-candidate)
 and run the recommendation helper through the saved request:
 
@@ -226,7 +227,8 @@ python3 -B scripts/readiness_snapshot.py --time-context-json '<normalized-time-c
 python3 -B scripts/run_training_request.py /absolute/path/to/request.json
 ```
 
-Treat helper output as structured evidence, not the final recommendation.
+Use the saved-request runner's default compact output and read relevant fields
+from its packet when more evidence is needed.
 
 ### Outdoor route recommendation
 
