@@ -28,9 +28,11 @@ You can also replace `start` or `end`. Set `snap_to_route: true` when adding or
 moving a waypoint to raise the limit for that point to 50 m. The tool then
 saves the position on the calculated route.
 
-The tool returns the new revision and verified points. If calculation fails
-or the saved revision has changed, the update leaves the current route intact.
-If the revision has changed, call `get_route` before retrying.
+The tool returns the new revision and a compact summary. Use `get_route`
+to read the verified points. The open map fetches the new revision.
+If calculation fails or the saved revision has changed, the update leaves
+the current route intact. If the revision has changed, call `get_route`
+before retrying.
 
 Call `get_route` with `route_id` to read the current saved summary, including
 its revision and ordered waypoint IDs.

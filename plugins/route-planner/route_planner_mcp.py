@@ -107,7 +107,7 @@ UPDATE_ROUTE = types.Tool(
         "or remove_waypoint_id to remove it. Use add_waypoint to insert a point after a waypoint "
         "or after the start. Use waypoints to replace or reorder the full list. "
         "You can also change the start or end. Omitted fields are kept. "
-        "Returns the new revision and verified points."
+        "Returns a summary. Use get_route for verified points. The open map fetches the new revision."
     ),
     inputSchema={
         "type": "object",
@@ -705,7 +705,7 @@ def update_route(arguments):
     summary, payload = calculate_route(arguments, route_id, saved)
     result = save_route(summary, payload, saved["revision"])
     return {key: result[key] for key in (
-        "route_id", "revision", "distance_km", "estimated_time_s", "points",
+        "route_id", "revision", "title", "distance_km", "estimated_time_s",
     )}
 
 
