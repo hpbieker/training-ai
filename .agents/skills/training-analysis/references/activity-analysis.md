@@ -39,13 +39,19 @@ registries supplement the analysis workflow rather than defining another one.
 
 ## Selection And Inspection
 
-- Resolve and verify the exact source activity; treat “latest” as a discovery
-  request. Fetch its metadata and streams through the source MCP, persist the
-  package, then inspect it:
+Resolve the source activity ID first. For “latest” or an ambiguous description,
+search the relevant date range and verify the match. For a metadata question
+about a known Intervals.icu ID, call `get_activity` with the needed
+`includeFields`. Use `get_activity_intervals` for recorded interval rows.
+
+For session analysis requiring fresh streams, call `get_activity(save_full=true)`
+and `get_activity_streams` concurrently for the same ID. Use the returned
+`full_activity_file` and `streams_manifest_file` paths to save and inspect
+the local package. Pass the resulting `activity_dir` to the inspection helper.
 
 ```bash
-python3 -B scripts/save_intervals_activity.py --activity-json <mcp-activity-json> --streams-manifest <mcp-streams-manifest-file>
-python3 -B scripts/activity_inspect.py <saved-activity-ref> --brief
+package=$(python3 -B scripts/save_intervals_activity.py --activity-json "$full_activity_file" --streams-manifest "$streams_manifest_file") &&
+python3 -B scripts/activity_inspect.py "$(jq -er .activity_dir <<< "$package")" --brief
 ```
 
 - Repo analysis helpers must not call source APIs directly.
@@ -458,21 +464,25 @@ Start with the observed difference to explain. Select comparable rides or
 blocks by recorded power, duration and work already completed. For a question
 about recovery, also review the intervening training and the next quality session.
 
-Use `analyze_activity_xert_2` when a model estimate could change the
-interpretation. Use its summary for whole-ride comparisons. Request
-`save_series=true` when timing matters, for example to compare estimated
+When a model estimate could change the interpretation, use
+`summarize_activities_xert_2(activity_paths=[...])` for whole-ride comparisons,
+in batches of up to ten. Use `analyze_activity_xert_2` for a single detailed
+analysis. Request `save_series=true` when timing matters, for example to compare estimated
 glycogen remaining or maximum power available at the start of two similar
 climbs. Align the model series with the recorded climbs.
 
 Across rides, check the model version, signature and settings before
 attributing a difference to training. Interpret estimates alongside actual
 execution, athlete feedback and recorded carbohydrate intake where relevant.
-Muscle Glucose Uptake Rate describes modeled uptake. Use the food log for
-actual intake.
+Muscle Glucose Uptake Rate describes modeled uptake. EatMyRide food-plan
+entries can be prepared in advance or edited after a ride. Count them as
+consumed when the athlete or a record of actual intake confirms them.
+Otherwise report planned amounts as planned and leave actual intake unknown.
 
 For a week or block review, compare standard XSS with Xert 2.0 XSS when the
 choice of model could change the interpretation of the training dose. Check
-`period_complete` and match activities by their Xert activity path. If coverage
+`period_complete` in `list_activity_summaries` and `unavailable_count` in each
+Beta batch. Match activities by their Xert activity path. If coverage
 is incomplete or any ride lacks either score, report the coverage and label both
 sums as subtotals for the same matched rides.
 

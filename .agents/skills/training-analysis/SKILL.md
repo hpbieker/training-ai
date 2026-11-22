@@ -42,7 +42,7 @@ analysis, specialist references qualify the measurements, and the synthesis
 reference integrates the findings.
 
 For late efforts on long rides, compare elapsed time, work already completed and
-carbohydrate actually consumed before the effort. Use the
+carbohydrate consumed before the effort when intake is known. Use the
 [cycling physiology reference](references/cycling-endurance-physiology.md) when interpreting durability.
 
 ### Capture athlete feedback
