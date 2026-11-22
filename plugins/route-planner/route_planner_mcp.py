@@ -77,8 +77,8 @@ WAYPOINT = {
     "dependentRequired": {"lat": ["lon"], "lon": ["lat"]},
 }
 TITLE = {"type": "string", "maxLength": 300, "description": "Optional map title."}
-TOOL = types.Tool(
-    name="plan_route",
+CREATE_ROUTE = types.Tool(
+    name="create_route",
     description=(
         "Calculate and save a cycling route through the supplied waypoints in order. "
         "Route coordinates are sent to an external routing service. "
@@ -697,7 +697,7 @@ def save_route(summary, payload, previous_revision):
     return summary
 
 
-def plan_route(arguments):
+def create_route(arguments):
     summary, payload = calculate_route(arguments, uuid4().hex, saved=None)
     return save_route(summary, payload, previous_revision=None)
 
@@ -751,7 +751,7 @@ def create_server():
     @server.list_tools()
     async def list_tools():
         return [
-            TOOL, UPDATE_ROUTE, EVALUATE_ROUTE_CHANGE, GET_ROUTE, SHOW_ROUTE, INSPECT_ROUTE, EXPORT_ROUTE,
+            CREATE_ROUTE, UPDATE_ROUTE, EVALUATE_ROUTE_CHANGE, GET_ROUTE, SHOW_ROUTE, INSPECT_ROUTE, EXPORT_ROUTE,
             LOCATE_ON_ROUTE, SEARCH_PLACES, FIND_ROAD_POINTS, MAP_TILE, GET_ROUTE_VIEW,
         ]
 
@@ -785,7 +785,7 @@ def create_server():
                     _meta={"data_url": data_url},
                 )
             handler = {
-                TOOL.name: plan_route,
+                CREATE_ROUTE.name: create_route,
                 UPDATE_ROUTE.name: update_route,
                 GET_ROUTE.name: get_route,
                 EXPORT_ROUTE.name: export_route,

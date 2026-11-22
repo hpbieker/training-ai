@@ -184,7 +184,7 @@ def route_map_lines(feature):
 def read_route_feature(route_file):
     path = Path(route_file)
     if not path.is_absolute() or not path.is_file() or path.suffix.lower() != ".geojson":
-        raise ValueError("route_file must be an absolute path to plan_route's GeoJSON file")
+        raise ValueError("route_file must be an absolute path to a BRouter GeoJSON file")
     if path.stat().st_size > MAX_BYTES:
         raise ValueError("route_file exceeds the 20 MiB inspection limit")
     payload = json.loads(path.read_text(encoding="utf-8"))

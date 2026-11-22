@@ -22,8 +22,8 @@ for `route-planner`.
   tool uses an external OpenStreetMap-based service to return up to five
   carriageway candidates per location within 300 m, with points on the mapped
   roads, road classifications and links to the OSM ways.
-  Use the chosen coordinate as a guide point in `plan_route` or `update_route`.
-- `plan_route`: pass `start`, `end` and optional `waypoints` in travel order.
+  Use the chosen coordinate as a guide point in `create_route` or `update_route`.
+- `create_route`: pass `start`, `end` and optional `waypoints` in travel order.
   Every new point is an object with decimal `lat` and `lon`. The tool returns
   a `route_id`, `revision`, distance, estimated time, routing cost and verified
   points. Each intermediate point has a `waypoint_id`.
@@ -38,7 +38,7 @@ for `route-planner`.
   coordinates. Include coordinates to move the point, or omit its ID to
   create a new point. An empty list removes all
   intermediate points. You can also change `start` or `end`; omitted
-  fields are kept. The same default limits as for `plan_route` apply. Set
+  fields are kept. The same default limits as for `create_route` apply. Set
   `snap_to_route: true` on `add_waypoint` or `move_waypoint` to raise the limit
   for that waypoint from 15 m to 50 m and save its position on the calculated
   route. If the revision is out of date, read `get_route` before retrying.

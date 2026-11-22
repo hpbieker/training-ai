@@ -34,7 +34,7 @@ class RouteChangeTests(unittest.TestCase):
                 brouter_payload([start, first, snapped, second, end]),
             ]) as engine,
         ):
-            saved = planner.plan_route({
+            saved = planner.create_route({
                 "start": {"lon": start[0], "lat": start[1]},
                 "end": {"lon": end[0], "lat": end[1]},
                 "waypoints": [{"lon": point[0], "lat": point[1]} for point in (first, second)],
@@ -64,7 +64,7 @@ class RouteChangeTests(unittest.TestCase):
             patch.dict(os.environ, {"ROUTE_PLANNER_ROUTES": directory}),
             patch.object(planner, "run_brouter", return_value=brouter_payload(route)) as engine,
         ):
-            saved = planner.plan_route({
+            saved = planner.create_route({
                 "start": {"lon": 10, "lat": 60},
                 "end": {"lon": 10.002, "lat": 60},
                 "waypoints": [{"lon": 10.001, "lat": 60}],
@@ -105,7 +105,7 @@ class RouteChangeTests(unittest.TestCase):
                 brouter_payload(route),
             ]) as engine,
         ):
-            saved = planner.plan_route({
+            saved = planner.create_route({
                 "start": {"lon": 10, "lat": 60},
                 "end": {"lon": 10.002, "lat": 60},
                 "waypoints": [{"lon": detour[0], "lat": detour[1]}],

@@ -7,7 +7,7 @@ description: Plan, edit and inspect cycling routes, including checking that a ro
 
 ## Plan and verify
 
-- Use `plan_route` with verified coordinates in travel order. Preserve explicit
+- Use `create_route` with verified coordinates in travel order. Preserve explicit
   stops and choose guide points on the through route for areas the user wants to
   pass. For a directional loop, place verified guides on each flank between the
   split and rejoin. Check their order before planning. Clockwise means southbound
