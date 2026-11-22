@@ -26,12 +26,14 @@ class GarminConnectMcpTests(unittest.TestCase):
         self.assertEqual([tool["name"] for tool in tools], list(MCP.ALL_TOOL_NAMES))
         for tool in tools:
             self.assertFalse(tool["inputSchema"]["additionalProperties"])
-        for tool in tools[:6]:
-            self.assertTrue(tool["annotations"]["readOnlyHint"])
-            self.assertFalse(tool["annotations"]["destructiveHint"])
-        self.assertFalse(MCP.ANNOTATIONS["create_course"]["readOnlyHint"])
-        self.assertFalse(MCP.ANNOTATIONS["create_course"]["destructiveHint"])
-        self.assertTrue(MCP.ANNOTATIONS["delete_course"]["destructiveHint"])
+        writes = {"get_health_day", "get_activity", "get_activity_file", "create_course", "delete_course"}
+        for tool in tools:
+            name = tool["name"]
+            hints = tool["annotations"]
+            self.assertEqual(hints["readOnlyHint"], name not in writes, name)
+            if name in writes:
+                self.assertEqual(hints["destructiveHint"], name == "delete_course", name)
+                self.assertEqual(hints["idempotentHint"], name == "delete_course", name)
 
     @patch.object(MCP, "compact_day_payload")
     @patch.object(MCP, "fetch_day")

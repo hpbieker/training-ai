@@ -53,8 +53,6 @@ class YrMcpSchemaTests(unittest.TestCase):
                 {
                     "title": MCP.TOOL_ANNOTATIONS[name]["title"],
                     "readOnlyHint": True,
-                    "destructiveHint": False,
-                    "idempotentHint": True,
                     "openWorldHint": True,
                 },
             )

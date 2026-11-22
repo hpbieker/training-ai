@@ -9,6 +9,107 @@ from typing import Any
 from olympiatoppen_service import OlympiatoppenToolService, ToolFailure
 
 
+TOOL_DEFINITIONS = {
+    "import_session": {
+        "name": "import_session",
+        "description": (
+            "Verify a Cookie header obtained from the authenticated Olympiatoppen browser tab, "
+            "replace the locally saved session, and return only verification status. "
+            "Do not pass cookies from other sites or include them in any other tool call."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "cookie_header": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": (
+                        "Cookie header read from the authenticated Olympiatoppen site in Nettleser. "
+                        "Sensitive session credential; do not include unrelated headers or cURL text."
+                    ),
+                },
+            },
+            "required": ["cookie_header"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {
+            "type": "object",
+            "properties": {"stored": {"type": "boolean"}, "verified": {"type": "boolean"}},
+            "required": ["stored", "verified"],
+            "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Save Olympiatoppen Session", "readOnlyHint": False,
+            "destructiveHint": True, "idempotentHint": True, "openWorldHint": True,
+        },
+    },
+    "get_session_status": {
+        "name": "get_session_status",
+        "description": (
+            "Check whether the saved diary session exists, has private file permissions, and is currently valid."
+        ),
+        "inputSchema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+        "outputSchema": {
+            "type": "object",
+            "properties": {"stored": {"type": "boolean"}, "verified": {"type": "boolean"}},
+            "required": ["stored", "verified"],
+            "additionalProperties": False,
+        },
+        "annotations": {"title": "Check Olympiatoppen Session", "readOnlyHint": True, "openWorldHint": True},
+    },
+    "list_workouts": {
+        "name": "list_workouts",
+        "description": (
+            "List logged diary sessions in an inclusive date range. Returns dates, names, descriptions, "
+            "recorded activity metrics, and sessionMetrics such as perceived load and daily form."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "from_date": {"type": "string", "format": "date"},
+                "to_date": {"type": "string", "format": "date"},
+            },
+            "required": ["from_date", "to_date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"title": "List Olympiatoppen Workouts", "readOnlyHint": True, "openWorldHint": True},
+    },
+    "get_activity": {
+        "name": "get_activity",
+        "description": (
+            "Retrieve one exact session by its session ID within a required inclusive date range. "
+            "Use the logged local date as both bounds when known."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string", "minLength": 1},
+                "from_date": {"type": "string", "format": "date"},
+                "to_date": {"type": "string", "format": "date"},
+            },
+            "required": ["session_id", "from_date", "to_date"],
+            "additionalProperties": False,
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"title": "Get Olympiatoppen Workout", "readOnlyHint": True, "openWorldHint": True},
+    },
+    "clear_session": {
+        "name": "clear_session",
+        "description": "Remove the locally saved diary session cookie.",
+        "inputSchema": {"type": "object", "properties": {}, "required": [], "additionalProperties": False},
+        "outputSchema": {
+            "type": "object", "properties": {"cleared": {"type": "boolean"}},
+            "required": ["cleared"], "additionalProperties": False,
+        },
+        "annotations": {
+            "title": "Clear Olympiatoppen Session", "readOnlyHint": False,
+            "destructiveHint": True, "idempotentHint": True, "openWorldHint": False,
+        },
+    },
+}
+
+
 def create_sdk_server(service: OlympiatoppenToolService | None = None) -> Any:
     import anyio
     import mcp.types as mcp_types
@@ -28,7 +129,7 @@ def create_sdk_server(service: OlympiatoppenToolService | None = None) -> Any:
 
     @server.list_tools()
     async def list_tools() -> list[mcp_types.Tool]:
-        return [mcp_types.Tool.model_validate(row) for row in tool_service.list_tools()]
+        return [mcp_types.Tool.model_validate(row) for row in TOOL_DEFINITIONS.values()]
 
     @server.call_tool()
     async def call_tool(name: str, arguments: dict[str, Any]) -> mcp_types.CallToolResult:

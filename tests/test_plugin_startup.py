@@ -57,3 +57,24 @@ class PluginStartupTests(unittest.IsolatedAsyncioTestCase):
                     except Exception:
                         stderr.seek(0)
                         self.fail(f"{name} failed to start via {manifest}:\n{stderr.read()}")
+                    for tool in catalog.tools:
+                        with self.subTest(tool=tool.name):
+                            hints = tool.annotations
+                            self.assertIsNotNone(hints)
+                            self.assertTrue(tool.title or hints.title)
+                            self.assertIsInstance(hints.readOnlyHint, bool)
+                            self.assertIsInstance(hints.openWorldHint, bool)
+                            if hints.readOnlyHint:
+                                self.assertIsNone(hints.destructiveHint)
+                                self.assertIsNone(hints.idempotentHint)
+                            else:
+                                self.assertIsInstance(hints.destructiveHint, bool)
+                                self.assertIsInstance(hints.idempotentHint, bool)
+                            properties = tool.inputSchema.get("properties", {})
+                            if {"save_full", "save_session", "save_series"} & properties.keys():
+                                self.assertFalse(hints.readOnlyHint)
+                                self.assertFalse(hints.destructiveHint)
+                                self.assertFalse(hints.idempotentHint)
+                            if "overwrite" in properties:
+                                self.assertFalse(hints.readOnlyHint)
+                                self.assertTrue(hints.destructiveHint)

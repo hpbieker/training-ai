@@ -179,40 +179,18 @@ class XertMcpSchemaTests(unittest.TestCase):
             self.assertFalse(definition["inputSchema"]["additionalProperties"], name)
             for field, schema in definition["inputSchema"]["properties"].items():
                 self.assertTrue(schema.get("description"), f"{name}.{field}")
-            writes_session_file = name == "get_activity"
-            writes_note = name == "set_note"
-            creates_workout = name == "create_workout"
-            deletes_workout = name == "delete_workout"
-            updates_workout = name == "update_workout"
-            creates_planner_event = name == "create_planner_event"
-            updates_planner_event = name == "update_planner_event"
-            deletes_planner_event = name == "delete_planner_event"
-            self.assertEqual(
-                definition["annotations"],
-                {
-                    "title": MCP.TOOL_ANNOTATIONS[name]["title"],
-                    "readOnlyHint": not (
-                        writes_session_file
-                        or writes_note
-                        or creates_workout
-                        or deletes_workout
-                        or updates_workout
-                        or creates_planner_event
-                        or updates_planner_event
-                        or deletes_planner_event
-                    ),
-                    "destructiveHint": (
-                        writes_note or deletes_workout or updates_workout
-                        or updates_planner_event or deletes_planner_event
-                    ),
-                    "idempotentHint": not (
-                        writes_session_file or creates_workout or deletes_workout
-                        or updates_workout or creates_planner_event
-                        or updates_planner_event or deletes_planner_event
-                    ),
-                    "openWorldHint": name not in {"calculate_strain", "solve_segment_duration"},
-                },
-            )
+            new_files = {"get_activity", "analyze_activity_xert_2", "calculate_workout_xert_2"}
+            destructive = {
+                "set_note", "update_workout", "delete_workout", "create_planner_event",
+                "update_planner_event", "delete_planner_event",
+            }
+            writes = new_files | destructive | {"create_workout"}
+            hints = definition["annotations"]
+            self.assertEqual(hints["readOnlyHint"], name not in writes, name)
+            self.assertEqual(hints["openWorldHint"], name not in {"calculate_strain", "solve_segment_duration"}, name)
+            if name in writes:
+                self.assertEqual(hints["destructiveHint"], name in destructive, name)
+                self.assertEqual(hints["idempotentHint"], name in {"set_note", "delete_workout", "delete_planner_event"}, name)
 
     def test_sdk_accepts_every_tool_definition(self) -> None:
         server = MCP.create_sdk_server(MCP.XertToolService(FakeXertService))

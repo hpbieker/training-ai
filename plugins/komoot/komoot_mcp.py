@@ -66,7 +66,7 @@ TOOL_DEFINITIONS = {
             "additionalProperties": False,
         },
         "outputSchema": {"type": "object", "properties": _OUTPUT_FIELDS, "required": list(_OUTPUT_FIELDS), "additionalProperties": False},
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": "Download Komoot Tour as FIT", "readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
     },
     "download_tour_gpx": {
         "name": "download_tour_gpx",
@@ -86,7 +86,7 @@ TOOL_DEFINITIONS = {
             "additionalProperties": False,
         },
         "outputSchema": _EXPORT_OUTPUT,
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": "Download Komoot Tour as GPX", "readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
     },
     "list_tours": {
         "name": "list_tours",
@@ -117,7 +117,7 @@ TOOL_DEFINITIONS = {
             "required": ["tours", "page", "limit", "total_elements", "total_pages", "next_page"],
             "additionalProperties": False,
         },
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": "List Komoot Tours", "readOnlyHint": True, "openWorldHint": True},
     },
     "get_tour_metadata": {
         "name": "get_tour_metadata",
@@ -130,7 +130,7 @@ TOOL_DEFINITIONS = {
             "type": "object", "properties": {"tour_id": {"type": "string"}, "metadata": _COMMON_RESULT},
             "required": ["tour_id", "metadata"], "additionalProperties": False,
         },
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": "Get Komoot Tour Details", "readOnlyHint": True, "openWorldHint": True},
     },
     "get_tour_route": {
         "name": "get_tour_route",
@@ -146,7 +146,7 @@ TOOL_DEFINITIONS = {
             "type": "object", "properties": {"tour_id": {"type": "string"}, "route": _COMMON_RESULT},
             "required": ["tour_id", "route"], "additionalProperties": False,
         },
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": "Get Full Komoot Route", "readOnlyHint": True, "openWorldHint": True},
     },
     "get_tour_line": {
         "name": "get_tour_line",
@@ -159,7 +159,7 @@ TOOL_DEFINITIONS = {
             "type": "object", "properties": {"tour_id": {"type": "string"}, "tour_line": _COMMON_RESULT},
             "required": ["tour_id", "tour_line"], "additionalProperties": False,
         },
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": "Get Komoot Tour Line", "readOnlyHint": True, "openWorldHint": True},
     },
     "rename_tour": {
         "name": "rename_tour",
@@ -183,16 +183,16 @@ TOOL_DEFINITIONS = {
                 "name": {"type": "string"}, "verified": {"const": True},
             }, "required": ["tour_id", "old_name", "name", "verified"], "additionalProperties": False,
         },
-        "annotations": {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": "Rename Komoot Tour", "readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True},
     },
 }
 
 
-for _name, _description in {
-    "get_tour_waypoints": "Read the planned path waypoints in Komoot order, including locations and geometry indices. Never substitutes route geometry for planning points.",
-    "inspect_tour": "Inspect way types, surfaces and Komoot warnings with approximate start/end distances and locations along the route. Preserves Komoot category codes; cycleway does not by itself establish whether pedestrians share it.",
-    "compare_tours": "Compare a Komoot route with another Komoot tour or external lat/lng coordinate objects, e.g. Strava geometry. Returns bidirectional sampled spatial deviations along each route. Ignores traversal order and may miss deviations shorter than sample_spacing_m; does not verify road identity.",
-}.items():
+for _name, _title, _description in (
+    ("get_tour_waypoints", "Get Komoot Tour Waypoints", "Read the planned path waypoints in Komoot order, including locations and geometry indices. Never substitutes route geometry for planning points."),
+    ("inspect_tour", "Inspect Komoot Tour", "Inspect way types, surfaces and Komoot warnings with approximate start/end distances and locations along the route. Preserves Komoot category codes; cycleway does not by itself establish whether pedestrians share it."),
+    ("compare_tours", "Compare Komoot Tours", "Compare a Komoot route with another Komoot tour or external lat/lng coordinate objects, e.g. Strava geometry. Returns bidirectional sampled spatial deviations along each route. Ignores traversal order and may miss deviations shorter than sample_spacing_m; does not verify road identity."),
+):
     _properties = {"tour": {"type": "string", "minLength": 1}}
     _schema = {"type": "object", "properties": _properties, "required": ["tour"], "additionalProperties": False}
     if _name == "compare_tours":
@@ -208,7 +208,7 @@ for _name, _description in {
     TOOL_DEFINITIONS[_name] = {
         "name": _name, "description": _description, "inputSchema": _schema,
         "outputSchema": _COMMON_RESULT,
-        "annotations": {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+        "annotations": {"title": _title, "readOnlyHint": True, "openWorldHint": True},
     }
 
 

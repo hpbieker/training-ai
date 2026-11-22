@@ -95,31 +95,31 @@ _EVENT_FILTER_FIELDS = (
 ANNOTATIONS = {
     "list_athletes": {
         "title": "List Accessible Intervals.icu Athletes", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "list_activities": {
         "title": "List Intervals.icu Activities", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "list_activity_power_curves": {
         "title": "List Intervals.icu Activity Power Curves", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "list_activity_hr_curves": {
         "title": "List Intervals.icu Activity HR Curves", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "list_activity_pace_curves": {
         "title": "List Intervals.icu Activity Pace Curves", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "search_activity_intervals": {
         "title": "Search Intervals.icu Activity Intervals", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "list_sport_settings": {
         "title": "List Intervals.icu Sport Settings", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "get_activity": {
         "title": "Get Intervals.icu Activity", "readOnlyHint": False,
@@ -131,7 +131,7 @@ ANNOTATIONS = {
     },
     "search_activities": {
         "title": "Search Intervals.icu Activities", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "get_activity_streams": {
         "title": "Get Intervals.icu Activity Streams", "readOnlyHint": False,
@@ -147,11 +147,11 @@ ANNOTATIONS = {
     },
     "delete_activity": {
         "title": "Delete Intervals.icu Activity", "readOnlyHint": False,
-        "destructiveHint": True, "idempotentHint": False, "openWorldHint": True,
+        "destructiveHint": True, "idempotentHint": True, "openWorldHint": True,
     },
     "delete_activities": {
         "title": "Delete Intervals.icu Activities", "readOnlyHint": False,
-        "destructiveHint": True, "idempotentHint": False, "openWorldHint": True,
+        "destructiveHint": True, "idempotentHint": True, "openWorldHint": True,
     },
     "upload_activity": {
         "title": "Upload Intervals.icu Activity", "readOnlyHint": False,
@@ -159,7 +159,7 @@ ANNOTATIONS = {
     },
     "list_wellness": {
         "title": "List Intervals.icu Wellness", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "update_wellness": {
         "title": "Update Intervals.icu Wellness", "readOnlyHint": False,
@@ -167,19 +167,19 @@ ANNOTATIONS = {
     },
     "list_events": {
         "title": "List Intervals.icu Calendar Events", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "list_activity_messages": {
         "title": "List Intervals.icu Activity Messages", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "get_training_plan": {
         "title": "Get Intervals.icu Training Plan", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "get_athlete_summary": {
         "title": "Get Intervals.icu Athlete Summary", "readOnlyHint": True,
-        "destructiveHint": False, "idempotentHint": True, "openWorldHint": True,
+        "openWorldHint": True,
     },
     "create_event": {
         "title": "Create Intervals.icu Calendar Event", "readOnlyHint": False,
@@ -191,7 +191,7 @@ ANNOTATIONS = {
     },
     "delete_event": {
         "title": "Delete Intervals.icu Calendar Event", "readOnlyHint": False,
-        "destructiveHint": True, "idempotentHint": False, "openWorldHint": True,
+        "destructiveHint": True, "idempotentHint": True, "openWorldHint": True,
     },
 }
 
@@ -1282,8 +1282,11 @@ for _interval_tool in ("get_activity_intervals", "update_activity_intervals"):
         "inputSchema": {"type": "object", "properties": _properties,
                         "required": ["activity_id"] + (["intervals", "expected_revision"] if _write else []),
                         "additionalProperties": False},
-        "annotations": {"readOnlyHint": not _write, "destructiveHint": _write,
-                        "idempotentHint": not _write, "openWorldHint": True},
+        "annotations": {
+            "title": "Update Intervals.icu Activity Intervals" if _write else "Get Intervals.icu Activity Intervals",
+            "readOnlyHint": not _write, "openWorldHint": True,
+            **({"destructiveHint": True, "idempotentHint": True} if _write else {}),
+        },
     }
 
 

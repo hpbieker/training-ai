@@ -116,21 +116,13 @@ class EatMyRideMcpSchemaTests(unittest.TestCase):
             self.assertFalse(definition["outputSchema"]["additionalProperties"], name)
             for field, schema in definition["inputSchema"]["properties"].items():
                 self.assertTrue(schema.get("description"), f"{name}.{field}")
-            is_write = name in {
-                "create_product", "update_product", "delete_product", "set_foodplan_products"
-            }
-            self.assertEqual(
-                definition["annotations"],
-                {
-                    "title": MCP.TOOL_ANNOTATIONS[name]["title"],
-                    "readOnlyHint": not is_write,
-                    "destructiveHint": name in {
-                        "update_product", "delete_product", "set_foodplan_products"
-                    },
-                    "idempotentHint": name not in {"create_product", "delete_product"},
-                    "openWorldHint": True,
-                },
-            )
+            writes = {"create_product", "update_product", "delete_product", "set_foodplan_products"}
+            hints = definition["annotations"]
+            self.assertEqual(hints["readOnlyHint"], name not in writes, name)
+            self.assertTrue(hints["openWorldHint"], name)
+            if name in writes:
+                self.assertEqual(hints["destructiveHint"], name != "create_product", name)
+                self.assertEqual(hints["idempotentHint"], name != "create_product", name)
 
     def test_limited_lists_report_count_and_total_count(self) -> None:
         for name in ("list_activities", "search_products", "list_products"):

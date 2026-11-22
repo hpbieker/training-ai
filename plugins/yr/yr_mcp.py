@@ -25,15 +25,11 @@ TOOL_ANNOTATIONS = {
     "get_forecast": {
         "title": "Get Yr Forecast",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "get_forecasts": {
         "title": "Get Yr Forecasts",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     }
 }

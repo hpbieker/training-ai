@@ -49,12 +49,10 @@ ALL_TOOL_NAMES = (
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
-    "list_activity_summaries": {"title": "List Xert Activity Summaries", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+    "list_activity_summaries": {"title": "List Xert Activity Summaries", "readOnlyHint": True, "openWorldHint": True},
     "list_activities": {
         "title": "List Xert Activities",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "get_activity": {
@@ -67,49 +65,41 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     "summarize_activities_xert_2": {
         "title": "Summarize Xert 2.0 Beta Preview Activities",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "analyze_activity_xert_2": {
         "title": "Analyze Activity with Xert 2.0 Beta",
-        "readOnlyHint": True,
+        "readOnlyHint": False,
         "destructiveHint": False,
-        "idempotentHint": True,
+        "idempotentHint": False,
         "openWorldHint": True,
     },
     "calculate_workout_xert_2": {
         "title": "Calculate Workout with Xert 2.0 Beta",
-        "readOnlyHint": True,
+        "readOnlyHint": False,
         "destructiveHint": False,
-        "idempotentHint": True,
+        "idempotentHint": False,
         "openWorldHint": True,
     },
     "list_workouts": {
         "title": "List Xert Workouts",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "get_workout": {
         "title": "Get Xert Workout",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "list_planner_events": {
         "title": "List Xert Planner Events",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "create_planner_event": {
         "title": "Create Xert Planner Event",
         "readOnlyHint": False,
-        "destructiveHint": False,
+        "destructiveHint": True,
         "idempotentHint": False,
         "openWorldHint": True,
     },
@@ -124,21 +114,17 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "title": "Delete Xert Planner Event",
         "readOnlyHint": False,
         "destructiveHint": True,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True,
     },
     "list_notes": {
         "title": "List Xert Calendar Notes",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "get_note": {
         "title": "Get Xert Calendar Note",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "set_note": {
@@ -151,22 +137,16 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     "get_training_state": {
         "title": "Get Xert Training State",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "get_training_advice": {
         "title": "Get Xert Training Advice",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "list_recommended_workouts": {
         "title": "List Xert Recommended Workouts",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
     "create_workout": {
@@ -180,7 +160,7 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
         "title": "Delete Xert Workout",
         "readOnlyHint": False,
         "destructiveHint": True,
-        "idempotentHint": False,
+        "idempotentHint": True,
         "openWorldHint": True,
     },
     "update_workout": {
@@ -193,15 +173,13 @@ TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
     "get_training_forecast": {
         "title": "Get Xert Training Forecast",
         "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
         "openWorldHint": True,
     },
-    "calculate_workout_capacity": {"title": "Calculate Xert Workout Capacity", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-    "calculate_strain": {"title": "Calculate Xert Strain", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
-    "solve_segment_duration": {"title": "Solve Xert Segment Duration", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False},
-    "project_load_model": {"title": "Project Xert Load Model", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
-    "calculate_workout": {"title": "Calculate Xert Workout", "readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True},
+    "calculate_workout_capacity": {"title": "Calculate Xert Workout Capacity", "readOnlyHint": True, "openWorldHint": True},
+    "calculate_strain": {"title": "Calculate Xert Strain", "readOnlyHint": True, "openWorldHint": False},
+    "solve_segment_duration": {"title": "Solve Xert Segment Duration", "readOnlyHint": True, "openWorldHint": False},
+    "project_load_model": {"title": "Project Xert Load Model", "readOnlyHint": True, "openWorldHint": True},
+    "calculate_workout": {"title": "Calculate Xert Workout", "readOnlyHint": True, "openWorldHint": True},
 }
 
 
@@ -746,7 +724,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "create_planner_event",
         "description": (
             "Create one Xert Planner event from source-native event fields, then "
-            "read it back and return the verified event."
+            "read it back and return the verified event. Omit options.edit_id when creating a new event."
         ),
         "inputSchema": {
             "type": "object",

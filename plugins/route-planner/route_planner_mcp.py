@@ -96,7 +96,10 @@ TOOL = types.Tool(
         "required": ["start", "end"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
+    annotations=types.ToolAnnotations(
+        title="Plan and Save Cycling Route", readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=True,
+    ),
 )
 
 UPDATE_ROUTE = types.Tool(
@@ -150,7 +153,10 @@ UPDATE_ROUTE = types.Tool(
         ]},
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True),
+    annotations=types.ToolAnnotations(
+        title="Update Saved Cycling Route", readOnlyHint=False, destructiveHint=True,
+        idempotentHint=True, openWorldHint=True,
+    ),
 )
 
 EVALUATE_ROUTE_CHANGE = types.Tool(
@@ -158,10 +164,13 @@ EVALUATE_ROUTE_CHANGE = types.Tool(
     description=(
         "Calculate the effect of a proposed update against a saved route revision without saving it. "
         "Accepts the same changes as update_route. Reports the distance difference and where the "
-        "route geometry changes. Sends the full proposed route coordinates and bundled profile to BRouter."
+        "route geometry changes. Uploads the bundled profile to BRouter and sends the proposed route coordinates."
     ),
     inputSchema=UPDATE_ROUTE.inputSchema,
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    annotations=types.ToolAnnotations(
+        title="Preview Cycling Route Change", readOnlyHint=False, destructiveHint=False,
+        idempotentHint=False, openWorldHint=True,
+    ),
 )
 
 GET_ROUTE = types.Tool(
@@ -173,19 +182,22 @@ GET_ROUTE = types.Tool(
         "required": ["route_id"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    annotations=types.ToolAnnotations(title="Get Saved Route Summary", readOnlyHint=True, openWorldHint=False),
 )
 
 EXPORT_ROUTE = types.Tool(
     name="export_route",
-    description="Export the latest saved route by route_id. Returns a local file path. Defaults to GPX.",
+    description="Export the latest saved route by route_id. Returns the existing GeoJSON file or writes the GPX file for this revision (default), replacing any previous GPX export.",
     inputSchema={
         "type": "object",
         "properties": {"route_id": ID, "format": {"enum": ["gpx", "geojson"]}},
         "required": ["route_id"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False),
+    annotations=types.ToolAnnotations(
+        title="Export Saved Route File", readOnlyHint=False, destructiveHint=True,
+        idempotentHint=True, openWorldHint=False,
+    ),
 )
 
 INSPECT_ROUTE = types.Tool(
@@ -223,7 +235,7 @@ INSPECT_ROUTE = types.Tool(
         "not": {"required": ["distance_range", "waypoint_range"]},
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    annotations=types.ToolAnnotations(title="Inspect Route Surfaces and Access", readOnlyHint=True, openWorldHint=False),
 )
 
 LOCATE_ON_ROUTE = types.Tool(
@@ -248,7 +260,7 @@ LOCATE_ON_ROUTE = types.Tool(
         "required": ["route_id", "near"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    annotations=types.ToolAnnotations(title="Locate a Point on the Route", readOnlyHint=True, openWorldHint=False),
 )
 
 SEARCH_PLACES = types.Tool(
@@ -268,7 +280,7 @@ SEARCH_PLACES = types.Tool(
         "required": ["query"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    annotations=types.ToolAnnotations(title="Search OpenStreetMap Places", readOnlyHint=True, openWorldHint=True),
 )
 
 FIND_ROAD_POINTS = types.Tool(
@@ -301,7 +313,7 @@ FIND_ROAD_POINTS = types.Tool(
         "required": ["locations"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    annotations=types.ToolAnnotations(title="Find Road Coordinates", readOnlyHint=True, openWorldHint=True),
 )
 
 SHOW_ROUTE = types.Tool(
@@ -339,7 +351,7 @@ SHOW_ROUTE = types.Tool(
             },
         ],
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    annotations=types.ToolAnnotations(title="Show Interactive Route Map", readOnlyHint=True, openWorldHint=False),
     _meta={"ui": {"resourceUri": UI_URI}},
 )
 
@@ -352,7 +364,7 @@ GET_ROUTE_VIEW = types.Tool(
         "required": ["route_id", "after_revision"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=False),
+    annotations=types.ToolAnnotations(title="Refresh Route Map", readOnlyHint=True, openWorldHint=False),
     _meta={"ui": {"visibility": ["app"]}},
 )
 
@@ -365,7 +377,7 @@ MAP_TILE = types.Tool(
         "required": ["z", "x", "y"],
         "additionalProperties": False,
     },
-    annotations=types.ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+    annotations=types.ToolAnnotations(title="Load Map Tile", readOnlyHint=True, openWorldHint=True),
     _meta={"ui": {"visibility": ["app"]}},
 )
 

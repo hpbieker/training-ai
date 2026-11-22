@@ -40,36 +40,25 @@ from garmin_connect_api import (  # noqa: E402
 from list_query import apply_list_query, query_fields, query_properties  # noqa: E402
 
 
-ALL_TOOL_NAMES = (
-    "get_health_day",
-    "list_health_days",
-    "list_activities",
-    "get_activity",
-    "get_activity_file",
-    "get_cycling_ftp",
-    "get_lactate_threshold",
-    "list_courses",
-    "get_course",
-    "create_course",
-    "delete_course",
-)
+# Each export can leave a fresh file, including optional save_full exports.
+_READ = {"readOnlyHint": True, "openWorldHint": True}
+_CREATE = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True}
+_DELETE = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": True}
 
-ANNOTATIONS: dict[str, dict[str, object]] = {
-    name: {
-        "title": " ".join(part.capitalize() for part in name.split("_")),
-        "readOnlyHint": True,
-        "destructiveHint": False,
-        "idempotentHint": True,
-        "openWorldHint": True,
-    }
-    for name in ALL_TOOL_NAMES
+ANNOTATIONS = {
+    "get_health_day": {"title": "Get Garmin Daily Health and Readiness", **_CREATE},
+    "list_health_days": {"title": "List Garmin Health Days", **_READ},
+    "list_activities": {"title": "List Garmin Activities", **_READ},
+    "get_activity": {"title": "Get Garmin Activity Details", **_CREATE},
+    "get_activity_file": {"title": "Download Garmin Activity File", **_CREATE},
+    "get_cycling_ftp": {"title": "Get Garmin Cycling FTP", **_READ},
+    "get_lactate_threshold": {"title": "Get Garmin Lactate Threshold", **_READ},
+    "list_courses": {"title": "List Garmin Courses", **_READ},
+    "get_course": {"title": "Get Garmin Course", **_READ},
+    "create_course": {"title": "Create Garmin Course", **_CREATE},
+    "delete_course": {"title": "Delete Garmin Course", **_DELETE},
 }
-ANNOTATIONS["create_course"].update(readOnlyHint=False, idempotentHint=False)
-ANNOTATIONS["delete_course"].update(
-    readOnlyHint=False,
-    destructiveHint=True,
-    idempotentHint=False,
-)
+ALL_TOOL_NAMES = tuple(ANNOTATIONS)
 
 
 def _object(description: str) -> dict[str, object]:
@@ -249,8 +238,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "get_activity",
         "description": (
             "Get normalized Garmin model context for one activity: Training Effect, "
-            "load, Stamina, and Performance Condition. Accepts a Garmin activity ID, "
-            "Raw Garmin chart samples are used internally but are not returned."
+            "load, Stamina, and Performance Condition. Use save_full to save the raw "
+            "summary and details to a private temporary file."
         ),
         "inputSchema": {
             "type": "object",

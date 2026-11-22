@@ -93,20 +93,22 @@ UPDATE_ROUTE_PATCH = {
 }
 
 
-def _tool(name: str, description: str, properties: dict, required: list[str], *, write: bool = False) -> dict:
+_READ = {"readOnlyHint": True}
+_CREATE = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False}
+_REPLACE_OR_DELETE = {"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True}
+
+
+def _tool(name: str, title: str, description: str, properties: dict, required: list[str], *, hints: dict) -> dict:
     return {
         "name": name, "description": description,
         "inputSchema": {"type": "object", "properties": properties, "required": required, "additionalProperties": False},
         "outputSchema": {"type": "object", "additionalProperties": True},
-        "annotations": {
-            "readOnlyHint": not write, "destructiveHint": write,
-            "idempotentHint": not write, "openWorldHint": True,
-        },
+        "annotations": {"title": title, "openWorldHint": True, **hints},
     }
 
 
 TOOL_DEFINITIONS = {row["name"]: row for row in [
-    _tool("build_route", "Calculate paths between explicit waypoint pairs without saving a route. Accepts Strava's requests array and returns its complete buildRoute response unchanged by default. save_full=true writes that response to a private temporary JSON file and returns only counts and file details. Each result corresponds to a requested leg, not an alternative complete route. Does not accept a target distance or generate waypoints.", {
+    _tool("build_route", "Build Strava Route Geometry", "Calculate paths between explicit waypoint pairs without saving a route. Accepts Strava's requests array and returns its complete buildRoute response unchanged by default. save_full=true writes that response to a private temporary JSON file and returns only counts and file details. Each result corresponds to a requested leg, not an alternative complete route. Does not accept a target distance or generate waypoints.", {
         "requests": {"type": "array", "minItems": 1, "items": {
             "type": "object", "additionalProperties": False, "required": ["elements", "routePrefs"],
             "properties": {
@@ -115,70 +117,70 @@ TOOL_DEFINITIONS = {row["name"]: row for row in [
             },
         }},
         "save_full": {"type": "boolean", "default": False, "description": "Save full build response locally; return counts and file details instead of geometry."},
-    }, ["requests"]),
-    _tool("delete_route", "Delete one explicitly authorized owned route. Checks ownership before deleting and verifies a not-found response while still authenticated. On failure read current state before retrying.", {
+    }, ["requests"], hints=_CREATE),
+    _tool("delete_route", "Delete Strava Route", "Delete one explicitly authorized owned route. Checks ownership before deleting and verifies a not-found response while still authenticated. On failure read current state before retrying.", {
         "route_id": ID, "confirm": {"type": "boolean", "const": True},
-    }, ["route_id", "confirm"], write=True),
-    _tool("create_route", "Save already built and inspected route geometry using Strava's native write props. Does not build or reroute. Defaults to OnlyMe. Returns the full native source route object after readback. On uncertain failure, inspect existing routes before retrying to avoid duplicates.", {
+    }, ["route_id", "confirm"], hints=_REPLACE_OR_DELETE),
+    _tool("create_route", "Save New Strava Route", "Save already built and inspected route geometry using Strava's native write props. Does not build or reroute. Defaults to OnlyMe. Returns the full native source route object after readback. On uncertain failure, inspect existing routes before retrying to avoid duplicates.", {
         "props": CREATE_ROUTE_PROPS, "confirm": {"type": "boolean", "const": True},
-    }, ["props", "confirm"], write=True),
-    _tool("update_route", "Update an owned route using either inline patch or patch_file (absolute path to a prepare-update envelope). The file route ID must match; its geometry fingerprint is preserved. confirm must be supplied separately. Reads editable state first and preserves omitted fields; routePrefs merges supplied keys. Supply elements and built legs together when replacing geometry, with one complete path per leg. Use base_geometry_sha256 from prepare-update to reject stale geometry. Verification requires two separated matching readbacks. Returns the full native source route object after readback. Read current state before retrying a failed write.", {
+    }, ["props", "confirm"], hints=_CREATE),
+    _tool("update_route", "Update Strava Route", "Update an owned route using either inline patch or patch_file (absolute path to a prepare-update envelope). The file route ID must match; its geometry fingerprint is preserved. confirm must be supplied separately. Reads editable state first and preserves omitted fields; routePrefs merges supplied keys. Supply elements and built legs together when replacing geometry, with one complete path per leg. Use base_geometry_sha256 from prepare-update to reject stale geometry. Verification requires two separated matching readbacks. Returns the full native source route object after readback. Read current state before retrying a failed write.", {
         "route_id": ID, "patch": UPDATE_ROUTE_PATCH,
         "patch_file": {"type": "string", "minLength": 1, "description": "Absolute path to prepare-update update.json. Use instead of patch; route_id must match the file."},
         "base_geometry_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Geometry fingerprint from prepare-update. Rejects stale input before writing."}, "confirm": {"type": "boolean", "const": True},
-    }, ["route_id", "confirm"], write=True),
-    _tool("get_route", "Read one saved route, retaining all native fields except the fixed arrays elements, legs, segmentsOnRoute, segments, elevation, polyline, distanceStream and routePolylineData.media, regardless of size. omitted_arrays lists removed JSON-pointer paths and sizes. save_full=true saves the complete source route in a private temporary JSON file and returns its path, format and size.", {
+    }, ["route_id", "confirm"], hints=_REPLACE_OR_DELETE),
+    _tool("get_route", "Get Strava Route", "Read one saved route, retaining all native fields except the fixed arrays elements, legs, segmentsOnRoute, segments, elevation, polyline, distanceStream and routePolylineData.media, regardless of size. omitted_arrays lists removed JSON-pointer paths and sizes. save_full=true saves the complete source route in a private temporary JSON file and returns its path, format and size.", {
         "route_id": {**ID, "description": "Exact route ID returned by list_routes, as a string."},
         "save_full": {"type": "boolean", "default": False, "description": "Save complete source route data to a private temporary JSON file."},
-    }, ["route_id"]),
-    _tool("list_routes", "List saved routes from My Routes, including routes saved from others. Follows source pagination up to max_pages; if has_more, resume with next_cursor and the same filters. Route IDs are strings.", {
+    }, ["route_id"], hints=_CREATE),
+    _tool("list_routes", "List Strava Routes", "List saved routes from My Routes, including routes saved from others. Follows source pagination up to max_pages; if has_more, resume with next_cursor and the same filters. Route IDs are strings.", {
         "query": {"type": "string", "description": "Text search passed to Strava."},
         "created_by": {"type": "string", "enum": ["any", "me", "others"], "default": "any"},
         "only_starred": {"type": "boolean", "default": False},
         "route_types": {"type": "array", "items": {"type": "string", "enum": routes.ROUTE_TYPES}, "minItems": 1, "uniqueItems": True, "description": "Omit for all source route types."},
         "max_pages": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
         "cursor": {"type": "string", "minLength": 1, "description": "Exact next_cursor from a previous result; omit to start."},
-    }, []),
-    _tool("list_activities", "Find activities in an inclusive local date range, optionally filtered by visibility.", {
+    }, [], hints=_READ),
+    _tool("list_activities", "List Strava Activities", "Find activities in an inclusive local date range, optionally filtered by visibility.", {
         "since": {"type": "string", "format": "date"},
         "until": {"type": "string", "format": "date", "description": "Defaults to today's local date."},
         "visibility": VISIBILITY,
         "max_pages": {"type": "integer", "minimum": 1, "default": 20},
         "per_page": {"type": "integer", "minimum": 1, "default": 100},
-    }, ["since"]),
-    _tool("get_activity", "Read one activity and current editable metadata, including bike and start-time privacy.", {"activity_id": ID}, ["activity_id"]),
-    _tool("get_activity_kudos", "Read athletes who gave kudos to an activity using the existing browser session. count is the number of returned athletes; athlete fields retain the source format. Read-only: does not give kudos.", {"activity_id": ID}, ["activity_id"]),
-    _tool("list_gear", "List the account's active and retired bikes and shoes.", {}, []),
-    _tool("get_gear", "Read one bike or shoe from the account's gear collections.", {
+    }, ["since"], hints=_READ),
+    _tool("get_activity", "Get Strava Activity Details", "Read one activity and current editable metadata, including bike and start-time privacy.", {"activity_id": ID}, ["activity_id"], hints=_READ),
+    _tool("get_activity_kudos", "List Kudos on Strava Activity", "Read athletes who gave kudos to an activity using the existing browser session. count is the number of returned athletes; athlete fields retain the source format. Read-only: does not give kudos.", {"activity_id": ID}, ["activity_id"], hints=_READ),
+    _tool("list_gear", "List Strava Gear", "List the account's active and retired bikes and shoes.", {}, [], hints=_READ),
+    _tool("get_gear", "Get Strava Gear Details", "Read one bike or shoe from the account's gear collections.", {
         "gear_id": ID, "gear_type": {"type": "string", "enum": ["bike", "shoe"]},
-    }, ["gear_id"]),
-    _tool("list_activity_media", "List photos and videos attached to one activity. Use the returned media_id for downloads.", {
+    }, ["gear_id"], hints=_READ),
+    _tool("list_activity_media", "List Strava Activity Media", "List photos and videos attached to one activity. Use the returned media_id for downloads.", {
         "activity_id": ID,
-    }, ["activity_id"]),
-    _tool("download_activity_media", "Download one listed photo or video to an explicit local directory. Returns the saved path. Existing files require overwrite=true.", {
+    }, ["activity_id"], hints=_READ),
+    _tool("download_activity_media", "Download Strava Activity Media", "Download one listed photo or video to an explicit local directory. Returns the saved path. Existing files require overwrite=true.", {
         "activity_id": ID,
         "media_id": {"type": "string", "minLength": 1, "description": "Exact media_id returned by list_activity_media; may be a UUID."},
         "destination_dir": {"type": "string", "pattern": "^/", "description": "Absolute local destination directory."},
         "overwrite": {"type": "boolean", "default": False},
-    }, ["activity_id", "media_id", "destination_dir"], write=True),
-    _tool("delete_activity_media", "Permanently remove one exact attached photo or video. List the activity media first, supply its returned media_id, and set confirm=true. Fresh readback verifies removal.", {
+    }, ["activity_id", "media_id", "destination_dir"], hints=_REPLACE_OR_DELETE),
+    _tool("delete_activity_media", "Delete Strava Activity Media", "Permanently remove one exact attached photo or video. List the activity media first, supply its returned media_id, and set confirm=true. Fresh readback verifies removal.", {
         "activity_id": ID,
         "media_id": {"type": "string", "minLength": 1, "description": "Exact media_id returned by list_activity_media; may be a UUID."},
         "confirm": {"type": "boolean", "const": True},
-    }, ["activity_id", "media_id", "confirm"], write=True),
-    _tool("upload_activity_media", "Attach one explicitly authorized local image or video and verify it through fresh media-list readback. List existing media first; after an uncertain failure, list again before retrying to avoid duplicates.", {
+    }, ["activity_id", "media_id", "confirm"], hints=_REPLACE_OR_DELETE),
+    _tool("upload_activity_media", "Attach Media to Strava Activity", "Attach one explicitly authorized local image or video and verify it through fresh media-list readback. List existing media first; after an uncertain failure, list again before retrying to avoid duplicates.", {
         "activity_id": ID,
         "file_path": {"type": "string", "pattern": "^/", "description": "Absolute path to an existing JPG, JPEG, PNG, GIF, MP4, or MOV file."},
         "caption": {"type": "string"},
         "confirm": {"type": "boolean", "const": True},
-    }, ["activity_id", "file_path", "confirm"], write=True),
-    _tool("update_activity", "Apply an explicitly authorized metadata patch and verify it through fresh readback. On failure, read current state before retrying.", {
+    }, ["activity_id", "file_path", "confirm"], hints=_CREATE),
+    _tool("update_activity", "Update Strava Activity", "Apply an explicitly authorized metadata patch and verify it through fresh readback. On failure, read current state before retrying.", {
         "activity_id": ID, "patch": PATCH, "confirm": {"type": "boolean", "const": True},
-    }, ["activity_id", "patch", "confirm"], write=True),
-    _tool("update_activities", "Apply one authorized patch to several activities, verifying each. Partial failures include updated, failed, and not_attempted IDs; never blindly retry the whole batch.", {
+    }, ["activity_id", "patch", "confirm"], hints=_REPLACE_OR_DELETE),
+    _tool("update_activities", "Update Multiple Strava Activities", "Apply one authorized patch to several activities, verifying each. Partial failures include updated, failed, and not_attempted IDs; never blindly retry the whole batch.", {
         "activity_ids": {"type": "array", "items": ID, "minItems": 1, "uniqueItems": True},
         "patch": PATCH, "confirm": {"type": "boolean", "const": True},
-    }, ["activity_ids", "patch", "confirm"], write=True),
+    }, ["activity_ids", "patch", "confirm"], hints=_REPLACE_OR_DELETE),
 ]}
 
 # The legacy metadata helper has a module-global SESSION. Protect the entire

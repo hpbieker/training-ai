@@ -112,7 +112,7 @@ def definition(name, description, inputs, required, output):
     return {"name": name, "description": description,
             "inputSchema": object_schema(inputs, required), "outputSchema": output,
             "annotations": {"title": name.replace("_", " ").title(), "readOnlyHint": True,
-                            "destructiveHint": False, "idempotentHint": True, "openWorldHint": True}}
+                            "openWorldHint": True}}
 
 
 TOOL_DEFINITIONS = {
