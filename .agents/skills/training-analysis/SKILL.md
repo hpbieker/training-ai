@@ -154,7 +154,15 @@ to save the full `vt1_dose.py` result and display the rides and fields needed
 for the decision.
 If today's subjective response could change the session, check current chat
 and dated reports first. In a live exchange, including a reply to an automated
-recommendation, ask for the missing observation before choosing the dose.
+recommendation, ask for a missing observation the athlete can already make
+if it changes the choice. Place other checks where the uncertainty can be
+resolved: during warm-up, after an effort, or late in steady work. For a
+long aerobic ride with a justified extension, give the base dose and an upper
+duration supported by the day's purpose and training history. Within that
+range the rider can decide in stages. At each relevant checkpoint use the
+recent response at the same power and the value of the next increment before
+the next priority session to say whether to stop or how far to continue
+before reassessing. Distinguish steady work from total ride time.
 Use the [pre-session question guidance](references/daily-recommendations.md#pre-session-questions).
 When quality is due, compare the achieved set with the next step in the
 reviewed plan. Compare both as complete workouts, including work per effort,
@@ -178,7 +186,10 @@ to stop or cap a finish, including one from automation memory. If moving
 minutes to a later ride, compare both placements through the next quality session. In a saved
 daily request, keep the selected ride and the athlete's later choice separate:
 resolve `training_target.aerobic_finish` and include the packet's finish
-decision in the final prescription, including on reruns. For a
+decision in the final prescription, including on reruns. When declining a longer
+finish after intervals, check whether a shorter addition supported by comparable
+rides still makes sense after a controlled set. If it does, include that option
+in the selected recommendation before running the helper. For a
 planned aerobic or recovery day, add `--aerobic-references` to the history
 query for measured indoor blocks. On a spacing day, compare both the primary
 and a longer ride through the next quality session, including a successful
@@ -251,6 +262,14 @@ Apply the full recommendation output contract when the user also requests a
 concrete session decision.
 
 ### Training recommendation
+
+For every interval ride, include the VT1 finish decision in the rider's
+prescription, even when the primary workout contains no VT1. If offering extra
+work, give its duration, power and the on-bike cue. If finishing after the
+planned work, name the extra dose considered and why to skip it even on good
+legs. A binding time or recovery constraint needs only a brief explanation.
+
+For an interval set with uncertain repeatability, tell the rider where comparable attempts first diverged and what to do before starting the next effort. Use the response late in the preceding effort and during its recovery to explain when to continue, when to end the set, and what that means for an optional finish. Use the athlete’s reported reason when interpreting an omitted effort.
 
 Follow the
 [Final Answer Contract](references/daily-recommendations.md#final-answer-contract),
