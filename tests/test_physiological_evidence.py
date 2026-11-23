@@ -53,6 +53,48 @@ class EvidenceTests(unittest.TestCase):
             rows[0]['smo2'] = None
             self.assertEqual(recovery_reoxygenation(activity)[0]['status'], 'unavailable')
 
+    def test_fixed_smo2_pause_change_uses_its_own_coverage_and_preserves_sign(self):
+        from activity_inspect import brief_recovery
+
+        intervals = [{'type': 'WORK', 'start_index': 0, 'end_index': 40},
+                     {'type': 'RECOVERY', 'start_index': 40, 'end_index': 100}]
+        for at_30s in (35, 40, 45, None):
+            rows = [dict(time=t, smo2=40 if t < 65 else at_30s if t < 70 else None)
+                    for t in range(100)]
+            activity = SavedActivity(Path('.'), {'icu_intervals': intervals}, rows)
+            result, = recovery_reoxygenation(activity)
+            report = brief_recovery({}, index=1, after_work_block=1, moxy_recovery=result)
+            self.assertEqual(report['smo2_recovery_status'], 'unavailable')
+            if at_30s is None:
+                self.assertEqual(report['smo2_30s_change_status'], 'unavailable')
+                self.assertNotIn('smo2_change_end_work_to_30s_pp', report)
+            else:
+                self.assertEqual(report['smo2_30s_change_status'], 'observed')
+                self.assertEqual(report['smo2_change_end_work_to_30s_pp'], at_30s - 40)
+
+    def test_core_heat_context_requires_an_unbroken_high_run_or_environment(self):
+        from activity_inspect import training_effect_context_assessments
+
+        rows = [dict(time=t, core_temperature=38.6 if t == 60 else None)
+                for t in range(120)]
+
+        def context(data):
+            return training_effect_context_assessments(
+                activity={}, rows=data, data_quality={}
+            )['assessments']['heat_or_humidity']
+
+        isolated = context(rows)
+        self.assertEqual(isolated['status'], 'not_assessed')
+        self.assertEqual(isolated['wearable_core_temperature']['max_c'], 38.6)
+        self.assertEqual(isolated['wearable_core_temperature']['covered_seconds'], 1)
+        rows[0]['temp'] = 28
+        self.assertEqual(context(rows)['evidence'][0]['signal'], 'temperature_high')
+
+        high = [dict(time=t, core_temperature=38.5) for t in range(60)]
+        self.assertEqual(context(high)['status'], 'context_present')
+        self.assertIsNone(context(high)['effect'])
+        self.assertEqual(context(high[:30] + high[31:])['status'], 'not_assessed')
+
     def test_work_overview_keeps_each_blocks_windows_and_missing_fields(self):
         from activity_inspect import work_block_overview
         rows = ride(duration=1800)

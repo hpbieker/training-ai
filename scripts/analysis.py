@@ -8,7 +8,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from physiological_evidence import MAX_SAMPLE_INTERVAL, numeric, timeline, quality, field_summary, matched_windows, prepare_windows
+from physiological_evidence import MAX_MISSING_FRACTION, MAX_SAMPLE_INTERVAL, numeric, timeline, quality, field_summary, matched_windows, prepare_windows
 from typing import Any, Iterable
 
 
@@ -485,6 +485,27 @@ def moxy_interval_summary(activity: SavedActivity) -> list[dict[str, Any]]:
     return summaries
 
 
+def _smo2_window_mean(rows: list[dict[str, str]], start: float, end: float) -> float | None:
+    """Describe a fixed elapsed window without filling gaps with earlier samples."""
+    clock = timeline(rows)
+    if clock is None:
+        return None
+    times, weights, _ = clock
+    nominal = weights[-1]
+    if times[0] > start or times[-1] + nominal < end:
+        return None
+    covered = total = 0.0
+    for row, time, weight in zip(rows, times, weights):
+        duration = min(end, time + min(weight, nominal)) - max(start, time)
+        level = value(row, "smo2")
+        if duration > 0 and level is not None:
+            covered += duration
+            total += duration * level
+    if 1 - covered / (end - start) >= MAX_MISSING_FRACTION:
+        return None
+    return total / covered
+
+
 def recovery_reoxygenation(activity: SavedActivity) -> list[dict[str, Any]]:
     """Calculate SmO2 rise and peak reached in each recovery interval."""
 
@@ -506,7 +527,15 @@ def recovery_reoxygenation(activity: SavedActivity) -> list[dict[str, Any]]:
             and value(boundary[1], "time") - value(boundary[0], "time") <= MAX_SAMPLE_INTERVAL
         )
         result = {"index": index, "rows": len(rows), "quality": coverage,
-                  "work_end_boundary_observed": boundary_ok}
+                  "work_end_boundary_observed": boundary_ok,
+                  "smo2_30s_change_status": "unavailable"}
+        if boundary_ok:
+            pause_start = value(boundary[1], "time")
+            end_work = _smo2_window_mean(interval_rows(activity, previous), pause_start - 30, pause_start)
+            at_30s = _smo2_window_mean(rows, pause_start + 25, pause_start + 30)
+            if end_work is not None and at_30s is not None:
+                result.update(smo2_30s_change_status="observed",
+                              smo2_change_end_work_to_30s_pp=at_30s - end_work)
         if not coverage["usable"] or not boundary_ok or value(rows[-1], "smo2") is None:
             recoveries.append({**result, "status": "unavailable"})
             continue

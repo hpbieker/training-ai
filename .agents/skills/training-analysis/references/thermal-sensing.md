@@ -26,16 +26,16 @@ medical heat-risk classification.
 
 Independent validation findings are mixed and protocol-dependent:
 
-- Verdel et al. found acceptable repeatability during cycling but poor
+- [Verdel et al.](https://doi.org/10.3390/s21175932) found acceptable repeatability during cycling but poor
   agreement with rectal temperature under the tested low-to-high heat loads;
   approximately half of paired observations differed by more than the study's
   predefined `0.3 C` validity threshold.
-- Januario et al. found the Calera Research Sensor reproducible and valid
+- [Januário et al.](https://doi.org/10.1016/j.jtherbio.2024.103907) found the Calera Research Sensor reproducible and valid
   relative to gastrointestinal temperature during a specific cycling protocol
   at `32 C` and `60%` relative humidity, with reported confidence limits of
   approximately `+/-0.36 C`.
-- Later constant-load cycling evidence in heat reported systematic
-  overestimation relative to rectal temperature.
+- [Later constant-load cycling evidence in heat](https://doi.org/10.1016/j.jtherbio.2025.104241)
+  reported systematic overestimation relative to rectal temperature.
 
 These findings support cautious use of within-session and matched-session
 patterns. They do not support treating a single decimal reading as exact across
@@ -89,6 +89,11 @@ review, using the following claim levels.
 
 Use when a credible wearable thermal stream or relevant environmental exposure
 is present. This level permits descriptive reporting but no causal claim.
+
+The whole-activity Training Effect report shows the observed wearable maximum
+and available coverage. It uses at least 60 unbroken seconds at or above
+38.5 C for a low-confidence CORE context flag. This persistence check is a
+reporting convention. Ambient exposure can independently supply context.
 
 Examples:
 
@@ -167,13 +172,6 @@ stimulus, total training load, hydration, and the final progression decision.
 
 ## Sources
 
-- [Verdel et al. 2021: Reliability and Validity of the CORE Sensor to Assess
-  Core Body Temperature during Cycling Exercise](https://doi.org/10.3390/s21175932)
-- [Januario et al. 2024: Validity and reproducibility of the CALERA Research
-  Sensor during cycling exercise in the heat](https://doi.org/10.1016/j.jtherbio.2024.103907)
-- [Validity of the CORE wearable sensor during constant-load cycling exercise
-  in the heat](https://doi.org/10.1016/j.jtherbio.2025.104241)
-- [CORE: Research validation study](https://corebodytemp.com/pages/research-validation-study)
-
-Treat the CORE page as manufacturer documentation. Use the independent studies
-for claims about validity, reproducibility, agreement, and limitations.
+See the [thermal sensing research note](../../../../docs/research/core-temperature.md)
+for the study inventory, tested device models, reference measurements, and
+manufacturer documentation.

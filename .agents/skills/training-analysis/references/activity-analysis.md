@@ -30,12 +30,9 @@ evidence. Missing optional sensors do not require reading their references.
 For a narrow mechanical question, use the relevant parts of this file without
 expanding it into an integrated physiological assessment.
 
-[sources.md](sources.md) documents the shared research basis and limits for
-respiration, muscle oxygen, and physiological synthesis. Consult its relevant
-topic when checking a claim's support, applicability, or uncertainty. Thermal
-and endurance references carry their own source sections. Follow those source
-links when the question requires checking the underlying research; source
-registries supplement the analysis workflow rather than defining another one.
+For research questions, [sources.md](sources.md) points to the relevant
+evidence. The specialist references above contain the practical guidance
+used in a routine activity analysis.
 
 ## Selection And Inspection
 

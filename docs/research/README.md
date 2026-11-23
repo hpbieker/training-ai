@@ -6,6 +6,10 @@ used in routine analysis and planning.
 
 ## Research notes
 
+- [Muscle oxygenation in cycling](muscle-oxygenation.md) indexes the Moxy and
+  related NIRS literature, including the previous assessments and new papers.
+- [CORE, CORE 2, and Calera temperature sensing](core-temperature.md) indexes
+  device and protocol comparisons, with the tested model and source access.
 - [Ventilatory kinetics, drift, and recovery](ventilatory-kinetics-and-drift.md)
   covers ventilation, VT1/VT2, oxygen uptake, post-exercise recovery, and
   overreaching. It includes the bibliography traced from VTCheck.
@@ -17,10 +21,10 @@ used in routine analysis and planning.
 These collections index previously used sources, including studies available
 through an external link.
 
-- [Physiological signals, Moxy, and Tyme Wear](../../.agents/skills/training-analysis/references/sources.md)
+- [Physiological signals and Tyme Wear](../../.agents/skills/training-analysis/references/sources.md)
 - [Cycling endurance, durability, and critical power](../../.agents/skills/training-analysis/references/cycling-endurance-physiology.md#evidence-and-limits)
 - [Muscle oxygenation](../../.agents/skills/training-analysis/references/muscle-oxygen.md)
-- [Thermal sensing](../../.agents/skills/training-analysis/references/thermal-sensing.md#sources)
+- [Thermal sensing](../../.agents/skills/training-analysis/references/thermal-sensing.md)
 - [Daily training recommendations](../../.agents/skills/training-analysis/references/daily-recommendations.md)
 - [Return after illness](../../.agents/skills/training-analysis/references/illness-and-return.md#evidence)
 - [Medium-term training planning](../../.agents/skills/training-plan/references/planning-method.md)
@@ -30,7 +34,8 @@ through an external link.
 ## Local paper archive
 
 Store original article PDFs under [papers/](papers/). Existing collections
-include [muscle oxygenation](papers/moxy/) and [respiration](papers/respiration/).
+include [muscle oxygenation](papers/moxy/), [respiration](papers/respiration/),
+and [wearable temperature sensing](papers/core/).
 Keep one copy per publication and use `author-year-short-topic.pdf` for new
 files. An official full-text XML or HTML copy is also useful when a PDF is
 unavailable. Verify the title and publication before linking the local file.

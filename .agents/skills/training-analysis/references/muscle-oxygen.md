@@ -1,8 +1,8 @@
 # Muscle Oxygen Analysis
 
 Use this reference when an activity contains Moxy or another wearable NIRS
-muscle-oxygen stream, especially `smo2` or `thb`. The source registry and
-evidence boundaries are in [sources.md](sources.md).
+muscle-oxygen stream, especially `smo2` or `thb`. For a detailed source
+check, see the [muscle oxygenation research note](../../../../docs/research/muscle-oxygenation.md).
 
 ## Role In Training Analysis
 
@@ -162,6 +162,12 @@ unknown. Keep this amplitude in percentage points distinct from the time
 needed to regain half the recovery amplitude measured from the end of work.
 [Arnold et al.](https://doi.org/10.3389/fphys.2024.1449384)
 
+The helper also reports the signed difference between the time-weighted mean
+of the last 30 seconds of work and the mean over seconds 25–30 of the pause.
+It requires the observed transition and coverage in both windows. Preserve
+negative values and distinguish zero change from unavailable data. Use this
+fixed-time measure to compare equivalent efforts and pauses.
+
 Name the reoxygenation metric and its windows every time it materially affects
 the conclusion. Acceptable examples include rise in percentage points during a
 fixed interval, slope over a stated early-recovery window, time to a defined
@@ -250,6 +256,11 @@ VT1, VT2, or VO2 intensity was exceeded. Any existing fixed thresholds in
 analysis helpers are experimental heuristics and must remain subordinate to
 signal quality, matched-work comparison, other physiology, feel/RPE, and
 next-day response.
+
+The outdoor fraction below 20% covers only recorded pedaling time with valid
+SmO2. Report the covered minutes and distinguish this scope from matched-power
+windows. Compare pre- and post-effort SmO2 descriptively when both windows
+have usable coverage. The outdoor spike score does not use the SmO2 delta.
 
 ## Evidence And Model Validation
 

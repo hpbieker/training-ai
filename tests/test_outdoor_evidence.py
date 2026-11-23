@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from outdoor_evidence import outdoor_evidence
-from activity_inspect import outdoor_analysis_overview
+from activity_inspect import outdoor_analysis_overview, outdoor_smo2_response, spike_aftereffect
 
 
 def row(t,p=200,hr=130):
@@ -11,6 +11,28 @@ def row(t,p=200,hr=130):
 
 
 class OutdoorEvidenceTests(unittest.TestCase):
+    def test_smo2_aftereffect_is_descriptive_and_requires_coverage(self):
+        rows = [dict(row(t, p=300 if 181 <= t <= 240 else 200),
+                     respiration=35, tidal_volume_min=80, smo2=40 if t <= 240 else 35)
+                for t in range(541)]
+        result = spike_aftereffect(rows, 181, 240)
+        self.assertEqual(result['after_smo2_delta'], -5)
+        self.assertEqual(result['response_score'], 0)
+        for sample in rows[241:]:
+            sample['smo2'] = None
+        rows[251]['smo2'] = 35
+        result = spike_aftereffect(rows, 181, 240)
+        self.assertNotIn('after_smo2_delta', result)
+        self.assertEqual(result['response_score'], 0)
+
+    def test_smo2_below_twenty_reports_its_pedaling_denominator(self):
+        rows = [dict(row(t, p=200 if t < 720 else 260), smo2=40 if t < 720 else 15)
+                for t in range(900)]
+        result = outdoor_smo2_response(rows, 200)
+        self.assertEqual(result['matched_min'], 12)
+        self.assertEqual(result['smo2_valid_pedaling_min'], 15)
+        self.assertEqual(result['pct_pedaling_below_20_smo2'], 20)
+
     def test_overview_distinguishes_selected_pair_and_strict_unavailability(self):
         e=outdoor_evidence([row(t) for t in range(7200)])
         summary=outdoor_analysis_overview({'outdoor_evidence':e,'total':{'comparison':{'status':'unavailable'}},

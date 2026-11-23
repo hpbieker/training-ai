@@ -38,6 +38,8 @@ from analysis import (
 
 
 ANALYSIS_FORMAT_VERSION = 2
+CORE_HEAT_CONTEXT_C = 38.5
+CORE_HEAT_CONTEXT_MIN_SECONDS = 60
 
 DEFAULT_FIELDS = [
     "watts",
@@ -789,7 +791,7 @@ def training_effect_context_assessments(
 
     temperature = context_stream_stats(rows, ("RuuviTemperature", "temp"))
     humidity = context_stream_stats(rows, ("RuuviHumidity", "Humidity"))
-    core_temperature = context_stream_stats(rows, ("core_temperature",))
+    core_temperature = core_temperature_observation(rows)
     altitude = number_or_none(activity.get("average_altitude"))
 
     heat_evidence = []
@@ -797,12 +799,12 @@ def training_effect_context_assessments(
         heat_evidence.append({"signal": "temperature_high", "value": temperature["max"], "unit": "C"})
     if humidity.get("max") is not None and humidity["max"] >= 75:
         heat_evidence.append({"signal": "humidity_high", "value": humidity["max"], "unit": "%"})
-    heat_response = (
-        core_temperature.get("max") is not None and core_temperature["max"] >= 38.5
-    )
-    if heat_response:
+    high_seconds = (core_temperature or {}).get("longest_at_or_above_threshold_seconds", 0)
+    if high_seconds >= CORE_HEAT_CONTEXT_MIN_SECONDS:
         heat_evidence.append(
-            {"signal": "core_temperature_high", "value": core_temperature["max"], "unit": "C"}
+            {"signal": "core_temperature_sustained_high",
+             "threshold_c": CORE_HEAT_CONTEXT_C,
+             "duration_s": high_seconds}
         )
     heat_status = "not_assessed"
     heat_confidence = "none"
@@ -850,7 +852,7 @@ def training_effect_context_assessments(
                 status=heat_status,
                 confidence=heat_confidence,
                 evidence=heat_evidence,
-            ),
+            ) | ({"wearable_core_temperature": core_temperature} if core_temperature else {}),
             "altitude": context_assessment(
                 status="context_present" if altitude_evidence else "not_assessed",
                 confidence="low" if altitude_evidence else "none",
@@ -895,6 +897,34 @@ def context_stream_stats(
         if numbers:
             return {"avg": round(sum(numbers) / len(numbers), 2), "max": max(numbers)}
     return {"avg": None, "max": None}
+
+
+def core_temperature_observation(rows: list[dict[str, str]]) -> dict[str, Any] | None:
+    """Report temperature coverage and unbroken high runs on the source clock."""
+    values = [value(row, "core_temperature") for row in rows]
+    valid = [level for level in values if level is not None]
+    if not valid:
+        return None
+    result = {"max_c": max(valid), "sample_count": len(valid), "threshold_c": CORE_HEAT_CONTEXT_C}
+    clock = timeline(rows)
+    if clock is None:
+        return result
+    times, weights, duration = clock
+    nominal = weights[-1]
+    covered = high_run = longest_high_run = 0.0
+    high_end = -float("inf")
+    for time, weight, level in zip(times, weights, values):
+        seconds = min(weight, nominal)
+        if level is not None:
+            covered += seconds
+        if level is None or level < CORE_HEAT_CONTEXT_C:
+            high_run = 0.0
+        else:
+            high_run = high_run + seconds if time <= high_end + 1e-6 else seconds
+            high_end = time + seconds
+            longest_high_run = max(longest_high_run, high_run)
+    return result | {"covered_seconds": covered, "recorded_span_seconds": duration,
+                     "longest_at_or_above_threshold_seconds": longest_high_run}
 
 
 def number_or_none(raw: Any) -> float | None:
@@ -2475,7 +2505,9 @@ def outdoor_smo2_response(
     pedaling_rows: list[dict[str, str]],
     vt1_watts: float,
 ) -> dict[str, Any] | None:
-    if sum(w for _, w in weighted_values(pedaling_rows, "smo2")) < 10 * 60:
+    pedaling_smo2 = weighted_values(pedaling_rows, "smo2")
+    smo2_covered_seconds = sum(w for _, w in pedaling_smo2)
+    if smo2_covered_seconds < 10 * 60:
         return None
     low = vt1_watts - 20
     high = vt1_watts + 10
@@ -2500,9 +2532,8 @@ def outdoor_smo2_response(
             "late_avg_smo2": rounded(late_smo2, digits=1),
             "smo2_delta": numeric_delta(early_smo2, late_smo2),
             "min_smo2": rounded(min(all_smo2), digits=1) if all_smo2 else None,
-            "pct_pedaling_below_20_smo2": weighted_pct(weighted_values(pedaling_rows, "smo2"), lambda v: v < 20)
-            if all_smo2
-            else None,
+            "smo2_valid_pedaling_min": rounded(smo2_covered_seconds / 60, digits=1),
+            "pct_pedaling_below_20_smo2": weighted_pct(pedaling_smo2, lambda v: v < 20),
         }
     )
 
@@ -2565,10 +2596,9 @@ def spike_aftereffect(
     ve_delta = pct_delta(before_stats.get("ve_per_w"), after_stats.get("ve_per_w"))
     br_delta = pct_delta(before_stats.get("br_per_w"), after_stats.get("br_per_w"))
     hr_delta = pct_delta(before_stats.get("hr_per_w"), after_stats.get("hr_per_w"))
-    smo2_delta = numeric_delta(
-        average_field(before, "smo2"),
-        average_field(after, "smo2"),
-    )
+    smo2_before = field_summary(before, "smo2")
+    smo2_after = field_summary(after, "smo2")
+    smo2_delta = smo2_after["avg"] - smo2_before["avg"] if smo2_before and smo2_after else None
     score = 0.0
     if isinstance(ve_delta, (int, float)) and ve_delta > 0:
         score += min(20, ve_delta)
@@ -2576,8 +2606,6 @@ def spike_aftereffect(
         score += min(15, br_delta)
     if isinstance(hr_delta, (int, float)) and hr_delta > 0:
         score += min(15, hr_delta)
-    if isinstance(smo2_delta, (int, float)) and smo2_delta < 0:
-        score += min(10, abs(smo2_delta) * 2)
     return drop_none(
         {
             "start_s": start,
@@ -3877,6 +3905,8 @@ def brief_recovery(
             "ve_end": stat(summary, "tidal_volume_min", "end", digits=1),
             "smo2_start": rounded(moxy.get("smo2_start"), digits=1),
             "smo2_recovery_status": moxy.get("status"),
+            "smo2_30s_change_status": moxy.get("smo2_30s_change_status"),
+            "smo2_change_end_work_to_30s_pp": rounded(moxy.get("smo2_change_end_work_to_30s_pp"), digits=1),
             "smo2_min": rounded(moxy.get("smo2_min"), digits=1),
             "smo2_peak": rounded(moxy.get("smo2_peak"), digits=1),
             "smo2_peak_after_min": rounded(moxy.get("smo2_peak_after_min"), digits=1),
