@@ -69,11 +69,18 @@ assumed recovery times. In the final answer give the athlete one upper option,
 its nearest meaningful alternative and a cue to stop earlier if effort rises.
 
 If the longer dose is the best choice at a normal response, prescribe it as
-the primary session. If its value depends on how the ride unfolds, offer one
-bounded extension the athlete can choose. Say when to decide, which response
-to look for at familiar power, and when to finish with the primary dose. Use
-observable cues such as breathing and perceived effort over the preceding
-minutes at steady watts. Give the extra minutes, power and total ride time.
+the primary session. If its value depends on how the ride unfolds, offer a
+bounded extension. A continuous VT1 finish after intervals can have several
+decision points within that limit. In the initial prescription, distinguish
+when to start VT1, the preferred stopping point, and what would make the
+remaining minutes worthwhile before the next priority ride. Add a checkpoint
+only where the rider can learn something that changes the decision, such as
+whether breathing and perceived effort still feel usual after sustained work
+at the same watts. Anchor each cue to minutes completed in the VT1 block;
+the rider can end it earlier if effort rises unusually. Use the full offered
+addition for the packet's time and load checks. In a follow-up, ask how the
+last block actually felt, or keep the advice conditional. To raise the upper
+limit, explain what new information or overlooked comparison changes it.
 If the likely benefit is small or the next priority session needs the recovery,
 recommend finishing at the primary duration. An open slot tomorrow shows
 another opportunity. To use it as the deciding reason to stop today, identify

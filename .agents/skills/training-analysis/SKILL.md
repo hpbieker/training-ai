@@ -157,8 +157,9 @@ and dated reports first. In a live exchange, including a reply to an automated
 recommendation, ask for a missing observation the athlete can already make
 if it changes the choice. Place other checks where the uncertainty can be
 resolved: during warm-up, after an effort, or late in steady work. For a
-long aerobic ride with a justified extension, give the base dose and an upper
-duration supported by the day's purpose and training history. Within that
+long aerobic ride or a VT1 finish after intervals, give the preferred duration
+and, when more work is justified, an upper duration supported by the day's
+purpose and comparable training history. Within that
 range the rider can decide in stages. At each relevant checkpoint use the
 recent response at the same power and the value of the next increment before
 the next priority session to say whether to stop or how far to continue
