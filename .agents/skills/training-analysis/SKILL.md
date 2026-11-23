@@ -177,6 +177,11 @@ the athlete responds normally at the familiar workload.
 The final recommendation packet also includes these observations under
 `training_history_context.prior_quality_sequences`.
 
+When a Garmin value influences intensity, dose or an on-bike check, compare it
+briefly in the rider's answer with pre-ride values and actual outcomes from
+comparable sessions by this athlete. Follow the [readiness comparison
+guidance](references/daily-recommendations.md#comparing-readiness-before-quality-sessions).
+
 Use [Choosing the aerobic dose](references/aerobic-dose.md) when choosing
 endurance duration, including how far to ride after intervals. Ground the range
 in comparable completed rides and explain the choice against a materially

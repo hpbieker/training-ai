@@ -1136,6 +1136,27 @@ Write persistent artifacts under `outputs/` only when explicitly requested or
 required by an automation or later analysis. Do not link JSON packets in a
 normal recommendation.
 
+## Comparing readiness before quality sessions
+
+Start with the dates of similar efforts in the quality history, including
+completed and shortened attempts when available. Reuse dated Garmin inputs
+or fetch the relevant health days. Compare like with like: waking scores
+with waking scores, nightly HRV with nightly HRV. For Recovery Time at
+ride start, use the latest observation available before each actual start
+and call `garmin_recovery_projection` in `scripts/readiness_snapshot.py` with
+Garmin's UTC `observed_at` and the activity's timezone-aware start. A local
+observation timestamp passed as UTC shifts the estimate. Exclude later updates. Pair useful values with the work actually done. For a shortened
+attempt, read its dated athlete answers (in the quality history or the
+activity's `athlete-answers/` directory). A later explanation can clarify
+a stop that the initial workout review recorded as unexplained.
+
+A controlled completion under similar or less favorable pre-ride conditions
+can support attempting the same dose today. Weigh differences in the lead-in,
+body feel and workload, and explain which uncertainty remains for the ride.
+If comparable values are missing or occurred with different outcomes, say how little they
+settle. Avoid deriving a personal cutoff from a few rides or counting a
+readiness score and its component signals as independent evidence.
+
 ## Final Answer Contract
 
 - A complete recommendation requires a successful `recommend_training.py`
@@ -1164,6 +1185,14 @@ normal recommendation.
   reference time from the prescribed duration and state any extension/shortfall.
   Explain what the quality work and additional aerobic volume each contribute;
   matching a model dose is not by itself a training-purpose explanation.
+- Whenever VT1 follows intervals, planned or optional, tell the rider exactly
+  how to start it. For a direct transition, say to go straight from the last
+  work interval to the VT1 target. If there is a recovery after the last
+  interval, give its duration and watts or effort as a separate step before
+  VT1. Distinguish this from recoveries between repetitions. Use the selected
+  workout structure; when designing the ride, include any recommended recovery
+  in the corresponding duration, load and finish time. If the transition is
+  direct, assess how breathing settles during the first minutes at VT1.
 - Anchor each on-bike check to the work that prompts the decision: completed
   repetitions, minutes ridden in the relevant block, or actual accumulated load
   when an established and observable metric is appropriate. Name the block
@@ -1177,10 +1206,11 @@ normal recommendation.
   how the restart feels. Use `check_at_minute` as a planned ride-time equivalent
   when the prescribed sequence is followed. Account for actual stops when
   checking the time remaining to turn back or meet a deadline.
-- Render `primary_decision.aerobic_finish` directly below the primary session
-  when present, using the resolved decision from the packet. When a favorable late response makes
-  the extra work useful, offer the bounded option with the decision point,
-  observable cue, extra minutes and watts, total duration and finish time.
+- Use the resolved `primary_decision.aerobic_finish` when present. Show an
+  offered extension as its own explicitly optional step where the rider would
+  do it, after the preceding work and before the final cooldown. Give the
+  decision cue, extra minutes and watts in that step. List the cooldown once
+  as the final step. Give total duration and finish time for both choices.
   Briefly explain the selected length against the relevant alternative.
   Check the longer occupied window and recovery before the next priority ride.
   When finishing at the primary dose is preferable even on good legs, give the
