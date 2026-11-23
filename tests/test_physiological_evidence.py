@@ -101,10 +101,66 @@ class EvidenceTests(unittest.TestCase):
         no_source = brief_result(result)
         self.assertEqual(no_source['source_work_intervals_status'], 'not_included_or_absent')
         self.assertEqual(no_source['source_work_intervals'], [])
+        self.assertEqual(no_source['source_work_comparison']['groups'], [])
         self.assertEqual(no_source['work_blocks'][0]['overlapping_source_interval_indices'], [])
         result['intervals'] = [source]
         result.pop('auto_power_blocks')
         self.assertEqual(brief_result(result)['work_blocks'][0]['statistics_scope'], 'source_work_interval')
+
+    def test_brief_compares_recorded_reps_of_similar_duration(self):
+        from activity_inspect import brief_result, interval_summaries
+
+        rows = []
+        intervals = []
+        for duration, watts in ((238, 350), (45, 430), (240, 340), (46, None),
+                                (237, 330), (239, 320)):
+            for kind, seconds, power in (("WORK", duration, watts), ("RECOVERY", 60, 85)):
+                start = len(rows)
+                for t in range(start, start + seconds):
+                    row = dict(time=t, heartrate=155, respiration=50, tidal_volume_min=120)
+                    if power is not None:
+                        row["watts"] = 0 if t == start and power == 320 else power
+                    rows.append(row)
+                intervals.append({"type": kind, "start_index": start, "end_index": len(rows)})
+        activity = SavedActivity(Path("."), {"icu_intervals": intervals}, rows)
+        fields = ["watts", "heartrate", "respiration", "tidal_volume_min"]
+        detected = summarize_block(rows, start_index=30, end_index=220, label="steady")
+        report = brief_result({
+            "activity": {"name": "Indoor ride", "type": "Ride"},
+            "streams": {"rows": len(rows), "data_quality": {}},
+            "total": summarize_block(rows, start_index=0, end_index=len(rows), label="total"),
+            "intervals": interval_summaries(activity, fields),
+            "detected_power_blocks": [detected], "_rows": rows,
+        })
+        self.assertEqual(len(report["source_work_intervals"]), 6)
+        self.assertEqual(len(report["work_blocks"]), 1)
+        longer, shorter = report["source_work_comparison"]["groups"]
+        self.assertEqual(longer, {
+            "recorded_durations_s": [238, 240, 237, 239],
+            "source_interval_indices": [1, 5, 9, 11],
+            "first_mean_power_w": 350,
+            "last_mean_power_w": 319,
+            "last_minus_first_w": -31,
+        })
+        self.assertEqual(shorter["source_interval_indices"], [3, 7])
+        self.assertEqual(shorter["recorded_durations_s"], [45, 46])
+        self.assertEqual(shorter["first_mean_power_w"], 430)
+        self.assertIsNone(shorter["last_mean_power_w"])
+        self.assertIsNone(shorter["last_minus_first_w"])
+        self.assertEqual(report["source_work_intervals"][-1]["hr_end"], 155)
+        self.assertEqual(report["recoveries"][-1]["after_source_work_interval"], 11)
+
+    def test_duration_grouping_has_a_bounded_span(self):
+        from activity_inspect import source_work_comparison
+
+        durations = [179, 176, 177, 180, 175, 185, 96, 15, 16, 1377, 1378, 1374]
+        laps = [{"source_index": i, "duration_s": duration, "watts_avg": 350}
+                for i, duration in enumerate(durations, start=1)]
+        groups = source_work_comparison(laps)["groups"]
+        self.assertEqual([group["recorded_durations_s"] for group in groups], [
+            [179, 176, 177, 180, 175],
+            [1377, 1378, 1374],
+        ])
 
     def test_recovery_uses_recorded_work_boundaries_when_detection_differs(self):
         from activity_inspect import brief_result, interval_summaries
@@ -193,53 +249,6 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(result['fields'][field]['delta_unit'], 'degC')
         self.assertEqual(result['fields']['smo2']['delta'], 5)
         self.assertEqual(result['fields']['smo2']['delta_unit'], 'percentage_points')
-
-    def test_beta_diagnostics_require_explicit_opt_in(self):
-        from unittest.mock import patch
-        from activity_inspect import brief_result
-        rows = ride()
-        block = summarize_block(rows, start_index=0, end_index=len(rows), label='work')
-        source = {
-            'activity': {'name': 'VT2 test', 'type': 'Ride'},
-            'streams': {'rows': len(rows), 'data_quality': {}},
-            'total': {'summary': summarize_rows(rows), 'drift': {},
-                      'relative_to_power_drift': {}},
-            'detected_power_blocks': [block], '_rows': rows, '_vt2_watts': 290,
-        }
-        with patch('activity_inspect.beta_stability_debug') as stability, \
-             patch('activity_inspect.beta_vo2_debug') as vo2:
-            normal = brief_result(source)
-            stability.assert_not_called()
-            vo2.assert_not_called()
-        debug = brief_result(source, debug_beta=True)
-        beta_keys = {'beta_stability', 'beta_vo2', 'beta_summary'}
-        self.assertFalse(beta_keys & normal.keys())
-        self.assertTrue(beta_keys <= debug.keys())
-        self.assertEqual(normal, {k: v for k, v in debug.items() if k not in beta_keys})
-        self.assertIn('vt2_quality', normal)
-        self.assertIn('interpretation_limit', debug['beta_stability'])
-
-    def test_beta_counts_missing_physiology_and_describes_isolated_ventilation(self):
-        from activity_inspect import beta_stability_debug, beta_summary
-
-        for name, watts in (("VT1", 205), ("VT2", 290)):
-            with self.subTest(name=name):
-                rows = [dict(time=t, watts=watts, cadence=90) for t in range(720)]
-                power_only = summarize_block(rows, start_index=0, end_index=len(rows), label="power")
-                for row in rows:
-                    row["tidal_volume_min"] = 60 if row["time"] < 360 else 95
-                with_ve = summarize_block(rows, start_index=0, end_index=len(rows), label="VE")
-                result = beta_stability_debug({"name": name}, [power_only, with_ve], [])
-                unresolved, observed = result["blocks"]
-                self.assertEqual(unresolved["physiological_comparison"], "unresolved")
-                self.assertEqual(observed["physiological_comparison"], "observed")
-                ve = next(metric for metric in observed["metrics"] if metric["field"] == "tidal_volume_min")
-                self.assertEqual(ve["late_minus_early"], 35)
-                for block in result["blocks"]:
-                    self.assertNotIn("verdict", block)
-                    self.assertNotIn("confidence", block)
-                summary = beta_summary({"name": name}, result, None)
-                self.assertIn("1 with matched physiology, 1 unresolved", summary["status"])
 
     def test_block_boundary_shift_reuses_activity_windows(self):
         rows = ride(duration=1800)

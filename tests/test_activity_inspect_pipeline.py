@@ -24,15 +24,9 @@ class ActivityInspectPipelineArgumentsTests(unittest.TestCase):
             with self.assertRaises(argparse.ArgumentTypeError):
                 parse_analysis_options_json('{"prescribed_watts":' + value + '}')
 
-    def test_beta_debug_is_opt_in_and_requires_brief(self):
-        normal = parse_analysis_options_json('{}')
-        debug = parse_analysis_options_json('{"debug_beta":true}')
-        self.assertNotIn('--debug-beta', build_inspect_args(normal))
-        self.assertIn('--debug-beta', build_inspect_args(debug))
-        for payload in ['{"debug_beta":true,"shape":"full"}',
-                        '{"debug_beta":"yes"}']:
-            with self.assertRaises(argparse.ArgumentTypeError):
-                parse_analysis_options_json(payload)
+    def test_retired_beta_option_is_rejected(self):
+        with self.assertRaisesRegex(argparse.ArgumentTypeError, "unsupported.*debug_beta"):
+            parse_analysis_options_json('{"debug_beta":true}')
 
     def test_explicit_analysis_options_are_forwarded(self):
         options = parse_analysis_options_json(

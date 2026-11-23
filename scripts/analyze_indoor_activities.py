@@ -187,7 +187,6 @@ def summarize_activity(activity_dir: Path, brief: dict[str, Any]) -> dict[str, A
     vt2 = brief.get("vt2_quality") or {}
     session_vt2 = vt2.get("session_quality") or vt2.get("best_duration_block") or {}
     total = brief.get("total") or {}
-    beta = brief.get("beta_summary") or {}
     return {
         "activity_dir": str(activity_dir),
         "id": activity.get("id"),
@@ -201,11 +200,9 @@ def summarize_activity(activity_dir: Path, brief: dict[str, Any]) -> dict[str, A
         "total_hr_avg": total.get("hr_avg"),
         "total_ve_avg": total.get("ve_avg"),
         "core_temp_max": total.get("core_temp_max"),
-        "beta_category": beta.get("category"),
-        "beta_status": beta.get("status"),
         "vt1": summarize_indoor_vt1(indoor_vt1),
         "vt2": summarize_vt2(vt2, session_vt2),
-        "quality_label": quality_label(indoor_vt1, session_vt2, beta),
+        "quality_label": quality_label(indoor_vt1, session_vt2),
     }
 
 
@@ -260,7 +257,7 @@ def controlled_vt2_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def quality_label(indoor_vt1: dict[str, Any], best_vt2: dict[str, Any], beta: dict[str, Any]) -> str:
+def quality_label(indoor_vt1: dict[str, Any], best_vt2: dict[str, Any]) -> str:
     vt2_verdict = best_vt2.get("verdict")
     if vt2_verdict:
         return str(vt2_verdict)
@@ -268,7 +265,7 @@ def quality_label(indoor_vt1: dict[str, Any], best_vt2: dict[str, Any], beta: di
     rating = assessment.get("rating")
     if rating:
         return f"indoor_vt1_{rating}"
-    return str(beta.get("category") or "unscored")
+    return "unscored"
 
 
 def summarize_period(
@@ -400,19 +397,18 @@ def render_vt2_rows(rows: list[dict[str, Any]]) -> str:
 def render_all_rows(rows: list[dict[str, Any]]) -> str:
     if not rows:
         return "_Ingen._"
-    header = "| Dato | Okt | Min | TL | Kategori | VT1 | VT2 |"
-    sep = "|---|---|---:|---:|---|---|---|"
+    header = "| Dato | Okt | Min | TL | VT1 | VT2 |"
+    sep = "|---|---|---:|---:|---|---|"
     body = []
     for row in rows:
         vt1 = row.get("vt1") or {}
         vt2 = row.get("vt2") or {}
         body.append(
-            "| {date} | {name} | {mins} | {tl} | {cat} | {vt1} | {vt2} |".format(
+            "| {date} | {name} | {mins} | {tl} | {vt1} | {vt2} |".format(
                 date=row["date"],
                 name=escape_pipe(row["name"]),
                 mins=fmt(row.get("moving_min")),
                 tl=fmt(row.get("training_load")),
-                cat=escape_pipe(row.get("beta_category")),
                 vt1=escape_pipe(vt1.get("rating") or ""),
                 vt2=escape_pipe(vt2.get("verdict") or ""),
             )

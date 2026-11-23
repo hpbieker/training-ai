@@ -25,10 +25,6 @@ method.
   load into account before drawing a conclusion from lower working heart
   rate or higher HRV.
 
-The priority for the experimental debug output is to report each signal
-separately and leave physiological stability unresolved when only power is
-available.
-
 ## What does drift at the same power tell us?
 
 **Takeaway.** On a mechanically steady cycling block, compare the timing and
@@ -112,20 +108,18 @@ protocols distinguish resting HRV, post-exercise HRV, and the cardiac
 response to a maximal test. Keep those signals separate when using them in a
 block review (4, 12–13, 19).
 
-## Implications for future changes
+## Application in training-ai
 
-- The analysis skill could state which respiratory comparisons transfer to
-  comparable cycling efforts and which depend on the laboratory method.
-- The activity-inspection debug output should leave physiological stability
-  unresolved when there are no usable physiological signals. It currently
-  returns `stable_at_intent` with `medium_high` confidence for VT1 when only
-  stable power is supplied. An isolated VE rise can also yield a threshold
-  or cost verdict. Descriptive drift per signal would carry the observation
-  without overinterpreting it. A middle window on long steady efforts could
-  help distinguish a plateau from continued rise.
-- The planning skill could make the competing interpretations of lower
-  pulse or higher HRV explicit at block review. The evidence concerns
-  interpretation of training response at the existing progression checkpoints.
+- Activity inspection reports matched changes per signal and groups recorded
+  work intervals of similar duration for descriptive power comparisons. Linked
+  recovery intervals provide context for judging repeatability.
+- The analysis references define which respiratory observations are
+  comparable across efforts and which uses require device and protocol
+  validation. The planning reference interprets lower working heart rate and
+  higher HRV at the existing block reviews.
+- A middle window within the same long, steady effort could help distinguish
+  a plateau from a continuing rise. That would need its own comparison
+  method and checks for per-signal coverage.
 
 ## Sources
 

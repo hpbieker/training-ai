@@ -215,9 +215,15 @@ cause open when the evidence is inconclusive.
   is confirmed as recorded recovery only when its `recovery_context` is
   `recorded_recovery`. Compare like efforts, elapsed windows, and recovery
   modes and power. Use whole-pause BR and VE values descriptively.
-- Standard output excludes beta diagnostics. Use `--brief --debug-beta` only
-  for explicitly requested development/debugging. Do not use `beta_summary`,
-  `beta_stability`, or `beta_vo2` as the basis of a coaching verdict or progression.
+- Use `source_work_comparison` to find saved WORK intervals with similar
+  recorded durations. A group's duration span can be at most 3% of its
+  shortest lap, rounded down and capped at five seconds. The groups use one-based
+  source interval IDs and report the last-minus-first change in mean watts
+  when both endpoint measurements are usable. Inspect the individual
+  intervals and their linked recovery intervals to check target, sequence,
+  and pause comparability. Assess completed work and repeatability against
+  the known session prescription, then synthesize the measured responses
+  and athlete feedback for coaching or progression.
 
 ## Variable Outdoor Endurance
 

@@ -45,7 +45,7 @@ class VT2SeriesTests(unittest.TestCase):
                 manifest = inspect_with_cache(str(ride), args)
                 return json.loads(Path(manifest["cache_path"]).read_text())["result"]
             path.write_text(json.dumps(evidence))
-            result = compact_inspect_summary(run(), workout_type="vt2")
+            result = compact_inspect_summary(run())
             self.assertEqual([r["watts_avg"] for r in result["vt2_series"]], [300, 300, 240])
             self.assertEqual(result["vt2_intensity_classification"], "unresolved")
             self.assertEqual(result["vt2_series"][-1]["duration_difference_s"], -510)

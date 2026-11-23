@@ -7,9 +7,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from activity_inspect import (  # noqa: E402
     add_environmental_derivatives,
-    beta_intensity_detection,
-    beta_summary,
-    beta_vo2_debug,
     default_output_path,
     thermal_evidence_assessment,
     vt2_session_quality,
@@ -158,81 +155,6 @@ class ThermalEvidenceAssessmentTests(unittest.TestCase):
 
         self.assertEqual(without_report["grade"], "thermal_cost_supported")
         self.assertEqual(with_report["grade"], "heat_limited")
-
-
-class IntensityDetectionTests(unittest.TestCase):
-    def test_vt1_and_vt2_can_be_detected_without_name_signal(self):
-        vt1 = beta_intensity_detection("Innendørssykling", 205)
-        vt2 = beta_intensity_detection("Innendørssykling", 290)
-
-        self.assertEqual(vt1["zone"], "vt1_like")
-        self.assertEqual(vt1["sources"], ["observed_power_level"])
-        self.assertFalse(vt1["name_signal"])
-        self.assertEqual(vt2["zone"], "vt2_like")
-        self.assertEqual(vt2["sources"], ["observed_power_level"])
-        self.assertFalse(vt2["name_signal"])
-
-    def test_summary_uses_detected_zones_before_activity_name(self):
-        result = beta_summary(
-            {"name": "Innendørssykling"},
-            {
-                "blocks": [
-                    {
-                        "intended_zone": "vt2_like",
-                        "verdict": "controlled_at_intent",
-                    }
-                ]
-            },
-            None,
-        )
-
-        self.assertEqual(result["category"], "VT2")
-        self.assertEqual(result["parts"][0]["unresolved_block_count"], 1)
-
-    def test_three_saved_hard_reps_detect_vo2max_without_name_signal(self):
-        reps = [
-            {
-                "duration_seconds": 60,
-                "label": f"rep-{index}",
-                "summary": {"watts": {"avg": 365, "max": 390}},
-                "drift": {},
-            }
-            for index in range(1, 4)
-        ]
-
-        result = beta_vo2_debug(
-            {"name": "Innendørssykling"},
-            [],
-            reps,
-            [],
-        )
-
-        self.assertIsNotNone(result)
-        detection = result["intensity_detection"]
-        self.assertEqual(detection["classification"], "vo2max_like")
-        self.assertEqual(
-            detection["sources"],
-            ["saved_work_intervals", "observed_power_pattern"],
-        )
-        self.assertFalse(detection["name_signal"])
-        self.assertTrue(detection["structured_interval_signal"])
-        self.assertTrue(detection["observed_power_signal"])
-
-    def test_single_unnamed_hard_rep_is_not_classified_as_vo2max(self):
-        result = beta_vo2_debug(
-            {"name": "Innendørssykling"},
-            [],
-            [
-                {
-                    "duration_seconds": 60,
-                    "summary": {"watts": {"avg": 365}},
-                    "drift": {},
-                }
-            ],
-            [],
-        )
-
-        self.assertIsNone(result)
 
 
 if __name__ == "__main__":

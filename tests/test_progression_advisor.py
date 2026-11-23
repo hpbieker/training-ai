@@ -149,7 +149,7 @@ class ProgressionReviewTests(unittest.TestCase):
                                 ("vo2max", {"sets": 1, "reps_per_set": 5, "rep_seconds": 180})):
             for stability in ("unknown", "stable", "unstable_or_failed"):
                 with self.subTest(family=family, stability=stability):
-                    summary = compact_inspect_summary({}, workout_type=family)
+                    summary = compact_inspect_summary({})
                     summary["stability"] = stability
                     result = progression_review(
                         [{"observed_work": current, "inspect_summary": summary}],
@@ -164,8 +164,10 @@ class ProgressionReviewTests(unittest.TestCase):
         result = compact_inspect_summary({
             "hardest_block": {"change_scope": scope, "br_per_watt_drift_pct": 34},
             "total": {"change_scope": scope, "ve_per_watt_drift_pct": 9},
-        }, workout_type="vt2")
+            "source_work_comparison": {"groups": [{"last_minus_first_w": -10}]},
+        })
         self.assertNotIn("max_relative_drift_pct", result)
+        self.assertEqual(result["source_work_comparison"]["groups"][0]["last_minus_first_w"], -10)
         self.assertEqual(result["hardest_block"]["br_per_watt_drift_pct"], 34)
         self.assertIsNone(result["hardest_block"]["ve_per_watt_drift_pct"])
         self.assertEqual(result["hardest_block"]["change_scope"], scope)

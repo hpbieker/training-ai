@@ -236,7 +236,7 @@ def inspected_activity_payload(
             "are candidates for review. Missing or unclassified laps leave the "
             "achieved family dose unresolved."
         ),
-        "inspect_summary": compact_inspect_summary(result, workout_type=workout_type),
+        "inspect_summary": compact_inspect_summary(result),
     }
 
 
@@ -276,8 +276,7 @@ def progression_review(
     }
 
 
-def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dict[str, Any]:
-    beta_summary = result.get("beta_summary") or {}
+def compact_inspect_summary(result: dict[str, Any]) -> dict[str, Any]:
     vt2 = result.get("vt2_quality") or {}
     vt2_quality = vt2.get("session_quality") or {}
     hardest = result.get("hardest_block") or {}
@@ -292,8 +291,7 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
     physiological_cost = "requires_synthesis"
 
     return {
-        "category": beta_summary.get("category"),
-        "status": beta_summary.get("status"),
+        "source_work_comparison": result.get("source_work_comparison"),
         "vt2_verdict": vt2_quality.get("verdict"),
         "vt2_series_scope": vt2.get("series_scope"),
         "vt2_session_evidence": vt2.get("session_evidence"),
