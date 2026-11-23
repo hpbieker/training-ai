@@ -73,12 +73,17 @@ the athlete was heat limited. A stable plateau can provide useful thermal
 context but does not establish that heat caused the observed cardiovascular,
 respiratory, or mechanical response.
 
-Do not infer dehydration from temperature, Heat Strain Index, heart-rate drift,
-or skin temperature alone. Hydration and fueling require their own evidence.
+During prolonged submaximal cycling in the lab, isolated hyperthermia
+increased minute ventilation. Consider thermal exposure and cooling when
+VE rises at comparable power. Hydration and fueling require their own
+evidence.
+[González-Alonso et al. 2023](../../../../docs/research/papers/respiration/gonzalez-alonso-2023-ventilation-hyperthermia.pdf)
 
 ## Evidence-Graded Thermal Language
 
-Use the following claim levels:
+The inspection helper reports thermal context and the measured changes in
+the comparison windows. Assign any stronger conclusion during the coaching
+review, using the following claim levels.
 
 ### `thermal_context_present`
 

@@ -1228,7 +1228,7 @@ def vt2_block_quality(
     humidity = comparison["fields"].get("RuuviHumidity", {}).get("late_avg")
     if humidity is None:
         humidity = comparison["fields"].get("Humidity", {}).get("late_avg")
-    response["thermal_evidence"] = thermal_evidence_assessment(
+    response["thermal_evidence"] = thermal_evidence_context(
         core_temp_max=stat(summary, "core_temperature", "max", digits=2),
         core_temp_drift=drift.get("core_temperature"),
         ambient_temp_c=comparison["fields"].get("RuuviTemperature", {}).get("late_avg"),
@@ -1236,7 +1236,6 @@ def vt2_block_quality(
         hr_per_w_drift=relative_drift.get("heartrate"),
         ve_per_w_drift=relative_drift.get("tidal_volume_min"),
         br_per_w_drift=relative_drift.get("respiration"),
-        execution_score=stability.get("execution_score"),
     )
     recovery = hr_recovery_after_block(rows, block)
     execution_score = stability.get("execution_score")
@@ -1355,7 +1354,7 @@ def vt2_response_observations(**values: Any) -> dict[str, Any]:
     })
 
 
-def thermal_evidence_assessment(
+def thermal_evidence_context(
     *,
     core_temp_max: Any,
     core_temp_drift: Any,
@@ -1364,65 +1363,40 @@ def thermal_evidence_assessment(
     hr_per_w_drift: Any = None,
     ve_per_w_drift: Any = None,
     br_per_w_drift: Any = None,
-    execution_score: Any = None,
-    athlete_heat_report: bool = False,
 ) -> dict[str, Any]:
-    """Grade thermal evidence without treating a wearable cutoff as causal proof."""
+    """Describe the block maximum and observations from matched windows."""
 
     observations: list[dict[str, Any]] = []
-    wearable_present = any(isinstance(v, (int, float)) for v in (core_temp_max, core_temp_drift))
-    progressive_pattern = (
-        isinstance(core_temp_drift, (int, float)) and core_temp_drift > 0.4
-    )
-    warm_window = isinstance(ambient_temp_c, (int, float)) and ambient_temp_c >= 28
-    acute_cost_present = any(
-        isinstance(value, (int, float)) and value > threshold
-        for value, threshold in (
-            (ve_per_w_drift, 12),
-            (br_per_w_drift, 14),
-        )
-    )
-    mechanical_deterioration = (
-        isinstance(execution_score, (int, float)) and execution_score < 82
-    )
+    wearable_present = core_temp_max is not None or core_temp_drift is not None
+    environmental_context = ambient_temp_c is not None or relative_humidity is not None
 
     if core_temp_max is not None:
+        observations.append({
+            "signal": "wearable_core_temperature",
+            "statistics_scope": "whole_work_block",
+            "max": rounded(core_temp_max, digits=2),
+        })
+    if core_temp_drift is not None:
         observations.append(
-            {"signal": "wearable_core_temperature", "max": rounded(core_temp_max, digits=2)}
+            {"signal": "wearable_core_temperature_change", "drift": rounded(core_temp_drift, digits=2)}
         )
-    if progressive_pattern:
-        observations.append(
-            {"signal": "wearable_core_temperature_rise", "drift": rounded(core_temp_drift, digits=2)}
-        )
-    if ambient_temp_c is not None or relative_humidity is not None:
+    if environmental_context:
         observations.append({"signal": "late_matched_window_environment",
                              "air_temperature_c": ambient_temp_c, "relative_humidity_pct": relative_humidity})
     if hr_per_w_drift is not None:
         observations.append({"signal": "hr_per_watt_drift_pct", "value": hr_per_w_drift,
                              "dependence": "Heart rate can contribute to the wearable temperature estimate."})
-    if acute_cost_present:
-        observations.append({"signal": "corroborating_acute_physiology",
-                             "ve_per_watt_drift_pct": ve_per_w_drift,
-                             "br_per_watt_drift_pct": br_per_w_drift})
-    if mechanical_deterioration:
-        observations.append({"signal": "mechanical_deterioration"})
-    if athlete_heat_report:
-        observations.append({"signal": "athlete_reported_heat_strain"})
-
-    grade = "not_assessed"
-    if wearable_present or ambient_temp_c is not None or relative_humidity is not None:
-        grade = "thermal_context_present"
-    if progressive_pattern and warm_window and acute_cost_present:
-        grade = "thermal_cost_supported"
-    if grade == "thermal_cost_supported" and mechanical_deterioration and athlete_heat_report:
-        grade = "heat_limited"
+    if ve_per_w_drift is not None:
+        observations.append({"signal": "ve_per_watt_drift_pct", "value": ve_per_w_drift})
+    if br_per_w_drift is not None:
+        observations.append({"signal": "br_per_watt_drift_pct", "value": br_per_w_drift})
 
     return {
-        "grade": grade,
+        "grade": "thermal_context_present" if wearable_present or environmental_context else "not_assessed",
         "observations": observations,
         "wearable_estimate_not_direct_core_measurement": wearable_present,
-        "rule": ("The thresholds screen matched work windows. Review actual cooling, airflow, "
-                 "accumulated work and the athlete's report before attributing a change to heat."),
+        "rule": ("Review cooling, airflow, accumulated work, mechanical execution, and the "
+                 "athlete's report when assessing a possible contribution from heat."),
     }
 
 

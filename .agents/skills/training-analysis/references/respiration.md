@@ -189,7 +189,10 @@ levels, drift, and cross-session comparison. Shorter windows may describe the
 timing of rapid work-recovery transitions only when coverage and signal quality
 are adequate. Averaging reduces random and breath-detection error, but can hide
 brief responses; it does not improve the underlying sensor or validate a
-different processing/export chain.
+different processing/export chain. Distinguish variability within a short
+window, repeatability of a window average across days, and agreement between
+devices. A lab estimate of within-window VE variability supplies no cutoff
+for change between wearable activity windows.
 
 Also resolve the source's output delay before interpreting transitions. A
 comparison RIP garment reported one-second values averaged from the last seven
@@ -218,6 +221,10 @@ For a work interval, useful descriptive features include:
 - repeatability across equivalent intervals;
 - alignment with HR, SmO2, temperature, RPE, and breathing sensation.
 
+BR can follow short work and recovery transitions faster than tidal volume.
+Keep work and recovery intensities comparable and account for smoothing
+when interpreting timing.
+
 Compare BR and VE recovery after similar efforts with the same elapsed
 recovery window, pause mode, recovery power, and posture. Check coverage and
 sensor smoothing before comparing the time course or the fall in a fixed
@@ -244,10 +251,9 @@ higher respiratory cost, heat, fatigue, prior work, illness, altered breathing
 strategy, or measurement change; it does not identify the cause by itself.
 
 Do not use a single universal BR, VT, VE, BR/W, or VE/W threshold to declare
-that VT1 or VT2 was crossed or that a session was excessive. Existing fixed
-thresholds in analysis helpers are experimental heuristics and must remain
-subordinate to matched-work comparison, source quality, other physiology,
-feel/RPE, and next-day response.
+that VT1 or VT2 was crossed or that a session was excessive. Compare matched
+work and review signal quality, other physiology, feel/RPE, and next-day
+response before drawing a conclusion.
 
 ## Training-Domain Use
 
@@ -329,7 +335,13 @@ respiratory threshold, or only one, was identifiable.
 
 A current VitalPro manufacturer study reports low BR error and strong VE
 correlation, but does not present threshold-result agreement and cannot
-substantiate threshold accuracy from correlation alone. A 2026 independent
+substantiate threshold accuracy from correlation alone. In Tyme Wear's
+separate analysis of 200 lab tests, both the VE-only estimate and the
+gas-exchange reference came from metabolic carts. Agreement for
+strap-derived thresholds requires its own validation.
+[Ventilation research](../../../../docs/research/ventilatory-kinetics-and-drift.md#additional-ventilation-research)
+
+A 2026 independent
 conference study reported strong BR agreement but poor absolute VE agreement.
 Separate research on trained cyclists also found BR-breakpoint estimates too
 individually imprecise to substitute for gas-exchange VT or respiratory

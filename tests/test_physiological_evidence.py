@@ -15,18 +15,26 @@ def ride(step=1, duration=1200):
 
 class EvidenceTests(unittest.TestCase):
     def test_block_uses_environment_in_the_actual_comparison_window(self):
-        rows = ride(step=5)
-        for row in rows:
-            t = int(row['time'])
-            row.update(RuuviTemperature=32 if t < 120 else 8, Humidity=80,
-                       core_temperature=37 if t < 600 else 37.6,
-                       tidal_volume_min=80 if t < 600 else 96)
-        block = {'start_index': 0, 'end_index': len(rows), 'duration_seconds': 1200}
-        report = vt2_block_quality(rows, block, index=1, target_watts=290, anchor_watts=290)
-        thermal = report['physiology']['thermal_evidence']
-        self.assertEqual(thermal['grade'], 'thermal_context_present')
-        environment = next(o for o in thermal['observations'] if o['signal'] == 'late_matched_window_environment')
-        self.assertEqual((environment['air_temperature_c'], environment['relative_humidity_pct']), (8, 80))
+        for temperature in (8, 30):
+            with self.subTest(temperature=temperature):
+                rows = ride(step=5)
+                for row in rows:
+                    t = int(row['time'])
+                    row.update(watts=330, RuuviTemperature=32 if t < 120 else temperature,
+                               Humidity=80, core_temperature=37 if t < 600 else 37.6,
+                               tidal_volume_min=80 if t < 600 else 96)
+                block = {'start_index': 0, 'end_index': len(rows), 'duration_seconds': 1200}
+                report = vt2_block_quality(rows, block, index=1, target_watts=290, anchor_watts=290)
+                self.assertLess(report['execution_score'], 82)
+                self.assertEqual(report['watts_avg'], 330)
+                thermal = report['physiology']['thermal_evidence']
+                self.assertEqual(thermal['grade'], 'thermal_context_present')
+                observed = {item['signal']: item for item in thermal['observations']}
+                environment = observed['late_matched_window_environment']
+                self.assertEqual((environment['air_temperature_c'], environment['relative_humidity_pct']),
+                                 (temperature, 80))
+                self.assertAlmostEqual(observed['ve_per_watt_drift_pct']['value'], 20)
+                self.assertNotIn('mechanical_deterioration', observed)
 
     def test_recovery_rise_requires_coverage_and_a_later_peak(self):
         intervals = [{'type': 'WORK', 'start_index': 0, 'end_index': 1},

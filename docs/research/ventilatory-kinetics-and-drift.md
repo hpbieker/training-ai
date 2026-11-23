@@ -121,6 +121,25 @@ block review (4, 12–13, 19).
   a plateau from a continuing rise. That would need its own comparison
   method and checks for per-signal coverage.
 
+## Additional ventilation research
+
+Tyme Wear's [validation page](https://www.tymewear.com/blogs/validation-studies)
+lists its [VitalPro versus Cosmed K5 comparison](papers/respiration/tymewear-2026-vitalpro-cosmed-k5-manufacturer-validation.html)
+and a separate article about estimating thresholds from ventilation alone.
+Its [durability guide](https://www.tymewear.com/pages/durability) also cites
+[Stevenson et al.](papers/respiration/stevenson-2024-prolonged-exercise-ventilatory-parameters.xml)
+and [Rothschild et al.](papers/respiration/rothschild-2025-respiratory-decoupling-vt1-durability.pdf),
+which are already archived.
+
+| Source | Finding and relevance to cycling analysis |
+| --- | --- |
+| González-Alonso et al. (2023), pulmonary ventilation during prolonged exercise. [Publication](https://doi.org/10.1113/EP090909) · [PDF](papers/respiration/gonzalez-alonso-2023-ventilation-hyperthermia.pdf) | During prolonged submaximal cycling, isolated hyperthermia increased VE, while isolated dehydration did not produce the same increase. Review cooling and thermal exposure when VE rises at steady power. The heat protocols do not establish how much VE change to expect on a typical indoor ride. |
+| Colosio et al. (2026), gas-exchange variability during constant-work cycling. [Publication](https://doi.org/10.3389/fspor.2026.1814527) · [PDF](papers/respiration/colosio-2026-ventilation-test-retest-cycling.pdf) | In 42 healthy adults, relative within-trial variability was greatest in the moderate domain. VE reached a coefficient of variation of 11.7% under the lowest moderate condition. This describes variation within the final minute of six-minute lab bouts. The number cannot serve as a threshold for longitudinal drift or VitalPro measurement error. |
+| Nicolò et al. (2017), respiratory frequency and tidal volume in HIIT. [Publication](https://doi.org/10.1113/EP086352) · [Accepted manuscript PDF](papers/respiration/nicolo-2017-breathing-frequency-tidal-volume-hiit.pdf) | Breathing frequency responded more rapidly to work and recovery transitions than tidal volume. Researchers varied total trial duration and active recovery power in cycling trials with 30-second work and recovery phases. Useful when interpreting their different time courses around short intervals. |
+| Nicolò, Marcora & Sacchetti (2016), respiratory frequency and perceived exertion. [Publication](https://doi.org/10.1080/02640414.2015.1102315) · [Accepted manuscript PDF](papers/respiration/nicolo-2016-respiratory-frequency-rpe-time-trials.pdf) | In nine trained male cyclists, breathing frequency followed RPE closely during self-paced 10-, 20-, and 30-minute time trials. This supports comparing both during similar hard efforts. The association is specific to the tested tasks and population. |
+| Wolpern et al. (2015), individualized intensity prescription. [Publication](https://doi.org/10.1186/s13102-015-0011-z) · [PDF](papers/respiration/wolpern-2015-threshold-based-training-intensity.pdf) | In a randomized treadmill training study with previously sedentary adults, the group using heart-rate zones anchored to ventilatory thresholds improved VO₂max more than the group using heart-rate reserve percentages. It also trained at a higher actual heart rate. The effect of zone prescription at equivalent training intensity remains unresolved. |
+| Tyme Wear, threshold estimation from ventilation alone. [Manufacturer article](https://www.tymewear.com/blogs/validation-studies/can-a-chest-strap-actually-measure-my-fitness-level) · [HTML snapshot](papers/respiration/tymewear-ve-only-threshold-estimation.html) | The manufacturer describes 200 lab tests in which both the VE-only estimate and the full gas-exchange comparison used metabolic-cart data. This addresses whether lab-measured VE can inform threshold estimation. Agreement of the strap-derived thresholds would need a separate comparison. |
+
 ## Sources
 
 Numbers 1–19 follow VTCheck's science page. B1 and B2 trace the two additional

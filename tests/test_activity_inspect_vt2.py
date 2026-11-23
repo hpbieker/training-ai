@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from activity_inspect import (  # noqa: E402
     add_environmental_derivatives,
     default_output_path,
-    thermal_evidence_assessment,
+    thermal_evidence_context,
     vt2_session_quality,
     vt2_candidate_blocks,
     vt2_quality,
@@ -103,58 +103,33 @@ class Vt2SessionQualityTests(unittest.TestCase):
         self.assertNotIn("recovery_trend", result)
 
 
-class ThermalEvidenceAssessmentTests(unittest.TestCase):
-    def test_temperature_alone_is_context_only(self):
-        result = thermal_evidence_assessment(
-            core_temp_max=38.8,
-            core_temp_drift=0.8,
-        )
-
-        self.assertEqual(result["grade"], "thermal_context_present")
-
-    def test_aligned_environment_pattern_and_physiology_support_thermal_cost(self):
-        result = thermal_evidence_assessment(
-            core_temp_max=38.8,
-            core_temp_drift=0.8,
-            ambient_temp_c=30,
-            ve_per_w_drift=13,
-            hr_per_w_drift=9,
-            execution_score=95,
-        )
-
-        self.assertEqual(result["grade"], "thermal_cost_supported")
-
-    def test_humidity_and_heart_rate_cannot_establish_heat_cost(self):
-        for temp, ve_drift in [(8, None), (8, 15), (30, None)]:
-            with self.subTest(temp=temp, ve_drift=ve_drift):
-                result = thermal_evidence_assessment(
-                    core_temp_max=38.5, core_temp_drift=0.5,
-                    ambient_temp_c=temp, relative_humidity=80,
-                    hr_per_w_drift=9, ve_per_w_drift=ve_drift,
+class ThermalEvidenceContextTests(unittest.TestCase):
+    def test_thermal_and_physiological_changes_remain_descriptive(self):
+        for ve_drift, br_drift in ((12.0, 14.0), (12.1, 14.1), (-1, 0)):
+            with self.subTest(ve_drift=ve_drift, br_drift=br_drift):
+                result = thermal_evidence_context(
+                    core_temp_max=38.5,
+                    core_temp_drift=0.45,
+                    ambient_temp_c=28,
+                    relative_humidity=80,
+                    hr_per_w_drift=9,
+                    ve_per_w_drift=ve_drift,
+                    br_per_w_drift=br_drift,
                 )
                 self.assertEqual(result["grade"], "thermal_context_present")
+                observed = {item["signal"]: item for item in result["observations"]}
+                self.assertEqual(observed["wearable_core_temperature"]["statistics_scope"], "whole_work_block")
+                self.assertEqual(observed["wearable_core_temperature_change"]["drift"], 0.45)
+                self.assertEqual(observed["late_matched_window_environment"]["air_temperature_c"], 28)
+                self.assertEqual(observed["ve_per_watt_drift_pct"]["value"], ve_drift)
+                self.assertEqual(observed["br_per_watt_drift_pct"]["value"], br_drift)
+                self.assertIn("dependence", observed["hr_per_watt_drift_pct"])
 
-    def test_heat_limited_requires_mechanical_and_athlete_evidence(self):
-        without_report = thermal_evidence_assessment(
-            core_temp_max=38.8,
-            core_temp_drift=0.8,
-            ambient_temp_c=30,
-            ve_per_w_drift=13,
-            hr_per_w_drift=9,
-            execution_score=75,
-        )
-        with_report = thermal_evidence_assessment(
-            core_temp_max=38.8,
-            core_temp_drift=0.8,
-            ambient_temp_c=30,
-            ve_per_w_drift=13,
-            hr_per_w_drift=9,
-            execution_score=75,
-            athlete_heat_report=True,
-        )
-
-        self.assertEqual(without_report["grade"], "thermal_cost_supported")
-        self.assertEqual(with_report["grade"], "heat_limited")
+    def test_respiratory_change_without_thermal_context_is_still_reported(self):
+        result = thermal_evidence_context(core_temp_max=None, core_temp_drift=None, ve_per_w_drift=20)
+        self.assertEqual(result["grade"], "not_assessed")
+        self.assertFalse(result["wearable_estimate_not_direct_core_measurement"])
+        self.assertEqual(result["observations"], [{"signal": "ve_per_watt_drift_pct", "value": 20}])
 
 
 if __name__ == "__main__":
