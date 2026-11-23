@@ -24,22 +24,15 @@ medical heat-risk classification.
 
 ## Evidence Boundary
 
-Independent validation findings are mixed and protocol-dependent:
+Wearable temperature estimates can be repeatable across matched rides while
+differing materially from a reference measurement. Agreement and the direction
+of error vary with device model, exercise phase, environment, and reference
+site. Apply findings from a specific CORE or Calera model in the context of
+the conditions in which it was tested.
 
-- [Verdel et al.](https://doi.org/10.3390/s21175932) found acceptable repeatability during cycling but poor
-  agreement with rectal temperature under the tested low-to-high heat loads;
-  approximately half of paired observations differed by more than the study's
-  predefined `0.3 C` validity threshold.
-- [Januário et al.](https://doi.org/10.1016/j.jtherbio.2024.103907) found the Calera Research Sensor reproducible and valid
-  relative to gastrointestinal temperature during a specific cycling protocol
-  at `32 C` and `60%` relative humidity, with reported confidence limits of
-  approximately `+/-0.36 C`.
-- [Later constant-load cycling evidence in heat](https://doi.org/10.1016/j.jtherbio.2025.104241)
-  reported systematic overestimation relative to rectal temperature.
-
-These findings support cautious use of within-session and matched-session
-patterns. They do not support treating a single decimal reading as exact across
-athletes, environments, protocols, sensor generations, or reference sites.
+Use within-session trends and comparisons between matched sessions when the
+setup and recording support them. Interpret an isolated decimal reading in
+light of the sensor's uncertainty.
 
 ## Signal Quality And Setup
 
@@ -77,7 +70,6 @@ During prolonged submaximal cycling in the lab, isolated hyperthermia
 increased minute ventilation. Consider thermal exposure and cooling when
 VE rises at comparable power. Hydration and fueling require their own
 evidence.
-[González-Alonso et al. 2023](../../../../docs/research/papers/respiration/gonzalez-alonso-2023-ventilation-hyperthermia.pdf)
 
 ## Evidence-Graded Thermal Language
 

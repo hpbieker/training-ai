@@ -160,7 +160,6 @@ rise only from the nadir to a subsequent value. A falling trace gives zero
 rise, while missing boundary samples or inadequate coverage leave the rise
 unknown. Keep this amplitude in percentage points distinct from the time
 needed to regain half the recovery amplitude measured from the end of work.
-[Arnold et al.](https://doi.org/10.3389/fphys.2024.1449384)
 
 The helper also reports the signed difference between the time-weighted mean
 of the last 30 seconds of work and the mean over seconds 25–30 of the pause.
@@ -314,13 +313,12 @@ patterns and windowed kinetics over a single minimum. SmO2 can describe local
 deoxygenation and recovery, but it does not replace respiratory VO2, nor does a
 specific SmO2 value establish VO2max attainment.
 
-A negative SmO2 slope has separated sustainable from unsustainable work in
-small standardized constant-load or time-to-exhaustion protocols. Apply that
-finding only when work rate and measurement conditions match the validated
-protocol closely. In ordinary intervals or variable outdoor work, changes in
-power, cadence, posture, recovery, temperature, and sensor contact prevent the
-slope from independently classifying work as above CP or predicting W-prime
-depletion.
+Use SmO2 slope to describe the local response over a stated window. A
+relationship fitted using slopes from completed efforts does not establish
+what can be predicted while an effort is still in progress. In ordinary
+intervals or variable outdoor work, changes in power, cadence, posture,
+recovery, temperature, and sensor contact limit the use of slope for
+classifying work above CP or estimating W-prime depletion.
 
 ### Threshold and graded tests
 
