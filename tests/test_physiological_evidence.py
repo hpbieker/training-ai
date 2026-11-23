@@ -106,6 +106,43 @@ class EvidenceTests(unittest.TestCase):
         result.pop('auto_power_blocks')
         self.assertEqual(brief_result(result)['work_blocks'][0]['statistics_scope'], 'source_work_interval')
 
+    def test_recovery_uses_recorded_work_boundaries_when_detection_differs(self):
+        from activity_inspect import brief_result, interval_summaries
+
+        rows = ride(duration=500)
+        intervals = [
+            {"type": "WORK", "start_index": 0, "end_index": 140},
+            {"type": "RECOVERY", "start_index": 140, "end_index": 160},
+            {"type": "WORK", "start_index": 160, "end_index": 400},
+            {"type": "RECOVERY", "start_index": 400, "end_index": 500},
+        ]
+        for row in rows:
+            t = int(row["time"])
+            if 140 <= t < 160 or t >= 400:
+                row.update(watts="80", heartrate="120", respiration="22", tidal_volume_min="40")
+        activity = SavedActivity(Path("."), {"icu_intervals": intervals}, rows)
+        recorded = interval_summaries(activity, ["watts", "heartrate", "respiration", "tidal_volume_min"])
+        detected = summarize_block(rows, start_index=30, end_index=130, label="steady")
+        result = {
+            "activity": {"name": "test", "type": "Ride"},
+            "streams": {"rows": len(rows), "data_quality": {}},
+            "total": summarize_block(rows, start_index=0, end_index=len(rows), label="total"),
+            "intervals": recorded, "detected_power_blocks": [detected], "_rows": rows,
+        }
+        report = brief_result(result)
+        self.assertEqual([rest["after_source_work_interval"] for rest in report["recoveries"]], [1, 3])
+        self.assertEqual([rest["source_index"] for rest in report["recoveries"]], [2, 4])
+        self.assertEqual(report["recoveries"][0]["br_start"], 22)
+        first = report["hardest_block"]["hr_recovery_after_block"]
+        self.assertEqual(first["source_work_interval"], 1)
+        self.assertEqual(first["start_s"], 140)
+        self.assertEqual(first["reason"], "recorded_recovery_does_not_cover_window")
+        self.assertNotIn("drop_bpm", first)
+        second = hr_recovery_after_block(rows, recorded[2])
+        self.assertEqual(second["recovery_context"], "recorded_recovery")
+        self.assertEqual(second["post_work_power"]["avg"], 80)
+        self.assertEqual(second["end_s_exclusive"], 460)
+
     def test_prescribed_power_is_independent_of_vt2_anchor(self):
         from activity_inspect import vt2_quality
         rows = ride()
@@ -181,6 +218,28 @@ class EvidenceTests(unittest.TestCase):
         self.assertEqual(normal, {k: v for k, v in debug.items() if k not in beta_keys})
         self.assertIn('vt2_quality', normal)
         self.assertIn('interpretation_limit', debug['beta_stability'])
+
+    def test_beta_counts_missing_physiology_and_describes_isolated_ventilation(self):
+        from activity_inspect import beta_stability_debug, beta_summary
+
+        for name, watts in (("VT1", 205), ("VT2", 290)):
+            with self.subTest(name=name):
+                rows = [dict(time=t, watts=watts, cadence=90) for t in range(720)]
+                power_only = summarize_block(rows, start_index=0, end_index=len(rows), label="power")
+                for row in rows:
+                    row["tidal_volume_min"] = 60 if row["time"] < 360 else 95
+                with_ve = summarize_block(rows, start_index=0, end_index=len(rows), label="VE")
+                result = beta_stability_debug({"name": name}, [power_only, with_ve], [])
+                unresolved, observed = result["blocks"]
+                self.assertEqual(unresolved["physiological_comparison"], "unresolved")
+                self.assertEqual(observed["physiological_comparison"], "observed")
+                ve = next(metric for metric in observed["metrics"] if metric["field"] == "tidal_volume_min")
+                self.assertEqual(ve["late_minus_early"], 35)
+                for block in result["blocks"]:
+                    self.assertNotIn("verdict", block)
+                    self.assertNotIn("confidence", block)
+                summary = beta_summary({"name": name}, result, None)
+                self.assertIn("1 with matched physiology, 1 unresolved", summary["status"])
 
     def test_block_boundary_shift_reuses_activity_windows(self):
         rows = ride(duration=1800)
@@ -360,6 +419,7 @@ class EvidenceTests(unittest.TestCase):
             result = hr_recovery_after_block(rows, {'end_index':600//step})
             self.assertEqual(result['window_s'], 60)
             self.assertEqual(result['start_s'], 600)
+            self.assertEqual(result['recovery_context'], 'unverified_post_work')
             self.assertNotIn('recovery_score',result)
 
     def test_recovery_cannot_start_after_a_recording_gap(self):

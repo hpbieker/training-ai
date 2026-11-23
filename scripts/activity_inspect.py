@@ -387,6 +387,7 @@ def interval_summaries(activity, fields: list[str], *, window_context=None) -> l
     window_context = window_context if window_context is not None else prepare_windows(activity.streams)
     summaries = []
     work_count = 0
+    preceding_work = None
     for index, interval in enumerate(activity.intervals, start=1):
         interval_type = str(interval.get("type")).upper()
         if interval_type == "WORK":
@@ -410,8 +411,13 @@ def interval_summaries(activity, fields: list[str], *, window_context=None) -> l
                 "elapsed_time": interval.get("elapsed_time"),
             }
         )
-        if interval_type == "RECOVERY":
+        if interval_type == "WORK":
+            preceding_work = summary
+        elif interval_type == "RECOVERY" and preceding_work is not None:
             summary["after_work_block"] = work_count
+            summary["after_source_work_interval"] = preceding_work["index"]
+            if summaries[-1] is preceding_work and start == preceding_work["end_index"] and end > start:
+                preceding_work["recovery_end_index"] = end
         summaries.append(summary)
     return summaries
 
@@ -523,18 +529,16 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
     recoveries = brief_recoveries(
         saved_recovery_intervals,
         moxy_recoveries=result.get("moxy", {}).get("recovery_reoxygenation", []),
-        work_block_count=len(work_blocks),
-    )
-    vo2_recoveries = brief_recoveries(
-        saved_recovery_intervals,
-        moxy_recoveries=result.get("moxy", {}).get("recovery_reoxygenation", []),
         work_block_count=len(saved_work_intervals),
     )
     post_work_blocks = brief_post_work_blocks(
         saved_recovery_intervals,
-        work_block_count=len(work_blocks),
+        work_block_count=len(saved_work_intervals),
     )
     hard_block = hardest_block(work_blocks)
+    hard_block_source = [block for block in saved_work_intervals
+                         if hard_block and blocks_overlap(hard_block, block)]
+    recovery_anchor = hard_block_source[0] if len(hard_block_source) == 1 else hard_block
     long_pauses = detect_pause_segments(rows, min_seconds=60)
     include_outdoor_vt1 = should_include_outdoor_vt1(
         result["activity"],
@@ -562,7 +566,7 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
         "hardest_block": (
             {
                 **brief_work_block(hard_block, index=work_blocks.index(hard_block) + 1),
-                "hr_recovery_after_block": hr_recovery_after_block(rows, hard_block),
+                "hr_recovery_after_block": hr_recovery_after_block(rows, recovery_anchor),
             }
             if hard_block
             else None
@@ -593,7 +597,7 @@ def brief_result(result: dict[str, Any], *, debug_beta: bool = False) -> dict[st
     }
     if debug_beta:
         beta_stability = beta_stability_debug(result["activity"], work_blocks, recoveries)
-        beta_vo2 = beta_vo2_debug(result["activity"], rows, saved_work_intervals, vo2_recoveries)
+        beta_vo2 = beta_vo2_debug(result["activity"], rows, saved_work_intervals, recoveries)
         for experimental in (beta_stability, beta_vo2):
             if experimental:
                 experimental["interpretation_limit"] = "Unvalidated development heuristics; not physiological cost, threshold, or progression evidence."
@@ -3507,53 +3511,18 @@ def beta_zone_parts(assessments: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def beta_zone_part(zone: str, blocks: list[dict[str, Any]]) -> dict[str, Any]:
-    verdicts = {}
-    for block in blocks:
-        verdict = str(block.get("verdict") or "unknown")
-        verdicts[verdict] = verdicts.get(verdict, 0) + 1
+    unresolved = sum(block.get("physiological_comparison") != "observed" for block in blocks)
     return {
         "kind": zone,
         "unit_label": "blocks",
         "unit_count": len(blocks),
-        "status": verdict_counts_status(verdicts),
-        "verdict_counts": verdicts,
+        "status": f"{len(blocks) - unresolved} with matched physiology, {unresolved} unresolved",
+        "unresolved_block_count": unresolved,
     }
 
 
 def beta_parts_status(parts: list[dict[str, Any]]) -> str:
-    named_parts = [
-        f"{part.get('kind')}: {part.get('status')}"
-        for part in parts
-        if part.get("kind") not in {"unknown", "unknown_stable"}
-    ]
-    if named_parts:
-        return " + ".join(named_parts)
-    return "unknown/debug"
-
-
-def verdict_counts_status(verdicts: dict[str, int]) -> str:
-    fragments = []
-    controlled = sum(
-        verdicts.get(verdict, 0)
-        for verdict in (
-            "controlled_but_high_cost",
-            "controlled_at_intent",
-            "stable_at_intent",
-            "watch_drift_but_probably_controlled",
-        )
-    )
-    near = verdicts.get("near_upper_control_limit", 0)
-    above = verdicts.get("likely_above_intent_late", 0)
-    unknown = verdicts.get("mechanically_stable_unknown_intensity", 0)
-    if controlled:
-        fragments.append(f"{controlled} controlled")
-    if near:
-        fragments.append(f"{near} near upper")
-    if above:
-        fragments.append(f"{above} above intent")
-    if unknown and not fragments:
-        fragments.append(f"{unknown} unknown")
-    return ", ".join(fragments) if fragments else "unknown"
+    return " + ".join(f"{part['kind']}: {part['status']}" for part in parts)
 
 
 def join_status(*values: Any) -> str:
@@ -3591,7 +3560,7 @@ def beta_vo2_debug(
         }
 
     assessments = [
-        vo2_rep_assessment(rep, index=index, recovery=vo2_recovery_after_rep(recoveries, index))
+        vo2_rep_assessment(rep, index=index, recovery=vo2_recovery_after_rep(recoveries, rep.get("index")))
         for index, rep in enumerate(reps, start=1)
     ]
     summary = vo2_summary(assessments)
@@ -3733,11 +3702,11 @@ def vo2_candidate_rep(
     )
 
 
-def vo2_recovery_after_rep(recoveries: list[dict[str, Any]], rep_index: int) -> dict[str, Any] | None:
-    for recovery in recoveries:
-        if recovery.get("after_work_block") == rep_index:
-            return recovery
-    return None
+def vo2_recovery_after_rep(recoveries: list[dict[str, Any]], source_interval: int | None) -> dict[str, Any] | None:
+    if source_interval is None:
+        return None
+    return next((recovery for recovery in recoveries
+                 if recovery.get("after_source_work_interval") == source_interval), None)
 
 
 def vo2_rep_assessment(
@@ -4046,11 +4015,7 @@ def beta_stability_debug(
     work_blocks: list[dict[str, Any]],
     recoveries: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    """Return experimental intent-vs-response stability signals.
-
-    This deliberately reports signals and confidence instead of pretending to
-    prove ventilatory thresholds from one workout.
-    """
+    """Summarize experimental workout labels and matched observations."""
 
     assessments = [
         beta_block_stability(block, index=index, activity_name=str(activity.get("name") or ""))
@@ -4058,15 +4023,7 @@ def beta_stability_debug(
     ]
     return {
         "status": "experimental",
-        "meaning": (
-            "Experimental intent-vs-response assessment. Use as decision support, "
-            "not as a threshold diagnosis."
-        ),
-        "assumptions": [
-            "Intent is inferred from activity name and stable power level.",
-            "Power stability and physiological drift are evaluated separately.",
-            "Respiratory and Moxy signals are ignored when missing or clearly unusable.",
-        ],
+        "meaning": "Workout labels are inferred from the name and power. Signal changes describe matched windows.",
         "blocks": assessments,
         "groups": beta_stability_groups(assessments, recoveries),
     }
@@ -4079,35 +4036,26 @@ def beta_block_stability(
     activity_name: str,
 ) -> dict[str, Any]:
     summary = block.get("summary") or {}
-    drift = block.get("drift") or {}
-    relative_drift = block.get("relative_to_power_drift") or {}
     watts = stat(summary, "watts", "avg", digits=0)
-    hr = stat(summary, "heartrate", "avg", digits=0)
-    ve = stat(summary, "tidal_volume_min", "avg", digits=1)
-    br = stat(summary, "respiration", "avg", digits=1)
-    w_per_hr = beta_w_per_hr(summary)
     intensity_detection = beta_intensity_detection(activity_name, watts)
-    intended_zone = str(intensity_detection["zone"])
-    intent_reasons = list(intensity_detection["reasons"])
-    signals = beta_stability_signals(summary, drift, relative_drift)
-    verdict, confidence, verdict_reasons = beta_stability_verdict(intended_zone, signals)
+    overview = work_block_overview(block, index=index)
+    metrics = overview["metrics"]
+    observed = any(metric["field"] != "watts" and metric["late_minus_early"] is not None
+                   for metric in metrics)
     return drop_none(
         {
             "n": index,
             "label": block.get("label"),
-            "intended_zone": intended_zone,
-            "intent_reasons": intent_reasons,
+            "intended_zone": intensity_detection["zone"],
             "intensity_detection": intensity_detection,
-            "verdict": verdict,
-            "confidence": confidence,
-            "reasons": verdict_reasons,
+            "physiological_comparison": "observed" if observed else "unresolved",
             "duration_s": rounded(block.get("duration_seconds"), digits=0),
             "watts_avg": watts,
-            "hr_avg": hr,
-            "w_per_hr": w_per_hr,
-            "ve_avg": ve,
-            "br_avg": br,
-            "signals": signals,
+            "w_per_hr": beta_w_per_hr(summary),
+            "comparison_status": overview["comparison_status"],
+            "early_window": overview["early_window"],
+            "late_window": overview["late_window"],
+            "metrics": metrics,
         }
     )
 
@@ -4175,141 +4123,6 @@ def beta_intensity_detection(activity_name: str, watts: float | int | None) -> d
     }
 
 
-def beta_stability_signals(
-    summary: dict[str, Any],
-    drift: dict[str, Any],
-    relative_drift: dict[str, Any],
-) -> dict[str, Any]:
-    return drop_none(
-        {
-            "mechanical_power": beta_power_signal(drift.get("watts")),
-            "hr_drift": beta_drift_signal(drift.get("heartrate"), stable=3, elevated=6),
-            "hr_per_watt_drift": beta_drift_signal(
-                relative_drift.get("heartrate"),
-                stable=3,
-                elevated=6,
-            ),
-            "ve_drift": beta_drift_signal(drift.get("tidal_volume_min"), stable=5, elevated=10),
-            "ve_per_watt_drift": beta_drift_signal(
-                relative_drift.get("tidal_volume_min"),
-                stable=5,
-                elevated=10,
-            ),
-            "br_drift": beta_drift_signal(drift.get("respiration"), stable=3, elevated=6),
-            "br_per_watt_drift": beta_drift_signal(
-                relative_drift.get("respiration"),
-                stable=3,
-                elevated=6,
-            ),
-            "vt_drift": beta_tidal_volume_signal(drift.get("tidal_volume")),
-            "smo2_drift": beta_smo2_signal(drift.get("smo2")),
-            "smo2_min": beta_smo2_min_signal(stat(summary, "smo2", "min", digits=1)),
-        }
-    )
-
-
-def beta_power_signal(drift: Any) -> str | None:
-    if not isinstance(drift, (int, float)):
-        return None
-    if abs(drift) <= 2:
-        return "stable"
-    if abs(drift) <= 8:
-        return "slightly_variable"
-    return "variable"
-
-
-def beta_drift_signal(value_: Any, *, stable: float, elevated: float) -> str | None:
-    if not isinstance(value_, (int, float)):
-        return None
-    if value_ <= stable:
-        return "stable_or_falling"
-    if value_ <= elevated:
-        return "moderate_upward_drift"
-    return "high_upward_drift"
-
-
-def beta_tidal_volume_signal(value_: Any) -> str | None:
-    if not isinstance(value_, (int, float)):
-        return None
-    if value_ < -8:
-        return "falling_tidal_volume"
-    if value_ > 8:
-        return "rising_tidal_volume"
-    return "stable"
-
-
-def beta_smo2_signal(value_: Any) -> str | None:
-    if not isinstance(value_, (int, float)):
-        return None
-    if value_ < -5:
-        return "falling_smo2"
-    if value_ > 5:
-        return "recovering_or_rising_smo2"
-    return "stable"
-
-
-def beta_smo2_min_signal(value_: float | int | None) -> str | None:
-    if value_ is None:
-        return None
-    if value_ < 10:
-        return "very_low"
-    if value_ < 18:
-        return "low"
-    return "not_low"
-
-
-def beta_stability_verdict(
-    intended_zone: str,
-    signals: dict[str, Any],
-) -> tuple[str, str, list[str]]:
-    reasons: list[str] = []
-    drift_fields = beta_effective_drift_fields(signals)
-    high_drift = any(
-        signals.get(field) == "high_upward_drift"
-        for field in drift_fields
-    )
-    moderate_drift = any(
-        signals.get(field) == "moderate_upward_drift"
-        for field in drift_fields
-    )
-    falling_smo2 = signals.get("smo2_drift") == "falling_smo2"
-    low_smo2 = signals.get("smo2_min") in {"low", "very_low"}
-    power_stable = signals.get("mechanical_power") == "stable"
-
-    if intended_zone in {"vt1", "vt1_like"}:
-        if high_drift or falling_smo2:
-            reasons.append("VT1-intent shows high upward drift or falling SmO2")
-            return "likely_above_intent_late", "medium", reasons
-        if moderate_drift:
-            reasons.append("VT1-intent has moderate physiological drift")
-            return "watch_drift_but_probably_controlled", "medium", reasons
-        reasons.append("VT1-intent has stable/falling physiological cost")
-        return "stable_at_intent", "medium_high" if power_stable else "medium", reasons
-
-    if intended_zone in {"vt2", "vt2_like"}:
-        if high_drift or (falling_smo2 and low_smo2):
-            reasons.append("VT2-intent shows high cost accumulation")
-            return "near_upper_control_limit", "medium", reasons
-        if moderate_drift or low_smo2:
-            reasons.append("VT2-intent is controlled mechanically but physiologically costly")
-            return "controlled_but_high_cost", "medium_high" if power_stable else "medium", reasons
-        reasons.append("VT2-intent appears controlled")
-        return "controlled_at_intent", "medium", reasons
-
-    reasons.append("Intent is unclear, so only mechanical stability is assessed")
-    return "mechanically_stable_unknown_intensity", "low", reasons
-
-
-def beta_effective_drift_fields(signals: dict[str, Any]) -> tuple[str, str, str]:
-    if signals.get("mechanical_power") in {"slightly_variable", "variable"}:
-        return (
-            "hr_per_watt_drift",
-            "ve_per_watt_drift",
-            "br_per_watt_drift",
-        )
-    return ("hr_drift", "ve_drift", "br_drift")
-
-
 def beta_stability_groups(
     assessments: list[dict[str, Any]],
     recoveries: list[dict[str, Any]],
@@ -4337,7 +4150,7 @@ def beta_group_summary(zone: str, blocks: list[dict[str, Any]]) -> dict[str, Any
         {
             "count": len(blocks),
             "zone": zone,
-            "verdicts": [block.get("verdict") for block in blocks],
+            "physiological_comparisons": [block["physiological_comparison"] for block in blocks],
             "w_per_hr_start": rounded(w_per_hr_values[0], digits=3) if w_per_hr_values else None,
             "w_per_hr_end": rounded(w_per_hr_values[-1], digits=3) if w_per_hr_values else None,
             "w_per_hr_delta": (
@@ -4520,6 +4333,7 @@ def hr_recovery_after_block(
     *,
     window_seconds: int = 60,
 ) -> dict[str, Any] | None:
+    """Describe a fixed post-work window and check any recorded recovery boundary."""
     end_index = block.get("end_index")
     if window_seconds <= 0 or type(end_index) is not int or not 0 < end_index < len(rows):
         return None
@@ -4540,7 +4354,25 @@ def hr_recovery_after_block(
     times = []
     widths = []
     stop = boundary + window_seconds
-    for index in range(end_index, len(rows)):
+    recovery_end_index = block.get("recovery_end_index")
+    recorded_pause = type(recovery_end_index) is int and end_index < recovery_end_index <= len(rows)
+    if recorded_pause:
+        if recovery_end_index < len(rows):
+            recovery_end = numeric(rows[recovery_end_index], "time")
+        else:
+            last_row = rows[recovery_end_index - 1]
+            last_time = numeric(last_row, "time")
+            recovery_end = last_time + last_row.continuous_seconds if last_time is not None else None
+        if recovery_end is None or recovery_end < stop:
+            return {
+                "status": "unavailable",
+                "reason": "recorded_recovery_does_not_cover_window",
+                "source_work_interval": block.get("index"),
+                "start_s": boundary,
+                "recorded_recovery_end_s_exclusive": recovery_end,
+                "window_s": window_seconds,
+            }
+    for index in range(end_index, recovery_end_index if recorded_pause else len(rows)):
         row = rows[index]
         t = numeric(row, "time")
         if t is None or t >= stop:
@@ -4558,15 +4390,18 @@ def hr_recovery_after_block(
     low_row = min(window, key=lambda row: numeric(row, "heartrate"))
     low_hr = numeric(low_row, "heartrate")
     return {
-        "status": "observed", "interpretation": "HR decline only; not whole-body recovery",
+        "status": "observed",
+        "interpretation": "Heart-rate change over the stated window",
         "statistics_scope": "fixed_post_work_window",
+        "recovery_context": "recorded_recovery" if recorded_pause else "unverified_post_work",
+        "source_work_interval": block.get("index"),
         "drop_definition": "last_work_sample_to_minimum_within_window; not an endpoint HR difference",
         "window_s": window_seconds, "start_s": boundary,
         "end_s_exclusive": boundary + window_seconds,
         "minimum_at_s": value(low_row, "time"),
         "start_hr": rounded(start_hr, digits=0), "low_hr": rounded(low_hr, digits=0),
         "drop_bpm": rounded(start_hr - low_hr, digits=0),
-        "recovery_power": field_summary(window, "watts", clock=clock), "data_quality": q,
+        "post_work_power": field_summary(window, "watts", clock=clock), "data_quality": q,
     }
 
 
@@ -4602,6 +4437,7 @@ def work_block_overview(block: dict[str, Any], *, index: int) -> dict[str, Any]:
         ("watts", "watts_avg", "W"),
         ("heartrate", "hr_avg", "bpm"),
         ("respiration", "br_avg", "breaths/min"),
+        ("tidal_volume", "vt_avg", "source_estimate"),
         ("tidal_volume_min", "ve_avg", "source_estimate"),
         ("smo2", "smo2_avg", "%"),
     ]:
@@ -4749,6 +4585,7 @@ def brief_post_work_block(block: dict[str, Any], *, index: int) -> dict[str, Any
         {
             "n": index,
             "source_index": block.get("index"),
+            "after_source_work_interval": block.get("after_source_work_interval"),
             "comparison": block.get("comparison"),
             "data_quality": compact_quality(block.get("data_quality") or {}),
             "duration_s": rounded(block.get("duration_seconds"), digits=0),
@@ -4788,12 +4625,17 @@ def brief_recovery(
             ),
             "n": index,
             "after_work_block": after_work_block,
+            "source_index": block.get("index"),
+            "after_source_work_interval": block.get("after_source_work_interval"),
             "duration_s": rounded(block.get("duration_seconds"), digits=0),
             "watts_avg": stat(summary, "watts", "avg", digits=0),
             "hr_start": stat(summary, "heartrate", "start", digits=0),
             "hr_min": stat(summary, "heartrate", "min", digits=0),
             "hr_end": stat(summary, "heartrate", "end", digits=0),
             "hr_drop_start_to_min": recovery_drop(summary, "heartrate"),
+            "br_start": stat(summary, "respiration", "start", digits=1),
+            "br_end": stat(summary, "respiration", "end", digits=1),
+            "ve_start": stat(summary, "tidal_volume_min", "start", digits=1),
             "ve_min": stat(summary, "tidal_volume_min", "min", digits=1),
             "ve_end": stat(summary, "tidal_volume_min", "end", digits=1),
             "smo2_start": rounded(moxy.get("smo2_start"), digits=1),

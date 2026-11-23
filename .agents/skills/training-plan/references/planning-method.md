@@ -121,6 +121,9 @@ results when available; otherwise report uncertainty and seek confirmation
 rather than inventing a precise significance threshold. Heart rate, RPE and
 device estimates can support interpretation but do not alone prove improved
 race performance. Training load and completed-session counts measure exposure.
+Lower working heart rate or higher HRV in a repeatable protocol can accompany
+accumulated fatigue. Interpret either change alongside repeatable performance,
+perceived fatigue, and the response after easing the load.
 
 Before seeing the outcome, write the block decision rules:
 

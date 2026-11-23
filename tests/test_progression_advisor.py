@@ -159,6 +159,21 @@ class ProgressionReviewTests(unittest.TestCase):
                     self.assertNotIn("looked controlled", result["coach_summary"])
                     self.assertEqual(result["latest_observed_work"], current)
 
+    def test_compact_drift_retains_signal_and_comparison_scope(self):
+        scope = "selected_comparison_windows_only"
+        result = compact_inspect_summary({
+            "hardest_block": {"change_scope": scope, "br_per_watt_drift_pct": 34},
+            "total": {"change_scope": scope, "ve_per_watt_drift_pct": 9},
+        }, workout_type="vt2")
+        self.assertNotIn("max_relative_drift_pct", result)
+        self.assertEqual(result["hardest_block"]["br_per_watt_drift_pct"], 34)
+        self.assertIsNone(result["hardest_block"]["ve_per_watt_drift_pct"])
+        self.assertEqual(result["hardest_block"]["change_scope"], scope)
+        self.assertEqual(result["activity_drift"]["ve_per_watt_drift_pct"], 9)
+        self.assertIsNone(result["activity_drift"]["br_per_watt_drift_pct"])
+        self.assertEqual(result["activity_drift"]["change_scope"], scope)
+        self.assertEqual(result["physiological_cost"], "requires_synthesis")
+
     def test_plan_anchor_and_conditional_next_step_are_preserved(self):
         plan = {"anchor": "3 x 28 min @ 300 W", "target_power_w": 295,
                 "next_step": "Review recovery before choosing consolidation or 3x30 at 300 W."}

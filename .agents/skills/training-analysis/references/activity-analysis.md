@@ -209,6 +209,12 @@ cause open when the evidence is inconclusive.
   as unobserved. Use the reviewed workout record to establish whether the
   athlete skipped it. Without a verified prescription, summarize the recorded
   laps and leave completion of the planned set open.
+- Match each source recovery to its recorded WORK interval using
+  `after_source_work_interval`. For a detected block, use its overlapping
+  source interval IDs to check this association. A fixed post-work HR window
+  is confirmed as recorded recovery only when its `recovery_context` is
+  `recorded_recovery`. Compare like efforts, elapsed windows, and recovery
+  modes and power. Use whole-pause BR and VE values descriptively.
 - Standard output excludes beta diagnostics. Use `--brief --debug-beta` only
   for explicitly requested development/debugging. Do not use `beta_summary`,
   `beta_stability`, or `beta_vo2` as the basis of a coaching verdict or progression.

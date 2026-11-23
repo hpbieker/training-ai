@@ -282,14 +282,7 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
     vt2_quality = vt2.get("session_quality") or {}
     hardest = result.get("hardest_block") or {}
     total = result.get("total") or {}
-    drift_values = [
-        number(hardest.get("hr_per_watt_drift_pct")),
-        number(hardest.get("ve_per_watt_drift_pct")),
-        number(hardest.get("br_per_watt_drift_pct")),
-        number(total.get("hr_per_watt_drift_pct")),
-        number(total.get("ve_per_watt_drift_pct")),
-    ]
-    max_drift = max([value for value in drift_values if value is not None], default=None)
+    drift_fields = ("hr_per_watt_drift_pct", "br_per_watt_drift_pct", "ve_per_watt_drift_pct")
     difficulty_markers = [
         number(hardest.get("core_temp_max")),
         number(total.get("core_temp_max")),
@@ -311,15 +304,18 @@ def compact_inspect_summary(result: dict[str, Any], *, workout_type: str) -> dic
         ) if key in block} for block in vt2.get("blocks", [])],
         "vt2_intensity_classification": vt2.get("intensity_classification"),
         "physiological_cost": physiological_cost,
-        "max_relative_drift_pct": round(max_drift, 1) if max_drift is not None else None,
+        "activity_drift": {
+            "change_scope": total.get("change_scope"),
+            **{field: total.get(field) for field in drift_fields},
+        },
         "core_temp_max": round(max_core, 2) if max_core is not None else None,
         "hardest_block": {
             "label": hardest.get("label"),
             "duration_s": hardest.get("duration_s"),
             "watts_avg": hardest.get("watts_avg"),
             "watts_drift": hardest.get("watts_drift"),
-            "hr_per_watt_drift_pct": hardest.get("hr_per_watt_drift_pct"),
-            "ve_per_watt_drift_pct": hardest.get("ve_per_watt_drift_pct"),
+            "change_scope": hardest.get("change_scope"),
+            **{field: hardest.get(field) for field in drift_fields},
         },
     }
 

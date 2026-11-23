@@ -213,14 +213,18 @@ For a work interval, useful descriptive features include:
 - BR-, VT-, and VE-per-watt change when workload differs;
 - whether rising VE is driven mainly by deeper breaths, faster breaths, or
   both;
-- whether VT plateaus while BR continues to rise;
+- whether BR, VT, and VE level off or keep rising after the initial response;
 - response lag after workload transitions;
 - repeatability across equivalent intervals;
 - alignment with HR, SmO2, temperature, RPE, and breathing sensation.
 
-For recovery, inspect the fall in BR and VE, the time course rather than only
-the minimum, and whether recovery slows across matched repeats. Do not call a
-rapid fall proof of complete metabolic recovery.
+Compare BR and VE recovery after similar efforts with the same elapsed
+recovery window, pause mode, recovery power, and posture. Check coverage and
+sensor smoothing before comparing the time course or the fall in a fixed
+window. A fixed-window fall describes the measured response. Using it to
+identify a threshold, or applying a laboratory VO2 recovery curve to wearable
+VE, requires validation for the cycling and sensor protocol.
+[Özyener et al. 2001](../../../../docs/research/papers/ozyener-2001-oxygen-uptake-on-off-kinetics.pdf)
 
 ## Cross-Session Comparison
 

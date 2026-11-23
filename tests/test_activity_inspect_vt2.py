@@ -187,6 +187,7 @@ class IntensityDetectionTests(unittest.TestCase):
         )
 
         self.assertEqual(result["category"], "VT2")
+        self.assertEqual(result["parts"][0]["unresolved_block_count"], 1)
 
     def test_three_saved_hard_reps_detect_vo2max_without_name_signal(self):
         reps = [
