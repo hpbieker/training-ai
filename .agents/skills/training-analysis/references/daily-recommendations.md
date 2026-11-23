@@ -1150,6 +1150,13 @@ attempt, read its dated athlete answers (in the quality history or the
 activity's `athlete-answers/` directory). A later explanation can clarify
 a stop that the initial workout review recorded as unexplained.
 
+Choose the comparison for the decision at hand. If a signal was nearly
+identical before both a completed and a shortened set, it gives little
+guidance on whether the rider can repeat the full set. Check whether another
+available pre-ride measure, such as Recovery Time at the start, gives more
+context for that choice. Report today's value alongside the comparable values
+and actual outcomes. A difference across a few rides cannot establish a cause.
+
 A controlled completion under similar or less favorable pre-ride conditions
 can support attempting the same dose today. Weigh differences in the lead-in,
 body feel and workload, and explain which uncertainty remains for the ride.
@@ -1189,7 +1196,9 @@ readiness score and its component signals as independent evidence.
   how to start it. For a direct transition, say to go straight from the last
   work interval to the VT1 target. If there is a recovery after the last
   interval, give its duration and watts or effort as a separate step before
-  VT1. Distinguish this from recoveries between repetitions. Use the selected
+  VT1. In the rider's numbered list, give the post-set recovery, optional VT1
+  and cooldown one item each, in that order. Put the condition for taking VT1
+  in the VT1 item so it is clear which steps both variants share. Use the selected
   workout structure; when designing the ride, include any recommended recovery
   in the corresponding duration, load and finish time. If the transition is
   direct, assess how breathing settles during the first minutes at VT1.
