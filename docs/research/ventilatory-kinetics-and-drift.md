@@ -8,15 +8,36 @@ its [introductory article](https://vtcheck.com/blog/what-is-vtcheck) and
 Its [user guide](https://vtcheck.com/guide) describes the product's classification
 method.
 
+## Practical conclusions
+
+- **During steady work, check whether breathing settles or keeps rising.**
+  Compare breathing rate, tidal volume, reported minute ventilation (VE), and
+  heart rate at similar power, cadence, prior workload, cooling, and sensor
+  setup. Use perceived exertion to interpret the pattern. For recovery, also
+  match the preceding effort and the duration and power of the break.
+- **Use the wearable observations to describe the response.** The evidence
+  for the shape of exercise and recovery responses comes mainly from
+  laboratory measurements of oxygen uptake (VO₂). Using VitalPro VE drift or
+  a 60-second recovery drop to identify VT1 or VT2 would require direct
+  validation in the cycling protocol where we intend to use it.
+- **At block review, interpret pulse and HRV alongside performance.** Take
+  repeatable performance, perceived fatigue, and the response to easing the
+  load into account before drawing a conclusion from lower working heart
+  rate or higher HRV.
+
+The priority for the experimental debug output is to report each signal
+separately and leave physiological stability unresolved when only power is
+available.
+
 ## What does drift at the same power tell us?
 
 **Takeaway.** On a mechanically steady cycling block, compare the timing and
 shape of BR, tidal volume, source-reported minute ventilation (VE), and pulse.
-Distinguish the response to starting or changing power from a later rise and
-from continued deterioration. Interpret such a rise using matched power,
-cadence, prior work, sensor setup, cooling, and perceived exertion. A flat or
-rising wearable signal describes the observed response. The exercise domain
-still requires corroboration.
+Distinguish the response to starting or changing power from a later rise
+that levels off or continues to the end of the block. Interpret such a rise
+using matched power, cadence, prior work, sensor setup, cooling, and
+perceived exertion. A flat or rising wearable signal describes the observed
+response. The exercise domain still requires corroboration.
 
 - Controlled step-exercise studies show a delayed pulmonary VO₂ component
   above the first transition, with a delayed steady state possible in heavy
