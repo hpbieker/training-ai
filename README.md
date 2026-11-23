@@ -21,6 +21,8 @@ Keep your preferences, plans and plan state in the local `config/` directory.
 See [Personal configuration](docs/personal-configuration.md) for the file layout
 and initial plan state.
 
+See [Research](docs/research/README.md) for research notes and original papers.
+
 ## Plugin installation
 
 With the local `training-ai` marketplace configured, build and install each
