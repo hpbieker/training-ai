@@ -79,7 +79,15 @@ the sequence before prescribing the set. A warm-up check can then guide executio
 
 ## Update an existing recommendation
 
-Start from the selected request and successful packet identified in this thread.
+Find the latest recommendation the rider actually received for the workout
+date. In a new or scheduled chat, check recent project threads, including
+archived chats, and read through any later clarifications. A packet or run
+note can predate the final advice. Compare the preferred duration and the cap
+on good legs separately, using total ride time for both. Check what the
+previous answer already weighed. For a change, name the new observation or
+overlooked comparison and explain why it changes that choice. If the same
+reason still sets the cap, carry it forward. If no prior advice turns up, proceed with the
+current evidence. Reuse the matching request and packet when available.
 Confirm the local date, plan/activity cursor, pending or newly completed training,
 latest athlete report and whether the full occupied window is still available.
 Follow the user's change through its dependencies:

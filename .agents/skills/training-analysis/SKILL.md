@@ -120,7 +120,9 @@ features and research, and what remains uncertain for this athlete.
   for the workout date. Follow the recommendation workflow below. The saved
   request runner builds the readiness snapshot as part of that workflow.
 
-For a change to an existing recommendation, begin with
+Before selecting a daily workout, check recent project chats for advice already
+given for the same local workout date, including yesterday’s advice for
+“tomorrow”. If found, begin with
 [updating the selected recommendation](references/daily-recommendations.md#update-an-existing-recommendation).
 When availability disrupts the quality rhythm or the athlete asks about earlier
 quality, locate the next realistic priority slot. Weigh moving quality earlier
