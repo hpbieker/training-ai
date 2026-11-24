@@ -47,14 +47,7 @@ class XertStrainModelTests(unittest.TestCase):
         self.assertAlmostEqual(
             result["difficulty"], 100 * (1 - math.exp(-2)), places=9
         )
-        self.assertEqual(
-            result["interpretation"]["training_domain"],
-            "not_inferred_from_xss_alone",
-        )
-        self.assertIn(
-            "does not identify",
-            result["interpretation"]["xss_system_statement"],
-        )
+        self.assertNotIn("interpretation", result)
 
     def test_zero_duration_segment_is_retained_without_load(self) -> None:
         result = calculate_workout(
@@ -257,7 +250,6 @@ class XertStrainModelTests(unittest.TestCase):
 
         self.assertEqual(contributors["high"]["segment_name"], "VO2 4")
         self.assertEqual(contributors["peak"]["segment_name"], "VO2 4")
-        self.assertIn("multiplier", result["interpretation"]["mpa_statement"])
 
 if __name__ == "__main__":
     unittest.main()

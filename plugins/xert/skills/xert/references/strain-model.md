@@ -243,21 +243,37 @@ a live Xert Calculate or completed activity summary exists, its summary XSS and
 Difficulty remain authoritative because server integration can differ slightly
 when MPA changes or power ramps.
 
-Add `--detailed` when every segment, limitation, or diagnostic field is needed.
-For normal interpretation, prefer the structured summary fields over
-reconstructing prose:
+Interpret the structured result as follows:
 
+- Work at or below TP contributes only Low XSS. Use absolute High and Peak
+  XSS together with interval structure to interpret above-TP work. A Low-only
+  result can describe several training domains.
 - `segments[].xss` and `largest_system_contributors` identify which segments
   supplied the largest Low, High, and Peak doses.
 - `segments[].xss_rate_per_hour` separates accumulated dose from instantaneous
   strain rate.
 - `strain_summary.mpa.maximum_same_power_strain_amplification` quantifies how
   much short-term fatigue changed strain relative to fresh MPA at the same
-  power.
-- `strain_summary.load_concentration` keeps total XSS, maximum XSS rate, and
-  maximum Difficulty separate.
-- `interpretation` explains model mechanics only; it deliberately leaves the
-  training-domain decision to the calling training-analysis workflow.
+  power. A multiplier of 1.00 means the modeled rate matched fresh MPA.
+- `xss.total`, `maximum_xss_rate_per_hour`, and `difficulty` report total XSS,
+  peak instantaneous XSS rate, and the maximum 30-minute exponentially
+  weighted average of the modeled XSS rate. Breakthrough detection is a
+  separate process.
+- `focus.status` describes the Focus derived from the Peak-to-Low strain
+  ratio. `endurance` represents Endurance Focus. For `calculated`, read
+  `power_watts` and `duration_seconds` together. With no Low XSS, the ratio
+  cannot give a finite Focus pair.
+
+### Model limitations
+
+- The per-sample equations were validated against Xert Calculate. Xert has
+  not published these formulas.
+- Xert server summary totals can differ slightly when MPA changes or power ramps.
+- The recovery offset was fitted empirically against Xert Calculate. Its origin
+  is unpublished.
+- Completed activities can contain state that the summary Fitness Signature
+  and work expended (`Wexp`) cannot recover.
+- The model excludes breakthrough detection and Fitness Signature updates.
 
 ## Primary sources
 

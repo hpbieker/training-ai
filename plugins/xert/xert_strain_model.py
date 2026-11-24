@@ -394,7 +394,6 @@ def calculate_workout(
         tp=tp,
         pp=pp,
     )
-    low_only = abs(totals["high"]) < 1e-12 and abs(totals["peak"]) < 1e-12
     contributor = {
         system: max(
             segment_results,
@@ -414,43 +413,6 @@ def calculate_workout(
             "xss": value,
         }
 
-    mpa_statement = (
-        "Short-term fatigue materially amplified strain at the same power; "
-        f"the maximum modeled multiplier versus fresh MPA was "
-        f"{maximum_strain_amplification:.3f}."
-        if maximum_strain_amplification >= 1.05
-        else "MPA movement had little effect on same-power strain in this workout; "
-        f"the maximum modeled multiplier versus fresh MPA was "
-        f"{maximum_strain_amplification:.3f}."
-    )
-    focus_statement = (
-        "Accumulated Peak-to-Low strain maps to Endurance Focus."
-        if focus["status"] == "endurance"
-        else (
-            "Accumulated Peak-to-Low strain maps to approximately "
-            f"{focus['power_watts']:.1f} W for {focus['duration_seconds']:.1f} s."
-            if focus["status"] == "calculated"
-            else "Focus is undefined because the modeled result has no Low XSS."
-        )
-    )
-    interpretation = {
-        "xss_system_statement": (
-            "All modeled XSS is low because no modeled power exceeded TP. "
-            "Xert system allocation alone does not identify the workout's "
-            "training domain."
-            if low_only
-            else "The workout accumulates low XSS throughout and adds high/peak "
-            "XSS during work above TP. Judge high/peak as absolute doses and in "
-            "the context of interval structure, not only as shares of total XSS."
-        ),
-        "training_domain": "not_inferred_from_xss_alone",
-        "difficulty_statement": (
-            "Difficulty is the maximum 30-minute EWMA of modeled XSS rate; it is "
-            "not synonymous with total XSS or breakthrough."
-        ),
-        "mpa_statement": mpa_statement,
-        "focus_statement": focus_statement,
-    }
     result = {
         "source": "local_xert_strain_model",
         "network_used": False,
@@ -493,20 +455,7 @@ def calculate_workout(
                     maximum_strain_amplification_time
                 ),
             },
-            "load_concentration": {
-                "total_xss": total_xss,
-                "maximum_xss_rate_per_hour": maximum_xss_rate,
-                "maximum_difficulty": maximum_difficulty,
-            },
         },
-        "interpretation": interpretation,
-        "limitations": [
-            "Per-sample equations are Calculate-validated, not published Xert formulas.",
-            "Xert server summary totals can differ slightly when MPA changes or power ramps.",
-            "The recovery offset is an empirical Calculate fit of unpublished origin.",
-            "Completed activities can contain hidden state not recoverable from summary signature and Wexp.",
-            "Breakthrough detection and Fitness Signature updates are not modeled.",
-        ],
     }
     if include_series:
         result["series"] = series
