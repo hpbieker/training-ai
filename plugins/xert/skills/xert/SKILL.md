@@ -66,7 +66,9 @@ context by the caller. In training-ai, use the training-analysis workflow;
 there is no Xert readiness CLI adapter.
 
 For a known workout, use `calculate_strain` with explicit segments and Fitness
-Signature. If only the signature is missing, fetch `get_training_state` rather
+Signature. For load comparisons, use `includeFields=["xss", "feasibility.valid"]`.
+Omit `includeFields` when the recommendation helper needs to verify the workout
+calculation. If only the signature is missing, fetch `get_training_state` rather
 than calling live Calculate. For endurance-dose adjustment, resolve the plan
 role and full workout first, then use `solve_segment_duration` on one sub-TP
 segment while preserving fixed work, warm-up, recovery and cool-down. Do not

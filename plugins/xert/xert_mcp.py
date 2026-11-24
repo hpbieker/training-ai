@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import tempfile
 import threading
@@ -198,6 +199,7 @@ _WORKOUT_LIST_INCLUDE_FIELDS = (
     "duration_s", "work_watts", "xss", "xlss", "xhss", "xpss",
     "difficulty", "rating",
 )
+_CALCULATION_FIELD_PATH = r"^[^.\s]+(?:\.[^.\s]+)*$"
 _ACTIVITY_LIST_FILTER_FIELDS = (
     "path", "name", "start_local", "duration_s", "distance_m", "source",
     *_ACTIVITY_LIST_INCLUDE_FIELDS,
@@ -1267,10 +1269,22 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     },
     "calculate_strain": {
         "name": "calculate_strain",
-        "description": "Calculate local Xert Low, High, and Peak XSS, Difficulty, MPA feasibility, and focus for explicit power segments.",
+        "description": (
+            "Calculate local Xert Low, High, and Peak XSS, Difficulty, MPA feasibility, and focus "
+            "for explicit power segments. Use includeFields to return selected fields only."
+        ),
         "inputSchema": {"type": "object", "properties": {
             "signature": _object("Fitness Signature with tp, hie in joules, and pp."),
-            "segments": _array("Ordered segments with duration_seconds and power, optionally end_power.")},
+            "segments": _array("Ordered segments with duration_seconds and power, optionally end_power."),
+            "includeFields": {
+                "type": "array",
+                "items": {"type": "string", "pattern": _CALCULATION_FIELD_PATH},
+                "uniqueItems": True,
+                "description": (
+                    "Exact field paths such as xss and feasibility.valid. Paths through arrays apply to each item. "
+                    "The response keeps source and network_used. Omit this parameter for the full result."
+                ),
+            }},
             "required": ["signature", "segments"], "additionalProperties": False},
         "outputSchema": _object("Local Xert strain calculation."),
         "annotations": TOOL_ANNOTATIONS["calculate_strain"],
@@ -1584,9 +1598,18 @@ class XertToolService:
                 as_of=arguments["as_of"], fresh_at=arguments["fresh_at"]
             )
         if name == "calculate_strain":
-            return service.calculate_strain(
+            paths = None
+            if "includeFields" in arguments:
+                fields = _validate_include_fields(arguments["includeFields"], allowed=None)
+                paths = [("source",), ("network_used",)]
+                for field in fields:
+                    if not re.fullmatch(_CALCULATION_FIELD_PATH, field):
+                        raise ValueError(f"includeFields requires non-empty dotted field paths: {field!r}")
+                    paths.append(tuple(field.split(".")))
+            result = service.calculate_strain(
                 signature=arguments["signature"], segments=arguments["segments"]
             )
+            return result if paths is None else _project_fields(result, paths)
         if name == "solve_segment_duration":
             return service.solve_segment_duration(**arguments)
         if name == "project_load_model":
@@ -1655,17 +1678,32 @@ def _write_private_activity_file(
 def _validate_include_fields(
     value: Any,
     *,
-    allowed: tuple[str, ...] = _ACTIVITY_LIST_INCLUDE_FIELDS,
+    allowed: tuple[str, ...] | None = _ACTIVITY_LIST_INCLUDE_FIELDS,
     parameter: str = "includeFields",
 ) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(field, str) for field in value):
         raise ValueError(f"{parameter} must be an array of strings")
     if len(set(value)) != len(value):
         raise ValueError(f"{parameter} must contain unique fields")
-    unsupported = [field for field in value if field not in allowed]
-    if unsupported:
-        raise ValueError(f"Unsupported {parameter} value: {unsupported[0]}")
+    if allowed is not None:
+        for field in value:
+            if field not in allowed:
+                raise ValueError(f"Unsupported {parameter} value: {field}")
     return tuple(value)
+
+
+def _project_fields(value: Any, paths: list[tuple[str, ...]]) -> Any:
+    if () in paths or value is None:
+        return value
+    if isinstance(value, list):
+        return [_project_fields(item, paths) for item in value]
+    if not isinstance(value, dict):
+        return {}
+    children: dict[str, list[tuple[str, ...]]] = {}
+    for field, *rest in paths:
+        if field in value:
+            children.setdefault(field, []).append(tuple(rest))
+    return {field: _project_fields(value[field], nested) for field, nested in children.items()}
 
 
 def _activity_list_summary(

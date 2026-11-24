@@ -229,7 +229,14 @@ Call MCP `calculate_strain` with the Fitness Signature and ordered segments.
 
 Linear ramps supply both `power` and `end_power` on the segment.
 
-The default summary must retain:
+Omit `includeFields` for the full result, including when saving it as evidence
+for recommendation binding. For totals alone use `includeFields=["xss"]`.
+Add `feasibility.valid` when comparing whether candidates can hold their
+planned power. Dotted paths preserve nesting and apply to each item in arrays.
+The tool omits paths absent from the result. It always returns `source` and
+`network_used`, including when `includeFields=[]`.
+
+The full result includes:
 
 ```text
 source = local_xert_strain_model

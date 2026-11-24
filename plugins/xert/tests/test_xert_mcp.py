@@ -113,7 +113,13 @@ class FakeXertService:
 
     def calculate_strain(self, **kwargs):
         self.calls.append(("calculate_strain", kwargs))
-        return {"xss": {"low": 50, "high": 0, "peak": 0}}
+        return {
+            "source": "local_xert_strain_model",
+            "network_used": False,
+            "xss": {"low": 50, "high": 0, "peak": 0, "total": 50},
+            "feasibility": {"valid": False, "first_point_of_failure": {"time_seconds": 300}},
+            "segments": [{"duration_seconds": 600, "start_power": 200}],
+        }
 
     def solve_segment_duration(self, **kwargs):
         self.calls.append(("solve_segment_duration", kwargs))
@@ -595,6 +601,40 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertFalse(self.tools.call_tool("calculate_workout", {
             "rows": [{"duration_seconds": 600, "power": 200}],
         })["saved"])
+
+    def test_calculate_strain_projects_fields_without_changing_calculation_inputs(self):
+        arguments = {
+            "signature": {"tp": 300, "hie": 14000, "pp": 800},
+            "segments": [{"duration_seconds": 600, "power": 200}],
+        }
+        full = self.tools.call_tool("calculate_strain", arguments)
+        self.assertEqual(full["feasibility"]["first_point_of_failure"], {"time_seconds": 300})
+        metadata = {"source": "local_xert_strain_model", "network_used": False}
+        cases = (
+            ([], metadata),
+            (["xss"], {**metadata, "xss": full["xss"]}),
+            (["xss.total", "feasibility.valid"], {
+                **metadata, "xss": {"total": 50}, "feasibility": {"valid": False},
+            }),
+            (["segments.duration_seconds", "absent"], {
+                **metadata, "segments": [{"duration_seconds": 600}],
+            }),
+        )
+        for fields, expected in cases:
+            with self.subTest(fields=fields):
+                result = self.tools.call_tool("calculate_strain", {**arguments, "includeFields": fields})
+                self.assertEqual(result, expected)
+        self.assertEqual(self.fake.calls, [("calculate_strain", arguments)] * (1 + len(cases)))
+
+    def test_calculate_strain_rejects_invalid_field_selections(self):
+        for fields in (None, "xss", [1], ["xss", "xss"], ["feasibility..valid"], [" xss"]):
+            with self.subTest(fields=fields), self.assertRaisesRegex(MCP.ToolFailure, "includeFields"):
+                self.tools.call_tool("calculate_strain", {
+                    "signature": {"tp": 300, "hie": 14000, "pp": 800},
+                    "segments": [{"duration_seconds": 600, "power": 200}],
+                    "includeFields": fields,
+                })
+        self.assertEqual(self.fake.calls, [])
 
     def test_projection_requires_absolute_workout_time(self):
         for arguments in [
