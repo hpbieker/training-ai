@@ -199,7 +199,11 @@ finish after intervals, check whether a shorter addition supported by comparable
 rides still makes sense after a controlled set. If it does, include that option
 in the selected recommendation before running the helper. For a
 planned aerobic or recovery day, add `--aerobic-references` to the history
-query for measured indoor blocks. On a spacing day, compare both the primary
+query for measured indoor blocks. When the plan’s volume target affects the
+choice of duration, show in the first answer where verified moving time stands
+against that target and what the last increment buys before the next priority
+session. Give XATA’s dose and modeled capacity distinct roles in that choice.
+On a spacing day, compare both the primary
 and a longer ride through the next quality session, including a successful
 sequence when one is available. Size the optional finish on good legs.
 If choosing less than a familiar, useful longer dose, tell the rider what
