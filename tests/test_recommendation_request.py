@@ -41,6 +41,11 @@ class SavedRequestTests(unittest.TestCase):
         self.assertIn("--compact-summary", self.arguments())
         self.assertIn("--summary", self.arguments(details=True))
 
+    def test_vt1_request_requires_activity_volume(self):
+        self.input["plan_selection"] = {"intensity_goal": "vt1"}
+        with self.assertRaisesRegex(ValueError, "sources.intervals_activity_volume"):
+            self.arguments()
+
     def test_reuse_keeps_source_and_updates_decision_clock(self):
         args = self.arguments()
         planning = json.loads(args[args.index("--planning-context-json") + 1])

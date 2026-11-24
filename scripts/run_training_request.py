@@ -40,6 +40,10 @@ def build_arguments(path, now, *, details=False):
     sources = request["sources"]
     if not isinstance(sources, dict):
         raise ValueError("sources must map plugin source names to path and read_at")
+    if (request.get("plan_selection", {}).get("intensity_goal") == "vt1"
+            and "intervals_activity_volume" not in sources):
+        raise ValueError("For a VT1 recommendation, fetch the complete Intervals.icu activity list "
+                         "with moving_time, duration_s and icu_ignore_time as sources.intervals_activity_volume.")
     paths = {}
     expired = []
     for name, source in sources.items():

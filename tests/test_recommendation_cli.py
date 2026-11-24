@@ -171,6 +171,11 @@ class RecommendationCLITests(unittest.TestCase):
             "socket.create_connection = denied\n"
         )
         sources = deepcopy(FIXTURE["sources"])
+        if vt1_watts:
+            sources["intervals_activity_volume"] = {
+                "start_date": "2026-10-27", "end_date": "2026-11-17", "activities": [],
+                "includeFields": ["moving_time", "duration_s", "icu_ignore_time"],
+            }
         if low_hours is not None:
             sources["xert"]["training_state"]["state"]["recovery_hours"]["low"] = low_hours
         if refresh_capacity:

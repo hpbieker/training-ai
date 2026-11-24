@@ -667,7 +667,7 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
         "garmin", "xert", "intervals_wellness", "intervals_events",
         "xert_activity_loads", "weather_home",
     }
-    if "intervals_activity_volume" in args.source_overrides_json:
+    if args.plan_selection_json["intensity_goal"] == "vt1" or "intervals_activity_volume" in args.source_overrides_json:
         required_sources.add("intervals_activity_volume")
     if "garmin_hrv_history" in args.source_overrides_json:
         required_sources.add("garmin_hrv_history")
@@ -732,12 +732,12 @@ def main(argv: list[str] | None = None, *, require_finish_review: bool = False) 
         xert_activity_loads=load_json_if_exists(source_files["xert_activity_loads"]),
         local_timezone=local_timezone,
     )
-    if "intervals_activity_volume" in args.source_overrides_json:
+    if "intervals_activity_volume" in required_sources:
         try:
-            history_context["completed_moving_time"] = completed_moving_time_windows(
+            history_context.update(verified_moving_time_history(
                 load_json_if_exists(source_files["intervals_activity_volume"]),
-                as_of=data_cutoff.astimezone(local_timezone).date(),
-            )
+                workout_date=planned_at.date(), cutoff=data_cutoff.astimezone(local_timezone),
+            ))
         except ValueError as exc:
             parser.error(str(exc))
     history_context["prior_quality_sequences"] = prior_quality_sequences(
@@ -1592,6 +1592,7 @@ def mcp_sources_requiring_refresh(
     """Return live inputs whose transport is owned by an MCP source plugin."""
 
     candidates = {
+        "intervals_activity_volume",
         "garmin",
         "intervals_wellness",
         "intervals_events",
@@ -2903,39 +2904,65 @@ def xert_load_windows(payload: dict[str, Any] | None, *, cutoff: datetime, local
     return windows
 
 
-def completed_moving_time_windows(activity_list: dict, *, as_of: date) -> list[dict]:
-    """Weekly moving time over whole local dates preceding the decision."""
-    end = as_of - timedelta(days=1)
-    first = as_of - timedelta(days=21)
+def verified_moving_time_history(activity_list: dict, *, workout_date: date, cutoff: datetime) -> dict:
+    """Summarize completed work before the workout day and within its projection windows."""
+    end = min(workout_date - timedelta(days=1), cutoff.date())
+    first = end - timedelta(days=20)
     rows = activity_list["activities"]
     try:
         fetched_start = date.fromisoformat(activity_list["start_date"])
         fetched_end = date.fromisoformat(activity_list["end_date"])
     except (TypeError, KeyError, ValueError) as exc:
         raise ValueError("Keep the inclusive start_date and end_date returned by list_activities.") from exc
-    if (fetched_start > first or fetched_end < end
-            or activity_list.get("filters")
+    fields = {"moving_time", "icu_ignore_time", "duration_s"}
+    if (fetched_start > first or fetched_end < cutoff.date()
+            or activity_list.get("filters") or activity_list.get("limit") is not None
             or activity_list.get("source_limited")
             or any(activity_list.get(key, len(rows)) != len(rows)
                    for key in ("source_count", "matched_count", "count"))
-            or not {"moving_time", "icu_ignore_time"}.issubset(activity_list.get("includeFields", []))):
-        raise ValueError(f"Fetch the complete unfiltered Intervals.icu activity list from {first} to {end} "
-                         "inclusive with moving_time and icu_ignore_time.")
-    moving_by_date = {}
+            or not fields.issubset(activity_list.get("includeFields", []))):
+        raise ValueError(f"Fetch the complete unfiltered Intervals.icu activity list from {first} to {cutoff.date()} "
+                         "inclusive with moving_time, duration_s and icu_ignore_time.")
+    completed = []
     for row in rows:
-        day = date.fromisoformat(row["start_date_local"][:10])
-        if first <= day <= end and not row.get("icu_ignore_time"):
-            seconds = row.get("moving_time")
-            if type(seconds) not in (float, int) or not math.isfinite(seconds) or seconds < 0:
-                raise ValueError(f"Missing or invalid Intervals.icu moving_time for {row.get('id')}")
-            moving_by_date[day] = moving_by_date.get(day, 0) + seconds
-    windows = []
+        if row.get("icu_ignore_time"):
+            continue
+        stamp = row.get("start_date_local")
+        if not isinstance(stamp, str) or len(stamp) <= 10:
+            raise ValueError(f"Missing Intervals.icu start time for {row.get('id')}")
+        start = parse_local_datetime(stamp, local_timezone=cutoff.tzinfo)
+        day = start.date()
+        if not first <= day <= cutoff.date():
+            continue
+        seconds = row.get("moving_time")
+        if type(seconds) not in (float, int) or not math.isfinite(seconds) or seconds < 0:
+            raise ValueError(f"Missing or invalid Intervals.icu moving_time for {row.get('id')}")
+        if seconds == 0:
+            continue
+        elapsed = row.get("duration_s")
+        if type(elapsed) not in (float, int) or not math.isfinite(elapsed) or elapsed <= 0:
+            raise ValueError(f"Missing or invalid Intervals.icu duration_s for {row.get('id')}")
+        seconds_to_cutoff = (cutoff.astimezone(timezone.utc) - start.astimezone(timezone.utc)).total_seconds()
+        if elapsed <= seconds_to_cutoff:
+            completed.append((day, seconds))
+
+    history = {"completed_moving_time": []}
     for days in (14, 21):
-        start = as_of - timedelta(days=days)
-        seconds = sum(total for day, total in moving_by_date.items() if start <= day)
-        windows.append({"days": days, "start_date": start.isoformat(), "end_date": end.isoformat(),
-                        "moving_seconds": seconds, "weekly_equivalent_hours": round(seconds * 7 / (3600 * days), 1)})
-    return windows
+        start = end - timedelta(days=days - 1)
+        seconds = sum(moving for day, moving in completed if start <= day <= end)
+        history["completed_moving_time"].append({
+            "days": days, "start_date": start.isoformat(), "end_date": end.isoformat(),
+            "moving_seconds": seconds, "weekly_equivalent_hours": round(seconds * 7 / (3600 * days), 1),
+        })
+        rolling_start = workout_date - timedelta(days=days - 1)
+        rolling = [moving for day, moving in completed if rolling_start <= day <= workout_date]
+        hours = sum(rolling) / 3600
+        history[f"rolling_{days}d"] = {
+            "start_date": rolling_start.isoformat(), "end_date": workout_date.isoformat(),
+            "activity_count": len(rolling), "moving_hours": hours,
+            "weekly_equivalent_hours": round(hours * 7 / days, 1), "coverage": "intervals_activity_volume",
+        }
+    return history
 
 
 def training_history_context(
@@ -3121,7 +3148,7 @@ def annotate_volume_density(
     for days in (14, 21):
         history = history_context.get(f"rolling_{days}d") or {}
         prior_hours = number(history.get("moving_hours"))
-        if history.get("activity_count") == 0:
+        if history.get("activity_count") == 0 and history.get("coverage") != "intervals_activity_volume":
             prior_hours = None
         projected_hours = prior_hours + planned_hours if prior_hours is not None else None
         windows.append({
@@ -3132,7 +3159,7 @@ def annotate_volume_density(
             "projected_weekly_equivalent_hours": (
                 round(projected_hours / days * 7, 1) if projected_hours is not None else None
             ),
-            "coverage": "local_recorded_activities_only" if prior_hours is not None else "unavailable",
+            "coverage": history.get("coverage", "local_recorded_activities_only") if prior_hours is not None else "unavailable",
         })
     has_history = any(row["prior_moving_hours"] is not None for row in windows)
     target_resolution["volume_density"] = {
@@ -3140,7 +3167,7 @@ def annotate_volume_density(
         "windows": windows,
         "dose_is_automatically_capped": False,
         "meaning": (
-            "Recorded volume with unverified completeness. Missing history leaves volume unknown. "
+            "Coverage is reported for each window. Missing history leaves volume unknown. "
             "Compare with the athlete's reviewed plan."
         ),
     }
@@ -7577,6 +7604,22 @@ def format_compact_summary(packet: dict[str, Any], packet_path: Path) -> str:
     if remainder["minutes"]:
         lines.append(f"REMAINDER: {remainder['minutes']:g} min; {remainder['disposition']}; "
                      "do not schedule automatically")
+    history = packet.get("training_history_context", {})
+    for row in history.get("completed_moving_time", []):
+        days = row["days"]
+        line = (f"INTERVALS.ICU MOVING TIME ({row['start_date']} to {row['end_date']}): "
+                f"{row['weekly_equivalent_hours']:g} h/week over {days} days")
+        rolling = history.get(f"rolling_{days}d", {})
+        if primary["action"] == "train" and rolling.get("coverage") == "intervals_activity_volume":
+            rolling_hours = rolling["moving_hours"]
+            durations = [executable["minutes"]]
+            finish = primary.get("aerobic_finish") or {}
+            if finish.get("decision") == "offer":
+                durations.append(finish["total_minutes"])
+            for minutes in durations:
+                weekly = (rolling_hours + minutes / 60) * 7 / days
+                line += f" | with {minutes:g} min on {packet['date']}: {weekly:.1f} h/week"
+        lines.append(line)
     lines.extend(aerobic_finish_lines(primary.get("aerobic_finish"), include_spacing_details=False))
     lines.extend(line.strip() for line in calendar_summary_lines(time_context["calendar"]))
     lines.extend(line.strip() for line in freshness_summary_lines(decision["freshness_summary"]))

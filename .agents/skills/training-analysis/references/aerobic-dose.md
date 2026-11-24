@@ -1,22 +1,20 @@
 # Choosing the aerobic dose
 
-Before choosing minutes, compare recorded volume with the active plan's target
-over its stated horizon. For a moving-time target, use completed moving time
-in the same local-date windows. For the last N completed days, use the decision
-date minus N through yesterday inclusive. Fetch the longest range once with
-Intervals.icu `list_activities` and `includeFields: ["moving_time", "icu_ignore_time"]`,
-without filters or a result limit. Supply the full response, including its query
-bounds, as `sources.intervals_activity_volume` in the saved request. Report the
-packet’s `training_history_context.completed_moving_time` for those dates.
-If fetched coverage starts late, fetch the full range before quoting the mean.
-The rolling window ending today is separate and is used for projections.
-Check the dated activity list for coverage,
-pagination and missing rides when local artifacts are the only basis for a
-total. If coverage differs, use the more complete verified source for that
-metric; name any remaining gap. Keep prior hours and the projected weekly
-equivalent after today's full session distinct. When projecting a fixed-length
-rolling window through today, drop the outgoing oldest date before adding
-today's ride.
+Compare completed moving time with the active plan’s volume target over its
+stated horizon. Fetch one unfiltered Intervals.icu `list_activities` response
+without a result limit, requesting `moving_time`, `duration_s` (elapsed) and
+`icu_ignore_time`. Cover 21 days back from the earlier of the workout date
+and the local decision date through the decision date inclusive. Save the
+full response with its bounds as `sources.intervals_activity_volume` for VT1
+requests and other recommendations where volume informs the dose.
+
+Use the packet’s `training_history_context.completed_moving_time` for the
+14- and 21-day baselines. For tomorrow’s workout these can include a ride
+already finished today. For a same-day workout the baseline ends yesterday.
+Use the verified rolling window ending on the workout date for projections:
+it drops outgoing dates, includes work already done and counts the proposed
+ride once. For later dates, mention any assumed intervening training when it
+matters. Check query coverage before reporting a weekly equivalent.
 
 ## Primary dose and optional aerobic extension
 

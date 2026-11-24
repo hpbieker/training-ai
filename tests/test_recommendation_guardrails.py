@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from plan_state import recommendation_plan_context
 from recommend_training import (
     annotate_volume_density,
-    completed_moving_time_windows,
+    verified_moving_time_history,
     apply_split_preference_to_windows,
     annotate_dose_composition_window_fit,
     annotate_route_window_fit,
@@ -95,22 +95,47 @@ class TrainingTargetContractTests(unittest.TestCase):
         self.assertEqual(structure["adjustable_segment_index"], 4)
 
     def test_completed_volume_uses_full_local_dates_and_requires_coverage(self):
-        day = datetime(2026, 11, 21).date()
+        cutoff = datetime.fromisoformat("2026-11-21T11:00:00+01:00")
+        day = cutoff.date()
         data = {"start_date": "2026-10-30", "end_date": "2026-11-21",
-                "includeFields": ["moving_time", "icu_ignore_time"], "activities": [
+                "includeFields": ["moving_time", "duration_s", "icu_ignore_time"], "activities": [
                     {"start_date_local": date + "T23:55:00", "moving_time": seconds,
-                     "icu_ignore_time": ignore}
+                     "icu_ignore_time": ignore, "duration_s": seconds}
                     for date, seconds, ignore in [("2026-10-30", 7200, False), ("2026-10-31", 3600, False),
                                                   ("2026-11-07", 3600, False), ("2026-11-19", 3600, True),
                                                   ("2026-11-20", 3600, False), ("2026-11-21", 7200, False)]]}
-        fortnight, three_weeks = completed_moving_time_windows(data, as_of=day)
+        fortnight, three_weeks = verified_moving_time_history(data, workout_date=day, cutoff=cutoff)["completed_moving_time"]
         self.assertEqual((fortnight["moving_seconds"], three_weeks["moving_seconds"]), (7200, 10800))
         self.assertEqual(three_weeks["weekly_equivalent_hours"], 1.0)
         self.assertEqual((three_weeks["start_date"], three_weeks["end_date"]), ("2026-10-31", "2026-11-20"))
         for change in [{"start_date": "2026-11-01"}, {"end_date": "2026-11-19"}, {"matched_count": 7}]:
             with self.subTest(change=change), self.assertRaisesRegex(ValueError, "complete unfiltered"):
-                completed_moving_time_windows({**data, **change}, as_of=day)
-        self.assertEqual(completed_moving_time_windows({**data, "activities": []}, as_of=day)[1]["moving_seconds"], 0)
+                verified_moving_time_history({**data, **change}, workout_date=day, cutoff=cutoff)
+        empty = verified_moving_time_history({**data, "activities": []}, workout_date=day, cutoff=cutoff)
+        self.assertEqual(empty["completed_moving_time"][1]["moving_seconds"], 0)
+        target = {"target_minutes": 120}
+        annotate_volume_density(target, history_context=empty)
+        self.assertEqual(target["volume_density"]["windows"][0]["projected_weekly_equivalent_hours"], 1)
+
+    def test_future_volume_uses_finished_rides_and_drops_outgoing_date_in_projection(self):
+        day = datetime(2026, 11, 24).date()
+        data = {"start_date": "2026-11-03", "end_date": "2026-11-23",
+                "includeFields": ["moving_time", "icu_ignore_time", "duration_s"],
+                "activities": [
+                    {"start_date_local": stamp, "duration_s": elapsed, "moving_time": moving}
+                    for stamp, elapsed, moving in [("2026-11-10T10:00:00", 3600, 3600),
+                                                   ("2026-11-23T14:00:00", 10800, 7200),
+                                                   ("2026-11-23T20:00:00", 3600, 3600)]]}
+        for hour, baseline, projected_base in [(13, 3600, 0), (16, 3600, 0), (17, 10800, 2)]:
+            with self.subTest(hour=hour):
+                cutoff = datetime(2026, 11, 23, hour, tzinfo=ZoneInfo("Europe/Oslo"))
+                history = verified_moving_time_history(data, workout_date=day, cutoff=cutoff)
+                self.assertEqual(history["completed_moving_time"][0]["moving_seconds"], baseline)
+                self.assertEqual(history["rolling_14d"]["moving_hours"], projected_base)
+        same_day = verified_moving_time_history({**data, "start_date": "2026-11-02"},
+                                                workout_date=cutoff.date(), cutoff=cutoff)
+        self.assertEqual(same_day["completed_moving_time"][0]["moving_seconds"], 3600)
+        self.assertEqual(same_day["rolling_14d"]["moving_hours"], 3)
 
     def test_volume_density_describes_recorded_volume_without_personal_target(self):
         target = {"target_minutes": 270}
