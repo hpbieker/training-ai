@@ -254,7 +254,13 @@ measured aerobic finish. Attach it through the
 Lead with a concise verdict on the actual session and whether it fulfilled its
 purpose. Explain mechanical execution, integrated physiological response, and
 what the findings mean for recovery and progression. Keep observed responses
-separate from modeled stimulus and inferred adaptation. Use the detailed
+separate from modeled stimulus and inferred adaptation. For a conditional
+repetition or extension that matters for future dosing, judge the choice from
+what was known at the checkpoint. If a comparable ride ended differently,
+compare the same point in both rides. Finishing at a prescribed cap leaves
+tolerance for more open. Use feedback already given. If a gap could change
+the next dose, ask the one question that best resolves it (for example, how
+the final minutes felt). Use the detailed
 [analysis reporting contract](references/physiological-response-synthesis.md#reporting-contract).
 
 ### Activity comparison
