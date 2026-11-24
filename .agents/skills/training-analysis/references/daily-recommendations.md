@@ -180,11 +180,11 @@ ambiguity, find the relevant symbol and read the smallest useful section.
 Keep the source inputs needed by the helper and print only
 observations needed for the current decision.
 
-For a complete recommendation, keep the normal Garmin health-day payload
-with its readiness drivers and source context. Persist the response without
-printing it in full. Use Garmin `includeFields` for focused lookups or when a
-same-call full archive supplies the day's helper input and the inline result
-supplies HRV history. For the recommendation's Intervals.icu wellness source,
+For a complete recommendation, use Garmin's health-day file and the compact
+HRV history from the same call. Follow [Readiness Composition](#readiness-composition)
+for the call and the two source entries in `request.json`.
+
+For the recommendation's Intervals.icu wellness source,
 request `includeFields=["comments","injury","fatigue","soreness","stress","mood","motivation","hydration"]`.
 These fields cover the helper's wellness and legacy illness checks. The
 tool retains date and update time. Fetch structured sickness in the separate
@@ -227,8 +227,8 @@ In a unique private candidate directory, write `request.json` before running
 Use the existing CLI JSON payloads as fields named `planning_context`,
 `plan_selection`, `training_target`, and, as applicable, `quality_workout`,
 `endurance_workout`, `illness_return` and `route_options`. For each original
-plugin snapshot, store an entry under `sources` such as
-`"garmin": {"path": "/private/tmp/.../garmin.json", "read_at": "<timestamp with offset>"}`.
+plugin snapshot, store an entry under `sources` with its `path` and `read_at`.
+For `sources.garmin.path`, use the absolute `full_health_day_file` path directly.
 Use the time of the plugin read; keep the source's observation time inside
 the unchanged snapshot. Use absolute source paths when copying a request
 between directories. The runner uses the current clock, checks source ages,
@@ -492,15 +492,19 @@ episode disappearing from a source window must not silently clear the return.
 
 ## Readiness Composition
 
-- Before using HRV to reduce intensity or duration, fetch Garmin
-  `get_health_day(date=<observed-date>, hrv_days=3)`. Save the complete
-  `structuredContent` unchanged and use that file for both `garmin` and
-  `garmin_hrv_history` in the source overrides, with the same `read_at` in a
-  saved request. If using the full health-day archive as `garmin`, select
-  `includeFields=["hrv_history.days.sources.hrv.lastNightAvg"]` on the same
-  call and save its inline response as `garmin_hrv_history`. If the installed tool lacks
-  `hrv_days`, use `list_health_days(until=<observed-date>, days=3, sources=["hrv"])`
-  for the history and save its response unchanged alongside the same-run health day.
+- For a complete daily recommendation, call `get_health_day` for the latest
+  observed date with `save_full=true`, `hrv_days=3`, and
+  `includeFields=["hrv_history.days.sources.hrv.lastNightAvg"]`. The tool
+  retains each night's date and the history's source metadata. The day file
+  contains the readiness inputs and drivers. Save only the compact
+  `structuredContent` from the same call as a private JSON file for
+  `sources.garmin_hrv_history.path`. Set `sources.garmin.path` directly to
+  `full_health_day_file` and use the same `read_at` for both entries. For
+  direct CLI calls, pass the same files as `garmin` and `garmin_hrv_history`
+  in `--source-overrides-json`.
+  If the installed tool lacks `hrv_days`, use
+  `list_health_days(until=<observed-date>, days=3, sources=["hrv"])` for the
+  history and save its response unchanged alongside the same-run health day.
   The helper computes the mean over three distinct, consecutive dates ending on
   the target day. Show last night and the mean separately. If history is unavailable
   or incomplete, disclose the single-night fallback; do not score missing nights
