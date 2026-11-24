@@ -183,6 +183,23 @@ tool retains date and update time. Fetch structured sickness in the separate
 `list_events` call. If the loaded schema lacks `includeFields`, persist the
 normal response and limit what you print from it.
 
+Fetch Intervals.icu wellness once for the required dates. Use the Garmin
+health-day response for sleep, HRV, and resting heart rate when it supplies
+those inputs.
+
+Reuse one Intervals.icu `list_activities` response when the history and dose
+checks need the same date range. When the request needs
+[`intervals_activity_volume`](aerobic-dose.md#choosing-the-aerobic-dose), use
+its required date range and request `moving_time`, `duration_s`, and
+`icu_ignore_time` without filters or a limit. Add fields such as
+`interval_summary` only when the other checks need them. Save the unchanged
+`structuredContent` once and apply narrower selections locally for those
+checks.
+
+For Yr, use the home forecast for indoor options at home. Combine overlapping
+time windows at the same point into one request. Fetch other points when an
+outdoor route or another location could change the recommendation.
+
 Collect independent sources together before running the saved request.
 Include Xert's `list_activity_summaries` in the first batch alongside the
 other Xert, Garmin, Intervals.icu, calendar and weather reads needed for the
