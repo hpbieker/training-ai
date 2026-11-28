@@ -79,8 +79,13 @@ class HistoryCutoffTests(unittest.TestCase):
             {"start_local": f"2026-11-{when}", "duration_s": 3600, "xss": {"total": 80}}
             for when in ("10T09:00:00", "16T10:00:00", "17T06:00:00", "17T08:30:00")
         ]
-        payload = {"start_date": "2026-10-25", "end_date": "2026-11-17",
-                   "period_complete": True, "activities": activities}
+        payload = {
+            "start_date": "2026-10-25", "end_date": "2026-11-17",
+            "activities": activities, "includeFields": ["xss", "duration_s"],
+            "filters": [], "sort": [], "limit": None,
+            "source_count": len(activities), "matched_count": len(activities),
+            "count": len(activities),
+        }
         with TemporaryDirectory() as folder:
             def history(source=payload):
                 return training_history_context("2026-11-17", cutoff=cutoff, artifacts_dir=Path(folder),
@@ -95,19 +100,9 @@ class HistoryCutoffTests(unittest.TestCase):
             annotate_volume_density(target, history_context=context)
             projected = target["week_if_full_remaining_session_ridden_today"]
             self.assertEqual((projected["elapsed_hours"], projected["xss"]), (3.5, 255))
-            v2 = {
-                "start_date": payload["start_date"], "end_date": payload["end_date"],
-                "activities": activities, "includeFields": ["xss", "duration_s"],
-                "filters": [], "sort": [], "limit": None,
-                "source_count": len(activities), "matched_count": len(activities), "count": len(activities),
-            }
-            self.assertEqual(history(v2)["xert_load_windows"], windows)
-            payload["period_complete"] = False
-            self.assertFalse(history()["xert_load_windows"])
-            payload["period_complete"] = True
+            self.assertEqual(history()["xert_load_windows"], windows)
             del activities[1]["duration_s"]
             self.assertNotIn("completed_7d", history()["xert_load_windows"])
-            self.assertNotIn("completed_7d", history(v2)["xert_load_windows"])
 
     def test_xert_v2_windows_require_an_unfiltered_and_uncapped_list(self):
         cutoff = datetime(2026, 11, 17, 9, tzinfo=OSLO)

@@ -86,7 +86,7 @@ class AuthenticationCacheTests(unittest.TestCase):
 
 
 class WorkoutReplacementTests(unittest.TestCase):
-    def test_v2_workout_reads_keep_library_and_resolved_field_names(self) -> None:
+    def test_v2_workout_reads_keep_source_field_names(self) -> None:
         xss = {"total": 42, "low": 39, "high": 3, "peak": 0}
         definition = [{"index": 0, "name": "Warmup", "repeat": 1}]
         detail = {
@@ -102,11 +102,9 @@ class WorkoutReplacementTests(unittest.TestCase):
         self.assertEqual([call.args for call in request.call_args_list], [
             ("/oauth/v2/workouts", "personal"), ("/oauth/v2/workout/a1", "personal"),
         ])
-        self.assertEqual(library[0], {"path": "a1", "xss": 42, "xlss": 39, "xhss": 3, "xpss": 0})
-        self.assertEqual(resolved["workout"], [{"start": 10, "second": 10, "power": 160}])
-        self.assertEqual(resolved["definition"], definition)
-        self.assertEqual((resolved["tw"], resolved["tgc"], resolved["tgf"]), (150000, 32, 10))
-        self.assertEqual((resolved["xss"], resolved["xpss"]), (42, 0))
+        self.assertEqual(library, [{"path": "a1", "xss": xss}])
+        self.assertEqual(WORKOUTS.summarize_workout_library(library)[0]["xss"], xss)
+        self.assertEqual(resolved, detail)
 
     def test_workout_api_failures_are_not_empty_library_or_valid_workout(self) -> None:
         for failure in ({"success": False, "workouts": []},

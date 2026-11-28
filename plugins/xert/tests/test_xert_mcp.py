@@ -42,7 +42,8 @@ class FakeXertService:
         self.calls.append(("list_workouts", name_keywords, view))
         return [{
             "path": "w1", "name": "XMB VT1", "duration_min": 120.0,
-            "work_watts": 210, "xss": 100.0, "difficulty": 55.0,
+            "work_watts": 210, "xss": {"total": 100.0, "low": 100.0, "high": 0, "peak": 0},
+            "difficulty": 55.0,
         }]
 
     def get_workout(self, path, *, view="resolved"):
@@ -274,17 +275,17 @@ class XertMcpDispatchTests(unittest.TestCase):
             selected = tools.call_tool("list_activities", {
                 **args,
                 "filters": [{"field": "xss.peak", "op": "eq", "value": 0}],
-                "sort": [{"field": "signature.atc", "direction": "desc"}],
+                "sort": [{"field": "signature.hie", "direction": "desc"}],
             })
         self.assertEqual(result["activities"][0], {
             "path": "ride", "name": "Ride", "start_local": "2026-08-01T10:00:00",
-            "duration_s": 1800, "signature": {"ftp": 280, "ltp": 230, "pp": 900, "atc": 20750},
+            "duration_s": 1800, "signature": {"ftp": 280, "ltp": 230, "pp": 900, "hie": 20.75},
             "xss": xss, "xep_watts": 237, "focus": "Endurance", "specificity": "Pure",
             "difficulty": 60, "difficulty_rating": "Moderate", **session,
         })
         self.assertTrue(all(result["activities"][1][field] is None for field in fields))
         self.assertEqual([row["path"] for row in selected["activities"]], ["ride"])
-        self.assertEqual(selected["activities"][0]["signature"]["atc"], 20750)
+        self.assertEqual(selected["activities"][0]["signature"]["hie"], 20.75)
         self.assertEqual(request.call_args.kwargs["params"]["include_details"], 1)
 
     def test_list_activities_cheap_include_field_uses_summary_read(self) -> None:
@@ -353,7 +354,7 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertEqual(result["includeFields"], ["work_watts", "xss"])
         self.assertEqual(result["workouts"][0], {
             "path": "w1", "name": "XMB VT1",
-            "work_watts": 210, "xss": 100.0,
+            "work_watts": 210, "xss": {"total": 100.0, "low": 100.0, "high": 0, "peak": 0},
         })
 
         with_duration = self.tools.call_tool("list_workouts", {
@@ -556,13 +557,17 @@ class XertMcpDispatchTests(unittest.TestCase):
         self.assertEqual([row["path"] for row in activities["activities"]], ["a2"])
 
         self.fake.list_workouts = lambda **kwargs: [
-            {"path": "w1", "name": "Easy", "duration_min": 60, "difficulty": 20},
-            {"path": "w2", "name": "Hard", "duration_min": 45, "difficulty": 80},
+            {"path": "w1", "name": "Easy", "duration_min": 60, "difficulty": 20,
+             "xss": {"total": 40, "low": 40, "high": 0, "peak": 0}},
+            {"path": "w2", "name": "Hard", "duration_min": 45, "difficulty": 80,
+             "xss": {"total": 70, "low": 40, "high": 20, "peak": 10}},
         ]
         workouts = self.tools.call_tool("list_workouts", {
-            "filters": [{"field": "difficulty", "op": "gt", "value": 50}],
+            "filters": [{"field": "xss.low", "op": "gte", "value": 40}],
+            "sort": [{"field": "xss.total", "direction": "desc"}],
         })
-        self.assertEqual([row["path"] for row in workouts["workouts"]], ["w2"])
+        self.assertEqual([row["path"] for row in workouts["workouts"]], ["w2", "w1"])
+        self.assertEqual(workouts["workouts"][0]["xss"], {"total": 70, "low": 40, "high": 20, "peak": 10})
 
         self.fake.list_notes = lambda *args: [
             {"date": "2026-08-16", "text": "Easy"},

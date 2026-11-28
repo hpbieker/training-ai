@@ -13,8 +13,8 @@ Prefer the Xert MCP tools when they are available:
   Fitness Signature, XEP, focus, specificity, difficulty, difficulty rating,
   and average or maximum power, heart rate, and cadence. The v2 list supplies
   these fields in bulk. Signature fields `ftp`, `pp`, and `ltp` use watts,
-  and `atc` uses joules. Filters and sorting support component paths such as
-  `xss.low` and `signature.ftp`. For full-period totals, omit filters and the
+  and `hie` uses kilojoules. Filters and sorting support component paths such as
+  `xss.low` and `signature.hie`. For full-period totals, omit filters and the
   result limit. V2 session averages and focus labels can differ from dashboard
   values.
 - `list_activities`, `list_workouts`, `list_notes`,
@@ -24,6 +24,9 @@ Prefer the Xert MCP tools when they are available:
   `lte`, `in`, `not_in`, `contains`, and `exists`. Nested normalized fields
   such as `xss.low` use documented dotted names.
 - `get_activity` reads the compact activity summary from v2 by default.
+  Its summary uses `signature.hie` in kilojoules. When passing that value to
+  `calculate_strain` or `solve_segment_duration`, multiply it by 1,000 to
+  supply the joules those tools require.
   With `save_full=true` or `save_session=true`, it also saves private JSON
   files with the web activity under `activity.summary` and the v2 summary
   under `activity.activity_summary`. Session exports preserve chart fields
@@ -32,10 +35,14 @@ Prefer the Xert MCP tools when they are available:
   only `path` and `name` by default; request duration and other details with
   `includeFields`. Its
   `name_keywords` value requires every supplied word to occur,
-  case-insensitively. Use `includeFields` to add selected load, work-power,
-  rating, or Difficulty fields to each row.
+  case-insensitively. Other optional fields include work power, rating, and
+  Difficulty. Use `includeFields=["xss"]` to add the `total`, `low`,
+  `high`, and `peak` XSS values as one object. Filter or sort on paths such
+  as `xss.total` and `xss.low`.
 - `get_workout(view="resolved")` uses v2 to return the workout calculated with
   the current Fitness Signature and the original SMART sets in `definition`.
+  It preserves the v2 `xss` object, `workout[].start` in seconds, and the
+  `total_work`, `total_grams_carbs`, and `total_grams_fat` fields.
   Use `view="editable"` for authoritative Designer rows, including repeats,
   slopes, and rest-in-between fields.
 - `list_planner_events` returns Xert's mixed planned-workout and

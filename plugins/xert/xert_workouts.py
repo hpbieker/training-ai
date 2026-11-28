@@ -41,7 +41,7 @@ def list_workouts(
             or str(payload.get("success", "")).lower() == "false"
             or not isinstance(payload.get("workouts"), list)):
         raise TypeError("Expected Xert workouts endpoint to return a workouts list")
-    return [_normalize_workout_xss(workout) for workout in payload["workouts"]]
+    return payload["workouts"]
 
 def summarize_workout_library(
     workouts: Iterable[dict[str, Any]],
@@ -62,10 +62,7 @@ def summarize_workout_library(
                 "path": workout.get("path"),
                 "duration_min": _round_optional(_numeric_or_none(workout.get("duration")), 1, scale=60),
                 "work_watts": parse_work_watts_from_name(name),
-                "xss": _round_optional(_numeric_or_none(workout.get("xss")), 1),
-                "xlss": _round_optional(_numeric_or_none(workout.get("xlss")), 1),
-                "xhss": _round_optional(_numeric_or_none(workout.get("xhss")), 1),
-                "xpss": _round_optional(_numeric_or_none(workout.get("xpss")), 1),
+                "xss": workout.get("xss"),
                 "difficulty": _round_optional(_numeric_or_none(workout.get("difficulty")), 1),
                 "rating": workout.get("rating"),
             }
@@ -93,32 +90,7 @@ def fetch_workout(
     if (not isinstance(payload, dict) or payload.get("error")
             or str(payload.get("success", "")).lower() == "false"):
         raise TypeError("Expected Xert workout endpoint to return an object")
-    result = _normalize_workout_xss(payload)
-    for old_key, v2_key in (
-        ("tw", "total_work"), ("tgc", "total_grams_carbs"), ("tgf", "total_grams_fat"),
-    ):
-        if v2_key in payload:
-            result[old_key] = payload[v2_key]
-    if isinstance(payload.get("workout"), list):
-        result["workout"] = [
-            {**interval, "second": interval["start"]} if "start" in interval else interval
-            for interval in payload["workout"]
-        ]
-    return result
-
-
-def _normalize_workout_xss(workout: dict[str, Any]) -> dict[str, Any]:
-    """Keep the existing workout XSS fields for callers of the library and detail reads."""
-    xss = workout.get("xss")
-    if not isinstance(xss, dict):
-        return workout
-    return {
-        **workout,
-        "xss": xss.get("total"),
-        "xlss": xss.get("low"),
-        "xhss": xss.get("high"),
-        "xpss": xss.get("peak"),
-    }
+    return payload
 
 def fetch_workout_designer_rows(opener, path: str) -> list[dict[str, Any]]:
     """Fetch editable Xert Workout Designer rows for a workout."""

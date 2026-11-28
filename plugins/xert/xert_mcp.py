@@ -192,18 +192,19 @@ def _object(description: str) -> dict[str, object]:
 
 _ACTIVITY_LIST_LIGHT_FIELDS = ("distance_m", "source", "map_url")
 _WORKOUT_LIST_INCLUDE_FIELDS = (
-    "duration_s", "work_watts", "xss", "xlss", "xhss", "xpss",
+    "duration_s", "work_watts", "xss",
     "difficulty", "rating",
 )
 _CALCULATION_FIELD_PATH = r"^[^.\s]+(?:\.[^.\s]+)*$"
 _ACTIVITY_LIST_FILTER_FIELDS = (
     "path", "name", "start_local",
     *(field for field in SUMMARY_FIELDS if field not in {"signature", "xss"}),
-    "signature.ftp", "signature.ltp", "signature.pp", "signature.atc",
+    "signature.ftp", "signature.ltp", "signature.pp", "signature.hie",
     "xss.total", "xss.low", "xss.high", "xss.peak",
 )
 _WORKOUT_LIST_FILTER_FIELDS = (
-    "path", "name", "duration_s", *_WORKOUT_LIST_INCLUDE_FIELDS,
+    "path", "name", *(field for field in _WORKOUT_LIST_INCLUDE_FIELDS if field != "xss"),
+    "xss.total", "xss.low", "xss.high", "xss.peak",
 )
 _NOTE_FILTER_FIELDS = ("date", "text")
 _RECOMMENDED_WORKOUT_FILTER_FIELDS = (
@@ -340,7 +341,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "Uses the Xert v2 API with personal API credentials, including automatically synced Garmin rides. "
             "List compact Xert activity identity summaries for an inclusive local-date "
             "range. Use includeFields for bulk XSS, Fitness Signature, XEP, and other "
-            "summary fields. Signature power is in watts and atc is in joules. "
+            "summary fields. Signature power is in watts and signature.hie is in kilojoules. "
             "Signature and XSS components can be filtered or sorted individually. "
             "This tool never fetches individual activity details."
         ),
@@ -391,6 +392,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "get_activity",
         "description": (
             "Get a compact activity summary from Xert v2, including Garmin syncs. "
+            "The activity summary reports signature.hie in kilojoules. "
             "Set save_session=true to export Xert-specific second-by-second data or "
             "save_full=true for the complete web activity document. "
             "Exports combine the v2 summary with authenticated Xert web analytics "
@@ -575,7 +577,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "description": (
             "List compact workout summaries from the Xert v2 API, optionally requiring "
             "every supplied case-insensitive name keyword. Use includeFields to "
-            "add selected load or difficulty fields."
+            "add selected load or difficulty fields. Request xss for the total, low, "
+            "high and peak values, or filter and sort on paths such as xss.low."
         ),
         "inputSchema": {
             "type": "object",
@@ -620,7 +623,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "get_workout",
         "description": (
             "Get one Xert workout. resolved uses Xert v2 and the current Fitness Signature "
-            "and includes the original workout definition; "
+            "and includes the original workout definition. Resolved workouts use "
+            "xss.total/low/high/peak, workout[].start, total_work, total_grams_carbs "
+            "and total_grams_fat. "
             "editable returns authoritative workout rows including repeats, "
             "slopes, and rest-in-between fields."
         ),
@@ -1450,10 +1455,11 @@ class XertToolService:
                 allowed=_WORKOUT_LIST_INCLUDE_FIELDS,
                 parameter="includeFields",
             )
-            query_include = tuple(
-                field for field in query_fields(arguments, _WORKOUT_LIST_FILTER_FIELDS)
-                if field in _WORKOUT_LIST_INCLUDE_FIELDS
+            query_roots = (
+                field.split(".", 1)[0]
+                for field in query_fields(arguments, _WORKOUT_LIST_FILTER_FIELDS)
             )
+            query_include = (field for field in query_roots if field in _WORKOUT_LIST_INCLUDE_FIELDS)
             effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
             workouts = service.list_workouts(name_keywords=keywords, view="summary")
             summaries = [

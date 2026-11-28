@@ -178,13 +178,11 @@ def _normalize_v2_activity_details(summary: dict[str, Any]) -> dict[str, Any]:
     signature = summary.get("sig")
     session = summary.get("session") or {}
     if signature is not None:
-        hie = signature.get("hie")
         signature = {
             "ftp": signature.get("ftp"),
             "ltp": signature.get("ltp"),
             "pp": signature.get("pp"),
-            # Keep the existing activity-summary signature contract in joules.
-            "atc": hie * 1000 if hie is not None else None,
+            "hie": signature.get("hie"),
         }
     return {
         "signature": signature,

@@ -25,7 +25,7 @@ class ActivityErrorsTest(unittest.TestCase):
         self.assertEqual(result["elapsed_minutes"], 50.1)
         self.assertEqual(result["distance_m"], 25250)
         self.assertEqual(result["map_url"], "https://www.xertonline.com/map/a1")
-        self.assertEqual(result["signature"]["atc"], 16250)
+        self.assertEqual(result["signature"]["hie"], 16.25)
         self.assertEqual(result["avg_power"], 205)
         self.assertEqual(result["freshness"], "Fresh")
         self.assertEqual(result["xss"], xss)

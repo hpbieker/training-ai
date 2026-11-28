@@ -2861,18 +2861,14 @@ def xert_load_windows(payload: dict[str, Any] | None, *, cutoff: datetime, local
     activities = payload.get("activities")
     if not isinstance(activities, list):
         return {}
-    if "source_count" in payload or "matched_count" in payload:
-        if (
-            payload.get("filters") != []
-            or payload.get("limit", False) is not None
-            or any(
-                type(payload.get(key)) is not int or payload[key] != len(activities)
-                for key in ("source_count", "matched_count", "count")
-            )
-        ):
-            return {}
-    elif payload.get("period_complete") is not True:
-        # Previously saved Dashboard responses use the old coverage flag.
+    if (
+        payload.get("filters") != []
+        or payload.get("limit", False) is not None
+        or any(
+            type(payload.get(key)) is not int or payload[key] != len(activities)
+            for key in ("source_count", "matched_count", "count")
+        )
+    ):
         return {}
     try:
         first = date.fromisoformat(payload["start_date"])
