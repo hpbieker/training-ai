@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from activity_inspect_pipeline import inspect_with_cache
 from progression_advisor import compact_inspect_summary, recent_relevant_activities
-from recommend_training import annotate_volume_density, training_history_context
+from recommend_training import annotate_volume_density, training_history_context, xert_load_windows
 
 OSLO = ZoneInfo("Europe/Oslo")
 
@@ -82,9 +82,9 @@ class HistoryCutoffTests(unittest.TestCase):
         payload = {"start_date": "2026-10-25", "end_date": "2026-11-17",
                    "period_complete": True, "activities": activities}
         with TemporaryDirectory() as folder:
-            def history():
+            def history(source=payload):
                 return training_history_context("2026-11-17", cutoff=cutoff, artifacts_dir=Path(folder),
-                                                xert_activity_loads=payload, local_timezone=OSLO)
+                                                xert_activity_loads=source, local_timezone=OSLO)
 
             context = history()
             windows = context["xert_load_windows"]
@@ -95,11 +95,44 @@ class HistoryCutoffTests(unittest.TestCase):
             annotate_volume_density(target, history_context=context)
             projected = target["week_if_full_remaining_session_ridden_today"]
             self.assertEqual((projected["elapsed_hours"], projected["xss"]), (3.5, 255))
+            v2 = {
+                "start_date": payload["start_date"], "end_date": payload["end_date"],
+                "activities": activities, "includeFields": ["xss", "duration_s"],
+                "filters": [], "sort": [], "limit": None,
+                "source_count": len(activities), "matched_count": len(activities), "count": len(activities),
+            }
+            self.assertEqual(history(v2)["xert_load_windows"], windows)
             payload["period_complete"] = False
             self.assertFalse(history()["xert_load_windows"])
             payload["period_complete"] = True
             del activities[1]["duration_s"]
             self.assertNotIn("completed_7d", history()["xert_load_windows"])
+            self.assertNotIn("completed_7d", history(v2)["xert_load_windows"])
+
+    def test_xert_v2_windows_require_an_unfiltered_and_uncapped_list(self):
+        cutoff = datetime(2026, 11, 17, 9, tzinfo=OSLO)
+        payload = {
+            "start_date": "2026-10-27", "end_date": "2026-11-17",
+            "activities": [], "includeFields": ["xss", "duration_s"],
+            "filters": [], "sort": [], "limit": None,
+            "source_count": 0, "matched_count": 0, "count": 0,
+        }
+        result = xert_load_windows(payload, cutoff=cutoff, local_timezone=OSLO)
+        self.assertEqual(len(result), 5)
+        for window in result.values():
+            self.assertEqual((window["activity_count"], window["elapsed_hours"], window["xss"]), (0, 0, 0))
+        for changes in (
+            {"filters": [{"field": "xss.total", "op": "gt", "value": 0}]},
+            {"limit": 5},
+            {"source_count": 1},
+            {"matched_count": 1},
+            {"count": 1},
+            {"count": False},
+        ):
+            with self.subTest(changes=changes):
+                self.assertEqual(xert_load_windows(
+                    {**payload, **changes}, cutoff=cutoff, local_timezone=OSLO,
+                ), {})
 
     def test_all_history_uses_completion_before_or_equal_to_cutoff(self):
         cutoff = datetime(2026, 11, 17, 9, tzinfo=OSLO)

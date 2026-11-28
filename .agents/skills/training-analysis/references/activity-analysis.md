@@ -489,11 +489,12 @@ consumed when the athlete or a record of actual intake confirms them.
 Otherwise report planned amounts as planned and leave actual intake unknown.
 
 For a week or block review, compare standard XSS with Xert 2.0 XSS when the
-choice of model could change the interpretation of the training dose. Check
-`period_complete` in `list_activity_summaries` and `unavailable_count` in each
-Beta batch. Match activities by their Xert activity path. If coverage
-is incomplete or any ride lacks either score, report the coverage and label both
-sums as subtotals for the same matched rides.
+choice of model could change the interpretation of the training dose. Request
+standard XSS with Xert's `list_activities` for the full local date range, using
+`includeFields=["xss"]` and omitting filters and the result limit. Check
+`unavailable_count` in each Beta batch and match activities by Xert activity
+path. If coverage is incomplete or any ride lacks either score, report the
+coverage and label both sums as subtotals for the same matched rides.
 
 Sum each model's XSS separately. Reuse current activity summaries and identify
 the rides that explain a material difference. Label the result as cumulative

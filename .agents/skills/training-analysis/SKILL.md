@@ -177,6 +177,13 @@ after earlier completions and how repeating the set would clarify it. Keep the q
 the provisional goal when uncertainty can be resolved in the warm-up or set.
 A change of goal before the helper runs needs a reason that still applies if
 the athlete responds normally at the familiar workload.
+When two plausible interval sets differ only by one repetition at the same
+power, work duration and recovery, consider whether the choice can be made
+during the session. If today's ability to execute the last repetition with
+the intended quality is uncertain, give the rider a checkpoint late in the
+penultimate effort and during the usual recovery. Say what favors starting
+the last repetition and what favors ending the set. If total hard work should
+be limited even on good legs, prescribe the shorter set and explain why.
 The final recommendation packet also includes these observations under
 `training_history_context.prior_quality_sequences`.
 

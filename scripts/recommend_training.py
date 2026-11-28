@@ -2856,15 +2856,28 @@ def xert_start_datetime(raw: Any) -> datetime | None:
 
 def xert_load_windows(payload: dict[str, Any] | None, *, cutoff: datetime, local_timezone: Any) -> dict[str, Any]:
     """Native elapsed duration and strain for completed days and today's rolling week."""
-    if not payload or payload.get("period_complete") is not True:
+    if not payload:
+        return {}
+    activities = payload.get("activities")
+    if not isinstance(activities, list):
+        return {}
+    if "source_count" in payload or "matched_count" in payload:
+        if (
+            payload.get("filters") != []
+            or payload.get("limit", False) is not None
+            or any(
+                type(payload.get(key)) is not int or payload[key] != len(activities)
+                for key in ("source_count", "matched_count", "count")
+            )
+        ):
+            return {}
+    elif payload.get("period_complete") is not True:
+        # Previously saved Dashboard responses use the old coverage flag.
         return {}
     try:
         first = date.fromisoformat(payload["start_date"])
         last = date.fromisoformat(payload["end_date"])
     except (KeyError, TypeError, ValueError):
-        return {}
-    activities = payload.get("activities")
-    if not isinstance(activities, list):
         return {}
     today = cutoff.astimezone(local_timezone).date()
     windows = {}

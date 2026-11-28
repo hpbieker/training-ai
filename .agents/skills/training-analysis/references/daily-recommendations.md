@@ -90,6 +90,34 @@ reason still sets the cap, carry it forward. If no prior advice turns up, procee
 current evidence. Reuse the matching request and packet when available.
 Confirm the local date, plan/activity cursor, pending or newly completed training,
 latest athlete report and whether the full occupied window is still available.
+
+When earlier advice deferred a queued quality session because the previous attempt
+was cut short, revisit the choice of session before updating the easy ride. Weigh
+the work actually completed and the reason for stopping separately. If the choice
+hinges on how the rider feels now, use their latest report or ask once in a live
+exchange. In the first reply, give the alternatives that remain feasible, including
+a later start today when extra recovery could matter. Say what response at familiar
+power would favor each choice. Treat the easy ride and the quality attempt as
+alternatives; carry forward any reason to defer that still applies on good legs.
+
+If earlier advice offered different finishes depending on a specific condition,
+check whether it is now settled. While it remains open and matters, include
+the preferred finish and the conditional alternative in the first updated
+answer. Say what the extra work would contribute and where the rider can
+judge their response. If dropping that option, name the evidence or constraint
+that changes the choice. For a movable event that affects the recommendation,
+give the practical consequence in minutes.
+
+When reusing a workout, distinguish the preferred set and finish from limits
+that still apply on good legs. If the last repetition is a live choice, give
+its checkpoint in the first answer and assess each set's aerobic finish using
+evidence for that combination. When recovery limits the finish, name the next
+priority session and the work to protect there. For the same hard set, tell the
+rider what the extra minutes add if the intervening ride stays as planned and,
+if it is flexible, how much shorter it would have to be to move that work earlier.
+Keep this trade-off conditional when dates or durations are unknown. Limit any
+capacity claim to the workout and start time actually modeled.
+
 Follow the user's change through its dependencies:
 
 - Device sync: refresh the named plugin and the related readings used in the
@@ -209,13 +237,15 @@ time windows at the same point into one request. Fetch other points when an
 outdoor route or another location could change the recommendation.
 
 Collect independent sources together before running the saved request.
-Include Xert's `list_activity_summaries` in the first batch alongside the
-other Xert, Garmin, Intervals.icu, calendar and weather reads needed for the
-decision. Request the inclusive local date range from the workout date
-minus 21 days through the workout date, with
-`includeFields=["xss", "duration_s"]` and no `limit`. Check
-`period_complete` before using the response for full-window load or elapsed
-time. Save the unchanged `structuredContent` to a private JSON file and set
+Include Xert's `list_activities` in the first batch alongside the other Xert,
+Garmin, Intervals.icu, calendar and weather reads needed for the decision.
+Request the inclusive local date range from the workout date minus 21 days
+through the workout date, with `includeFields=["xss", "duration_s"]` and no
+filters or result limit. Reuse that response for the same-day Xert lookup by
+comparing `start_local` with today's local date. If the list call fails or
+today falls outside the requested interval, treat today's Xert activity
+status as unknown.
+Save the unchanged `structuredContent` to a private JSON file and set
 `path` and `read_at` under `sources.xert_activity_loads` in the request.
 Planned Xert advice depends on the selected start, so fetch it once that
 start is known.
@@ -1293,10 +1323,18 @@ readiness score and its component signals as independent evidence.
   setup/route, and countable fueling actions. State why the winner is preferred.
   If the alternative changes the plan role, state which quality role remains
   queued. A longer VT1 alternative is not a replacement quality stimulus.
-  Give drink carbohydrate per bottle, number of bottles/refills, and countable
-  food portions with their combined approximate grams/hour. Use known product
-  values from personal context or source data; if unavailable, name the product
-  assumption and give a grams-based portion, not an invented scoop or candy size.
+- Choose a carbohydrate target in g/h for the planned duration and intensity.
+  Use known pre-ride intake and actual intake and tolerance on comparable
+  rides when they inform the choice. When updating the same ride, carry forward
+  a suitable target. If it changes, briefly explain what justifies the change.
+  Count carbohydrate from the unrounded planned drink volume first. Use known
+  product values to cover any remaining grams with food. If a portion size is
+  unknown, give the required grams and state the product assumption.
+  Report drink carbohydrate per bottle, bottles/refills, food portions and
+  their combined approximate g/h. For an optional extension, calculate the
+  main and extended ride totals separately, rounding whole food portions once
+  per ride. Report the difference in fluid and portions for the extension,
+  including zero extra portions when the rounded totals match.
 - When outdoor riding is an option, apply the
   [route weather and road condition checks](outdoor-routes.md#weather-clothing-and-presentation)
   before choosing between indoor and outdoor training.
