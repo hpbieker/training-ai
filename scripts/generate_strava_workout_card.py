@@ -24,12 +24,15 @@ import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.collections import PolyCollection
+from matplotlib.axes import Axes
+from matplotlib.colors import is_color_like, to_rgb
 from PIL import Image
 
 
 OUTPUT_SIZE = (1080, 720)
-SUPERSAMPLE = 4
+RENDER_DPI = 400
+CHART_SMOOTHING_SECONDS = 9
+COLOR_SMOOTHING_SECONDS = 25
 TABLE_ROW_HEIGHT = 0.04
 TABLE_HEIGHT = 0.308
 CHART_TOP = 0.665
@@ -122,7 +125,11 @@ def load_lactate_maxima(
 
 def xert_stream(rows: list[dict[str, Any]], key: str) -> tuple[list[float], list[float]]:
     points = [(xert_number(row.get("time")), xert_number(row.get(key))) for row in rows]
-    valid = [(time, value) for time, value in points if time is not None and value is not None]
+    valid = sorted(
+        ((time, value) for time, value in points
+         if time is not None and value is not None and math.isfinite(time) and math.isfinite(value)),
+        key=lambda point: point[0],
+    )
     return [time / 60 for time, _ in valid], [value for _, value in valid]
 
 
@@ -130,23 +137,45 @@ def infer_heart_rate_ceiling(heart_rate: list[float]) -> float:
     return max(160.0, math.ceil(max(heart_rate) / 20.0) * 20.0) if heart_rate else 160.0
 
 
-def xert_power_polygons(
-    rows: list[dict[str, Any]], power_scale: float
-) -> tuple[list[list[tuple[float, float]]], list[str]]:
-    """Keep Xert's source-assigned intensity colour in each power span."""
-    points: list[tuple[float, float, str]] = []
+def smooth_chart_samples(
+    time: list[float], values: list[float] | np.ndarray, *, window_seconds: int = CHART_SMOOTHING_SECONDS
+) -> np.ndarray:
+    """Use a centered elapsed-time window for the chart only."""
+    minutes = np.asarray(time)
+    radius = window_seconds / 2 / 60
+    start = np.searchsorted(minutes, minutes - radius)
+    end = np.searchsorted(minutes, minutes + radius, side="right")
+    cumulative = np.concatenate(([0.0], np.cumsum(values)))
+    return (cumulative[end] - cumulative[start]) / (end - start)
+
+
+def add_power_fill(graph: Axes, rows: list[dict[str, Any]], time: list[float], power: np.ndarray) -> None:
+    """Clip a continuous strip of Xert colors to the power curve."""
+    colors = {}
+    palette = {BLUE: to_rgb(BLUE)}
     for row in rows:
-        time = xert_number(row.get("time"))
-        power = xert_number(row.get("power"))
+        seconds = xert_number(row.get("time"))
         color = row.get("powerColor")
-        if time is not None and power is not None and isinstance(color, str) and color.startswith("#"):
-            points.append((time / 60, max(0.0, min(1.0, power / power_scale)), color))
-    polygons: list[list[tuple[float, float]]] = []
-    colors: list[str] = []
-    for (start, start_power, color), (end, end_power, _) in zip(points, points[1:]):
-        polygons.append([(start, 0.0), (start, start_power), (end, end_power), (end, 0.0)])
-        colors.append(color)
-    return polygons, colors
+        if seconds is not None and isinstance(color, str):
+            if color not in palette:
+                palette[color] = to_rgb(color) if is_color_like(color) else palette[BLUE]
+            colors[seconds / 60] = palette[color]
+    channels = np.asarray([colors.get(minute, palette[BLUE]) for minute in time]).T
+    left, right = min(time), max(time)
+    if left == right:
+        return
+    pixel_width = OUTPUT_SIZE[0]
+    pixel_times = left + (np.arange(pixel_width) + 0.5) * (right - left) / pixel_width
+    strip = np.column_stack([
+        np.interp(pixel_times, time, smooth_chart_samples(time, channel, window_seconds=COLOR_SMOOTHING_SECONDS))
+        for channel in channels
+    ])
+    area = graph.fill_between(time, power, color=BLUE, linewidth=0)
+    gradient = graph.imshow(
+        np.clip(strip[np.newaxis, :, :], 0, 1), extent=(left, right, 0, 1),
+        aspect="auto", interpolation="bilinear", zorder=area.get_zorder(),
+    )
+    gradient.set_clip_path(area.get_paths()[0], graph.transData)
 
 
 def load_activity(activity_dir: Path) -> dict[str, object]:
@@ -478,11 +507,14 @@ def render(
     if not power:
         raise ValueError("Xert session has no power stream")
     power_scale = xert_number(summary.get("sig", {}).get("pp")) or DEFAULT_POWER_SCALE_MAX
-    scaled_power = np.asarray([max(0.0, min(1.0, value / power_scale)) for value in power])
+    scaled_power = np.clip(smooth_chart_samples(time, power) / power_scale, 0, 1)
     hr_ceiling = infer_heart_rate_ceiling(heart_rate)
-    scaled_hr = [max(0.0, min(1.0, (value - HEART_RATE_FLOOR) / (hr_ceiling - HEART_RATE_FLOOR))) for value in heart_rate]
+    scaled_hr = np.clip(
+        (smooth_chart_samples(hr_time, heart_rate) - HEART_RATE_FLOOR) / (hr_ceiling - HEART_RATE_FLOOR),
+        0, 1,
+    )
 
-    figure = plt.figure(figsize=(10.8, 7.2), dpi=100 * SUPERSAMPLE, facecolor=NAVY)
+    figure = plt.figure(figsize=(10.8, 7.2), dpi=RENDER_DPI, facecolor=NAVY)
     figure.patch.set_facecolor(NAVY)
     text = figure.add_axes([0, 0, 1, 1])
     text.set_axis_off()
@@ -496,20 +528,16 @@ def render(
         family="DejaVu Sans",
     )
 
-    # The layered series use exactly the same normalisation as the separate
-    # Xert-image renderer: power and MPA share PP, HR starts at 40 bpm, and
-    # the hatched Difficulty stream is XDS/200 rather than a power proxy.
+    # Power and MPA share PP, HR starts at 40 bpm, and Difficulty uses XDS/200.
     graph = figure.add_axes([0.0, TABLE_HEIGHT, 1.0, CHART_TOP - TABLE_HEIGHT], facecolor=NAVY)
-    graph.fill_between(time, scaled_power, color=BLUE, alpha=0.68, linewidth=0)
-    polygons, colors = xert_power_polygons(xert_rows, power_scale)
-    if polygons:
-        graph.add_collection(PolyCollection(polygons, facecolors=colors, edgecolors="none", antialiaseds=False))
-    if difficulty and len(difficulty) == len(scaled_power):
-        scaled_difficulty = np.asarray([max(0.0, min(1.0, value / DIFFICULTY_SCALE_MAX)) for value in difficulty])
-        difficulty_mask = scaled_difficulty > scaled_power
+    add_power_fill(graph, xert_rows, time, scaled_power)
+    if difficulty:
+        scaled_difficulty = np.clip(np.asarray(difficulty) / DIFFICULTY_SCALE_MAX, 0, 1)
+        power_at_difficulty = np.interp(difficulty_time, time, scaled_power, left=np.nan, right=np.nan)
+        difficulty_mask = scaled_difficulty > power_at_difficulty
         graph.fill_between(
-            difficulty_time, scaled_power, scaled_difficulty, where=difficulty_mask,
-            facecolor=NAVY, edgecolor="#88919d", hatch="///////", linewidth=0.25, alpha=0.62,
+            difficulty_time, power_at_difficulty, scaled_difficulty, where=difficulty_mask,
+            facecolor="#71839b", linewidth=0, alpha=0.24,
         )
         graph.plot(difficulty_time, np.where(difficulty_mask, scaled_difficulty, np.nan), color="#9aa3af", linewidth=0.75)
     graph.plot(time, scaled_power, color="#245ca8", linewidth=0.65)
@@ -531,14 +559,13 @@ def render(
     add_response_table(table, activity, rows, story, lactate_maxima=lactate_maxima)
 
     output.parent.mkdir(parents=True, exist_ok=True)
-    # Match the Xert renderer: draw at high resolution, then downsample to
-    # the shared 1080×720 final image for smoother thin lines and text.
+    # Downsample the oversized render for clean edges and export opaque PNG.
     buffer = BytesIO()
-    figure.savefig(buffer, format="png", dpi=100 * SUPERSAMPLE, facecolor=figure.get_facecolor())
+    figure.savefig(buffer, format="png", dpi=RENDER_DPI, facecolor=figure.get_facecolor())
     plt.close(figure)
     buffer.seek(0)
     with Image.open(buffer) as image:
-        image.convert("RGBA").resize(OUTPUT_SIZE, Image.Resampling.LANCZOS).save(output)
+        image.convert("RGB").resize(OUTPUT_SIZE, Image.Resampling.LANCZOS).save(output, format="PNG")
     return output.resolve()
 
 
