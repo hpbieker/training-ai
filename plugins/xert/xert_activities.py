@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timedelta, timezone
 import json
 import re
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 from typing import Any
 from urllib.request import Request
 
@@ -18,6 +18,12 @@ from xert_common import (
     xert_web_login,
 )
 
+SUMMARY_FIELDS = (
+    "duration_s", "distance_m", "source", "map_url", "signature", "xss",
+    "xep_watts", "focus", "specificity", "difficulty", "difficulty_rating",
+    "avg_power", "max_power", "avg_heart_rate", "max_heart_rate",
+    "avg_cadence", "max_cadence",
+)
 
 
 def _activity_request(path, access_token, *, params=None):
@@ -31,7 +37,7 @@ def _activity_request(path, access_token, *, params=None):
         hint = (
             " Third-party API access can exclude Garmin activities; personal "
             "API 1.7 client credentials include them. "
-            "use list_activity_summaries for dashboard summaries. "
+            "use list_activities for activity discovery. "
             "This response does not prove the activity is absent from Xert."
             if code == "activity_not_found" else ""
         )
@@ -63,6 +69,139 @@ def list_activities(
     if not isinstance(activities, dict) or not isinstance(activities.get("activities"), list):
         raise TypeError("Expected Xert activity endpoint to return an activities list")
     return activities["activities"]
+
+
+def list_activities_v2(
+    start: date, end: date, access_token: str, *, include_details: bool
+) -> list[dict[str, Any]]:
+    """Read completed activities newest first across an inclusive local date range."""
+    activities = []
+    seen_paths = set()
+    previous_start = None
+    while end >= start:
+        # Xert caps detailed requests at 31 elapsed days. Thirty local days
+        # also fit when the clocks go back.
+        first_day = end - timedelta(days=min(29, (end - start).days)) if include_details else start
+        window_start = datetime.combine(first_day, time.min).astimezone()
+        window_end = datetime.combine(end, time.max).astimezone()
+        params = {"from": window_start.isoformat(), "to": window_end.isoformat()}
+        if include_details:
+            params["include_details"] = 1
+
+        cursors = set()
+        while True:
+            page = _activity_request("/oauth/v2/activity", access_token, params=params)
+            if not isinstance(page, dict) or not isinstance(page.get("activities"), list):
+                raise RuntimeError("Invalid Xert v2 activity page")
+            if page.get("data_use_notice"):
+                raise RuntimeError("Xert v2 activity list was filtered; period coverage is unknown")
+
+            for row in page["activities"]:
+                if not isinstance(row, dict) or not row.get("path"):
+                    raise RuntimeError("Xert v2 activity is missing its identity")
+                started = _v2_activity_start(row)
+                if not window_start <= started <= window_end or row["path"] in seen_paths:
+                    continue
+                if previous_start is not None and started > previous_start:
+                    raise RuntimeError("Xert v2 activities are not newest-first")
+                previous_start = started
+                seen_paths.add(row["path"])
+
+                summary = row.get("summary") or {}
+                activity = _normalize_v2_activity_identity(row, started, summary.get("duration"))
+                if include_details:
+                    activity.update(_normalize_v2_activity_details(summary))
+                activities.append(activity)
+
+            cursor = page.get("next_cursor")
+            if cursor is None and "next_cursor" in page:
+                break
+            if not isinstance(cursor, str) or not cursor or cursor in cursors:
+                raise RuntimeError("Invalid Xert v2 activity pagination cursor")
+            cursors.add(cursor)
+            params = {**params, "cursor": cursor}
+        if first_day == start:
+            break
+        end = first_day - timedelta(days=1)
+    return activities
+
+
+def fetch_activity_summary_v2(path: str, access_token: str) -> dict[str, Any]:
+    """Read the compact activity summary without downloading session streams."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", path):
+        raise ValueError("Invalid Xert activity path")
+    payload = _activity_request(f"/oauth/v2/activity/{path}", access_token)
+    if not isinstance(payload, dict) or not isinstance(payload.get("summary"), dict):
+        raise TypeError("Expected Xert v2 activity detail to contain a summary")
+    summary = payload["summary"]
+    identity = {
+        "path": path,
+        "name": payload.get("name"),
+        "distance": summary.get("distance"),
+        "map_url": summary.get("activity_map"),
+    }
+    duration = summary.get("duration")
+    return {
+        **_normalize_v2_activity_identity(identity, _v2_activity_start(summary), duration),
+        **_normalize_v2_activity_details(summary),
+        "elapsed_minutes": round(duration / 60, 1) if duration is not None else None,
+        "freshness": summary.get("freshness"),
+    }
+
+
+def _v2_activity_start(row: dict[str, Any]) -> datetime:
+    started = datetime.fromisoformat(row["start_date"])
+    if started.utcoffset() is None:
+        raise RuntimeError("Xert v2 activity start_date has no UTC offset")
+    return started
+
+
+def _normalize_v2_activity_identity(
+    row: dict[str, Any], started: datetime, duration: float | None
+) -> dict[str, Any]:
+    distance = row.get("distance")
+    map_url = row.get("map_url")
+    return {
+        "path": row["path"],
+        "name": row.get("name"),
+        "start_local": started.astimezone().replace(tzinfo=None).isoformat(),
+        "duration_s": duration,
+        "elapsed_minutes": duration / 60 if duration is not None else None,
+        "distance_m": distance * 1000 if distance is not None else None,
+        "distance_km": distance,
+        "source": "xert_plugin",
+        "map_url": urljoin(XERT_API_BASE_URL, map_url) if isinstance(map_url, str) and map_url else None,
+    }
+
+
+def _normalize_v2_activity_details(summary: dict[str, Any]) -> dict[str, Any]:
+    signature = summary.get("sig")
+    session = summary.get("session") or {}
+    if signature is not None:
+        hie = signature.get("hie")
+        signature = {
+            "ftp": signature.get("ftp"),
+            "ltp": signature.get("ltp"),
+            "pp": signature.get("pp"),
+            # Keep the existing activity-summary signature contract in joules.
+            "atc": hie * 1000 if hie is not None else None,
+        }
+    return {
+        "signature": signature,
+        "xss": summary.get("xss"),
+        "xep_watts": summary.get("xep"),
+        "focus": summary.get("focus"),
+        "specificity": summary.get("specificity"),
+        "difficulty": summary.get("difficulty"),
+        "difficulty_rating": summary.get("difficulty_rating"),
+        "avg_power": session.get("avg_power"),
+        "max_power": session.get("max_power"),
+        "avg_heart_rate": session.get("avg_heart_rate"),
+        "max_heart_rate": session.get("max_heart_rate"),
+        "avg_cadence": session.get("avg_cadence"),
+        "max_cadence": session.get("max_cadence"),
+    }
+
 
 def fetch_activity_detail(
     path: str,

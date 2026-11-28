@@ -7,40 +7,37 @@ below follow the plugin schema; local model functions are not MCP tools.
 
 Prefer the Xert MCP tools when they are available:
 
-- `list_activity_summaries` returns activity summaries within an inclusive
-  local-date range, newest first. Use `limit` for the N newest activities;
-  omit it for the full period.
-  Use `includeFields` to select signature, XSS, difficulty, XEP, focus,
-  specificity, power, heart rate and cadence.
-  `count` is the number of returned activities. Check `period_complete`
-  to determine whether the result covers the full period.
-  Signature fields `ftp`, `pp` and `ltp` use watts; `atc` uses joules.
-- `list_activities` returns compact identity summaries for an inclusive
-  local-date range with only `path`, `name`, and `start_local` by default. Use
-  `includeFields` to add duration, distance, source, or map URL from the same
-  activity-list response. For bulk XSS and duration, use
-  `list_activity_summaries` with `includeFields=["xss", "duration_s"]`.
-  Use `get_activity` for activity detail and session data.
+- `list_activities` uses the v2 API to return compact identity summaries for an
+  inclusive local-date range with only `path`, `name`, and `start_local` by
+  default. Use `includeFields` for duration, distance, source, map URL, XSS,
+  Fitness Signature, XEP, focus, specificity, difficulty, difficulty rating,
+  and average or maximum power, heart rate, and cadence. The v2 list supplies
+  these fields in bulk. Signature fields `ftp`, `pp`, and `ltp` use watts,
+  and `atc` uses joules. Filters and sorting support component paths such as
+  `xss.low` and `signature.ftp`. For full-period totals, omit filters and the
+  result limit. V2 session averages and focus labels can differ from dashboard
+  values.
 - `list_activities`, `list_workouts`, `list_notes`,
   `list_recommended_workouts`, and `get_training_forecast` accept closed
   `filters` (`field`, `op`, `value`), ordered `sort` keys, and a post-filter
   `limit`. Filters use AND; operators are `eq`, `ne`, `gt`, `gte`, `lt`,
   `lte`, `in`, `not_in`, `contains`, and `exists`. Nested normalized fields
   such as `xss.low` use documented dotted names.
-- `get_activity` always returns a compact activity summary. Set
-  `save_full=true` to save the complete activity document to a private
-  temporary JSON file. Set `save_session=true` only when Xert-specific
-  second-by-second data are required; this performs the heavier session read
-  and returns a separate private temporary JSON path.
-- `list_workouts` lists or filters compact workout identity summaries containing
+- `get_activity` reads the compact activity summary from v2 by default.
+  With `save_full=true` or `save_session=true`, it also saves private JSON
+  files with the web activity under `activity.summary` and the v2 summary
+  under `activity.activity_summary`. Session exports preserve chart fields
+  such as `xds` in `activity.session_data`.
+- `list_workouts` uses the v2 API to list or filter workout summaries with
   only `path` and `name` by default; request duration and other details with
   `includeFields`. Its
   `name_keywords` value requires every supplied word to occur,
   case-insensitively. Use `includeFields` to add selected load, work-power,
   rating, or Difficulty fields to each row.
-- `get_workout` uses `view=resolved` for the workout calculated with the current
-  Fitness Signature and `view=editable` for authoritative editable workout
-  rows, including repeats, slopes, and rest-in-between fields.
+- `get_workout(view="resolved")` uses v2 to return the workout calculated with
+  the current Fitness Signature and the original SMART sets in `definition`.
+  Use `view="editable"` for authoritative Designer rows, including repeats,
+  slopes, and rest-in-between fields.
 - `list_planner_events` returns Xert's mixed planned-workout and
   recorded-activity event stream for an inclusive local-date range.
 - `create_planner_event` creates one source-native Planner event and reads it
@@ -57,8 +54,9 @@ Prefer the Xert MCP tools when they are available:
 - `get_training_state` returns current Xert state. Use `view=summary` for the
   normalized Fitness Signature, Training Load, Recovery Load, form, recovery
   hours, exact `fresh_at.low` and `fresh_at.all` timestamps, training status,
-  and target XSS. Use `view=full` only when both source
-  payloads or model parameters are required. Summary does not expose the raw
+  and target XSS. Use `view=full` for the original v2 `training_info` payload
+  and web recovery model. In the v2 payload, targets are `target_xss` and
+  `wotd` is null on days without a workout. Summary does not expose the raw
   model parameters. `project_load_model` fetches those itself, so a separate
   state read is not required merely to run a projection. It does not project a future state,
   fetch planned-time advice, or add activity-specific readiness context.
@@ -108,11 +106,11 @@ workout rows and coverage of Xert's beta interface.
 
 - Use `summarize_activities_xert_2(activity_paths=[...])` for Xert 2.0 Beta
   Preview aggregates for one to ten activities. Resolve paths and metadata with
-  `list_activity_summaries` and join the results on `path`. The tool calculates
+  `list_activities` and join the results on `path`. The tool calculates
   the model time series internally and returns one compact row per path in input
   order. Check `unavailable_count` before aggregating Beta values across activities.
 - Use `analyze_activity_xert_2(activity_path=...)` for a completed activity.
-  Discover its path with `list_activity_summaries`.
+  Discover its path with `list_activities`.
 - Use `calculate_workout_xert_2(rows=..., model_source_activity_path=...)` for
   an unsaved workout. The source activity supplies the Xert 2.0 Fitness
   Signature, model options, and carbohydrate bias. The workout rows supply
@@ -136,9 +134,8 @@ workout rows and coverage of Xert's beta interface.
 
 ## Choose The Narrowest Command
 
-- Use MCP `list_activity_summaries` for activity discovery and available
-  summary fields. Use `list_activities` when you need to filter or sort its
-  compact identity summaries, and `get_activity` for individual details.
+- Use `list_activities` for activity discovery and bulk summary fields. Use
+  `get_activity` for individual details and session data.
 - For current state and capacity together, use `get_training_state` with
   `capacity_for: {as_of, fresh_at}`. The response includes `workout_capacity`
   in the same format as `calculate_workout_capacity` and uses the recovery

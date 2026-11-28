@@ -17,7 +17,7 @@ Load only the references needed for the question.
 
 | Task | Start with | Read when needed |
 | --- | --- | --- |
-| Completed workout or activity comparison | `list_activity_summaries`; `get_activity` for details or session series | [Activity fields](references/field-semantics.md#activity-and-workout-fields); [tool details](references/tool-workflows.md#mcp-read-access) |
+| Completed workout or activity comparison | `list_activities`; `get_activity` for details or session series | [Activity fields](references/field-semantics.md#activity-and-workout-fields); [tool details](references/tool-workflows.md#mcp-read-access) |
 | Xert 2.0 Beta activity list, activity analysis or workout simulation | `summarize_activities_xert_2`, `analyze_activity_xert_2` or `calculate_workout_xert_2` | [Xert 2.0 Beta workflow](references/tool-workflows.md#xert-20-beta) |
 | Readiness or today's/planned session dose | `get_training_state(view="summary")` and `get_training_advice(view="summary", at=...)` | [Recovery and advice](references/field-semantics.md#recovery-and-advice) |
 | Known workout XSS or adjustable endurance duration | `calculate_strain` or `solve_segment_duration` | [Strain model](references/strain-model.md); [calculation workflow](references/tool-workflows.md#choose-the-narrowest-command) |
@@ -46,17 +46,15 @@ Load only the references needed for the question.
 
 ## Common Read And Calculation Path
 
-Use `list_activity_summaries` for completed-activity discovery, including Garmin
-syncs. Both `list_activities` and `list_activity_summaries` use the authenticated
-dashboard and include those rides. `get_activity` uses the standard
-activity page and its authenticated MPA chart endpoint, including session series.
-Callers do not need to choose transport based on Garmin origin. Saved documents
-identify their web source and preserve chart field names in `session_data`.
+Use `list_activities` to find and compare completed activities, including
+Garmin syncs. Request load or session summary fields through `includeFields`.
+For totals across a calendar period, request the full date range without
+filters or a limit. See the
+[list contract](references/tool-workflows.md#mcp-read-access).
 
-Use compact summaries by default and `includeFields` for the extra list fields
-needed. Check `period_complete` on activity-summary results before claiming
-complete period coverage. The list and filter contracts are in
-[tool-workflows.md](references/tool-workflows.md#mcp-read-access).
+Use `get_activity` for an individual activity summary from v2. Full and
+session exports combine that summary with the standard activity page and
+authenticated MPA chart, preserving chart field names in `session_data`.
 
 For planned-time advice, pass an ISO timestamp with an explicit UTC offset in
 `at`; omit it for current advice. Fetch workout candidates separately with
@@ -109,12 +107,14 @@ credentials:
   `XERT_OAUTH_CLIENT_ID` and `XERT_OAUTH_CLIENT_SECRET`. API tokens use
   `client_credentials`, without a refresh token. Missing credentials and the
   demo-only `xert_public` client fail before network access.
-- `username` and `password`: web login for activities, Planner, advice, model
-  parameters and Workout Designer. Environment overrides are `XERT_USERNAME`
+- `username` and `password`: web login for activity exports, Planner, advice,
+  model parameters and Workout Designer. Environment overrides are `XERT_USERNAME`
   and `XERT_PASSWORD`. API credentials do not replace the web login.
 
-`list_workouts` and resolved `get_workout` need only API credentials.
-`get_training_state`, `project_load_model` and `delete_workout` need both.
+`list_activities`, `list_workouts`, resolved `get_workout` and `get_activity`
+without exports need only API credentials.
+Activity exports, `get_training_state`, `project_load_model` and
+`delete_workout` need both API and web credentials.
 The other live tools use web login; `calculate_strain` and
 `solve_segment_duration` need neither. Never put secrets in tool arguments or
 chat. Do not regenerate an existing secret as a routine authentication retry.

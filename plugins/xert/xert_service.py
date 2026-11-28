@@ -15,10 +15,9 @@ from typing import Any, Callable
 
 
 from xert_activities import (
-    fetch_activity_detail,
+    fetch_activity_summary_v2,
     fetch_activity_web,
-    list_activities as fetch_activities,
-    list_activity_details,
+    list_activities_v2,
 )
 from xert_calendar import (
     create_calendar_event_with_opener,
@@ -143,64 +142,24 @@ class XertService:
         start_date: str,
         end_date: str,
         *,
-        view: str = "summary",
-    ) -> list[dict[str, Any]] | dict[str, Any]:
-        _validate_date_range(start_date, end_date)
-        if view not in {"summary", "loads"}:
-            raise ValueError("view must be 'summary' or 'loads'")
-        # Dashboard provides bulk load fields, including Garmin-synced rides.
-        from xert_activity_summaries import SUMMARY_FIELDS
-        fields = SUMMARY_FIELDS if view == "loads" else ("duration_s", "distance_m", "source", "map_url")
-        result = self.list_activity_summaries(start_date, end_date, include_fields=fields)
-        if not result.get("period_complete"):
-            raise RuntimeError("Incomplete Xert dashboard period; refusing a partial activity list")
-        activities = []
-        for row in result["activities"]:
-            activity = dict(row)
-            duration, distance = row.get("duration_s"), row.get("distance_m")
-            activity["elapsed_minutes"] = duration / 60 if duration is not None else None
-            activity["distance_km"] = distance / 1000 if distance is not None else None
-            activities.append(activity)
-        if view == "summary":
-            return activities
-        return {
-            "source": "xert_plugin_dashboard_loads",
-            "start_date": start_date, "end_date": end_date,
-            "activity_count": len(activities), "activities": activities,
-        }
-
-    def list_activity_summaries(self, start_date, end_date, *, include_fields=(), limit=None):
-        from xert_activity_summaries import list_activity_summaries
-        _validate_date_range(start_date, end_date)
-        return list_activity_summaries(
-            self._auth.web_opener(), start_date, end_date,
-            include_fields=include_fields, limit=limit,
+        include_details: bool = True,
+    ) -> list[dict[str, Any]]:
+        start, end = _validate_date_range(start_date, end_date)
+        return list_activities_v2(
+            start, end, self._auth.bearer_token(), include_details=include_details,
         )
 
     def get_activity(self, path: str, *, view: str = "summary") -> dict[str, Any]:
         path = _require_identifier(path, "activity path")
         if view not in {"summary", "full", "session"}:
             raise ValueError("view must be 'summary', 'full', or 'session'")
+        summary = fetch_activity_summary_v2(path, self._auth.bearer_token())
+        if view == "summary":
+            return summary
         payload = fetch_activity_web(
             self._auth.web_opener(), path, include_session_data=view == "session",
         )
-        day = payload["summary"].get("start_date_local", "")[:10]
-        if day:
-            from xert_activity_summaries import SUMMARY_FIELDS
-            listing = self.list_activity_summaries(day, day, include_fields=SUMMARY_FIELDS)
-            if not listing.get("period_complete"):
-                raise RuntimeError("Incomplete Xert dashboard coverage for activity details")
-            row = next((row for row in listing["activities"] if row["path"] == path), None)
-            if row is None:
-                raise RuntimeError("Xert activity details could not be matched to dashboard")
-            payload["dashboard_summary"] = row
-        if view == "summary":
-            result = compact_activity_load(payload)
-            result.update({key: value for key, value in payload.get("dashboard_summary", {}).items()
-                           if value is not None})
-            result["path"] = path
-            return result
-        return payload
+        return {**payload, "activity_summary": summary}
 
     def list_workouts(
         self,
@@ -412,10 +371,7 @@ class XertService:
             for field in ("as_of", "fresh_at"):
                 if datetime.fromisoformat(capacity_for[field]).utcoffset() is None:
                     raise ValueError(f"capacity_for.{field} requires an explicit UTC offset")
-        token = self._auth.bearer_token()
-        training_info = _request_json("/oauth/training_info", token)
-        if not isinstance(training_info, dict):
-            raise TypeError("Expected Xert training_info endpoint to return an object")
+        training_info = self._training_info()
         recovery_model = fetch_recovery_model_with_opener(self._auth.web_opener())
         state = (
             {"training_info": training_info, "recovery_model": recovery_model}
@@ -487,8 +443,7 @@ class XertService:
         low_xss: float = 0.0, high_xss: float = 0.0, peak_xss: float = 0.0,
         build_tp: float = 0.0, build_hie: float = 0.0, build_pp: float = 0.0,
     ) -> dict[str, Any]:
-        token = self._auth.bearer_token()
-        training_info = _request_json("/oauth/training_info", token)
+        training_info = self._training_info()
         model = fetch_recovery_model_with_opener(self._auth.web_opener())
         at_state = dict(model["at_state"])
         at_state["recovery_offset"] = model["recovery_offset"]
@@ -553,6 +508,12 @@ class XertService:
             return full
         return {"days": [compact_forecast_day(day) for day in days]}
 
+    def _training_info(self) -> dict[str, Any]:
+        payload = _request_json("/oauth/v2/training_info", self._auth.bearer_token())
+        if not isinstance(payload, dict):
+            raise TypeError("Expected Xert v2 training_info endpoint to return an object")
+        return payload
+
     def _calendar_notes(self) -> dict[str, Any]:
         return fetch_calendar_notes_with_opener(self._auth.web_opener())
 
@@ -561,44 +522,6 @@ class XertService:
         _required_credential(credentials.username, "XERT_USERNAME")
         _required_credential(credentials.password, "XERT_PASSWORD")
         return credentials
-
-
-def compact_activity_load(payload: dict[str, Any]) -> dict[str, Any]:
-    """Normalize one activity to the compact source contract used by callers."""
-
-    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else payload
-    if not isinstance(summary, dict):
-        raise TypeError("Expected Xert activity payload to contain an object summary")
-    progression = summary.get("progression") if isinstance(summary.get("progression"), dict) else {}
-    xss = progression.get("xss") if isinstance(progression.get("xss"), dict) else {}
-    session = summary.get("session") if isinstance(summary.get("session"), dict) else {}
-    list_row = payload.get("activity_list_row") if isinstance(payload.get("activity_list_row"), dict) else {}
-    return {
-        "source": "xert_plugin",
-        "path": payload.get("path") or summary.get("path"),
-        "name": payload.get("name") or summary.get("name") or list_row.get("name"),
-        "map_url": payload.get("map_url") or summary.get("map_url") or list_row.get("map_url"),
-        "start_local": _activity_start_local(summary) or _activity_start_local(list_row),
-        "distance_km": summary.get("distance") or list_row.get("distance"),
-        "elapsed_minutes": _minutes(_number(
-            summary.get("duration")
-            or session.get("total_elapsed_time")
-            or list_row.get("duration")
-        )),
-        "xss": {
-            "total": summary.get("xss") if summary.get("xss") is not None else xss.get("total"),
-            "low": summary.get("xlss") if summary.get("xlss") is not None else xss.get("xlss"),
-            "high": summary.get("xhss") if summary.get("xhss") is not None else xss.get("xhss"),
-            "peak": summary.get("xpss") if summary.get("xpss") is not None else xss.get("xpss"),
-        },
-        "xep_watts": summary.get("xep"),
-        "focus": summary.get("focus"),
-        "specificity": summary.get("specificity"),
-        "difficulty": summary.get("difficulty"),
-        "difficulty_rating": summary.get("difficulty_rating"),
-        "freshness": summary.get("freshness"),
-        "signature": summary.get("sig") or progression.get("signature"),
-    }
 
 
 def filter_workouts(
@@ -1082,41 +1005,3 @@ def _required_string(value: Any, name: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
     return value.strip()
-
-
-def _activity_start_local(summary: dict[str, Any]) -> str | None:
-    start = summary.get("start_date")
-    if isinstance(start, dict):
-        raw = start.get("date")
-        if raw:
-            parsed = datetime.fromisoformat(str(raw))
-            if start.get("timezone") == "UTC":
-                parsed = parsed.replace(tzinfo=timezone.utc).astimezone(LOCAL_TIMEZONE)
-            return parsed.replace(tzinfo=None).isoformat()
-    if isinstance(start, str) and start:
-        parsed = datetime.fromisoformat(start.replace("Z", "+00:00"))
-        if parsed.tzinfo is not None:
-            parsed = parsed.astimezone(LOCAL_TIMEZONE).replace(tzinfo=None)
-        return parsed.isoformat()
-    raw_progression_start = (summary.get("progression") or {}).get("start_date")
-    if raw_progression_start:
-        return (
-            datetime.fromisoformat(str(raw_progression_start).replace("Z", "+00:00"))
-            .astimezone(LOCAL_TIMEZONE)
-            .replace(tzinfo=None)
-            .isoformat()
-        )
-    return None
-
-
-def _number(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _minutes(seconds: float | None) -> float | None:
-    return round(seconds / 60, 1) if seconds is not None else None

@@ -29,7 +29,7 @@ class Xert2ModelTests(unittest.TestCase):
         ):
             result = P.summarize_activities_xert_2(service, ["a2", "a1"])
         run.assert_called_once_with(*model_inputs[:3])
-        service.list_activity_summaries.assert_not_called()
+        service.list_activities.assert_not_called()
         self.assertIs(load.call_args_list[0].kwargs["opener"], load.call_args_list[1].kwargs["opener"])
         self.assertEqual((result["analyzed_count"], result["unavailable_count"]), (1, 1))
         first, second = result["activities"]

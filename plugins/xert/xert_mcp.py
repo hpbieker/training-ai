@@ -14,13 +14,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from xert_service import XertService
-from xert_activity_summaries import SUMMARY_FIELDS
+from xert_activities import SUMMARY_FIELDS
 from xert_2_model import analyze_activity_xert_2, calculate_workout_xert_2, summarize_activities_xert_2
 from list_query import apply_list_query, query_fields, query_properties
 
 
 ALL_TOOL_NAMES = (
-    "list_activity_summaries",
     "list_activities",
     "get_activity",
     "summarize_activities_xert_2",
@@ -50,7 +49,6 @@ ALL_TOOL_NAMES = (
 )
 
 TOOL_ANNOTATIONS: dict[str, dict[str, object]] = {
-    "list_activity_summaries": {"title": "List Xert Activity Summaries", "readOnlyHint": True, "openWorldHint": True},
     "list_activities": {
         "title": "List Xert Activities",
         "readOnlyHint": True,
@@ -192,17 +190,17 @@ def _object(description: str) -> dict[str, object]:
     }
 
 
-_ACTIVITY_LIST_INCLUDE_FIELDS = (
-    "duration_s", "distance_m", "source", "map_url",
-)
+_ACTIVITY_LIST_LIGHT_FIELDS = ("distance_m", "source", "map_url")
 _WORKOUT_LIST_INCLUDE_FIELDS = (
     "duration_s", "work_watts", "xss", "xlss", "xhss", "xpss",
     "difficulty", "rating",
 )
 _CALCULATION_FIELD_PATH = r"^[^.\s]+(?:\.[^.\s]+)*$"
 _ACTIVITY_LIST_FILTER_FIELDS = (
-    "path", "name", "start_local", "duration_s", "distance_m", "source",
-    *_ACTIVITY_LIST_INCLUDE_FIELDS,
+    "path", "name", "start_local",
+    *(field for field in SUMMARY_FIELDS if field not in {"signature", "xss"}),
+    "signature.ftp", "signature.ltp", "signature.pp", "signature.atc",
+    "xss.total", "xss.low", "xss.high", "xss.peak",
 )
 _WORKOUT_LIST_FILTER_FIELDS = (
     "path", "name", "duration_s", *_WORKOUT_LIST_INCLUDE_FIELDS,
@@ -336,48 +334,14 @@ def _workout_row_operations_schema(description: str) -> dict[str, object]:
 
 
 TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
-    "list_activity_summaries": {
-        "name": "list_activity_summaries",
-        "description": (
-            "List Xert activity summaries in an inclusive local-date range. "
-            "Use includeFields=[\"xss\", \"duration_s\"] for training load and duration. "
-            "Returns newest first; limit selects the N newest activities within the period. "
-            "Older periods may take longer to retrieve. "
-            "period_complete is false when limit stops reading before the period is covered. "
-            "Signature includes ftp, pp and ltp in W, and atc in J."
-        ),
-        "inputSchema": {
-            "type": "object", "additionalProperties": False,
-            "required": ["start_date", "end_date"],
-            "properties": {
-                "start_date": {"type": "string", "format": "date", "description": "Inclusive local start date."},
-                "end_date": {"type": "string", "format": "date", "description": "Inclusive local end date."},
-                "includeFields": {"type": "array", "items": {"type": "string", "enum": list(SUMMARY_FIELDS)}, "uniqueItems": True, "default": [], "description": "Optional activity summary fields."},
-                "limit": {"type": "integer", "minimum": 1, "description": "Return at most the N newest activities in the period. Omit for the whole period."},
-            },
-        },
-        "outputSchema": {
-            "type": "object", "additionalProperties": False,
-            "properties": {
-                "activities": _array("Newest-first activity summaries."),
-                "count": {"type": "integer"}, "pages_fetched": {"type": "integer"},
-                "period_complete": {"type": "boolean"},
-                "stop_reason": {"type": "string", "enum": ["start_date", "limit", "history_end"]},
-                "order": {"type": "string", "enum": ["newest_first"]},
-                "start_date": {"type": "string"}, "end_date": {"type": "string"},
-                "includeFields": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": ["activities", "count", "pages_fetched", "period_complete", "stop_reason", "order", "start_date", "end_date", "includeFields"],
-        },
-        "annotations": TOOL_ANNOTATIONS["list_activity_summaries"],
-    },
     "list_activities": {
         "name": "list_activities",
         "description": (
-            "Uses the authenticated dashboard, including automatically synced Garmin rides. "
+            "Uses the Xert v2 API with personal API credentials, including automatically synced Garmin rides. "
             "List compact Xert activity identity summaries for an inclusive local-date "
-            "range. Use includeFields for details available from the activity-list "
-            "response. For XSS, use list_activity_summaries with includeFields=[\"xss\"]. "
+            "range. Use includeFields for bulk XSS, Fitness Signature, XEP, and other "
+            "summary fields. Signature power is in watts and atc is in joules. "
+            "Signature and XSS components can be filtered or sorted individually. "
             "This tool never fetches individual activity details."
         ),
         "inputSchema": {
@@ -395,7 +359,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 },
                 "includeFields": {
                     "type": "array",
-                    "items": {"type": "string", "enum": list(_ACTIVITY_LIST_INCLUDE_FIELDS)},
+                    "items": {"type": "string", "enum": list(SUMMARY_FIELDS)},
                     "uniqueItems": True,
                     "default": [],
                     "description": "Optional activity detail fields added to every compact summary.",
@@ -426,10 +390,11 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "get_activity": {
         "name": "get_activity",
         "description": (
-            "Get activity details from authenticated Xert web analytics, including Garmin syncs. "
-            "Failures are errors, not empty activities. Set save_session=true to fetch and save "
-            "Xert-specific second-by-second data. Set save_full=true to save the complete "
-            "activity document. Both options use private temporary JSON files."
+            "Get a compact activity summary from Xert v2, including Garmin syncs. "
+            "Set save_session=true to export Xert-specific second-by-second data or "
+            "save_full=true for the complete web activity document. "
+            "Exports combine the v2 summary with authenticated Xert web analytics "
+            "and use private temporary JSON files."
         ),
         "inputSchema": {
             "type": "object",
@@ -480,7 +445,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "name": "summarize_activities_xert_2",
         "description": (
             "Enrich selected activity paths with experimental Xert 2.0 Beta Preview summaries. "
-            "Get paths and activity metadata from list_activity_summaries, then join on path. "
+            "Get paths and activity metadata from list_activities, then join on path. "
             "Loads each activity's Xert Beta preview and calculates model time series locally. "
             "Returns only per-activity aggregates in input order: Beta XSS and modeled "
             "lactate, glycogen, carbohydrate and fat summaries. "
@@ -494,7 +459,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "type": "array",
                     "items": {"type": "string", "pattern": "^[A-Za-z0-9_-]+$"},
                     "minItems": 1, "maxItems": 10, "uniqueItems": True,
-                    "description": "Activity paths from list_activity_summaries.",
+                    "description": "Activity paths from list_activities.",
                 },
             },
             "required": ["activity_paths"],
@@ -608,7 +573,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "list_workouts": {
         "name": "list_workouts",
         "description": (
-            "List compact Xert workout identity summaries, optionally requiring "
+            "List compact workout summaries from the Xert v2 API, optionally requiring "
             "every supplied case-insensitive name keyword. Use includeFields to "
             "add selected load or difficulty fields."
         ),
@@ -654,7 +619,8 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
     "get_workout": {
         "name": "get_workout",
         "description": (
-            "Get one Xert workout. resolved uses the current Fitness Signature; "
+            "Get one Xert workout. resolved uses Xert v2 and the current Fitness Signature "
+            "and includes the original workout definition; "
             "editable returns authoritative workout rows including repeats, "
             "slopes, and rest-in-between fields."
         ),
@@ -1399,25 +1365,19 @@ class XertToolService:
 
     @staticmethod
     def _dispatch(service: XertService, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-        if name == "list_activity_summaries":
-            fields = _validate_include_fields(arguments.get("includeFields", []), allowed=SUMMARY_FIELDS)
-            limit = arguments.get("limit")
-            if limit is not None and (type(limit) is not int or limit < 1):
-                raise ValueError("limit must be a positive integer")
-            result = service.list_activity_summaries(
-                arguments["start_date"], arguments["end_date"], include_fields=fields, limit=limit,
-            )
-            return {**result, "start_date": arguments["start_date"], "end_date": arguments["end_date"], "includeFields": list(fields)}
         if name == "list_activities":
             start = arguments["start_date"]
             end = arguments["end_date"]
             include_fields = _validate_include_fields(arguments.get("includeFields", []))
-            query_include = tuple(
-                field for field in query_fields(arguments, _ACTIVITY_LIST_FILTER_FIELDS)
-                if field in _ACTIVITY_LIST_INCLUDE_FIELDS
+            query_roots = (
+                field.split(".", 1)[0] for field in query_fields(arguments, _ACTIVITY_LIST_FILTER_FIELDS)
             )
+            query_include = (field for field in query_roots if field in SUMMARY_FIELDS)
             effective_fields = tuple(dict.fromkeys((*include_fields, *query_include)))
-            activities = service.list_activities(start, end, view="summary")
+            activities = service.list_activities(
+                start, end,
+                include_details=any(field not in _ACTIVITY_LIST_LIGHT_FIELDS for field in effective_fields),
+            )
             summaries = [
                 _activity_list_summary(activity, effective_fields)
                 for activity in activities
@@ -1439,12 +1399,14 @@ class XertToolService:
                 raise ValueError("save_full must be a boolean")
             if not isinstance(save_session, bool):
                 raise ValueError("save_session must be a boolean")
+            view = "session" if save_session else "full" if save_full else "summary"
+            activity = service.get_activity(path, view=view)
             output: dict[str, Any] = {
                 "activity_path": path,
-                "activity": service.get_activity(path, view="summary"),
+                "activity": activity if view == "summary" else activity["activity_summary"],
             }
             if save_full:
-                full = service.get_activity(path, view="full")
+                full = {key: value for key, value in activity.items() if key != "session_data"}
                 file_path, byte_size = _write_private_activity_file(
                     path, full, kind="activity"
                 )
@@ -1454,9 +1416,8 @@ class XertToolService:
                     "full_activity_byte_size": byte_size,
                 })
             if save_session:
-                session = service.get_activity(path, view="session")
                 file_path, byte_size = _write_private_activity_file(
-                    path, session, kind="session"
+                    path, activity, kind="session"
                 )
                 output.update({
                     "session_file": file_path,
@@ -1678,7 +1639,7 @@ def _write_private_activity_file(
 def _validate_include_fields(
     value: Any,
     *,
-    allowed: tuple[str, ...] | None = _ACTIVITY_LIST_INCLUDE_FIELDS,
+    allowed: tuple[str, ...] | None = SUMMARY_FIELDS,
     parameter: str = "includeFields",
 ) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(field, str) for field in value):

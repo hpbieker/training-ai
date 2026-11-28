@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import date, datetime
 from pathlib import Path
 from unittest.mock import ANY, patch
 
@@ -10,6 +11,7 @@ from unittest.mock import ANY, patch
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT))
 
+import xert_activities as ACTIVITIES  # noqa: E402
 import xert_mcp as MCP  # noqa: E402
 import xert_service as SERVICE  # noqa: E402
 import xert_recovery as RECOVERY  # noqa: E402
@@ -19,14 +21,8 @@ class FakeXertService:
     def __init__(self) -> None:
         self.calls = []
 
-    def list_activities(self, start_date, end_date, *, view="summary"):
-        self.calls.append(("list_activities", start_date, end_date, view))
-        if view == "loads":
-            return {"activities": [{
-                "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
-                "elapsed_minutes": 60.5, "distance_km": 30.25,
-                "xss": {"total": 12, "low": 10, "high": 2, "peak": 0},
-            }]}
+    def list_activities(self, start_date, end_date, *, include_details=True):
+        self.calls.append(("list_activities", start_date, end_date, include_details))
         return [{
             "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
             "elapsed_minutes": 60.5, "distance_km": 30.25, "map_url": False,
@@ -34,7 +30,13 @@ class FakeXertService:
 
     def get_activity(self, path, *, view="summary"):
         self.calls.append(("get_activity", path, view))
-        return {"path": path, "summary": {"xss": 12}}
+        summary = {"path": path, "xss": {"total": 12}}
+        if view == "summary":
+            return summary
+        export = {"path": path, "summary": {"xss": 12}, "activity_summary": summary}
+        if view == "session":
+            export["session_data"] = [{"time": 0, "xds": 0.2}]
+        return export
 
     def list_workouts(self, *, name_keywords=None, view="summary"):
         self.calls.append(("list_workouts", name_keywords, view))
@@ -138,7 +140,6 @@ class XertMcpSchemaTests(unittest.TestCase):
         self.assertEqual(
             MCP.ALL_TOOL_NAMES,
             (
-                "list_activity_summaries",
                 "list_activities",
                 "get_activity",
                 "summarize_activities_xert_2",
@@ -237,23 +238,54 @@ class XertMcpDispatchTests(unittest.TestCase):
         })
         self.assertEqual(
             self.fake.calls[0],
-            ("list_activities", "2026-08-01", "2026-08-02", "summary"),
+            ("list_activities", "2026-08-01", "2026-08-02", False),
         )
 
-    def test_list_activities_rejects_fields_that_require_activity_details(self) -> None:
-        for field in (
-            "xss", "xep_watts", "focus", "specificity", "difficulty",
-            "difficulty_rating", "freshness", "signature",
+    def test_list_activities_reads_all_summary_fields_from_one_v2_page(self) -> None:
+        session = {
+            "avg_power": 218.5, "max_power": 390, "avg_heart_rate": 140.5,
+            "max_heart_rate": 167, "avg_cadence": 85.25, "max_cadence": 104,
+        }
+        xss = {"total": 51, "low": 48, "high": 3, "peak": 0}
+        fields = [
+            "duration_s", "signature", "xss", "xep_watts", "focus", "specificity",
+            "difficulty", "difficulty_rating", *session,
+        ]
+        start = datetime.fromisoformat("2026-08-01T10:00:00").astimezone().isoformat()
+        payload = {"activities": [
+            {"path": "ride", "name": "Ride", "start_date": start, "summary": {
+                "duration": 1800, "sig": {"ftp": 280, "ltp": 230, "pp": 900, "hie": 20.75},
+                "xss": xss, "xep": 237, "focus": "Endurance", "specificity": "Pure",
+                "difficulty": 60, "difficulty_rating": "Moderate", "session": session,
+            }},
+            {"path": "no-data", "name": "No data", "start_date": start, "summary": None},
+        ], "next_cursor": None}
+        service = SERVICE.XertService(SERVICE.XertCredentials)
+        with (
+            patch.object(service._auth, "bearer_token", return_value="token"),
+            patch.object(ACTIVITIES, "_request_json", return_value=payload) as request,
         ):
-            with self.subTest(field=field), self.assertRaisesRegex(
-                MCP.ToolFailure, "Unsupported includeFields value"
-            ):
-                self.tools.call_tool("list_activities", {
-                    "start_date": "2026-08-01", "end_date": "2026-08-02",
-                    "includeFields": [field],
-                })
-
-        self.assertEqual(self.fake.calls, [])
+            tools = MCP.XertToolService(lambda: service)
+            args = {"start_date": "2026-08-01", "end_date": "2026-08-02"}
+            result = tools.call_tool("list_activities", {**args, "includeFields": fields})
+            request.assert_called_once()
+            self.assertEqual(request.call_args.args, ("/oauth/v2/activity", "token"))
+            self.assertEqual(request.call_args.kwargs["params"]["include_details"], 1)
+            selected = tools.call_tool("list_activities", {
+                **args,
+                "filters": [{"field": "xss.peak", "op": "eq", "value": 0}],
+                "sort": [{"field": "signature.atc", "direction": "desc"}],
+            })
+        self.assertEqual(result["activities"][0], {
+            "path": "ride", "name": "Ride", "start_local": "2026-08-01T10:00:00",
+            "duration_s": 1800, "signature": {"ftp": 280, "ltp": 230, "pp": 900, "atc": 20750},
+            "xss": xss, "xep_watts": 237, "focus": "Endurance", "specificity": "Pure",
+            "difficulty": 60, "difficulty_rating": "Moderate", **session,
+        })
+        self.assertTrue(all(result["activities"][1][field] is None for field in fields))
+        self.assertEqual([row["path"] for row in selected["activities"]], ["ride"])
+        self.assertEqual(selected["activities"][0]["signature"]["atc"], 20750)
+        self.assertEqual(request.call_args.kwargs["params"]["include_details"], 1)
 
     def test_list_activities_cheap_include_field_uses_summary_read(self) -> None:
         activities = self.tools.call_tool("list_activities", {
@@ -261,7 +293,7 @@ class XertMcpDispatchTests(unittest.TestCase):
             "includeFields": ["map_url"],
         })
         self.assertFalse(activities["activities"][0]["map_url"])
-        self.assertEqual(self.fake.calls[0][-1], "summary")
+        self.assertFalse(self.fake.calls[0][-1])
 
     def test_list_activities_adds_old_default_fields_only_when_requested(self) -> None:
         activities = self.tools.call_tool("list_activities", {
@@ -272,6 +304,19 @@ class XertMcpDispatchTests(unittest.TestCase):
             "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
             "duration_s": 3630, "distance_m": 30250, "source": "xert_plugin",
         })
+        self.assertTrue(self.fake.calls[0][-1])
+
+    def test_list_activities_requests_duration_for_filters_and_sort(self) -> None:
+        for query in (
+            {"filters": [{"field": "duration_s", "op": "gte", "value": 3600}]},
+            {"sort": [{"field": "duration_s", "direction": "desc"}]},
+        ):
+            with self.subTest(query=query):
+                result = self.tools.call_tool("list_activities", {
+                    "start_date": "2026-08-01", "end_date": "2026-08-02", **query,
+                })
+                self.assertEqual(result["activities"][0]["duration_s"], 3630)
+                self.assertTrue(self.fake.calls[-1][-1])
 
     def test_list_activities_rejects_invalid_include_fields(self) -> None:
         for include_fields, message in (
@@ -329,7 +374,7 @@ class XertMcpDispatchTests(unittest.TestCase):
 
     def test_get_activity_always_returns_summary(self) -> None:
         result = self.tools.call_tool("get_activity", {"activity_path": "a1"})
-        self.assertEqual(result["activity"], {"path": "a1", "summary": {"xss": 12}})
+        self.assertEqual(result["activity"], {"path": "a1", "xss": {"total": 12}})
         self.assertEqual(self.fake.calls, [("get_activity", "a1", "summary")])
         self.assertNotIn("full_activity_file", result)
         self.assertNotIn("session_file", result)
@@ -345,6 +390,7 @@ class XertMcpDispatchTests(unittest.TestCase):
         try:
             self.assertEqual(result["full_activity_format"], "xert-activity-v1")
             self.assertEqual(result["session_format"], "xert-activity-session-v1")
+            self.assertEqual(result["activity"]["xss"]["total"], 12)
             for path, size_key in (
                 (full_path, "full_activity_byte_size"),
                 (session_path, "session_byte_size"),
@@ -355,14 +401,15 @@ class XertMcpDispatchTests(unittest.TestCase):
                 envelope = json.loads(path.read_text(encoding="utf-8"))
                 self.assertEqual(envelope["activity_path"], "folder/a1")
                 self.assertEqual(envelope["activity"]["path"], "folder/a1")
+                self.assertEqual(envelope["activity"]["summary"]["xss"], 12)
+                self.assertEqual(envelope["activity"]["activity_summary"], result["activity"])
                 self.assertNotIn("/", path.name)
+            self.assertNotIn("session_data", json.loads(full_path.read_text())["activity"])
+            self.assertEqual(json.loads(session_path.read_text())["activity"]["session_data"],
+                             [{"time": 0, "xds": 0.2}])
             self.assertEqual(
                 self.fake.calls,
-                [
-                    ("get_activity", "folder/a1", "summary"),
-                    ("get_activity", "folder/a1", "full"),
-                    ("get_activity", "folder/a1", "session"),
-                ],
+                [("get_activity", "folder/a1", "session")],
             )
         finally:
             full_path.unlink(missing_ok=True)
@@ -672,7 +719,7 @@ class XertServiceTests(unittest.TestCase):
                         workout_at="2026-10-18T17:00:00+02:00",
                         target_at="2026-10-19T08:00:00+02:00", low_xss=dose,
                     )
-                fetch_signature.assert_called_once()
+                fetch_signature.assert_called_once_with("/oauth/v2/training_info", "token")
                 fetch_model.assert_called_once()
                 baseline = result["no_training_projection"]
                 self.assertEqual(result["state_sync"], baseline["state_sync"])
@@ -736,13 +783,12 @@ class XertServiceTests(unittest.TestCase):
         credentials = SERVICE.XertCredentials(username="user", password="secret")
         service = self._service(credentials)
         with (
-            patch.object(service, "list_activity_summaries", return_value={
-                "period_complete": True, "activities": [{
-                    "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
-                    "duration_s": 3630, "distance_m": 30250, "source": "xert_plugin",
-                }],
-            }),
-            patch.object(SERVICE, "fetch_activity_web", return_value={"summary": {"xss": 4}}),
+            patch.object(SERVICE, "list_activities_v2", return_value=[{
+                "path": "a1", "name": "Ride", "start_local": "2026-08-01T10:00:00",
+                "elapsed_minutes": 60.5, "distance_km": 30.25, "source": "xert_plugin",
+            }]) as oauth,
+            patch.object(SERVICE, "fetch_activity_summary_v2", return_value={"xss": {"total": 4}}) as activity,
+            patch.object(SERVICE, "fetch_activity_web") as web_activity,
             patch.object(SERVICE, "fetch_workouts", return_value=[{"name": "XMB VT1", "path": "w1"}]),
             patch.object(SERVICE, "fetch_workout", return_value={"path": "w1"}),
         ):
@@ -752,25 +798,30 @@ class XertServiceTests(unittest.TestCase):
             self.assertEqual(listed[0]["elapsed_minutes"], 60.5)
             self.assertEqual(listed[0]["distance_km"], 30.25)
             self.assertEqual(listed[0]["start_local"], "2026-08-01T10:00:00")
+            oauth.assert_called_once_with(
+                date(2026, 8, 1), date(2026, 8, 1), "token", include_details=True,
+            )
             self.assertEqual(service.get_activity("a1")["xss"]["total"], 4)
+            activity.assert_called_once_with("a1", "token")
+            web_activity.assert_not_called()
             self.assertEqual(service.list_workouts(name_keywords="vt1", view="full")[0]["path"], "w1")
             self.assertEqual(service.get_workout("w1"), {"path": "w1"})
 
-    def test_activity_discovery_uses_dashboard_even_when_oauth_is_empty(self):
+    def test_activity_exports_combine_v2_summary_and_web_analytics(self):
         service = self._service(SERVICE.XertCredentials(username="user", password="secret"))
-        with patch.object(SERVICE, "fetch_activities", return_value=[]) as oauth, patch.object(
-            service, "list_activity_summaries", return_value={"period_complete": True, "activities": [
-                {"path": "garmin-sync", "start_local": "2026-10-18T09:47:52", "duration_s": 100,
-                 "distance_m": 2000, "xss": {"total": 0, "high": 0}}
-            ]}
+        summary = {"path": "a1", "xss": {"total": 7}}
+        with (
+            patch.object(SERVICE, "fetch_activity_summary_v2", return_value=summary) as api,
+            patch.object(SERVICE, "fetch_activity_web", return_value={
+                "path": "a1", "summary": {"xss": 7}, "session_data": [{"time": 0, "xds": 2}],
+            }) as web,
         ):
-            self.assertEqual(service.list_activities("2026-10-18", "2026-10-18")[0]["path"], "garmin-sync")
-            loads = service.list_activities("2026-10-18", "2026-10-18", view="loads")
-            self.assertEqual(loads["activities"][0]["xss"]["total"], 0)
-            oauth.assert_not_called()
-        with patch.object(service, "list_activity_summaries", return_value={"period_complete": False, "activities": []}):
-            with self.assertRaisesRegex(RuntimeError, "Incomplete"):
-                service.list_activities("2026-10-18", "2026-10-18")
+            exported = service.get_activity("a1", view="session")
+        api.assert_called_once_with("a1", "token")
+        web.assert_called_once_with(service._auth._opener, "a1", include_session_data=True)
+        self.assertEqual(exported["activity_summary"], summary)
+        self.assertEqual(exported["summary"], {"xss": 7})
+        self.assertEqual(exported["session_data"], [{"time": 0, "xds": 2}])
 
     def test_credentials_support_mcp_config_with_environment_override(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -882,6 +933,9 @@ class XertServiceTests(unittest.TestCase):
         training_info = {
             "signature": {"ftp": 300, "ltp": 265, "hie": 14.2, "pp": 800},
             "status": "Fresh",
+            "sport": "Cycling",
+            "target_xss": {"low": 70, "high": 0, "peak": 0, "total": 70},
+            "wotd": None,
         }
         recovery_model = {
             "at_state": {
@@ -896,12 +950,14 @@ class XertServiceTests(unittest.TestCase):
             "targetXSS": {"xlss": 50, "xhss": 0, "xpss": 0},
         }
         with (
-            patch.object(SERVICE, "_request_json", return_value=training_info),
+            patch.object(SERVICE, "_request_json", return_value=training_info) as fetch_training_info,
             patch.object(SERVICE, "fetch_recovery_model_with_opener", return_value=recovery_model),
         ):
             summary = service.get_training_state()["state"]
             full = service.get_training_state(view="full")["state"]
         self.assertEqual(summary["signature"]["tp_watts"], 300)
+        self.assertEqual(summary["signature"]["hie_kj"], 14.2)
+        self.assertEqual(summary["target_xss"], {"low": 50, "high": 0, "peak": 0})
         self.assertEqual(summary["training_load"], {"low": 70, "high": 8, "peak": 2})
         self.assertEqual(summary["recovery_hours"]["high"], 4)
         self.assertEqual(summary["fresh_at"], {
@@ -909,6 +965,8 @@ class XertServiceTests(unittest.TestCase):
             "all": "2026-08-17T13:00:00+02:00",
         })
         self.assertEqual(full["training_info"], training_info)
+        self.assertEqual([call.args for call in fetch_training_info.call_args_list],
+                         [("/oauth/v2/training_info", "token")] * 2)
 
         horizon = {"as_of": "2026-08-17T10:00:00+02:00", "fresh_at": "2026-08-18T09:00:00+02:00"}
         recovery_model["ir_params"] = {
