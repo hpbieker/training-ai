@@ -20,7 +20,7 @@ from route_context import parse_route_context_json
 
 
 ROUTE_CATALOG_SCHEMA = "training-ai-route-catalog-v1"
-RAW_ROUTE_SCHEMA = "training-ai-raw-route-v1"
+RAW_ROUTE_SCHEMA = "training-ai-raw-route-v2"
 CLEANED_ROUTE_SCHEMA = "training-ai-cleaned-route-v1"
 SCORED_ROUTE_SCHEMA = "training-ai-scored-route-v1"
 GPS_CLEANING_MODEL_VERSION = "gps-clean-v2-spike-jump-filter-with-group-samples"

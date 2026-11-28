@@ -3164,16 +3164,16 @@ class SourceRefreshPolicyTests(unittest.TestCase):
 
 
 class SurfaceClassificationTests(unittest.TestCase):
-    def test_checkpoint_alone_does_not_prove_gravel_surface(self):
-        result = surface_classification(
-            {
-                "name": "Dokka",
-                "description": "På piggdekk pga fortsatt litt snø og is på veiene.",
-                "gear": {"id": "b11246236", "name": "Trek Checkpoint"},
-            }
-        )
-        self.assertEqual(result["surface"], "unknown")
-        self.assertEqual(result["bike_type"], "gravel")
+    def test_gear_alone_does_not_determine_surface(self):
+        for gear in (
+            {"id": "b10577453", "name": "Trek Madone 9"},
+            {"id": "b11246236", "name": "Trek Checkpoint"},
+        ):
+            with self.subTest(gear=gear):
+                result = surface_classification({"name": "Dokka", "gear": gear})
+                self.assertEqual(result["surface"], "unknown")
+                self.assertEqual(result["gear_id"], gear["id"])
+                self.assertEqual(result["bike"], gear["name"])
 
     def test_explicit_gravel_text_is_surface_evidence(self):
         result = surface_classification(

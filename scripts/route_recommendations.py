@@ -36,7 +36,7 @@ WORKOUT_ROUTE_NAME_MARKERS = {
 DEFAULT_ROUTE_INDEX = Path("outputs/route-index.json")
 DEFAULT_ROUTE_ANALYSIS_CACHE = Path("outputs/route-analysis-cache.json")
 DEFAULT_ROUTE_DATA_QUALITY = Path("config/route-data-quality.json")
-ROUTE_INDEX_SCHEMA = "training-ai-route-index-v14"
+ROUTE_INDEX_SCHEMA = "training-ai-route-index-v15"
 ROUTE_ANALYSIS_CACHE_SCHEMA = "training-ai-route-analysis-cache-v1"
 OSM_CONFLICT_MODEL_VERSION = "osm-conflicts-v3-clean-nonservice-right-hand"
 OSM_ROUTE_BBOX_MAX_AREA_DEG2 = 0.12
@@ -82,22 +82,6 @@ PRIORITY_YIELD_HIGHWAYS = {
     "residential",
     "living_street",
     "road",
-}
-GEAR_SURFACE_BY_ID = {
-    "b10577453": {
-        "surface": "road",
-        "label": "paved road",
-        "confidence": "gear_id",
-        "bike_type": "road",
-        "bike": "Trek Madone 9",
-    },
-    "b11246236": {
-        "surface": "unknown",
-        "label": "unknown surface",
-        "confidence": "bike_type_only",
-        "bike_type": "gravel",
-        "bike": "Trek Checkpoint",
-    },
 }
 
 
@@ -669,75 +653,29 @@ def matched_xert_xss(route: dict[str, Any], xert_loads: list[dict[str, Any]]) ->
 
 def surface_classification(metadata: dict[str, Any]) -> dict[str, Any]:
     gear = metadata.get("gear")
-    gear_id = str((gear or {}).get("id") or "") if isinstance(gear, dict) else ""
-    gear_name = str((gear or {}).get("name") or "") if isinstance(gear, dict) else ""
+    gear = gear if isinstance(gear, dict) else {}
+    gear_id = str(gear.get("id") or "") or None
+    gear_name = str(gear.get("name") or "") or None
     surface_text = " ".join(
         str(metadata.get(key) or "") for key in ("name", "description", "comments")
     ).casefold()
     if re.search(r"\b(grus|gravel)\b", surface_text):
-        return {
-            "surface": "gravel",
-            "label": "gravel",
-            "confidence": "activity_text",
-            "bike_type": (GEAR_SURFACE_BY_ID.get(gear_id) or {}).get("bike_type"),
-            "gear_id": gear_id or None,
-            "gear_name": gear_name or None,
-            "bike": gear_name or (GEAR_SURFACE_BY_ID.get(gear_id) or {}).get("bike"),
-            "warning": None,
-        }
-    if re.search(r"\b(asfalt|landevei)\b", surface_text):
-        return {
-            "surface": "road",
-            "label": "paved road",
-            "confidence": "activity_text",
-            "bike_type": (GEAR_SURFACE_BY_ID.get(gear_id) or {}).get("bike_type"),
-            "gear_id": gear_id or None,
-            "gear_name": gear_name or None,
-            "bike": gear_name or (GEAR_SURFACE_BY_ID.get(gear_id) or {}).get("bike"),
-            "warning": None,
-        }
-    if gear_id in GEAR_SURFACE_BY_ID:
-        known = GEAR_SURFACE_BY_ID[gear_id]
-        return {
-            **known,
-            "gear_id": gear_id,
-            "gear_name": gear_name or known["bike"],
-            "warning": (
-                "Trek Checkpoint identifies the bike type, not the ridden surface; "
-                "confirm road versus gravel from the activity or map."
-                if known["surface"] == "unknown"
-                else None
-            ),
-        }
-    if gear_id or gear_name:
-        gear_description = ", ".join(
-            part
-            for part in (
-                f"id={gear_id}" if gear_id else None,
-                f"name={gear_name}" if gear_name else None,
-            )
-            if part
-        )
-        return {
-            "surface": "unknown",
-            "label": "unknown surface",
-            "confidence": "unknown_gear",
-            "gear_id": gear_id or None,
-            "gear_name": gear_name or None,
-            "bike": gear_name or None,
-            "warning": (
-                f"The reference activity lists unrecognized gear ({gear_description}). "
-                "Confirm whether the route is paved or gravel."
-            ),
-        }
+        surface, label = "gravel", "gravel"
+    elif re.search(r"\b(asfalt|landevei)\b", surface_text):
+        surface, label = "road", "paved road"
+    else:
+        surface, label = "unknown", "unknown surface"
     return {
-        "surface": "unknown",
-        "label": "unknown surface",
-        "confidence": "missing_gear",
-        "gear_id": None,
-        "gear_name": None,
-        "bike": None,
-        "warning": "The reference activity lists no bike, so its metadata cannot confirm the surface.",
+        "surface": surface,
+        "label": label,
+        "confidence": "unknown" if surface == "unknown" else "activity_text",
+        "gear_id": gear_id,
+        "gear_name": gear_name,
+        "bike": gear_name,
+        "warning": (
+            "The activity metadata cannot confirm whether the route is paved or gravel."
+            if surface == "unknown" else None
+        ),
     }
 
 
