@@ -257,6 +257,7 @@ assign costfactor
   add no_forest_penalty
   add no_river_penalty
   add noise_penalty
+  add switch isunpaved 0.5 0
 
 
   switch or highway=motorway highway=motorway_link    switch allow_motorways 1.5 10000

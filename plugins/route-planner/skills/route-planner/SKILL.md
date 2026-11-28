@@ -7,7 +7,8 @@ description: Plan, edit, inspect and export cycling routes, verify roads and tra
 
 ## Plan and verify
 
-- Use `create_route` to create a saved route from verified coordinates in travel order.
+- Use `create_route` to calculate the first route from verified coordinates in
+  travel order, using only the user's stops and routing constraints.
   Retain its `route_id` for later reads and edits. Preserve explicit
   stops and choose guide points on the through route for areas the user wants to
   pass. For a directional loop, place verified guides on each flank between the
@@ -21,10 +22,14 @@ description: Plan, edit, inspect and export cycling routes, verify roads and tra
   For a requested cycleway or other cycling-only link, use a point verified
   against mapped cycling geometry. If a guide misses the route, find another
   point in the same corridor.
-- Use `inspect_route` to check requested corridors, direction and unintended
-  detours before reporting the result. Confirm road identity from mapped roads
-  and junctions. Use `locate_on_route` to compare kilometre markers, offsets and
-  bearings for separate passages near a point, including suspected retracing.
+- Use `inspect_route` to check requested corridors, direction, known user
+  preferences, and unintended detours before reporting the result. Add your own
+  guide only to address a specific issue found in the first route. Check that
+  the change addresses the issue and inspect both sides of the guide for
+  unintended detours. Move or remove your guide if it creates one. Confirm
+  road identity from mapped roads and junctions. Use `locate_on_route` to
+  compare kilometre markers, offsets and bearings for separate passages near
+  a point, including suspected retracing.
   Report any required corridor or direction you could not verify.
 
 ## Edit and compare
