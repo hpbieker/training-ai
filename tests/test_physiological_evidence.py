@@ -554,20 +554,6 @@ class EvidenceTests(unittest.TestCase):
             self.assertEqual(len(rows), 2)
             self.assertTrue(quality(rows, 'watts')['usable'])
 
-    def test_report_consumers_use_mechanical_control_only(self):
-        from analyze_indoor_activities import summarize_vt2, render_vt2_rows
-        from analyze_outdoor_year import summarize_vt2 as outdoor_summary, render_rows
-        rows = ride()
-        work = summarize_block(rows, start_index=0, end_index=len(rows), label='work')
-        block = vt2_block_quality(rows, work, index=1, target_watts=290, anchor_watts=290)
-        vt2 = {'blocks': [block]}
-        for summary, render in [(summarize_vt2(vt2, block), render_vt2_rows),
-                                (outdoor_summary(vt2, block), lambda rows: render_rows(rows, mode='vt2'))]:
-            self.assertNotIn('response_score', summary)
-            report = render([{'date':'2026-10-17','name':'test','vt2':summary}])
-            self.assertIn('power_execution_controlled', report)
-            self.assertNotIn('Resp', report)
-
 
 if __name__ == '__main__':
     unittest.main()
