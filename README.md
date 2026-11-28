@@ -1,8 +1,9 @@
 # Training AI
 
 Tools for analysing cycling workouts, managing training plans, and recommending
-daily sessions and routes. Local Codex plugins connect the workflows to
-training, health, and weather data.
+daily sessions and routes. The project packages MCP servers and skills as
+plugins for Codex. The servers provide access to training,
+health, and weather data, and the skills guide analysis and planning.
 
 ## Getting started
 
