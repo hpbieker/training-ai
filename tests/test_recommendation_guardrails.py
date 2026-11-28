@@ -3179,7 +3179,7 @@ class SurfaceClassificationTests(unittest.TestCase):
         result = surface_classification(
             {
                 "name": "Forest loop",
-                "description": "Fin grus hele veien",
+                "description": "Gravel the whole way",
                 "gear": {"id": "bike-2", "name": "Gravel bike"},
             }
         )

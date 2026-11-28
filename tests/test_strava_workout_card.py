@@ -11,7 +11,7 @@ class StravaWorkoutCardTests(unittest.TestCase):
         activity = {"interval_summary": ["1x 4m14s 242w", "6x 2m57s 354w"]}
         finish = {"duration_s": 4495, "watts_avg": 214}
 
-        for name in ("Innendørssykling", "VO2Max 6x3 min + VT1 75 min"):
+        for name in ("Indoor cycling", "VO2Max 6x3 min + VT1 75 min"):
             with self.subTest(name=name):
                 story = workout_story(
                     dict(activity, name=name), [], workout_role="vo2max", steady_finish=finish
@@ -20,7 +20,7 @@ class StravaWorkoutCardTests(unittest.TestCase):
                 self.assertEqual(story.subtitle, "6 × 2:57 at 354 W, followed by 75 min of VT1 at 214 W.")
                 self.assertEqual(story.repetitions, 6)
 
-        unknown_role = workout_story(dict(activity, name="Innendørssykling"), [], steady_finish=finish)
+        unknown_role = workout_story(dict(activity, name="Indoor cycling"), [], steady_finish=finish)
         self.assertEqual(unknown_role.headline, "INTERVALS")
         self.assertEqual(unknown_role.subtitle, story.subtitle)
 

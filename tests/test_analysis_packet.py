@@ -33,7 +33,7 @@ class PacketTest(unittest.TestCase):
     def setUp(self):
         self.packet=build_packet({'activity':{'moving_min':302.2,'duration_min':384.5},'analysis_overview':{'variable_work_comparison':{'selected_window_count':2,'eligible_pair_count':4}}})
     def answer(self,display='302',fact='ride.moving',scope='whole_ride',unit='min'):
-        return {'statements':[{'text':f'Bevegelsestiden var {display} minutter.','claims':[{'fact_id':fact,'scope':scope,'unit':unit,'display':display}]}],'follow_up_question':None}
+        return {'statements':[{'text':f'Moving time was {display} minutes.','claims':[{'fact_id':fact,'scope':scope,'unit':unit,'display':display}]}],'follow_up_question':None}
     def test_time_overview_does_not_invent_moving_from_gaps(self):
         packet=build_packet({'activity':{'moving_min':100,'duration_min':180},
             'analysis_overview':{'recording_interruptions':[{'start_s':4000,'end_s':5800,'unrecorded_seconds':1800}]}})
@@ -90,14 +90,14 @@ class PacketTest(unittest.TestCase):
         self.assertNotIn('anchor.vt1',self.packet['facts'])
         self.assertFalse(validate(self.packet,self.answer('215','anchor.vt1'))['passed'])
     def test_uncited_and_absent_display(self):
-        a=self.answer();a['statements'][0]['text']+=' Puls var 140.'
+        a=self.answer();a['statements'][0]['text']+=' Heart rate was 140.'
         self.assertFalse(validate(self.packet,a)['passed'])
-        a=self.answer();a['statements'][0]['text']='Lang tur.'
+        a=self.answer();a['statements'][0]['text']='Long ride.'
         self.assertFalse(validate(self.packet,a)['passed'])
     def test_null_fields_omitted(self):
         self.assertNotIn('ride.work',self.packet['facts'])
     def test_attached_units_require_citation(self):
-        for text in ('Turen var 202min.', 'Effekten var 999W.'):
+        for text in ('The ride lasted 202min.', 'Power was 999W.'):
             self.assertFalse(validate(self.packet,{'statements':[{'text':text,'claims':[]}]})['passed'])
     def test_malformed_fact_id_fails_closed(self):
         self.assertFalse(validate(self.packet,self.answer(fact=[]))['passed'])

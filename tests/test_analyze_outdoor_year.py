@@ -18,9 +18,9 @@ class OutdoorActivityIntentTests(unittest.TestCase):
         for name in (
             "Hilltop",
             "Hilltop+River Valley",
-            "Klatring til utsiktspunktet",
+            "Climb to the lookout",
             "Climb day",
-            "Bakkeøkt",
+            "Hill session",
         ):
             with self.subTest(name=name):
                 self.assertFalse(activity_name_implies_threshold(name))

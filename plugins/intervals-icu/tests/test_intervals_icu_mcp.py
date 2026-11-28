@@ -1448,7 +1448,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
 
         event_calls = []
         expected = {
-            "id": 10, "category": "SICK", "name": "Syk",
+            "id": 10, "category": "SICK", "name": "Illness",
             "start_date_local": "2026-08-17T00:00:00",
             "end_date_local": "2026-08-18T00:00:00",
         }
@@ -1457,7 +1457,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
             event_lister=lambda **kwargs: event_calls.append(kwargs) or event_reads.pop(0),
             event_creator=lambda **kwargs: event_calls.append(kwargs) or expected,
         ).call_tool("create_event", {
-            "athlete": "i-other", "category": "SICK", "name": "Syk",
+            "athlete": "i-other", "category": "SICK", "name": "Illness",
             "start_date": "2026-08-17", "end_date": "2026-08-17",
         })
         self.assertTrue(all(call["athlete_id"] == "i-other" for call in event_calls))
@@ -1466,7 +1466,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
     def test_create_sick_event_uses_exclusive_end_and_verifies(self):
         writes = []
         expected = {
-            "id": 10, "category": "SICK", "name": "Syk",
+            "id": 10, "category": "SICK", "name": "Illness",
             "start_date_local": "2026-08-17T00:00:00",
             "end_date_local": "2026-08-19T00:00:00",
         }
@@ -1477,7 +1477,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         result = service.call_tool(
             "create_event",
-            {"category": "SICK", "name": "Syk", "start_date": "2026-08-17", "end_date": "2026-08-18"},
+            {"category": "SICK", "name": "Illness", "start_date": "2026-08-17", "end_date": "2026-08-18"},
         )
         self.assertEqual(writes[0]["event"]["end_date_local"], "2026-08-19T00:00:00")
         self.assertEqual(result["stored_end_exclusive"], "2026-08-19")
@@ -1485,7 +1485,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
 
     def test_create_event_returns_unchanged_for_exact_existing_event(self):
         existing = {
-            "id": 10, "category": "SICK", "name": "Syk",
+            "id": 10, "category": "SICK", "name": "Illness",
             "start_date_local": "2026-08-17T00:00:00",
             "end_date_local": "2026-08-18T00:00:00",
         }
@@ -1496,7 +1496,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         result = service.call_tool(
             "create_event",
-            {"category": "SICK", "name": "Syk", "start_date": "2026-08-17", "end_date": "2026-08-17"},
+            {"category": "SICK", "name": "Illness", "start_date": "2026-08-17", "end_date": "2026-08-17"},
         )
         self.assertEqual(result["action"], "unchanged")
         self.assertEqual(writes, [])
@@ -1504,7 +1504,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
     def test_update_event_replaces_all_day_state_and_verifies_by_id(self):
         writes = []
         expected = {
-            "id": 10, "category": "SICK", "name": "Syk",
+            "id": 10, "category": "SICK", "name": "Illness",
             "start_date_local": "2026-08-17T00:00:00",
             "end_date_local": "2026-08-20T00:00:00",
         }
@@ -1514,7 +1514,7 @@ class IntervalsIcuMcpTests(unittest.TestCase):
         )
         result = service.call_tool(
             "update_event",
-            {"event_id": 10, "category": "SICK", "name": "Syk", "start_date": "2026-08-17", "end_date": "2026-08-19"},
+            {"event_id": 10, "category": "SICK", "name": "Illness", "start_date": "2026-08-17", "end_date": "2026-08-19"},
         )
         self.assertEqual(writes[0]["updates"]["end_date_local"], "2026-08-20T00:00:00")
         self.assertEqual(result["verified_event"]["id"], 10)

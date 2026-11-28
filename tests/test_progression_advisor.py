@@ -206,7 +206,7 @@ class ProgressionReviewTests(unittest.TestCase):
 
     def test_unequal_vt2_and_partial_vo2_laps(self):
         for name, family, power, laps, indices, total in [
-            ("Innendørssykling", "vt2", 300, [(1375, 299), (1376, 299), (899, 299)],
+            ("Indoor cycling", "vt2", 300, [(1375, 299), (1376, 299), (899, 299)],
              [0, 1, 2], 3650),
             ("VO2Max 7x3 min", "vo2max", 350,
              [(216, 217), (179, 349), (179, 348), (178, 349), (179, 350),
