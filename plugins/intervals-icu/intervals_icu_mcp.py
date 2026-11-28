@@ -74,6 +74,10 @@ _ACTIVITY_LIST_INCLUDE_FIELDS = (
     "icu_training_load", "icu_intensity", "icu_average_watts",
     "icu_weighted_avg_watts", "average_heartrate", "max_heartrate",
     "average_cadence", "average_temp", "decoupling", "icu_rpe", "feel",
+    "average_stance_time", "average_stance_time_percent",
+    "average_stance_time_balance", "average_vertical_oscillation",
+    "average_vertical_ratio", "average_vertical_speed", "average_step_length",
+    "average_leg_spring_stiffness", "average_impact_loading_rate",
     "interval_summary", "stream_types",
 )
 _ACTIVITY_LIST_FILTER_FIELDS = (

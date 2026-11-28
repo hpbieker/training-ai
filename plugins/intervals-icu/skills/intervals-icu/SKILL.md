@@ -57,6 +57,11 @@ Choose the narrowest workflow that answers the request:
   search with the same compact rows and `includeFields` choices. With filters
   or sorting, it requests at least 100 source results, then applies `limit`
   locally. Check `source_limit` for the requested search window.
+  Running activities can also request the newer source averages
+  `average_stance_time`, `average_stance_time_percent`,
+  `average_stance_time_balance`, `average_vertical_oscillation`,
+  `average_vertical_ratio`, `average_vertical_speed`, `average_step_length`,
+  `average_leg_spring_stiffness`, and `average_impact_loading_rate`.
 - Use filters and sorting where supported. Inspect `source_count` and
   `matched_count`; searches are `source_limited`. See
   [athlete selection and list queries](references/field-semantics.md#athlete-selection-and-list-queries)
