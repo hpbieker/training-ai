@@ -2,7 +2,7 @@
   "cases": [
     {
       "id": "high_hrv",
-      "question": "Vurder Garmin-signalenes betydning for dagens planlagte intervalløkt. Bør HRV-statusen endre planen?",
+      "question": "Assess what the Garmin signals mean for today’s planned interval workout. Should the HRV status change the plan?",
       "data": {
         "synthetic": true,
         "now": "2026-10-17T08:00:00+02:00",
@@ -51,7 +51,7 @@
     },
     {
       "id": "missing_sync",
-      "question": "Garmin viser null søvn og høyere hvilepuls. Hva sier dette om dagens planlagte trening, og hva bør jeg gjøre nå?",
+      "question": "Garmin shows zero sleep and a higher resting heart rate. What does this say about today’s planned training, and what should I do now?",
       "data": {
         "synthetic": true,
         "now": "2026-10-17T07:15:00+02:00",
@@ -87,7 +87,7 @@
     },
     {
       "id": "future_day",
-      "question": "Vurder Garmin-grunnlaget for intervaller i morgen klokken 08. Beregn Recovery Time ved øktstart og forklar hvilke andre signaler vi kan bruke da.",
+      "question": "Assess the Garmin data for tomorrow’s 08:00 intervals. Calculate Recovery Time at workout start and explain which other signals we can use then.",
       "data": {
         "synthetic": true,
         "now": "2026-10-17T20:00:00+02:00",
@@ -132,7 +132,7 @@
     },
     {
       "id": "activity_models",
-      "question": "Analyser hva Garmin-tallene sier om økten, treningsutbyttet og behovet for restitusjon. Betyr 5,0 og Stamina 3 at jeg er overtrent eller tom for glykogen?",
+      "question": "Analyze what the Garmin metrics say about the workout, training effect, and need for recovery. Do 5.0 and Stamina 3 mean I am overtrained or out of glycogen?",
       "data": {
         "synthetic": true,
         "activity": {

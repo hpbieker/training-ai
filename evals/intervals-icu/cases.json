@@ -10,10 +10,10 @@
         "stress": null,
         "sleepQuality": 2
       },
-      "subjective_report": "Jeg føler meg normal.",
+      "subjective_report": "I feel normal.",
       "planned_session": "60 minutes easy cycling"
     },
-    "question": "Kan du oppsummere hva disse wellness-dataene sier om dagsformen og om den rolige økten virker rimelig?",
+    "question": "Summarize what these wellness data say about today’s condition and whether the easy session seems reasonable.",
     "checks": [
       "Null soreness/stress remain unrecorded, not zero or adverse findings",
       "Fatigue 0 means recorded none; sleepQuality 2 is subjective good",
@@ -43,7 +43,7 @@
       },
       "ignore_parts_contract": "The scope and encoding of this source payload have not been resolved."
     },
-    "question": "Oppsummer hva vi kan bruke i øktanalysen. Er 8 prosent pulsdrift et tegn på dårlig aerob kontroll, og skal timen og distansen med i uketotalene som skal matche Intervals.icu? Betyr flaggene at vi må forkaste hele økten?",
+    "question": "Summarize what we can use in the activity analysis. Does 8 percent heart-rate drift indicate poor aerobic control, should the hour and distance count toward weekly totals that match Intervals.icu, and do the flags mean we must discard the entire activity?",
     "checks": [
       "Do not use ignored HR or HR drift for physiological conclusion",
       "Exclude time/distance from source-matching totals, retain elapsed stream for inspection",
@@ -83,7 +83,7 @@
       ],
       "requested_boundary_semantics": "Use samples from elapsed time 5 seconds up to but excluding the sample at elapsed time 20 seconds."
     },
-    "question": "Vis en forhåndsvisning av endringen av WORK-intervallet id 7 til det oppgitte tidsrommet. Vis nøyaktige argumenter til verktøyet. Ikke lagre endringen. Hva skjer med pausen?",
+    "question": "Preview moving WORK interval 7 to the specified time range. Show the exact tool arguments, but do not save the change. What happens to the recovery interval?",
     "checks": [
       "start_index 2 and end_index 5, not seconds 5 and 20",
       "existing ID7 revision supplied dry_run true merge preserved",
@@ -118,7 +118,7 @@
         ]
       }
     },
-    "question": "Er dette alle sykkeløktene mine i perioden? Jeg vil ha en komplett liste og uketotaler. Oppgi neste verktøykall og hva som fortsatt er ukjent.",
+    "question": "Are these all my cycling activities in the period? I want a complete list and weekly totals. Give the next tool call and state what remains unknown.",
     "checks": [
       "Search count not full period coverage",
       "Propose list_activities with exact inclusive date-only range and no truncating limit",

@@ -1,9 +1,9 @@
 {
-  "prompt": "Planlegg en sykkelrunde med klokken på Hurum. Følg fv. 281 fra Storsand via Filtvet til Tofte, og returner via Klokkarstua.",
+  "prompt": "Plan a clockwise cycling loop on Hurum. Follow highway 281 from Storsand via Filtvet to Tofte, then return via Klokkarstua.",
   "checkpoints": [
     ["Storsand", [10.594267, 59.652422]],
-    ["Fv. 281 sør for Storsand", [10.605, 59.631716]],
-    ["Fv. 281 nord for Filtvet", [10.611976, 59.605504]],
+    ["Highway 281 south of Storsand", [10.605, 59.631716]],
+    ["Highway 281 north of Filtvet", [10.611976, 59.605504]],
     ["Filtvet", [10.613999, 59.572826]],
     ["Østre Strandvei", [10.559027, 59.54189]],
     ["Klokkarstua", [10.46029, 59.613517]]

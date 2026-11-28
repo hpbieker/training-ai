@@ -8,7 +8,7 @@
       "soreness": null,
       "goal": "vt2",
       "planned_at": "2026-10-18T09:00:00+02:00",
-      "context": "Nattens søvn, HRV og gyldig hvilepuls mangler. Body Battery er foreldet og ekskludert. Stølhet og dagens kroppsfølelse er ukjent.",
+      "context": "Overnight sleep, HRV, and a valid resting heart rate are missing. Body Battery is stale and excluded. Soreness and today’s subjective condition are unknown.",
       "required": [
         "Continue plan-supported VT2 provisionally without claiming confirmed recovery.",
         "Keep 260 Low XSS unless a concrete observed reason supports an override; missing data alone is not that reason.",
@@ -34,7 +34,7 @@
       "soreness": 0,
       "goal": "vt2",
       "planned_at": "2026-10-18T09:00:00+02:00",
-      "context": "Dagens komplette, synkroniserte data: søvnscore 90, HRV 70 ms innenfor personlig område 60-80, hvilepuls 42 lik normalen. Kroppsfølelse normal og stølhet 0.",
+      "context": "Today’s complete, synchronized data: sleep score 90, HRV 70 ms within the personal range of 60–80, resting heart rate 42, matching baseline. Subjective condition is normal and soreness is 0.",
       "required": [
         "Use the established 3x28 at295 anchor rather than progressing to3x30.",
         "Explain quality and filler separately; use the exact canonical order and total3:27:17.",
@@ -60,7 +60,7 @@
       "soreness": 3,
       "goal": "vt2",
       "planned_at": "2026-10-18T09:00:00+02:00",
-      "context": "Brukeren oppgir tydelig stølhet, soreness=3, og uvanlig tunge bein ved lett tråkk i dag. Søvn og HRV er normale. Dette er en faktisk respons, ikke et estimat fra gårsdagens XSS.",
+      "context": "The athlete reports clear soreness (soreness=3) and unusually heavy legs while pedaling easily today. Sleep and HRV are normal. This is an actual response, not an estimate from yesterday’s XSS.",
       "required": [
         "Downgrade hard work based on current observed soreness/heavy legs and leave VT2 queued.",
         "Distinguish response-based modification from subtracting historical load again.",
@@ -78,7 +78,7 @@
       "soreness": 0,
       "goal": "vt2",
       "planned_at": "2026-10-18T12:00:00+02:00",
-      "context": "Dagens eneste faste avtale er 10:15-11:45. Med15min før/etter er første treningsvindu09:00-10:00, neste12:00-21:00. Den komplette økten er beregnet for12:00 og får plass der. Neste dags økt er09:15; kapasiteten nedenfor er en eksplisitt syntetisk testverdi for12:00→09:15.",
+      "context": "Today’s only fixed appointment is 10:15–11:45. With 15 minutes of setup/cleanup on either side, the first training window is 09:00–10:00 and the next is 12:00–21:00. The complete workout is calculated for 12:00 and fits there. Tomorrow’s workout is at 09:15; the capacity below is an explicitly synthetic test value for 12:00→09:15.",
       "required": [
         "Place the complete207:17 workout at12:00, setup11:45, cleanup complete15:42:17.",
         "Do not shorten or split quality to fit the first60-minute window.",
@@ -95,7 +95,7 @@
       "soreness": 0,
       "goal": "vt1",
       "planned_at": "2026-10-18T14:00:00+02:00",
-      "context": "Dagens kvalitetsøkt er allerede fullført og inngår i Xerts tilstand:154.3LowXSS. Xert oppgir deretter260LowXSS som GJENVÆRENDE dose for14:00. Det finnes et ubrutt vindu14:00-21:00, med klargjøring13:45. Resten er en separat VT1-økt med egen oppvarming/nedkjøring. Neste dag rolig09:15; kapasitet er en syntetisk testverdi for dette intervallet. Dagens rapporterte respons er normal.",
+      "context": "Today’s quality workout is already complete and included in Xert’s state: 154.3 Low XSS. Xert then reports 260 Low XSS as the REMAINING dose for 14:00. An uninterrupted window is available from 14:00–21:00, with setup at 13:45. The remainder is a separate VT1 workout with its own warm-up and cool-down. Tomorrow is easy at 09:15; capacity is a synthetic test value for this interval. Today’s reported response is normal.",
       "required": [
         "Use260Low as remaining, not105.7; do not schedule quality again.",
         "Use the VT1 timeline4:05:29 including its own warmup/cooldown once.",
@@ -138,7 +138,7 @@
       "soreness": null,
       "goal": "vt1",
       "planned_at": "2026-10-22T11:10:00+02:00",
-      "context": "Aerob mellomdag etter kontrollert VT2. Kroppsfølelse og stølhet er ikke rapportert. Tre faktiske netter:71,71,61ms. Beregnet219LowXSS er XATA-utgangspunkt, ikke etablert fysiologisk behov. Hele økten får plass11:10–16:30 med15min før/etter; lunsj kan flyttes med45min varighet. Vurder dosen og begrunn eventuelle endringer.",
+      "context": "Easy aerobic day after controlled VT2 work. Subjective condition and soreness have not been reported. Three actual nights of HRV: 71, 71, and 61 ms. The calculated 219 Low XSS is an XATA starting point, not an established physiological need. The complete workout fits from 11:10–16:30 with 15 minutes of setup/cleanup; lunch can move and lasts 45 minutes. Assess the dose and explain any changes.",
       "required": [
         "Keep the aerobic plan role; acknowledge the HRV caution and unknown body feel.",
         "Distinguish last night from the available three-night mean or explicitly missing history.",
@@ -169,7 +169,7 @@
       "soreness": null,
       "goal": "vt1",
       "planned_at": "2026-10-22T11:10:00+02:00",
-      "context": "Aerob mellomdag etter kontrollert VT2. Kroppsfølelse og stølhet er ikke rapportert. Kun nattens HRV er tilgjengelig; historikkforsøket ga ingen data. Beregnet219LowXSS er XATA-utgangspunkt, ikke etablert fysiologisk behov. Hele økten får plass11:10–16:30 med15min før/etter; lunsj kan flyttes med45min varighet. Vurder dosen og begrunn eventuelle endringer.",
+      "context": "Easy aerobic day after controlled VT2 work. Subjective condition and soreness have not been reported. Only last night’s HRV is available; the history lookup returned no data. The calculated 219 Low XSS is an XATA starting point, not an established physiological need. The complete workout fits from 11:10–16:30 with 15 minutes of setup/cleanup; lunch can move and lasts 45 minutes. Assess the dose and explain any changes.",
       "required": [
         "Keep the aerobic plan role; acknowledge the HRV caution and unknown body feel.",
         "Distinguish last night from the available three-night mean or explicitly missing history.",

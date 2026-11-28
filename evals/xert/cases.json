@@ -23,7 +23,7 @@
       },
       "plan_role": "easy endurance; normal subjective condition"
     },
-    "question": "Jeg har allerede syklet i dag. Hvor mye Low XSS gjenstår ifølge dette rådet til ettermiddagsøkten? Forklar regnestykket og hvordan du ville finne varigheten for en konkret økt.",
+    "question": "I have already ridden today. According to this advice, how much Low XSS remains for the afternoon session? Explain the calculation and how you would determine the duration of a specific workout.",
     "checks": [
       "Use 80 remaining, not 20 or 140",
       "Use solver on full workout; request missing signature/structure rather than invent duration"
@@ -49,7 +49,7 @@
       "plan_role": "easy endurance today; quality tomorrow",
       "subjective_condition": "normal"
     },
-    "question": "Kapasiteten er 180 Low XSS, men rådet sier 75. Bør jeg fylle opp til 180 i dag for å få mest ut av treningen? Begrunn anbefalingen.",
+    "question": "Capacity is 180 Low XSS, but the advice says 75. Should I fill up to 180 today to get the most out of training? Explain your recommendation.",
     "checks": [
       "Capacity not target or proven tolerable dose",
       "Keep 75 as advice context, no automatic 180 prescription"
@@ -72,7 +72,7 @@
       "sleep": "normal duration and quality",
       "subjective_condition": "normal, no illness or unusual soreness"
     },
-    "question": "Xert er ikke fresh på Low. Må jeg droppe den rolige halvtimen? Vurder grunnlaget og eventuelle forbehold.",
+    "question": "Xert does not show Low as fresh. Do I need to skip the easy half-hour? Assess the evidence and any caveats.",
     "checks": [
       "No automatic ban from positive Low",
       "Combine context without guaranteeing readiness or declaring recovery complete"
@@ -104,7 +104,7 @@
       "target_at": "2026-10-19T08:00:00+02:00",
       "available_resources": "Only the supplied MCP definitions and skill; local Xert model module and current state are not available."
     },
-    "question": "Jeg vil beregne effekten av begge planlagte øktene på Training Load og signatur neste morgen, slik Xert Planner modellerer dem. Vis hvilke verktøykall du ville brukt, og hva du kan eller ikke kan beregne med tilgangen her.",
+    "question": "I want to calculate the effect of both planned workouts on Training Load and the signature the next morning, as modeled by Xert Planner. Show which tool calls you would use and what can or cannot be calculated with the available access.",
     "checks": [
       "No fictitious simulate_calendar_sequence MCP or unsupported flags",
       "No repeated independent live projections presented as accumulated state",
