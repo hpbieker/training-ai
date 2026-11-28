@@ -20,6 +20,7 @@ from analysis import ARTIFACTS_DIR, resolve_activity_ref
 PIPELINE_SCHEMA = "training-ai-activity-inspect-pipeline-v1"
 PIPELINE_VERSION = "v1"
 DEFAULT_OUTPUT_DIR = Path("outputs/activity-inspect")
+INSPECTION_MODULES = ("analysis.py", "outdoor_evidence.py", "physiological_evidence.py")
 ANALYSIS_OPTION_FIELDS = {
     "shape",
     "mode",
@@ -167,7 +168,7 @@ def inspect_with_cache(activity_ref: str, args: argparse.Namespace) -> dict[str,
         "shape": options["shape"],
         "mode": options["mode"],
         "inspect_args": inspect_args,
-        "activity_inspect_mtime_ns": script_mtime_ns(activity_inspect_script()),
+        "inspection_code_sha256": inspection_code_fingerprints(),
     }
     cache_key = stable_hash(cache_key_payload)
     cache_path = cache_output_path(
@@ -382,8 +383,12 @@ def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def script_mtime_ns(path: Path) -> int:
-    return path.stat().st_mtime_ns
+def inspection_code_fingerprints() -> dict[str, str]:
+    script = activity_inspect_script()
+    return {
+        name: hashlib.sha256(script.with_name(name).read_bytes()).hexdigest()
+        for name in (script.name, *INSPECTION_MODULES)
+    }
 
 
 def repo_root() -> Path:
