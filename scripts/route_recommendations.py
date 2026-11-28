@@ -2147,12 +2147,11 @@ def route_shape_average_distance_one_direction_m(
 
 
 def endpoint_place_names(route: dict[str, Any]) -> set[str]:
-    names = {"fjällbacka", "fjallbacka"}
     anchor_name = str(route.get("start_anchor_name") or "")
-    for token in re.split(r"[\s,/()]+", normalize_name(anchor_name)):
-        if len(token) >= 3:
-            names.add(token)
-    return names
+    return {
+        token for token in re.split(r"[\s,/()]+", normalize_name(anchor_name))
+        if len(token) >= 3
+    }
 
 
 def strip_endpoint_places_from_route_name(name: str, endpoint_places: set[str]) -> str:

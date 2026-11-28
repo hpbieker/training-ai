@@ -258,7 +258,7 @@ printf '200\nhttps://www.strava.com/athlete/training'
         )
         body = metadata.build_form_body(
             edit_html,
-            activity_name="Fjällbacka diverse",
+            activity_name="Café loop",
             tag=None,
             tag_supplied=False,
             current_tag=None,
@@ -268,7 +268,7 @@ printf '200\nhttps://www.strava.com/athlete/training'
             bike_id=None,
         )
         pairs = urllib.parse.parse_qs(body, keep_blank_values=True)
-        self.assertEqual(pairs["activity[name]"], ["Fjällbacka diverse"])
+        self.assertEqual(pairs["activity[name]"], ["Café loop"])
         self.assertEqual(pairs["activity[bike_id]"], ["15590716"])
 
 

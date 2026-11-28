@@ -41,7 +41,7 @@ class FakeXertService:
     def list_workouts(self, *, name_keywords=None, view="summary"):
         self.calls.append(("list_workouts", name_keywords, view))
         return [{
-            "path": "w1", "name": "XMB VT1", "duration_min": 120.0,
+            "path": "w1", "name": "VT1 endurance", "duration_min": 120.0,
             "work_watts": 210, "xss": {"total": 100.0, "low": 100.0, "high": 0, "peak": 0},
             "difficulty": 55.0,
         }]
@@ -343,7 +343,7 @@ class XertMcpDispatchTests(unittest.TestCase):
         result = self.tools.call_tool("list_workouts", {"name_keywords": "VT1"})
         self.assertEqual(result["includeFields"], [])
         self.assertEqual(result["workouts"], [{
-            "path": "w1", "name": "XMB VT1",
+            "path": "w1", "name": "VT1 endurance",
         }])
         self.assertEqual(self.fake.calls[0], ("list_workouts", "VT1", "summary"))
 
@@ -353,7 +353,7 @@ class XertMcpDispatchTests(unittest.TestCase):
         })
         self.assertEqual(result["includeFields"], ["work_watts", "xss"])
         self.assertEqual(result["workouts"][0], {
-            "path": "w1", "name": "XMB VT1",
+            "path": "w1", "name": "VT1 endurance",
             "work_watts": 210, "xss": {"total": 100.0, "low": 100.0, "high": 0, "peak": 0},
         })
 
@@ -794,7 +794,7 @@ class XertServiceTests(unittest.TestCase):
             }]) as oauth,
             patch.object(SERVICE, "fetch_activity_summary_v2", return_value={"xss": {"total": 4}}) as activity,
             patch.object(SERVICE, "fetch_activity_web") as web_activity,
-            patch.object(SERVICE, "fetch_workouts", return_value=[{"name": "XMB VT1", "path": "w1"}]),
+            patch.object(SERVICE, "fetch_workouts", return_value=[{"name": "VT1 endurance", "path": "w1"}]),
             patch.object(SERVICE, "fetch_workout", return_value={"path": "w1"}),
         ):
             listed = service.list_activities("2026-08-01", "2026-08-01")

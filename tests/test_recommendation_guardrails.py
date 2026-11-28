@@ -3166,11 +3166,11 @@ class SourceRefreshPolicyTests(unittest.TestCase):
 class SurfaceClassificationTests(unittest.TestCase):
     def test_gear_alone_does_not_determine_surface(self):
         for gear in (
-            {"id": "b10577453", "name": "Trek Madone 9"},
-            {"id": "b11246236", "name": "Trek Checkpoint"},
+            {"id": "bike-1", "name": "Road bike"},
+            {"id": "bike-2", "name": "Gravel bike"},
         ):
             with self.subTest(gear=gear):
-                result = surface_classification({"name": "Dokka", "gear": gear})
+                result = surface_classification({"name": "Riverside loop", "gear": gear})
                 self.assertEqual(result["surface"], "unknown")
                 self.assertEqual(result["gear_id"], gear["id"])
                 self.assertEqual(result["bike"], gear["name"])
@@ -3178,9 +3178,9 @@ class SurfaceClassificationTests(unittest.TestCase):
     def test_explicit_gravel_text_is_surface_evidence(self):
         result = surface_classification(
             {
-                "name": "Grusrunde",
+                "name": "Forest loop",
                 "description": "Fin grus hele veien",
-                "gear": {"id": "b11246236", "name": "Trek Checkpoint"},
+                "gear": {"id": "bike-2", "name": "Gravel bike"},
             }
         )
         self.assertEqual(result["surface"], "gravel")
@@ -3218,7 +3218,7 @@ class WorkoutReadinessBiasTests(unittest.TestCase):
         result = compact_xert_workout_recommendations(
             {
                 "workouts": [{
-                    "name": "XMB: VT1 30 min (165W)",
+                    "name": "VT1 30 min",
                     "path": "vt1",
                     "duration_seconds": 1800,
                     "xss": {"total": 24, "low": 23, "high": 1, "peak": 0},
@@ -3241,7 +3241,7 @@ class WorkoutReadinessBiasTests(unittest.TestCase):
             "exercises": [
                 {
                     "exerciseType": "Workout",
-                    "name": "XMB: Openers 3x2 min (260W)",
+                    "name": "Openers 3x2 min",
                     "path": "openers",
                     "duration": 2400,
                     "xss": 35,
@@ -3249,7 +3249,7 @@ class WorkoutReadinessBiasTests(unittest.TestCase):
                 },
                 {
                     "exerciseType": "Workout",
-                    "name": "XMB: VT1 30 min (165W)",
+                    "name": "VT1 30 min",
                     "path": "vt1",
                     "duration": 2700,
                     "xss": 30,
@@ -3277,7 +3277,7 @@ class WorkoutReadinessBiasTests(unittest.TestCase):
             "exercises": [
                 {
                     "exerciseType": "Workout",
-                    "name": "XMB: Recovery 30 min",
+                    "name": "Recovery 30 min",
                     "path": "recovery",
                     "duration": 1800,
                     "xss": 18,
@@ -3285,7 +3285,7 @@ class WorkoutReadinessBiasTests(unittest.TestCase):
                 },
                 {
                     "exerciseType": "Workout",
-                    "name": "XMB: VT1 30 min (165W)",
+                    "name": "VT1 30 min",
                     "path": "vt1",
                     "duration": 1800,
                     "xss": 24,
