@@ -1629,19 +1629,6 @@ def branch_bearing_is_on_right(
     return min_right_angle_deg <= right_angle <= max_right_angle_deg
 
 
-def way_bearing_near_junction(
-    way: dict[str, Any],
-    way_geometries: list[dict[str, Any]],
-    junction_xy: tuple[float, float],
-) -> float | None:
-    way_id = int(way.get("way_id") or way.get("id") or 0)
-    for geometry in way_geometries:
-        if int(geometry["id"]) != way_id:
-            continue
-        return nearest_segment_bearing_xy(junction_xy, geometry["points"])
-    return None
-
-
 def way_bearing_away_from_junction(
     way: dict[str, Any],
     way_geometries: list[dict[str, Any]],
@@ -1653,22 +1640,6 @@ def way_bearing_away_from_junction(
             continue
         return nearest_segment_bearing_away_from_point(junction_xy, geometry["points"])
     return None
-
-
-def nearest_segment_bearing_xy(
-    point_xy: tuple[float, float],
-    polyline_xy: list[tuple[float, float]],
-) -> float | None:
-    if len(polyline_xy) < 2:
-        return None
-    best_distance = float("inf")
-    best_bearing: float | None = None
-    for start, end in zip(polyline_xy, polyline_xy[1:]):
-        distance = point_to_segment_distance(point_xy, start, end)
-        if distance < best_distance:
-            best_distance = distance
-            best_bearing = bearing_xy(start, end)
-    return best_bearing
 
 
 def nearest_segment_bearing_away_from_point(
@@ -1726,41 +1697,6 @@ def point_to_polyline_distance_m(
     best = float("inf")
     for start, end in zip(route_xy, route_xy[1:]):
         best = min(best, point_to_segment_distance(point_xy, start, end))
-    return best
-
-
-def point_to_polyline_location(
-    lat: float,
-    lng: float,
-    points: list[dict[str, float]],
-    route_xy: list[tuple[float, float]],
-    *,
-    reference_lat_rad: float,
-) -> dict[str, float] | None:
-    if len(points) < 2 or len(route_xy) < 2:
-        return None
-    point_xy = project_lat_lng(lat, lng, reference_lat_rad=reference_lat_rad)
-    best: dict[str, float] | None = None
-    for index, (start_xy, end_xy) in enumerate(zip(route_xy, route_xy[1:])):
-        px, py = point_xy
-        sx, sy = start_xy
-        ex, ey = end_xy
-        dx = ex - sx
-        dy = ey - sy
-        if dx == 0 and dy == 0:
-            t = 0.0
-            distance_to_route_m = math.hypot(px - sx, py - sy)
-        else:
-            t = max(0.0, min(1.0, ((px - sx) * dx + (py - sy) * dy) / (dx * dx + dy * dy)))
-            closest_x = sx + t * dx
-            closest_y = sy + t * dy
-            distance_to_route_m = math.hypot(px - closest_x, py - closest_y)
-        distance_m = points[index]["distance"] + t * (points[index + 1]["distance"] - points[index]["distance"])
-        if best is None or distance_to_route_m < best["distance_to_route_m"]:
-            best = {
-                "distance_to_route_m": distance_to_route_m,
-                "distance_m": distance_m,
-            }
     return best
 
 
@@ -2273,22 +2209,6 @@ def route_reference_note(route: dict[str, Any]) -> dict[str, Any]:
     return {
         "kind": "saved_route_reference",
         "text": "Saved activity is used as a route reference; recency and execution are not route-ranking inputs.",
-    }
-
-
-def compact_route_reference(route: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "date": route["date"].isoformat(),
-        "id": route.get("id"),
-        "url": route.get("url"),
-        "moving_minutes": route.get("moving_minutes"),
-        "distance_km": route.get("distance_km"),
-        "xss": route.get("xss"),
-        "load_source": route.get("load_source"),
-        "training_load": route.get("training_load"),
-        "intensity": route.get("intensity"),
-        "average_watts": route.get("average_watts"),
-        "weighted_average_watts": route.get("weighted_average_watts"),
     }
 
 

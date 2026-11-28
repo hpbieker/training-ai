@@ -6,7 +6,6 @@ import csv
 import json
 from collections import deque
 from dataclasses import dataclass
-from datetime import date
 from pathlib import Path
 from physiological_evidence import MAX_MISSING_FRACTION, MAX_SAMPLE_INTERVAL, numeric, timeline, quality, field_summary, matched_windows, prepare_windows
 from typing import Any, Iterable
@@ -190,43 +189,10 @@ def activity_dir_from_path(path: Path) -> Path:
     return activity_dir
 
 
-def iter_saved_activity_metadata(
-    artifacts_dir: str | Path = ARTIFACTS_DIR,
-) -> Iterable[tuple[Path, dict[str, Any]]]:
-    """Yield saved activity directories with metadata only."""
-
-    activities_dir = Path(artifacts_dir) / "activities"
-    for activity_dir in sorted(activities_dir.iterdir()):
-        if (activity_dir / "activity.json").exists() and (activity_dir / "streams.csv").exists():
-            yield activity_dir, load_activity_metadata(activity_dir)
-
-
-def activity_sort_key(candidate: tuple[Path, dict[str, Any]]) -> tuple[str, str]:
-    """Sort saved activities by local start time, falling back to directory name."""
-
-    activity_dir, metadata = candidate
-    return str(metadata.get("start_date_local") or ""), activity_dir.name
-
-
-def iter_saved_activities(artifacts_dir: str | Path = ARTIFACTS_DIR) -> Iterable[SavedActivity]:
-    """Yield saved activities sorted by activity directory name."""
-
-    activities_dir = Path(artifacts_dir) / "activities"
-    for activity_dir in sorted(activities_dir.iterdir()):
-        if (activity_dir / "activity.json").exists() and (activity_dir / "streams.csv").exists():
-            yield load_activity(activity_dir)
-
-
 def value(row: dict[str, str], key: str) -> float | None:
     """Parse a numeric stream value."""
 
     return numeric(row, key)
-
-
-def stream_values(rows: Iterable[dict[str, str]], key: str) -> list[float]:
-    """Return non-empty numeric values for one stream key."""
-
-    return [parsed for row in rows if (parsed := value(row, key)) is not None]
 
 
 def summarize_rows(
@@ -247,31 +213,6 @@ def data_quality_summary(
 
     clock = timeline(rows)
     return {field: quality(rows, field, clock) for field in fields}
-
-
-def matched_work_drift(
-    rows: list[dict[str, str]],
-    fields: Iterable[str] = CORE_STREAMS,
-) -> dict[str, float | None]:
-    """Return quality-gated change between stable matched work windows."""
-
-    fields = list(fields)
-    comparison = matched_windows(rows, fields)
-    return {field: comparison['fields'].get(field, {}).get('delta') for field in fields}
-
-
-def matched_relative_to_power_drift(
-    rows: list[dict[str, str]],
-    fields: Iterable[str] = ("heartrate", "respiration", "tidal_volume_min"),
-    *,
-    power_field: str = "watts",
-    min_power: float = 50.0,
-) -> dict[str, float | None]:
-    """Return descriptive field-per-watt change between stable matched windows."""
-
-    fields = list(fields)
-    comparison = matched_windows(rows, fields)
-    return {field: comparison['fields'].get(field, {}).get('per_watt_change_pct') for field in fields}
 
 
 def summarize_block(
@@ -442,47 +383,10 @@ def interval_rows(activity: SavedActivity, interval: dict[str, Any]) -> list[dic
     return activity.streams[start:end]
 
 
-def intervals_by_type(activity: SavedActivity, interval_type: str) -> list[list[dict[str, str]]]:
-    """Return stream row slices for intervals matching type, e.g. WORK."""
-
-    wanted = interval_type.upper()
-    return [
-        interval_rows(activity, interval)
-        for interval in activity.intervals
-        if str(interval.get("type") or "").upper() == wanted
-    ]
-
-
 def rows_with_values(rows: list[dict[str, str]], *fields: str) -> list[dict[str, str]]:
     """Keep rows that have numeric values for all requested fields."""
 
     return [row for row in rows if all(value(row, field) is not None for field in fields)]
-
-
-def has_moxy(rows: list[dict[str, str]]) -> bool:
-    """Return true when rows contain usable SmO2 and THb values."""
-
-    return bool(rows_with_values(rows, "smo2", "thb"))
-
-
-def moxy_interval_summary(activity: SavedActivity) -> list[dict[str, Any]]:
-    """Summarize Moxy data by Intervals.icu interval."""
-
-    summaries = []
-    for index, interval in enumerate(activity.intervals, start=1):
-        rows = rows_with_values(interval_rows(activity, interval), "smo2", "thb")
-        if not rows:
-            continue
-        summaries.append(
-            {
-                "index": index,
-                "type": interval.get("type"),
-                "rows": len(rows),
-                "stats": summarize_rows(rows),
-                "drift": matched_work_drift(rows),
-            }
-        )
-    return summaries
 
 
 def _smo2_window_mean(rows: list[dict[str, str]], start: float, end: float) -> float | None:
@@ -562,40 +466,6 @@ def recovery_reoxygenation(activity: SavedActivity) -> list[dict[str, Any]]:
             }
         )
     return recoveries
-
-
-def latest_activity_with_moxy(
-    *,
-    indoor_only: bool = False,
-    name_contains: str | None = None,
-    require_work_overlap: bool = True,
-    artifacts_dir: str | Path = ARTIFACTS_DIR,
-) -> SavedActivity | None:
-    """Find the latest saved activity with Moxy values.
-
-    When ``require_work_overlap`` is true, SmO2/THb must overlap at least one
-    WORK interval. This avoids selecting activities where Moxy only appears in
-    warm-up or cooldown.
-    """
-
-    activities = sorted(
-        iter_saved_activities(artifacts_dir),
-        key=lambda activity: activity.start_date_local,
-        reverse=True,
-    )
-    for activity in activities:
-        if indoor_only and activity.metadata.get("type") != "VirtualRide":
-            continue
-        if name_contains and name_contains.lower() not in activity.name.lower():
-            continue
-        if not has_moxy(activity.streams):
-            continue
-        if require_work_overlap:
-            work_has_moxy = any(has_moxy(rows) for rows in intervals_by_type(activity, "WORK"))
-            if not work_has_moxy:
-                continue
-        return activity
-    return None
 
 
 def detect_steady_finish(
@@ -861,32 +731,3 @@ def remove_overlapping_power_blocks(blocks: list[PowerBlock]) -> list[PowerBlock
 
 def blocks_overlap(left: PowerBlock, right: PowerBlock) -> bool:
     return max(left.start_index, right.start_index) < min(left.end_index, right.end_index)
-
-
-def load_wellness_range(
-    oldest: str | date,
-    newest: str | date,
-    *,
-    artifacts_dir: str | Path = ARTIFACTS_DIR,
-) -> list[dict[str, Any]]:
-    """Load a saved wellness JSON range."""
-
-    oldest_value = oldest.isoformat() if isinstance(oldest, date) else oldest
-    newest_value = newest.isoformat() if isinstance(newest, date) else newest
-    path = Path(artifacts_dir) / "wellness" / f"{oldest_value}_{newest_value}.json"
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def wellness_baseline(rows: list[dict[str, Any]]) -> dict[str, float | None]:
-    """Summarize common readiness fields from wellness rows."""
-
-    fields = ["hrv", "restingHR", "sleepSecs", "sleepScore", "spO2", "steps"]
-    baseline: dict[str, float | None] = {}
-    for field in fields:
-        values = []
-        for row in rows:
-            raw = row.get(field)
-            if raw is not None:
-                values.append(float(raw))
-        baseline[field] = sum(values) / len(values) if values else None
-    return baseline

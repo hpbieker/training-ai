@@ -1896,48 +1896,6 @@ def indoor_segment_stats(segment: list[dict[str, str]]) -> dict[str, Any]:
     )
 
 
-def indoor_stability(
-    first: list[dict[str, str]],
-    final: list[dict[str, str]],
-) -> dict[str, Any]:
-    first_stats = indoor_segment_stats(first)
-    final_stats = indoor_segment_stats(final)
-    return drop_none(
-        {
-            "hr_per_w_delta_pct": pct_delta(
-                first_stats.get("hr_per_w"),
-                final_stats.get("hr_per_w"),
-            ),
-            "ve_per_w_delta_pct": pct_delta(
-                first_stats.get("ve_per_w"),
-                final_stats.get("ve_per_w"),
-            ),
-            "br_per_w_delta_pct": pct_delta(
-                first_stats.get("br_per_w"),
-                final_stats.get("br_per_w"),
-            ),
-            "w_per_hr_delta_pct": pct_delta(
-                first_stats.get("w_per_hr"),
-                final_stats.get("w_per_hr"),
-            ),
-            "core_temp_delta_c": rounded(
-                final_stats.get("core_avg") - first_stats.get("core_avg"),
-                digits=2,
-            )
-            if isinstance(first_stats.get("core_avg"), (int, float))
-            and isinstance(final_stats.get("core_avg"), (int, float))
-            else None,
-            "watts_delta": rounded(
-                final_stats.get("avg_w") - first_stats.get("avg_w"),
-                digits=0,
-            )
-            if isinstance(first_stats.get("avg_w"), (int, float))
-            and isinstance(final_stats.get("avg_w"), (int, float))
-            else None,
-        }
-    )
-
-
 def pct_delta(start: Any, end: Any) -> float | int | None:
     if not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or start == 0:
         return None
@@ -2938,18 +2896,6 @@ def rolling_cap_longest(compliance: dict[str, Any], cap: int) -> float:
 
 def clamp(value_: float, low: float, high: float) -> float:
     return max(low, min(high, value_))
-
-
-def outdoor_score_rating(score: float) -> str:
-    if score >= 88:
-        return "A"
-    if score >= 78:
-        return "B"
-    if score >= 68:
-        return "C"
-    if score >= 58:
-        return "D"
-    return "E"
 
 
 def outdoor_moving_row(row: dict[str, str], pauses: list[tuple[int, int]]) -> bool:

@@ -4,8 +4,7 @@
 
 - Start from saved outdoor activities and actual GPS geometry. Resolve the
   start/end anchor, radius, surface, and bike intent before running helpers.
-- Use `scripts/route_recommendations.py` for recommendations and
-  `scripts/build_route_catalog.py` for incremental catalog/map-match work.
+- Use `scripts/route_recommendations.py` for recommendations.
 - Refresh only missing/stale source activity packages. Unnecessary rewrites
   invalidate route caches without adding information.
 - If no suitable saved route exists, say so before offering a fallback idea.

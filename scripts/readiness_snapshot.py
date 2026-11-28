@@ -2576,38 +2576,6 @@ def project_garmin_recovery_hours(
     return max(0.0, projected) if projected is not None else None
 
 
-def hours_since_local(
-    raw: Any,
-    now: datetime,
-    *,
-    local_timezone: ZoneInfo,
-) -> float | None:
-    if not raw:
-        return None
-    return round(
-        (
-            now
-            - parse_local_datetime(
-                str(raw),
-                local_timezone=local_timezone,
-            )
-        ).total_seconds()
-        / 3600,
-        1,
-    )
-
-
-def hours_since_garmin_timestamp(
-    raw_utc: Any,
-    *,
-    now: datetime,
-) -> float | None:
-    timestamp = parse_garmin_utc_datetime(raw_utc)
-    if timestamp is None:
-        return None
-    return round((now - timestamp).total_seconds() / 3600, 1)
-
-
 def file_modified_time(path: Path) -> datetime:
     return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
 
@@ -2741,10 +2709,6 @@ def completed_activity_start(raw_utc, raw_local, elapsed_seconds, *, cutoff, loc
     if start is None or seconds > (cutoff.astimezone(timezone.utc) - start).total_seconds():
         return None
     return start.astimezone(local_timezone)
-
-
-def same_local_date(left: Any, right: Any) -> bool:
-    return bool(left and right and str(left)[:10] == str(right)[:10])
 
 
 def local_timestamp_ms(local_iso: str, *, local_timezone: ZoneInfo) -> int:

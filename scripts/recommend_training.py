@@ -11,7 +11,6 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -2363,23 +2362,6 @@ def garmin_source_day(day: str, *, now: datetime) -> str:
     return min(requested, now.date()).isoformat()
 
 
-def run_parallel_steps(steps: dict[str, Any]) -> None:
-    if not steps:
-        return
-    with ThreadPoolExecutor(max_workers=len(steps)) as executor:
-        futures = {executor.submit(step): name for name, step in steps.items()}
-        for future, name in futures.items():
-            try:
-                future.result()
-            except Exception as exc:
-                raise SystemExit(f"{name} failed: {exc}") from exc
-
-
-def run_json_to_file(command: list[str], path: Path) -> None:
-    payload = run_json(command)
-    write_json(path, payload)
-
-
 def build_progression_advice(
     *,
     day: str,
@@ -2451,41 +2433,6 @@ def ensure_source_files_exist(
 
 def format_command(command: list[str]) -> str:
     return " ".join(str(part) for part in command)
-
-
-def resolve_xert_activity_path(
-    activity: dict[str, Any] | None,
-    *,
-    local_timezone: Any,
-    xert_activities: dict[str, Any] | None = None,
-) -> str | None:
-    if not activity or not activity.get("start_local"):
-        return None
-    start_local = parse_local_datetime(
-        str(activity["start_local"]),
-        local_timezone=local_timezone,
-    )
-    activities = (xert_activities or {}).get("activities")
-    if not isinstance(activities, list):
-        return None
-    candidates = []
-    for candidate in activities:
-        if not isinstance(candidate, dict) or not candidate.get("path"):
-            continue
-        candidate_start = xert_activity_start_local(
-            candidate,
-            local_timezone=local_timezone,
-        )
-        if candidate_start is None:
-            continue
-        delta = abs((candidate_start - start_local).total_seconds())
-        candidates.append((delta, str(candidate["path"])))
-    if not candidates:
-        return None
-    delta, path = min(candidates, key=lambda item: item[0])
-    if delta <= 30 * 60:
-        return path
-    return None
 
 
 def enrich_route_packet_with_xert_maps(
@@ -3179,13 +3126,6 @@ def annotate_volume_density(
             "Compare with the athlete's reviewed plan."
         ),
     }
-
-
-def percentile_rank(value: float, values: list[float]) -> float | None:
-    if not values:
-        return None
-    at_or_below = sum(1 for item in values if item <= value)
-    return round(at_or_below / len(values) * 100, 1)
 
 
 def activity_xss_from_metadata(metadata: dict[str, Any]) -> float | None:
@@ -5244,14 +5184,6 @@ def resolve_aerobic_finish(primary, target, *, planned_at, available_windows, ca
     return result
 
 
-def available_window_label(window: dict[str, Any], *, include_note: bool = False) -> str:
-    label = f"{window['start'].strftime('%H:%M')}-{window['end'].strftime('%H:%M')}"
-    note = str(window.get("note") or "").strip()
-    if include_note and note:
-        return f"{label} ({note})"
-    return label
-
-
 def current_window_minutes(
     *,
     planned_at: datetime,
@@ -5402,21 +5334,6 @@ def compact_window_option(option: dict[str, Any], *, duration_key: str) -> dict[
         "option_label": option.get("option_label"),
         "window_fit": option.get("window_fit"),
     }
-
-
-def latest_activity_is_meaningful_same_day(latest: dict[str, Any], *, day: str) -> bool:
-    if not latest or not day:
-        return False
-    start = str(latest.get("start_local") or "")
-    if not start.startswith(day):
-        return False
-    return any(
-        value is not None and value >= threshold
-        for value, threshold in (
-            (number(latest.get("elapsed_minutes")), 45),
-            (number(latest.get("xert_xss")), 50),
-        )
-    )
 
 
 def minutes_from_seconds(seconds: float | None) -> float | None:
