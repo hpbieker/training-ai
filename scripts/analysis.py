@@ -383,12 +383,6 @@ def interval_rows(activity: SavedActivity, interval: dict[str, Any]) -> list[dic
     return activity.streams[start:end]
 
 
-def rows_with_values(rows: list[dict[str, str]], *fields: str) -> list[dict[str, str]]:
-    """Keep rows that have numeric values for all requested fields."""
-
-    return [row for row in rows if all(value(row, field) is not None for field in fields)]
-
-
 def _smo2_window_mean(rows: list[dict[str, str]], start: float, end: float) -> float | None:
     """Describe a fixed elapsed window without filling gaps with earlier samples."""
     clock = timeline(rows)

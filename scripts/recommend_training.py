@@ -2736,39 +2736,6 @@ def load_json_if_exists(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def compact_xert_activity_load(
-    activity: dict[str, Any],
-    detail: dict[str, Any],
-    *,
-    local_timezone: Any,
-) -> dict[str, Any]:
-    summary = detail.get("summary") if isinstance(detail, dict) else {}
-    progression = (summary or {}).get("progression") or {}
-    xss = (progression.get("xss") or {}).get("total")
-    if xss is None:
-        xss = (summary or {}).get("xss")
-    raw_start = (summary or {}).get("start_date") or activity.get("start_date")
-    return {
-        "path": activity.get("path") or (summary or {}).get("path"),
-        "name": (summary or {}).get("name") or activity.get("name"),
-        "start_local": xert_start_local(
-            raw_start,
-            local_timezone=local_timezone,
-        ),
-        "start_utc": xert_start_utc(
-            raw_start,
-            local_timezone=local_timezone,
-        ),
-        "distance_km": number((summary or {}).get("distance") or activity.get("distance")),
-        "duration_minutes": minutes_from_seconds(number((summary or {}).get("duration"))),
-        "xss": number(xss),
-        "low_xss": number((summary or {}).get("xlss") or (progression.get("xss") or {}).get("xlss")),
-        "high_xss": number((summary or {}).get("xhss") or (progression.get("xss") or {}).get("xhss")),
-        "peak_xss": number((summary or {}).get("xpss") or (progression.get("xss") or {}).get("xpss")),
-        "difficulty": number((summary or {}).get("difficulty")),
-    }
-
-
 def xert_start_local(raw: Any, *, local_timezone: Any) -> str | None:
     parsed = xert_start_datetime(raw)
     return (
@@ -3951,42 +3918,6 @@ def outdoor_target_distance_km(*, target_minutes: float, surface_preference: str
     }
     speed_kmh = speed_kmh_by_surface.get(surface_preference, 26.0)
     return round(clamp(target_minutes / 60.0 * speed_kmh, 15.0, 140.0), 1)
-
-
-def dose_position_vs_typical(
-    *,
-    target_minutes: float,
-    typical_minutes: float,
-    caution: float,
-    load_pct: float | None,
-) -> dict[str, Any]:
-    ratio = target_minutes / typical_minutes if typical_minutes else 1.0
-    if ratio < 0.9:
-        label = "less_than_typical"
-        phrase = "less than a typical training day"
-    elif ratio > 1.1:
-        label = "more_than_typical"
-        phrase = "more than a typical training day"
-    else:
-        label = "about_typical"
-        phrase = "about a typical training day"
-
-    reasons = []
-    if caution >= 1.0:
-        reasons.append(f"numeric readiness caution {round(caution, 2)} pulls dose down")
-    elif caution <= 0.35:
-        reasons.append(f"low numeric readiness caution {round(caution, 2)} does not pull dose down")
-    if load_pct is not None:
-        if load_pct >= 60:
-            reasons.append(f"recent rolling XSS is not low ({round(load_pct, 1)} percentile in available Xert window)")
-        elif load_pct <= 35:
-            reasons.append(f"recent rolling XSS is low ({round(load_pct, 1)} percentile in available Xert window)")
-    return {
-        "label": label,
-        "ratio": round(ratio, 2),
-        "phrase": phrase,
-        "reason": "; ".join(reasons) if reasons else "based on continuous readiness and recent XSS adjustment",
-    }
 
 
 WINDOW_FIT_TOLERANCE_MINUTES = 10.0
