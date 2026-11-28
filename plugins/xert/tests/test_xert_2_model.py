@@ -72,6 +72,15 @@ class Xert2ModelTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "supported WASM factory interface"):
             P._run_wasm({}, "unreviewed", "https://beta.xertonline.com/js/svelte.js")
 
+    def test_minified_wasm_wrapper_uses_the_factory_initialized_by_the_bundle(self):
+        factory = ('(()=>{var u=shim.url;return function(e={}){'
+                   'return "data:application/octet-stream;base64,AGFzbQEAAAA="}})()')
+        bundle = 'browserSetup();a9=' + factory + ',b7=a9;try{c2=b7({print:()=>{},printErr:()=>{}})}catch(e){}'
+        extracted = P._wasm_factory(bundle)
+        self.assertEqual(extracted, 'var Module=' + factory.replace('shim.url', 'import_meta.url') + ';')
+        with self.assertRaisesRegex(ValueError, "supported WASM factory interface"):
+            P._wasm_factory(bundle.replace('b7=a9;', 'b7=other;'))
+
     def test_beta_bundle_download_is_reused_per_url(self):
         first_url = "https://beta.xertonline.com/build/first.js"
         second_url = "https://beta.xertonline.com/build/second.js"

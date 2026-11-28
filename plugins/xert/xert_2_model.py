@@ -190,14 +190,36 @@ def _wasm_factory(bundle: str) -> str:
     """
     start_marker = "Module = (() => {"
     end_marker = "xert_default = Module;"
-    try:
-        start = bundle.index(start_marker)
-        end = bundle.index(end_marker, start)
-    except ValueError as error:
-        raise ValueError("Xert 2.0 Beta frontend lacks the supported WASM factory interface") from error
-    if end <= start:
-        raise ValueError("Xert 2.0 Beta frontend has an invalid WASM factory interface")
-    return "var " + bundle[start:end]
+    start = bundle.find(start_marker)
+    end = bundle.find(end_marker, start + len(start_marker)) if start >= 0 else -1
+    if end >= 0:
+        return "var " + bundle[start:end]
+
+    # Minified builds rename both the factory and import.meta shim. Match the
+    # Emscripten wrapper and the alias used to initialize it, rather than names
+    # or unrelated page code. The shipped WASM is embedded in this wrapper.
+    identifier = r"[$A-Za-z_][$\w]*"
+    opening = re.compile(
+        rf"(?<![$\w])(?P<module>{identifier})=\(\(\)=>\{{var {identifier}="
+        rf"(?P<meta>{identifier})\.url;return function\("
+    )
+    closing = re.compile(
+        rf"(?<=\}}\}}\)\(\)),(?P<alias>{identifier})=(?P<module>{identifier});"
+        rf"try\{{{identifier}=(?P=alias)\(\{{print:\(\)=>\{{\}},printErr:\(\)=>\{{\}}\}}\)"
+    )
+    ends = list(closing.finditer(bundle))
+    candidates = [
+        (first, last) for first in opening.finditer(bundle) for last in ends
+        if first.group("module") == last.group("module") and first.end() < last.start()
+        and bundle.find("data:application/octet-stream;base64,AGFzbQ", first.end(), last.start()) >= 0
+    ]
+    if len(candidates) == 1:
+        first, last = candidates[0]
+        return (
+            "var Module" + bundle[first.end("module"):first.start("meta")] + "import_meta"
+            + bundle[first.end("meta"):last.start()] + ";"
+        )
+    raise ValueError("Xert 2.0 Beta frontend lacks the supported WASM factory interface")
 
 
 def _run_wasm(props: dict[str, Any], bundle: str, bundle_url: str) -> dict[str, Any]:
