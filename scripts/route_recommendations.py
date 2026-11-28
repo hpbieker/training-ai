@@ -92,14 +92,14 @@ PRIORITY_YIELD_HIGHWAYS = {
 GEAR_SURFACE_BY_ID = {
     "b10577453": {
         "surface": "road",
-        "label": "landevei",
+        "label": "paved road",
         "confidence": "gear_id",
         "bike_type": "road",
         "bike": "Trek Madone 9",
     },
     "b11246236": {
         "surface": "unknown",
-        "label": "ukjent underlag",
+        "label": "unknown surface",
         "confidence": "bike_type_only",
         "bike_type": "gravel",
         "bike": "Trek Checkpoint",
@@ -683,7 +683,7 @@ def surface_classification(metadata: dict[str, Any]) -> dict[str, Any]:
     if re.search(r"\b(grus|gravel)\b", surface_text):
         return {
             "surface": "gravel",
-            "label": "grus",
+            "label": "gravel",
             "confidence": "activity_text",
             "bike_type": (GEAR_SURFACE_BY_ID.get(gear_id) or {}).get("bike_type"),
             "gear_id": gear_id or None,
@@ -694,7 +694,7 @@ def surface_classification(metadata: dict[str, Any]) -> dict[str, Any]:
     if re.search(r"\b(asfalt|landevei)\b", surface_text):
         return {
             "surface": "road",
-            "label": "landevei",
+            "label": "paved road",
             "confidence": "activity_text",
             "bike_type": (GEAR_SURFACE_BY_ID.get(gear_id) or {}).get("bike_type"),
             "gear_id": gear_id or None,
@@ -726,24 +726,24 @@ def surface_classification(metadata: dict[str, Any]) -> dict[str, Any]:
         )
         return {
             "surface": "unknown",
-            "label": "ukjent underlag",
+            "label": "unknown surface",
             "confidence": "unknown_gear",
             "gear_id": gear_id or None,
             "gear_name": gear_name or None,
             "bike": gear_name or None,
             "warning": (
-                "Ukjent sykkel/gear på referanseaktiviteten "
-                f"({gear_description}); bekreft om dette er landevei eller grus."
+                f"The reference activity lists unrecognized gear ({gear_description}). "
+                "Confirm whether the route is paved or gravel."
             ),
         }
     return {
         "surface": "unknown",
-        "label": "ukjent underlag",
+        "label": "unknown surface",
         "confidence": "missing_gear",
         "gear_id": None,
         "gear_name": None,
         "bike": None,
-        "warning": "Referanseaktiviteten mangler gear/sykkel; kan ikke bekrefte landevei vs grus fra metadata.",
+        "warning": "The reference activity lists no bike, so its metadata cannot confirm the surface.",
     }
 
 
@@ -2433,8 +2433,8 @@ def recommendation_text(route: dict[str, Any]) -> str:
     steady_endurance_text = route_steady_endurance_text(route)
     display_name = str(route.get("display_name") or route["name"])
     return (
-        f"Bruk tidligere rute `{display_name}` ({route['date'].isoformat()}, {route['id']}): "
-        f"{route['distance_km']:.1f} km, {route['elevation_gain_m']:.0f} hm. "
+        f"Use the previous route `{display_name}` ({route['date'].isoformat()}, {route['id']}): "
+        f"{route['distance_km']:.1f} km with {route['elevation_gain_m']:.0f} m of climbing. "
         f"{steady_endurance_text} "
         f"{surface_text} "
         f"{route['url']}."
@@ -2445,40 +2445,43 @@ def recommendation_text(route: dict[str, Any]) -> str:
 def route_steady_endurance_text(route: dict[str, Any]) -> str:
     flow = route.get("steady_endurance") or {}
     if flow.get("available") is False:
-        return "Jevn endurance: ukjent/svak høydedata."
+        return "Steady endurance could not be assessed because elevation data was missing or unreliable."
     downhill_disruption_pct = number(flow.get("downhill_disruption_pct"))
     if downhill_disruption_pct is None:
-        return "Jevn endurance: ikke beregnet."
+        return "Steady endurance suitability was not calculated."
     gt4_pct = number(flow.get("descent_gt4_pct"))
     gt5_pct = number(flow.get("descent_gt5_pct"))
     if gt4_pct is not None and gt5_pct is not None:
-        return f"Bratt nedover: {downhill_disruption_pct:.1f}% vektet ({gt4_pct:.1f}% >4%, {gt5_pct:.1f}% >5%)."
-    return f"Bratt nedover: {downhill_disruption_pct:.1f}% vektet."
+        return (
+            f"Steep descents: {downhill_disruption_pct:.1f}% weighted "
+            f"({gt4_pct:.1f}% steeper than 4%, {gt5_pct:.1f}% steeper than 5%)."
+        )
+    return f"Steep descents: {downhill_disruption_pct:.1f}% weighted."
 
 
 def route_surface_text(route: dict[str, Any]) -> str:
     surface = route.get("surface") or {}
     preference = route.get("surface_preference") or "road"
     kind = surface.get("surface")
-    label = surface.get("label") or "ukjent underlag"
+    label = surface.get("label") or "unknown surface"
     bike = surface.get("bike") or surface.get("gear_name")
     bike_suffix = f" ({bike})" if bike else ""
     if preference == "any":
         if kind in {"road", "gravel"}:
-            return f"Underlag: {label}{bike_suffix}; ikke vektet i scoren."
-        warning = surface.get("warning") or "Kan ikke bekrefte landevei vs grus fra metadata."
-        return f"Underlag: {label}{bike_suffix}; ikke vektet i scoren. {warning}"
+            return f"Surface: {label}{bike_suffix}. Surface did not affect the score."
+        warning = surface.get("warning") or "The metadata cannot confirm whether the route is paved or gravel."
+        return f"Surface: {label}{bike_suffix}. Surface did not affect the score. {warning}"
     if preference == "unknown-ok" and kind == "unknown":
-        warning = surface.get("warning") or "Kan ikke bekrefte landevei vs grus fra metadata."
-        return f"Underlag: {label}{bike_suffix}; ukjent underlag er akseptert i denne rangeringen. {warning}"
+        warning = surface.get("warning") or "The metadata cannot confirm whether the route is paved or gravel."
+        return f"Surface: {label}{bike_suffix}. This ranking allows unknown surfaces. {warning}"
     if kind == "road":
-        suffix = "matcher ønsket landevei." if preference == "road" else "matcher ikke ønsket grus."
-        return f"Underlag: {label}{bike_suffix}; {suffix}"
+        suffix = "Matches the paved road preference." if preference == "road" else "Does not match the gravel preference."
+        return f"Surface: {label}{bike_suffix}. {suffix}"
     if kind == "gravel":
-        suffix = "matcher ønsket grus." if preference == "gravel" else "matcher ikke ønsket landevei."
-        return f"Underlag: {label}{bike_suffix}; {suffix}"
-    warning = surface.get("warning") or "Kan ikke bekrefte landevei vs grus fra metadata."
-    return f"Underlag: {label}{bike_suffix}. {warning}"
+        suffix = "Matches the gravel preference." if preference == "gravel" else "Does not match the paved road preference."
+        return f"Surface: {label}{bike_suffix}. {suffix}"
+    warning = surface.get("warning") or "The metadata cannot confirm whether the route is paved or gravel."
+    return f"Surface: {label}{bike_suffix}. {warning}"
 
 
 def route_key(name: str) -> str:

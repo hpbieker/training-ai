@@ -326,21 +326,21 @@ def vt1_sort_key(item: dict[str, Any]) -> tuple[float, float, float]:
 def render_markdown(summary: dict[str, Any]) -> str:
     overview = summary["overview"]
     lines = [
-        f"# Inneokter {overview['period_start']} til {overview['period_end']}",
+        f"# Indoor workouts from {overview['period_start']} to {overview['period_end']}",
         "",
         (
-            f"Kilde: {overview['indoor_activities']} lokale indoor Ride/VirtualRide-aktiviteter "
-            f"i perioden. Første aktivitet: {overview['first_activity_date']}; "
-            f"siste aktivitet: {overview['last_activity_date']}. Failures: {overview['errors']}."
+            f"Source: {overview['indoor_activities']} local indoor Ride/VirtualRide activities "
+            f"in this period. First activity: {overview['first_activity_date']}. "
+            f"Last activity: {overview['last_activity_date']}. Failures: {overview['errors']}."
         ),
         "",
-        "## Beste indoor VT1",
+        "## Best indoor VT1 workouts",
         render_vt1_rows(summary["rankings"]["best_indoor_vt1"]),
         "",
-        "## Beste indoor VT2",
+        "## Best indoor VT2 workouts",
         render_vt2_rows(summary["rankings"]["best_vt2_control"]),
         "",
-        "## Alle inneokter",
+        "## All indoor workouts",
         render_all_rows(summary["activities"]),
     ]
     if summary["errors"]:

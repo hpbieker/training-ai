@@ -247,15 +247,15 @@ def summary(result: dict[str, Any]) -> str:
     lines = [
         result["name"] or Path(result["file"]).stem,
         f"{result['distance_km']:.2f} km | "
-        + (f"{result['elevation_gain_m']} hm" if result["elevation_gain_m"] is not None else "høyde mangler")
-        + f" | {'rundtur' if result['is_round_trip'] else 'ikke rundtur'}",
-        f"Start/slutt-avstand: {result['closure_distance_m']} m | "
-        f"{result['point_count']} punkter i {result['track_segment_count']} segment(er)",
+        + (f"{result['elevation_gain_m']} m of climbing" if result["elevation_gain_m"] is not None else "no elevation data")
+        + f" | {'loop' if result['is_round_trip'] else 'open route'}",
+        f"Distance between start and finish: {result['closure_distance_m']} m | "
+        f"{result['point_count']} points across {result['track_segment_count']} track segments",
     ]
     if result["elevation_min_m"] is not None:
-        lines.append(f"Høyde: {result['elevation_min_m']:.1f}–{result['elevation_max_m']:.1f} moh.")
+        lines.append(f"Elevation: {result['elevation_min_m']:.1f}–{result['elevation_max_m']:.1f} m above sea level")
     if result["major_climbs"]:
-        lines.append("Vesentlige stigninger:")
+        lines.append("Major climbs:")
         lines.extend(
             f"  km {item['start_km']:.2f}–{item['end_km']:.2f}: "
             f"{item['length_km']:.2f} km, +{item['elevation_change_m']} m, "
@@ -263,7 +263,7 @@ def summary(result: dict[str, Any]) -> str:
             for item in result["major_climbs"][:5]
         )
     if result["major_descents"]:
-        lines.append("Vesentlige utforkjøringer:")
+        lines.append("Major descents:")
         lines.extend(
             f"  km {item['start_km']:.2f}–{item['end_km']:.2f}: "
             f"{item['length_km']:.2f} km, {item['elevation_change_m']} m, "

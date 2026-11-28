@@ -2014,7 +2014,8 @@ def intervals_wellness_context(
         "illness_return_phase": "awaiting_review" if latest_illness else "not_applicable",
         "return_to_training_guidance": return_to_training_guidance,
         "followup_question": (
-            "Avklar aktuelle symptomer, sykdomsforløp og respons på eventuell returøkt."
+            "Clarify current symptoms, how the illness has progressed, "
+            "and the response to any session since returning to training."
             if illness_followup_needed
             else None
         ),

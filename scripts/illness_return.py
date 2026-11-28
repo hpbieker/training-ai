@@ -112,7 +112,11 @@ def assess_return(context, assessment, *, day, cutoff):
             'max_minutes': assessment.get('dose_minutes') if assessment and may_train else 0 if active else None,
             'max_load': assessment.get('dose_xss') if assessment and may_train else 0 if active else None,
         } if active else None,
-        followup_question='Avklar sykdomsforløp, aktuelle symptomer og respons under, etter og neste døgn etter siste lette økt.' if active and not may_train else None,
+        followup_question=(
+            'Clarify how the illness has progressed, any current symptoms, and the response '
+            'during, immediately after, and in the 24 hours after the most recent easy session.'
+            if active and not may_train else None
+        ),
     )
     if may_train:
         if not all(key in assessment for key in ('dose_minutes', 'dose_xss')):
