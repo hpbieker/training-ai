@@ -26,7 +26,6 @@ GENERIC_ROUTE_NAMES = {
     "afternoon ride",
     "evening ride",
     "morning ride",
-    "oslo landeveissykling",
     "ride",
 }
 WORKOUT_ROUTE_NAME_MARKERS = {
@@ -34,15 +33,10 @@ WORKOUT_ROUTE_NAME_MARKERS = {
     "xert cycling workout",
     "workout",
 }
-KNOWN_WORKOUT_ROUTE_NAME_SUFFIXES = {
-    "kosciuszko",
-    "kosciuszko -1",
-    "mount deborah",
-}
 DEFAULT_ROUTE_INDEX = Path("outputs/route-index.json")
 DEFAULT_ROUTE_ANALYSIS_CACHE = Path("outputs/route-analysis-cache.json")
 DEFAULT_ROUTE_DATA_QUALITY = Path("config/route-data-quality.json")
-ROUTE_INDEX_SCHEMA = "training-ai-route-index-v13"
+ROUTE_INDEX_SCHEMA = "training-ai-route-index-v14"
 ROUTE_ANALYSIS_CACHE_SCHEMA = "training-ai-route-analysis-cache-v1"
 OSM_CONFLICT_MODEL_VERSION = "osm-conflicts-v3-clean-nonservice-right-hand"
 OSM_ROUTE_BBOX_MAX_AREA_DEG2 = 0.12
@@ -2114,20 +2108,12 @@ def is_usable_route_display_name(name: str) -> bool:
 
 
 def is_generic_route_name(name: str) -> bool:
-    key = route_key(name)
-    if key in GENERIC_ROUTE_NAMES:
-        return True
-    return bool(re.fullmatch(r".+\s+landeveissykling", normalize_name(name)))
+    return route_key(name) in GENERIC_ROUTE_NAMES
 
 
 def is_workout_route_name(name: str) -> bool:
     normalized = normalize_name(name)
-    if any(marker in normalized for marker in WORKOUT_ROUTE_NAME_MARKERS):
-        return True
-    parts = [part.strip() for part in normalized.split(" - ")]
-    if len(parts) >= 2 and parts[-1] in KNOWN_WORKOUT_ROUTE_NAME_SUFFIXES:
-        return True
-    return False
+    return any(marker in normalized for marker in WORKOUT_ROUTE_NAME_MARKERS)
 
 
 def inferred_route_display_name(routes: list[dict[str, Any]]) -> str | None:
@@ -2246,17 +2232,8 @@ def route_name_base_candidate(name: str) -> str | None:
     normalized = normalize_name(name)
     if not normalized:
         return None
-    if " - " in normalized:
-        parts = [part.strip() for part in name.split(" - ")]
-        normalized_parts = [normalize_name(part) for part in parts]
-        if (
-            any(marker in normalized for marker in WORKOUT_ROUTE_NAME_MARKERS)
-            or normalized_parts[-1] in KNOWN_WORKOUT_ROUTE_NAME_SUFFIXES
-        ):
-            return parts[0].strip() or None
-    landevei_suffix = " landeveissykling"
-    if normalized.endswith(landevei_suffix):
-        return name[: -len(landevei_suffix)].strip(" -") or None
+    if " - " in normalized and is_workout_route_name(name):
+        return name.split(" - ", 1)[0].strip() or None
     if is_usable_route_display_name(name):
         return name.strip()
     return None
@@ -2487,7 +2464,6 @@ def route_surface_text(route: dict[str, Any]) -> str:
 def route_key(name: str) -> str:
     key = name.lower()
     key = re.sub(r"\s+-\s+xert.*$", "", key)
-    key = re.sub(r"\s+landeveissykling$", "", key)
     key = re.sub(r"\s+", " ", key).strip()
     return key
 

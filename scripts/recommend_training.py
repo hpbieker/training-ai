@@ -2726,7 +2726,6 @@ def match_xert_activity_for_route(
 
 def normalize_route_name(name: str) -> str:
     name = re.sub(r"\s+-\s+xert.*$", "", name.lower())
-    name = re.sub(r"\s+landeveissykling$", "", name)
     return re.sub(r"\s+", " ", name).strip()
 
 
@@ -3273,7 +3272,6 @@ def matched_xert_xss(
 
 def normalize_activity_name(name: str) -> str:
     name = re.sub(r"\s+-\s+xert.*$", "", name.lower())
-    name = re.sub(r"\s+landeveissykling$", "", name)
     return re.sub(r"\s+", " ", name).strip()
 
 
