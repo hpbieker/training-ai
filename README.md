@@ -1,9 +1,20 @@
 # Training AI
 
 Tools for analysing cycling workouts, managing training plans, and recommending
-daily sessions and routes. The project packages MCP servers and skills as
-plugins for Codex. The servers provide access to training,
-health, and weather data, and the skills guide analysis and planning.
+daily sessions and routes. The project provides Codex plugins that bundle
+MCP servers and skills.
+
+| Plugin | What it provides |
+| --- | --- |
+| EatMyRide | Ride fueling plans and glycogen estimates |
+| Garmin Connect | Activities, sleep, recovery, and routes |
+| Intervals.icu | Activities, wellness, and training calendar |
+| Komoot | Planned and recorded routes |
+| Olympiatoppen | Activities and training diary notes |
+| Route Planner | Route planning and interactive maps |
+| Strava | Activities and routes |
+| Xert | Activities, training load, and workout planning |
+| Yr / MET Norway | Route forecasts and historical weather |
 
 ## Getting started
 
